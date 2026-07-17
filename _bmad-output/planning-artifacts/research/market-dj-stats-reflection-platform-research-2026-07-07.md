@@ -1,8 +1,8 @@
 ---
-stepsCompleted: [1, 2, 3, 4]
-inputDocuments: ['output/brainstorming/brainstorm-dj-stats-platform-2026-07-06/brainstorm-intent.md', 'output/brainstorming/brainstorm-dj-stats-platform-2026-07-06/pitch.md', 'output/brainstorming/brainstorm-dj-stats-platform-2026-07-06/research-questions.md']
+stepsCompleted: [1, 2, 3, 4, 5]
+inputDocuments: ['output/brainstorming/brainstorm-dj-stats-platform-2026-07-06/brainstorm-intent.md', 'output/brainstorming/brainstorm-dj-stats-platform-2026-07-06/pitch.md', 'output/brainstorming/brainstorm-dj-stats-platform-2026-07-06/research-questions.md', 'primary survey: DJ Set Reflection App — Quick DJ Survey.csv (n=10, fielded 2026-07-07..13)']
 workflowType: 'research'
-lastStep: 4
+lastStep: 5
 research_type: 'market'
 research_topic: 'DJ Stats & Reflection Platform ("Strava for DJs")'
 research_goals: 'Resolve the P0 market questions from the brainstorm brief: competitor landscape & gaps, willingness to pay, trial-vs-free-tier monetization, and market sizing for a Serato-first DJ reflection + social platform.'
@@ -318,6 +318,115 @@ Launch SOM = one saturated city scene ..... ~20 DJs day-one, then city-by-city  
 - **Verified sources (12+):** serato.com, serato.com/playlists, serato.com/dj/pricing, dj.studio (+/pricing), rekordbox.com/en, mixcloud.com, 1001tracklists.com, github.com/topics/serato, strava.com/pricing, en.wikipedia.org/wiki/Strava, en.wikipedia.org/wiki/Serato, **investors.tiny.com (Serato acquisition)**, **cognitivemarketresearch.com (DJ-software market)**, **songstats.com/for/artists pricing (user-supplied rendered content)**.
 - **Could-not-source (residual):** exact current-year DJ-software market value + per-vendor share (paywalled in Cognitive MR); DJ.Studio dollar amounts (JS-rendered); exact Strava free/paid feature line (JS-rendered); the working-DJ fraction for SOM (needs primary survey). All labeled `[ANALYST ESTIMATE — needs verification]` inline.
 - **Confidence discipline:** every claim is tagged either `[SOURCE: … fetched 2026-07-07]` (verified) or `[ANALYST ESTIMATE — needs verification]` (unverified). No unlabeled assertions of fact.
+
+---
+
+## 5. Primary Research — DJ WTP & Feature Survey (n=10) [PRIMARY DATA]
+
+*This section resolves the two probes recommended in §2.4 and §4.4 (willingness-to-pay + free-vs-paid boundary) with **first-party survey data**, not estimate. The instrument is the "DJ Set Reflection App — Quick DJ Survey" (the Google Form scripted in `dj-platform-survey-google-form.gs`); **10 responses** were collected 2026-07-07 through 2026-07-13. All figures below are computed directly from the response CSV. **Caveat: n=10 is a small, professionally-skewed convenience sample — every finding here is directional, not statistically conclusive.** `[PRIMARY DATA — small sample]`*
+
+### 5.1 Who responded (sample composition)
+
+| Dimension | Distribution |
+|---|---|
+| DJ software | **Serato: 10/10 (100%)** — validates the Serato-first build focus |
+| Segment | Full-time/pro: 6 · Regular gigging: 2 · Part-time/occasional: 2 |
+| Sets/month OUT | 10+: 4 · 6–10: 4 · 1–2: 2 |
+| Has a scene | "Active group": 6 · "A few": 4 · **none: 0** — every respondent has scene friends |
+| Reviews sets after a gig | "Sometimes": 6 · "Review most": 3 · "Rarely": 1 — **10/10 look back at least sometimes** |
+
+**Read:** the sample is exactly the paying-core persona (working Serato DJs with a scene), which is the right audience to probe — but it is skewed toward pros and away from the hobbyist/bedroom funnel the growth model relies on, so it **under-samples the free-tier recruitment engine.** 100% Serato is a clean validation of the platform bet.
+
+### 5.2 Reflection appetite — real but mild
+
+The core-thesis agreement statement *"I'd like to understand my own DJing better — how I actually play, how it's changing over time"* scored **mean 3.8 / 5** (n=10). Warm, not white-hot. Crucially, **all 10 already review sets today** — and the open-text "what tool do you use?" answers name **Serato's own history function** and **recording sets and listening back** as the incumbents. *The competition for the reflection use-case is a free built-in feature plus a voice-memo — a low-cost, already-adopted habit the product must beat, not create.*
+
+### 5.3 Feature-by-feature: Free / Pay / Wouldn't-use (n=10)
+
+Respondents tagged each feature as expect-free, would-pay, or wouldn't-use:
+
+| Feature | Free | **Pay** | Won't use | Signal |
+|---|---|---|---|---|
+| Style evolution over time | 2 | **7** | 1 | 🟢 **Strongest paid signal** |
+| Library utilization ("playing what I bought?") | 1 | **6** | 3 | 🟢 Strong paid signal |
+| "Compared to what?" baseline | 2 | **5** | 3 | 🟢 Paid, but 3 reject outright |
+| Taste leaderboards vs. scene | 3 | **5** | 2 | 🟡 Paid-leaning |
+| Full searchable history | 4 | **5** | 1 | 🟡 Split free/paid |
+| Basic single-set stats | 8 | 1 | 1 | ⚪ **Expected free** |
+| Scene feed (energy-arc thumbnails) | 6 | 1 | **3** | 🔴 Weak; ⅓ won't use |
+| Follow DJs / profiles | **10** | 0 | 0 | ⚪ Universally expected free |
+| Hide tracks in shared setlist | 3 | 1 | **6** | 🔴 **Majority won't use** |
+
+**This is the section's headline finding, and it reshapes the tier split.** The paid willingness clusters entirely on the **personal-reflection depth** (style evolution, library utilization, baselines) — precisely what §2.3a already routed to Premium. But the **social primitives underperform badly**: "Follow DJs" is unanimously expected free, the "Scene feed" and "Hide tracks" features drew the *most* "wouldn't-use" votes (3 and 6 of 10). The privacy-first per-track-hide primitive (Axis C, a locked differentiator) is the **single least-wanted feature in the survey.**
+
+### 5.4 The "one feature that would make me want the app"
+
+| Most-compelling ONE feature | Votes |
+|---|---|
+| **Style evolution over time** | **5** |
+| Basic single-set stats | 3 |
+| Taste leaderboards | 1 |
+| Full searchable history | 1 |
+
+Half the sample names **style evolution** as *the* hook — and it's also the top paid feature (§5.3). This is the clearest product-priority signal in the data: *the "how is my sound changing over time?" mirror is the wedge, not the social feed.*
+
+Conversely, **"most annoyed to find behind a paywall"** split across **Basic single-set stats (3)** and **Follow DJs (3)** — confirming those two must stay free or the product feels hostile.
+
+### 5.5 Willingness to pay — the hard finding
+
+**Subscription appetite is soft, and the preferred model contradicts the plan:**
+
+| Question | Result |
+|---|---|
+| "Would you pay a monthly subscription?" | **Yes: 2 · Maybe: 5 · No: 3** |
+| Preferred payment model | **One-time purchase: 7** · Monthly: 2 · Annual: 1 |
+
+Only 2 of 10 are a clear "yes" to a subscription, and **7 of 10 prefer to pay once** — directly at odds with the freemium-subscription model locked in §2.3a. The "No"/"Maybe" open-text reasons attack the *concept's recurring value*, not the price: *"I already can see my own history…not worth paying for,"* *"I don't see use in software to tell me things I manually audit in reflection,"* *"needs to be something I absolutely need as a DJ."* This echoes the DJ.Studio "pay once" anchoring risk flagged in §2.3/§4.3 #2 — and now it has primary-data support.
+
+**Van Westendorp price sensitivity** (monthly $, n≈8–9 usable):
+
+| Price point | Median | Mean |
+|---|---|---|
+| Too cheap (question quality) | $7.50 | $8.10 |
+| **Great deal / clearly worth it** | **$10.00** | $13.30 |
+| Getting expensive (still consider) | $25.00 | $23.10 |
+| Too expensive (won't buy) | $30.00 | $30.00 |
+
+The implied **acceptable range is ~$10 (sweet spot) up to a ~$25–30 ceiling** — which *confirms* the §2.3a target of ~$8–12/mo as the credible entry price. So price isn't the blocker; **recurring-vs-one-time and demand intensity are.**
+
+### 5.6 The social thesis is challenged; two unprompted feature requests point elsewhere
+
+- **Trial-if-a-friend-invited-you** (the core viral mechanic) scored **mean 3.0 / 5** (values ranged 1–5) — lukewarm, not the strong pull the DJ-to-DJ growth loop assumes.
+- Combined with §5.3 (scene feed weak, follow expected-free, per-track-hide rejected 6/10), the **Strava-style *social* thesis is the weakest-validated part of the concept in this sample.** The *reflection* thesis validates far better than the *social* thesis.
+- **Two unprompted "what else should it do?" requests, both from pros, point at library utility rather than social:**
+  1. *"Crate integration / arrangement / find doubles in my crates and delete. Organization."*
+  2. *"A record pool with DJs in my scene submitting edits or tips"* (echoed by a second respondent: *"more features, record pool"*).
+
+  The duplicate-finder / crate-hygiene request is notable because it aligns with the **library-utilization** feature that *already* tested as a top-2 paid feature — suggesting "library intelligence" (utilization + cleanup) may be a stronger commercial spine than "scene social."
+
+### 5.7 Implications — what this primary data changes
+
+1. **Reframe the wedge from "social" to "personal library & reflection intelligence."** Paid willingness, the #1 "must-have," and both unprompted requests all point to the *personal mirror* (style evolution, library utilization, crate hygiene) — not the scene feed. The social layer looks like a *nice-to-have / growth mechanic*, not the value users will pay for. **Recommend the PRD lead with reflection depth and treat social as a secondary, mostly-free growth layer.** `[PRIMARY DATA — small sample]`
+2. **The §2.3a tier split largely holds — with one correction.** Paid depth (style evolution, library utilization, baselines, leaderboards, full history) is correctly monetized. But **"per-track hide" should be de-emphasized** (least-wanted feature, 6/10 won't use) and **"basic single-set stats" + "follow DJs" must stay firmly free** (top paywall-resentment items). Axis C (privacy-first sharing), a *locked differentiator*, is **not validated by users** and warrants reconsideration.
+3. **Recurring-revenue risk is now evidence-backed, not hypothetical.** 7/10 prefer one-time; only 2/10 a clear subscription yes. The freemium-subscription model (§2.3a) survives the *price* test ($10 sweet spot) but faces a real *model-preference* headwind. **Consider testing a one-time or hybrid (one-time core + optional sub for social/cloud) offer**, or invest messaging in the "living service" framing (§4.3 #2) — now doubly important.
+4. **Demand intensity is the top unresolved risk.** Reflection appetite is 3.8/5 and the incumbent (free Serato history + recording) is entrenched. The product must clear a "better than free + a voice memo" bar. This is a **product-differentiation** requirement to carry into the PRD, not a settled win.
+
+### 5.8 Survey limitations
+
+- **n=10, convenience sample, pro-skewed** (6/10 full-time) — under-samples the hobbyist funnel the growth model depends on; over-weights power users who already have entrenched review habits (which may *depress* the reflection-appetite score relative to the broader base). Directional only.
+- **100% Serato** — no cross-platform (rekordbox/Traktor) willingness signal; consistent with a Serato-first v1 but blind to the deferred-expansion audience.
+- **Price fields were free-text** ("Unsure", "5-10$", "Above 15$") requiring normalization; medians are robust to this but means less so — medians are reported as primary.
+- **No behavioral validation** — stated WTP overstates real WTP. The §4.4 recommendation (landing page with a real price + refundable deposit) remains the stronger de-risking step before committing to billing.
+
+### 5.9 Updated verdicts (post-primary-data)
+
+| Question | Pre-survey (§4.1) | Post-survey |
+|---|---|---|
+| Paid demand for reflection | Unvalidated `[ESTIMATE]` | 🟡 **Partially validated** — clear paid clustering on style-evolution/library-utilization; but intensity mild (3.8/5) and 7/10 prefer one-time |
+| Price point | ~$8–12/mo (inferred from competitors) | 🟢 **Confirmed** — $10 sweet spot, ~$25–30 ceiling (Van Westendorp, n≈9) |
+| Free vs. paid boundary | Draft split (§2.3a) | 🟢 **Mostly confirmed**, with corrections: keep basic-stats + follow free; de-emphasize per-track-hide |
+| Social / scene thesis | Locked differentiator | 🔴 **Challenged** — social features weakest-scoring; viral-invite pull only 3.0/5; reconsider Axis C priority |
+| Pricing *model* (sub vs. one-time) | Freemium subscription (§2.3a) | 🟡 **Headwind** — 7/10 prefer one-time; test hybrid/one-time before locking billing |
 
 
 
