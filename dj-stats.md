@@ -1,6 +1,6 @@
 #  DJ Stats & Reflection Platform
 
-*Working title: TBD ("Strava for DJs")*
+*Product name: Curfew (curfew.vip)*
 
 ## 1. Overview
 
