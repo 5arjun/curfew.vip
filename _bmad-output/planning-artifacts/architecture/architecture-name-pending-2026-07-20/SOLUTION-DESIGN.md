@@ -234,13 +234,13 @@ The architecture's **no-rewrite guarantee (AD-15)** is the bridge between them: 
 - ✅ **Environments / migrations** — decided (§7).
 - ✅ **`triseratops` license** — MPL-2.0 confirmed from source (safe for a proprietary product); pin a git commit, not the stale `0.0.3` crate.
 - ✅ **Launch geography** — decided **US-only at launch**; a CCPA-level posture is sufficient at v1, GDPR-equivalent review deferred until international expansion is real. (The formal CCPA-compliance review itself remains a pre-launch checklist item.)
+- ✅ **FR-6 "most played artists" Unknown-fallback** — decided (Arjun): rank artist-tagged plays only, no "Unknown" bucket and **no** "N untagged" footnote. Untagged plays still count in every non-artist stat and still show as "Unknown" in the tracklist (AD-11), so SM-C1 honesty rides the tracklist, not the leaderboard. Recorded as SPEC-name-pending CAP-5.
 
 **Still open (what's needed to close each):**
 
 | # | Open question | What closes it | Owner |
 |---|---|---|---|
 | 3 | WAV off-library embedded-tag readability | A WAV test file; or confirmation that target libraries are WAV-heavy enough to matter | Arjun / measurement |
-| 4 | FR-6 "most played artists" with ~11% missing artist tags | **Proposed:** exclude no-artist plays from ranking + honest "N untagged" footnote (SM-C1) | Architect (proposed; awaiting nod) |
 | 5 | Reverse-geocoding provider (FR-18) | A lean on cost vs accuracy vs attribution-freedom; or defer (opt-in, off by default) | Arjun (or defer) |
 
 What's left is decidable during implementation or deferrable — nothing left blocks moving to epics/stories.
