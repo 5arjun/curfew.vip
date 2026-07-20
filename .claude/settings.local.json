@@ -40,7 +40,8 @@
       "Bash(mkdir -p \"_bmad-output/planning-artifacts/architecture/architecture-name-pending-2026-07-20\"; echo created; ls -la \"_bmad-output/planning-artifacts/architecture/architecture-name-pending-2026-07-20\" 2>/dev/null)",
       "Bash(cd /Users/arjun/Documents/name-pending *)",
       "Read(//Volumes/**)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ],
     "additionalDirectories": [
       "/Users/arjun/Documents/name-pending/_bmad-output/planning-artifacts/architecture"
