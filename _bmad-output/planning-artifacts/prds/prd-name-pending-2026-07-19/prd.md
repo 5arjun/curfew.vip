@@ -2,7 +2,7 @@
 title: "Curfew — PRD"
 status: final
 created: 2026-07-19
-updated: 2026-07-19
+updated: 2026-07-20
 ---
 
 # PRD: Curfew
@@ -358,6 +358,21 @@ DJ can view network-wide aggregate comparisons (e.g. widest BPM range this month
 
 DJ can view the same comparison stats scoped specifically to DJs they follow, independent of the network-wide leaderboard.
 
+### 4.10 Account & Authentication *(Phase 1 — Launch)*
+
+**Description:** How a DJ creates and accesses a Curfew account. Multiple sign-up/login paths lower friction for a DJ setting up post-gig, often half-asleep on a phone — every path converges on one account record.
+
+**Functional Requirements:**
+
+#### FR-29: Multi-provider authentication
+
+DJ can sign up or log in via email + password, Google OAuth, Sign in with Apple, or a passkey (WebAuthn).
+
+**Consequences (testable):**
+- All four paths authenticate against one underlying DJ account — linked automatically by verified email, so a DJ who signs up via one method and later authenticates via another with the same verified email lands in the same account rather than a duplicate.
+- Every account has a phone number on file regardless of signup path — Google/Apple sign-ups (which only hand over name + email from the provider) prompt for phone number as a required follow-up step before the account is complete.
+- Passkey (WebAuthn) is offered as an additional option alongside password on the email-based path, not a separate signup flow.
+
 ## 5. Cross-Cutting NFRs & Constraints
 
 ### 5.1 Performance
@@ -378,7 +393,8 @@ DJ can view the same comparison stats scoped specifically to DJs they follow, in
 ## 6. Product Surfaces & Platform
 
 ### 6.1 Information Architecture
-- **Website (DJ-facing):** Dashboard (home) → Set Detail (stats, energy arc, segments, enrichment) → Style Evolution → Library Utilization → Feed → Profile → Comparisons (network + circle) → Account/Privacy settings.
+- **Website, logged-out:** Landing (marketing homepage) → Features, Pricing (marketing/informational pages, reached from Landing's nav) → Signup/Login (email + password, Google, Sign in with Apple, or passkey — FR-29).
+- **Website, authenticated (DJ-facing):** Dashboard (home) → Set Detail (stats, energy arc, segments, enrichment) → Style Evolution → Library Utilization → Feed → Profile → Comparisons (network + circle) → Account/Privacy settings.
 - **Local agent:** tray/menu-bar icon + one settings panel (Serato path override) only — no other surface (FR-5).
 
 ### 6.2 Aesthetic and Tone
@@ -392,10 +408,10 @@ DJ can view the same comparison stats scoped specifically to DJs they follow, in
 
 ## 7. Monetization
 
-- Not locked down in this PRD — deferred until the product exists and usage data can inform pricing. `[ASSUMPTION, unresolved.]`
-- The brief's original ~$5-10/mo subscription assumption is contradicted by the WTP survey's own data: only 2/10 respondents wanted a subscription, 7/10 preferred one-time payment. Actual Van Westendorp price-sensitivity data exists ($10 "sweet spot," ~$25-30 ceiling) and sits well above the brief's assumed range — worth pricing against real data rather than the original assumption when this is revisited.
-- WTP survey signal: "follow" was unanimously expected to be free by survey respondents (n=10, convenience sample skewed pro, low confidence) — since "follow" is now Phase 2 rather than launch scope, this has more runway to be re-tested before it's monetization-relevant.
-- Paying-core-vs-funnel segmentation from the brief (club DJs as intended paying core, bedroom DJs as free-tier growth engine, §2.1) still needs to be reconciled with the one-time-vs-subscription signal above — e.g. a one-time "supporter" purchase model may fit the funnel dynamic better than recurring subscription. Not resolved here.
+- **Locked: subscription, $6/month.** Explicit PM decision, not a placeholder — made deliberately against the WTP survey's own preference signal (7/10 respondents preferred one-time payment vs. 2/10 subscription). Subscription is retained as the model regardless of that signal.
+- Priced against the survey's actual Van Westendorp price-sensitivity data: $10 "sweet spot," ~$25-30 ceiling. $6/month sits intentionally below the sweet spot — an entry-level, adoption-friendly price meant to lower the bar to conversion given the survey's competing preference for one-time purchase.
+- WTP survey signal: "follow" was unanimously expected to be free by survey respondents (n=10, convenience sample skewed pro, low confidence). "Follow" is Phase 2 rather than launch scope, and stays free — no change to that expectation from the $6/mo Phase 1 price.
+- Paying-core-vs-funnel segmentation from the brief (club DJs as intended paying core, bedroom DJs as free-tier growth engine, §2.1) is not fully reconciled with the now-locked subscription price — still worth revisiting how free vs. paid actually splits by segment once usage data exists.
 
 ## 8. Non-Goals (Explicit)
 
@@ -408,7 +424,6 @@ DJ can view the same comparison stats scoped specifically to DJs they follow, in
 - Reliably distinguishing a live gig from a realistic home rehearsal by data alone — unsolved by anyone in this space (FR-27); V1 mitigates with confidence-gated confirmation, does not claim to solve it.
 - Fully automatic, flow-aware segmentation (auto-labeling "dinner" vs. "dancefloor" with no DJ confirmation) — FR-28 suggests, DJ confirms.
 - Local audio DSP/waveform key-finding for tracks with no library or tag data (FR-2).
-- Locking down monetization mechanics — directional assumption only (§7).
 
 ## 9. MVP Scope
 
@@ -421,6 +436,7 @@ Scope is split into two phases (§1 Vision). Phase 2 isn't a backlog item — it
 - Library utilization: conversion rate, aging shelf, time-to-first-play (§4.4).
 - Set segments, manual and algorithm-suggested (§4.5).
 - Layer 2 enrichment, including opt-in location-based venue suggestion (§4.6).
+- Account & authentication: email + password, Google, Sign in with Apple, and passkey sign-up/login, all linked to one account (§4.10, FR-29).
 
 ### 9.2 Phase 2 — Fast-Follow (gated on Phase 1 Success Metrics)
 - FR-27's confirmation-prompt gate activates — the first time it has anything to protect (feed, comparisons, public/friends-only visibility).
@@ -466,7 +482,7 @@ Scope is split into two phases (§1 Vision). Phase 2 isn't a backlog item — it
 8. Feed card variety beyond the energy-arc thumbnail (FR-20) — open for UX exploration.
 9. "Recently downloaded, not yet played" as a direct dashboard nudge, distinct from the 3-month aging-shelf view — surfaced by UJ-1, not committed.
 10. Scene critical mass unverified — is the combined Philly/NYC/NJ network enough for the feed to feel alive at launch? (brief's known risk, still open.)
-11. Monetization mechanics entirely unresolved (§7) — revisit once the product exists, including whether the paying-core (club DJs) vs. free-tier-funnel (bedroom DJs) segmentation from the brief still holds.
+11. Paying-core (club DJs) vs. free-tier-funnel (bedroom DJs) segmentation from the brief not fully reconciled with the now-locked $6/mo subscription price (§7) — worth revisiting how free vs. paid actually splits by segment once usage data exists.
 12. Format-maintenance risk: judged low-risk due to redundancy across multiple independent open-source parsing projects, but `triseratops` (a direct dependency, see `addendum.md`) explicitly warns of breaking API changes over time — worth re-confirming this calculus stays favorable as the dependency evolves.
 13. Named fast-follower risk: `unbox` (Go, 364★, cross-platform Serato read+display tool) is the closest existing project to Curfew's parsing layer. Market research recommends monitoring it, not acting now — no current overlap with Curfew's reflection/social layer, but worth tracking.
 14. Unprompted feature signals from market research, not scoped into any current feature: a crate/duplicate-finder tool, and a scene-level "record pool" concept — both loosely tied to Library Utilization's stronger paid-intent signal. Logged for future consideration, not committed to V1.
@@ -474,6 +490,5 @@ Scope is split into two phases (§1 Vision). Phase 2 isn't a backlog item — it
 ## 12. Assumptions Index
 
 - §4.4 (FR-11–FR-13) — Library Utilization depends on a reliable "date added to library" field from Serato's DB, not explicitly confirmed by domain research.
-- §7 (Monetization) — Not locked down; pricing model itself (one-time vs. subscription) and paying-core/funnel segmentation both unresolved.
 - §10 (Success Metrics) — No numeric targets set for any SM; carried from the brief, to be filled in once real usage data exists.
 

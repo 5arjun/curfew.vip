@@ -1,0 +1,10 @@
+[workflow]
+
+# Extra visual-decision renderers appended to the defaults (color-themes,
+# design-directions, excalidraw-wireframe, key-screens). Invoked on demand
+# during Discovery/Finalize when seeing options helps the user decide.
+creative_tools = [
+  "skill:frontend-design",
+  "skill:ui-ux-pro-max",
+  "skill:emil-design-eng",
+]

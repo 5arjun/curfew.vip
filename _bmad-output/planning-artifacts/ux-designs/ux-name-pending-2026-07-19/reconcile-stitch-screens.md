@@ -1,0 +1,15 @@
+# Reconcile — imports/stitch_curfew_dj_reflection_platform/
+
+10 subfolders: `curfew` (Stitch-generated token DESIGN.md — the source the palette/type ramp was extracted from), `curfew_dashboard_sticky_nav`, `curfew_dj_archive_flow`, `curfew_landing_page_sticky_nav`, `curfew_library_utilization_sticky_nav`, `curfew_login_sticky_nav`, `curfew_set_detail` (rejected left-sidebar nav variant), `curfew_set_detail_sticky_nav` (accepted), `curfew_signup_dark_theme`, `curfew_style_evolution_sticky_nav`.
+
+**Already reconciled** (per `.memlog.md` entries 15–22, confirmed still reflected in `DESIGN.md`): full M3-style color/typography token set (Hanken Grotesk / Inter / Geist), the floating bottom pill nav as signature chrome, `{rounded.full}` corrected to true 9999px (Stitch's exported value briefly mis-set it to 12px), the Set Detail serif-title appearance identified as a font-load fallback glitch and corrected to Hanken Grotesk uniformly, Set Detail nav standardized to the sticky bottom-pill variant (the `curfew_set_detail/` left-sidebar version rejected).
+
+**Verified this pass, nothing new:**
+- `curfew_dj_archive_flow/code.html` is a byte-identical duplicate of `curfew_landing_page_sticky_nav/code.html` (0-line diff) — contributes nothing beyond what's already reconciled.
+- Grepped all screens for streak/leaderboard/badge/"winner"/"best in" language — none found, consistent with the Do's-and-Don'ts / anti-pattern rejections already in both spines. Nothing to walk back.
+- Dashboard nudge copy ("New Set Detected"), Library Utilization copy (Conversion Rate, Aging Shelf, "Fastest Conversion"), and Style Evolution copy (BPM Range Shifts, Genre Diversity Index) all match the concepts already carried into `EXPERIENCE.md`'s Component/State Patterns and `DESIGN.md`'s token set — no orphaned functionality found.
+
+**Flagged as dropped — genuine gap, not yet reconciled:**
+`curfew_signup_dark_theme/code.html` (lines ~147–161) contains a rendered "Biometric Anchor" element for the passkey/WebAuthn option — a bordered row (`bg-surface-container-low`, `border-outline-variant/30` outline), a circular fingerprint-icon badge (`border-primary/20` ring, `text-primary` icon), a two-line label ("Enable Passkey" / "Biometric bypass"), and a radio-style indicator on the right that fills `{colors.primary}` on hover/active. This is a real, already-rendered visual treatment for the WebAuthn signup option that `EXPERIENCE.md`'s Auth-form row flags as `[ASSUMPTION — PRD sync owed]`, but it was never pulled into `DESIGN.md`'s Components section — DESIGN.md currently has no visual spec for it at all. Not added here since deriving a new component entry wasn't in this pass's scope (only `chart-summary` was authorized as mechanical derivation); flagging so a future DESIGN.md touch can extract it directly from this file rather than inventing a treatment from scratch.
+
+`curfew_signup_dark_theme/screen.png` is a failed capture (28 bytes, per memlog entry 20) — code.html is the only usable reference for that screen.

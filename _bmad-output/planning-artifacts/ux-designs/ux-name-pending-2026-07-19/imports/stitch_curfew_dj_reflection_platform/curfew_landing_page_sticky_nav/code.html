@@ -1,0 +1,308 @@
+<!DOCTYPE html><html class="dark" lang="en" style=""><head><meta charset="utf-8"><meta content="width=device-width, initial-scale=1.0" name="viewport"><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=block" rel="stylesheet"><link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&amp;family=Hanken+Grotesk:wght@100..900&amp;family=Inter:wght@100..900&amp;display=swap" rel="stylesheet"><script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script><script id="tailwind-config">try{
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-primary-fixed": "#1e0061",
+                    "outline": "#938e9e",
+                    "on-secondary-container": "#bab8b9",
+                    "surface": "#121415",
+                    "on-tertiary-container": "#303032",
+                    "on-background": "#e2e2e3",
+                    "on-tertiary-fixed": "#1b1b1d",
+                    "on-surface-variant": "#cac4d5",
+                    "primary": "#cbbeff",
+                    "tertiary": "#c8c6c8",
+                    "on-error": "#690005",
+                    "surface-container-highest": "#333536",
+                    "secondary-container": "#49494a",
+                    "tertiary-fixed-dim": "#c8c6c8",
+                    "on-primary-container": "#330a90",
+                    "error-container": "#93000a",
+                    "inverse-surface": "#e2e2e3",
+                    "primary-fixed": "#e7deff",
+                    "surface-container": "#1e2021",
+                    "secondary-fixed-dim": "#c8c6c7",
+                    "error": "#ffb4ab",
+                    "surface-bright": "#38393a",
+                    "secondary": "#c8c6c7",
+                    "surface-container-lowest": "#0c0e0f",
+                    "on-error-container": "#ffdad6",
+                    "surface-variant": "#333536",
+                    "on-tertiary": "#303032",
+                    "secondary-fixed": "#e5e2e3",
+                    "surface-tint": "#cbbeff",
+                    "on-primary-fixed-variant": "#4a2ea7",
+                    "on-secondary-fixed-variant": "#474647",
+                    "inverse-on-surface": "#2f3132",
+                    "on-secondary-fixed": "#1b1b1c",
+                    "surface-container-low": "#1a1c1d",
+                    "on-primary": "#330b91",
+                    "on-surface": "#e2e2e3",
+                    "surface-dim": "#121415",
+                    "tertiary-fixed": "#e4e2e4",
+                    "on-secondary": "#303031",
+                    "primary-fixed-dim": "#cbbeff",
+                    "primary-container": "#9d85ff",
+                    "outline-variant": "#484553",
+                    "inverse-primary": "#6349c0",
+                    "background": "#121415",
+                    "tertiary-container": "#989799"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "spacing": {
+                    "lg": "24px",
+                    "container-max": "1100px",
+                    "unit": "4px",
+                    "sm": "8px",
+                    "xxl": "80px",
+                    "md": "16px",
+                    "xl": "40px",
+                    "xs": "4px",
+                    "gutter": "24px"
+            },
+            "fontFamily": {
+                    "label-sm": ["Geist"],
+                    "display-lg": ["Hanken Grotesk"],
+                    "body-lg": ["Inter"],
+                    "headline-md": ["Hanken Grotesk"],
+                    "body-md": ["Inter"],
+                    "display-lg-mobile": ["Hanken Grotesk"],
+                    "mono-data": ["Geist"]
+            },
+            "fontSize": {
+                    "label-sm": ["12px", {"lineHeight": "1.0", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                    "display-lg": ["48px", {"lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+                    "body-lg": ["18px", {"lineHeight": "1.6", "fontWeight": "400"}],
+                    "headline-md": ["24px", {"lineHeight": "1.3", "fontWeight": "500"}],
+                    "body-md": ["16px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                    "display-lg-mobile": ["32px", {"lineHeight": "1.2", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "mono-data": ["14px", {"lineHeight": "1.4", "fontWeight": "400"}]
+            }
+          },
+        },
+      }
+    }catch(_e){}</script></head><body class="bg-background text-on-background relative">
+<!-- Neko.engineering Inspired Header Branding -->
+<header class="fixed top-0 left-0 right-0 z-40 bg-transparent pointer-events-none">
+<div class="max-w-container-max mx-auto px-lg py-xl flex justify-center md:justify-start">
+<span class="font-display-lg text-[28px] md:text-[32px] tracking-tighter text-on-surface pointer-events-auto">CURFEW</span>
+</div>
+</header>
+<!-- Floating Bottom Navigation (Flowty inspired) -->
+<div class="fixed bottom-lg left-1/2 -translate-x-1/2 z-50 w-[calc(100%-48px)] max-w-md rounded-full">
+<!-- Menu Popover -->
+<div id="mobile-menu" class="absolute bottom-0 left-0 w-full mb-md opacity-0 pointer-events-none translate-y-4">
+<div class="bg-surface-container/90 backdrop-blur-xl border border-outline-variant p-md flex flex-col gap-sm">
+<a href="#" class="font-label-sm text-label-sm text-on-surface hover:bg-surface-variant p-sm transition-colors">Dashboard</a>
+<a href="#" class="font-label-sm text-label-sm text-on-surface hover:bg-surface-variant p-sm transition-colors">Sets</a>
+<a href="#" class="font-label-sm text-label-sm text-on-surface hover:bg-surface-variant p-sm transition-colors">Evolution</a>
+<a href="#" class="font-label-sm text-label-sm text-on-surface hover:bg-surface-variant p-sm transition-colors">Library</a>
+</div>
+</div>
+<!-- Main Floating Bar -->
+<nav class="bg-surface-container-highest/60 backdrop-blur-2xl border border-outline-variant flex items-center justify-between p-sm px-lg shadow-2xl rounded-full">
+<button class="font-label-sm text-label-sm text-outline hover:text-on-surface transition-colors">Login</button>
+<button id="menu-toggle" class="flex items-center justify-center p-sm hover:bg-surface-variant/50 transition-colors">
+<span class="material-symbols-outlined text-on-surface">menu</span>
+</button>
+<a href="#features" class="font-label-sm text-label-sm text-outline hover:text-on-surface transition-colors">Features</a>
+</nav>
+</div>
+<main>
+<!-- Hero Section -->
+<section class="relative min-h-screen flex flex-col items-center pt-xxl px-lg overflow-hidden justify-end pb-32">
+<!-- Background Decoration -->
+<div class="absolute inset-0 z-0 pointer-events-none opacity-20">
+<div class="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-primary/10 rounded-full blur-[120px]"></div>
+<div class="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-secondary-container/20 rounded-full blur-[100px]"></div>
+</div>
+<div class="z-10 text-center max-w-4xl flex flex-col items-center">
+<div class="flex items-center gap-xs mb-lg bg-surface-container px-md py-xs border-technical rounded-full">
+<span class="w-2 h-2 bg-primary rounded-full pip-anim"></span>
+<span class="font-label-sm text-label-sm text-outline tracking-widest uppercase">Version 2.4.0 • LIVE_DETECTION</span>
+</div>
+<!---->
+<h1 class="font-display-lg text-display-lg-mobile md:text-[96px] leading-[1] mb-md hero-text-mask tracking-tight">
+                Your craft, decoded. <br class="hidden md:block"> No input required.
+            </h1>
+<p class="font-body-lg text-body-lg text-outline max-w-xl mb-xl">
+                Silent Serato Detection monitors your library and set-lists in real-time. Focus on the transition; we’ll handle the data.
+            </p>
+<div class="flex flex-col md:flex-row gap-md items-center">
+<button class="bg-primary text-on-primary px-xxl py-md font-label-sm text-label-sm tracking-widest border border-primary/20 hover:bg-primary-container hover:text-on-primary-container transition-all">
+                    INITIALIZE ARCHIVE
+                </button>
+<a class="font-label-sm text-label-sm text-outline border-b border-outline/30 pb-xs hover:border-primary transition-all" href="#features">
+                    TECHNICAL SPECS
+                </a>
+</div>
+</div>
+<!-- Scroll Indicator -->
+
+</section>
+<!-- Dynamic Bento Grid Section -->
+<section class="py-xxl max-w-container-max mx-auto px-lg" id="features">
+<div class="grid grid-cols-1 md:grid-cols-12 gap-gutter">
+<!-- Main Feature Card -->
+<div class="md:col-span-8 group relative overflow-hidden bg-surface-container-low border-technical p-xl min-h-[480px] flex flex-col justify-end">
+<div class="absolute top-0 left-0 w-full h-full opacity-10 group-hover:opacity-20 transition-opacity duration-700">
+<div class="w-full h-full bg-cover bg-center grayscale contrast-125" style="background-image: url(&quot;https://lh3.googleusercontent.com/aida-public/AB6AXuASw9l_I4-05obJtrroGNfMvCLATWnrBqfE45v0MoFLTnawHrUqmJilJ3Ie0cwQLVc7TnyCeZ1AXlY9_llIyTOKPWZ9Fph0emalKNmWn7nkXNbc9sLG7FeG_BhVePdFReyLzlyilsCjjQkXCCxc_t9X-AQngfqk1wg1u6XDBg9nyXrZmFcCREk2tfjUPJ4y8zM0P9RWqSFaP1B5_nyWHK957mIP7h5oSpxQIvJR0-kJpo3YSJvjUg_2evPdQrAv_g1rQ2q7IRNbjcxg&quot;);"></div>
+</div>
+<div class="relative z-10">
+<span class="font-mono-data text-primary mb-md block">01 / FEATURE_CORE</span>
+<h2 class="font-display-lg text-display-lg mb-md">Silent Serato Detection</h2>
+<p class="font-body-md text-outline max-w-md">
+                        No manual logging. No distractions. Curfew bridges the gap between your hardware and your archive, capturing track history, energy curves, and harmonic shifts automatically.
+                    </p>
+</div>
+<div class="absolute top-lg right-lg flex gap-unit">
+<div class="w-1 h-4 bg-primary"></div>
+<div class="w-1 h-4 bg-primary/60"></div>
+<div class="w-1 h-4 bg-primary/30"></div>
+</div>
+</div>
+<!-- Secondary Metric Card -->
+<div class="md:col-span-4 bg-surface-container-low border-technical p-xl flex flex-col justify-between">
+<div>
+<span class="font-mono-data text-outline-variant mb-md block uppercase">Metric_Flow</span>
+<h3 class="font-headline-md text-headline-md mb-sm">BPM Heatmaps</h3>
+<p class="font-label-sm text-label-sm text-outline">Visualize the energy trajectory of your set over 120 minutes.</p>
+</div>
+<div class="mt-xl h-32 flex items-end gap-unit">
+<div class="flex-1 bg-primary/20 h-[20%] border-t border-primary"></div>
+<div class="flex-1 bg-primary/20 h-[45%] border-t border-primary"></div>
+<div class="flex-1 bg-primary/20 h-[30%] border-t border-primary"></div>
+<div class="flex-1 bg-primary/40 h-[60%] border-t border-primary"></div>
+<div class="flex-1 bg-primary/60 h-[85%] border-t border-primary"></div>
+<div class="flex-1 bg-primary/20 h-[40%] border-t border-primary"></div>
+<div class="flex-1 bg-primary/20 h-[25%] border-t border-primary"></div>
+</div>
+</div>
+<!-- Data Card -->
+<div class="md:col-span-4 bg-surface-container-high border-technical p-xl">
+<span class="material-symbols-outlined text-primary text-4xl mb-lg">auto_graph</span>
+<h3 class="font-headline-md text-headline-md mb-sm">Evolution Tracking</h3>
+<p class="font-body-md text-outline">Watch how your sound shifts over months. Deep-learning analysis identifies your signature phrasing.</p>
+</div>
+<!-- Set-List Preview -->
+<div class="md:col-span-8 bg-surface-container border-technical p-xl overflow-hidden">
+<div class="flex justify-between items-center mb-xl">
+<h3 class="font-headline-md text-headline-md uppercase tracking-widest">Recent_Archive</h3>
+<span class="font-mono-data text-outline text-[10px]">TIMESTAMP: 04:12:00</span>
+</div>
+<div class="space-y-md">
+<div class="flex items-center justify-between border-b border-outline-variant pb-sm">
+<div class="flex items-center gap-md">
+<span class="font-mono-data text-outline">01</span>
+<span class="font-label-sm text-label-sm uppercase">DEEP_CUTS_VOL_1.WAV</span>
+</div>
+<span class="font-mono-data text-primary">124.0 BPM</span>
+</div>
+<div class="flex items-center justify-between border-b border-outline-variant pb-sm">
+<div class="flex items-center gap-md">
+<span class="font-mono-data text-outline">02</span>
+<span class="font-label-sm text-label-sm uppercase">NIGHT_DRIVE_SYNTH.AIFF</span>
+</div>
+<span class="font-mono-data text-primary">126.5 BPM</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- CTA Section -->
+<section class="py-xxl bg-surface-container-lowest border-y border-outline-variant">
+<div class="max-w-container-max mx-auto px-lg text-center">
+<h2 class="font-display-lg text-display-lg mb-md">Ready for the after-hours?</h2>
+<p class="font-body-lg text-body-lg text-outline mb-xl max-w-lg mx-auto">
+                Join the private beta for DJs who value reflection as much as the performance.
+            </p>
+<div class="relative inline-block">
+<button class="bg-primary text-on-primary px-xxl py-lg font-label-sm text-label-sm tracking-[0.2em] relative z-10 transition-transform hover:-translate-y-1 hover:translate-x-1 active:translate-y-0 active:translate-x-0">
+                    REQUEST ACCESS
+                </button>
+<div class="absolute inset-0 border border-primary translate-x-2 translate-y-2 pointer-events-none"></div>
+</div>
+</div>
+</section>
+</main>
+<!-- Footer -->
+<footer class="bg-surface py-xl px-lg border-t border-outline-variant pb-32">
+<div class="max-w-container-max mx-auto flex flex-col md:flex-row justify-between items-start gap-xl">
+<div class="flex flex-col gap-md">
+<span class="font-display-lg text-[20px] tracking-tighter text-on-surface">CURFEW</span>
+<p class="font-label-sm text-label-sm text-outline max-w-xs leading-relaxed">
+                A technical environment for the modern DJ. Designed for the quiet hours where progress is made.
+            </p>
+</div>
+<div class="grid grid-cols-2 md:grid-cols-3 gap-xl">
+<div class="flex flex-col gap-sm">
+<span class="font-mono-data text-[10px] text-primary uppercase mb-xs tracking-widest">Platform</span>
+<a class="font-label-sm text-label-sm text-outline hover:text-on-surface" href="#">Dashboard</a>
+<a class="font-label-sm text-label-sm text-outline hover:text-on-surface" href="#">Analysis</a>
+<a class="font-label-sm text-label-sm text-outline hover:text-on-surface" href="#">API Docs</a>
+</div>
+<div class="flex flex-col gap-sm">
+<span class="font-mono-data text-[10px] text-primary uppercase mb-xs tracking-widest">Legal</span>
+<a class="font-label-sm text-label-sm text-outline hover:text-on-surface" href="#">Privacy</a>
+<a class="font-label-sm text-label-sm text-outline hover:text-on-surface" href="#">Terms</a>
+<a class="font-label-sm text-label-sm text-outline hover:text-on-surface" href="#">About</a>
+</div>
+<div class="flex flex-col gap-sm">
+<span class="font-mono-data text-[10px] text-primary uppercase mb-xs tracking-widest">Connect</span>
+<a class="font-label-sm text-label-sm text-outline hover:text-on-surface" href="#">Discord</a>
+</div>
+</div>
+</div>
+<div class="max-w-container-max mx-auto mt-xl pt-lg border-t border-outline-variant/30 flex justify-between items-center">
+<span class="font-mono-data text-[10px] text-outline-variant uppercase">© 2024 CURFEW_SYS_RESERVED</span>
+<div class="flex gap-md">
+<span class="w-1 h-1 bg-primary rounded-full"></span>
+</div>
+</div>
+</footer>
+<script>
+    // Toggle menu
+    const menuToggle = document.getElementById('menu-toggle');
+    const body = document.body;
+    
+    menuToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        body.classList.toggle('menu-open');
+        const icon = menuToggle.querySelector('.material-symbols-outlined');
+        icon.textContent = body.classList.contains('menu-open') ? 'close' : 'menu';
+    });
+
+    // Close menu when clicking outside
+    document.addEventListener('click', (e) => {
+        if (body.classList.contains('menu-open') && !e.target.closest('#mobile-menu') && !e.target.closest('#menu-toggle')) {
+            body.classList.remove('menu-open');
+            menuToggle.querySelector('.material-symbols-outlined').textContent = 'menu';
+        }
+    });
+
+    // Subtle Reveal on Scroll
+    document.addEventListener('DOMContentLoaded', () => {
+        const observerOptions = { threshold: 0.1 };
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('opacity-100');
+                    entry.target.classList.remove('opacity-0', 'translate-y-4');
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('section').forEach(section => {
+            section.classList.add('transition-all', 'duration-1000', 'opacity-0', 'translate-y-4');
+            observer.observe(section);
+        });
+    });
+</script>
+</body></html>
