@@ -1,0 +1,3 @@
+- [Trial-and-edit collaboration style](collab_trial_and_edit.md) — Arjun reacts to concrete drafts better than answering open-ended asks
+- [Curfew project overview](project-curfew.md) — DJ reflection platform, PRD-driven, currently in UX pass
+- [Custom skill audit cycle](custom_skill_audit_cycle.md) — Four-phase workflow for design, build, animate, and ship using installed skills

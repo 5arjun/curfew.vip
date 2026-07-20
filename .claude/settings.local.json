@@ -1,0 +1,49 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:rdap.org)",
+      "WebFetch(domain:rdap.verisign.com)",
+      "WebFetch(domain:rdap.nic.google)",
+      "WebFetch(domain:rdap.nic.vip)",
+      "WebFetch(domain:data.iana.org)",
+      "WebFetch(domain:pubapi.registry.google)",
+      "WebFetch",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "WebSearch",
+      "Bash(npx skills@latest --help)",
+      "Bash(npx skills@latest find \"ui-ux-pro-max\")",
+      "Bash(npx skills@latest *)",
+      "Bash(python3 *)",
+      "Bash(uv run *)",
+      "Bash(test -f ~/.claude/settings.json && cat ~/.claude/settings.json || echo \"__NO_FILE__\")",
+      "Read(//Users/arjun/.claude/**)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(pwd -P)",
+      "Bash(awk 'found{print} /^---$/{c++} c==2{found=1}' DESIGN.md)",
+      "Bash(awk '/^components:/{f=1;next} f && /^[a-z]/{exit} f' DESIGN.md)",
+      "Bash(awk '/^rounded:/{f=1;next} f && /^[a-z]/{exit} f' DESIGN.md)",
+      "Bash(awk '/^colors:/{f=1;next} f && /^[a-z]/{exit} f' DESIGN.md)",
+      "Bash(awk '/^typography:/{f=1;next} f && /^[a-z]/{exit} f' DESIGN.md)",
+      "Bash(awk '/^spacing:/{f=1;next} f && /^[a-z]/{exit} f' DESIGN.md)",
+      "Bash(echo \"exit code: $?\")",
+      "Bash(awk '/^colors:/,/^typography:/' DESIGN.md)",
+      "Bash(awk '/^typography:/,/^rounded:/' DESIGN.md)",
+      "Bash(awk '/^rounded:/,/^spacing:/' DESIGN.md)",
+      "Bash(awk '/^spacing:/,/^components:/' DESIGN.md)",
+      "Bash(awk '/^components:/,/^---/' DESIGN.md)",
+      "Bash(xargs cat)",
+      "Bash(awk '{print $NF}')",
+      "Bash(grep -n -i \"monetiz\\\\|subscription\\\\|pricing\\\\|\\\\$6\\\\|\\\\$10\\\\|one-time\" \"/Users/arjun/Documents/name-pending/_bmad-output/planning-artifacts/prds/prd-name-pending-2026-07-19/prd.md\")",
+      "Bash(find /Users/arjun -name \"*frontend*design*\" -o -name \"*design*\" 2>/dev/null | grep -i skill | head -10)",
+      "Read(//Users/arjun/**)",
+      "Bash(mkdir -p \"_bmad-output/planning-artifacts/architecture/architecture-name-pending-2026-07-20\"; echo created; ls -la \"_bmad-output/planning-artifacts/architecture/architecture-name-pending-2026-07-20\" 2>/dev/null)",
+      "Bash(cd /Users/arjun/Documents/name-pending *)",
+      "Read(//Volumes/**)",
+      "Bash(git add *)"
+    ],
+    "additionalDirectories": [
+      "/Users/arjun/Documents/name-pending/_bmad-output/planning-artifacts/architecture"
+    ]
+  }
+}
