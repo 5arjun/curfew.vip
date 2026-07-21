@@ -11,7 +11,7 @@ scope: >-
   which sits outside the numbered FRs.
 status: final
 created: 2026-07-20
-updated: 2026-07-20
+updated: 2026-07-21
 binds: [FR-1..FR-29, "Epic 7 (Subscription & Billing)"]
 sources:
   - _bmad-output/planning-artifacts/prds/prd-name-pending-2026-07-19/prd.md
@@ -150,7 +150,7 @@ graph TD
 - **Binds:** FR-1, FR-4, FR-14–FR-16, FR-22, FR-23; the sync upsert; AD-4, AD-6, AD-9.
 - **Prevents:** a parser/boundary fix orphaning overlays or silently re-exposing a private set; two DJs on a shared USB library colliding on one set; an idempotent content re-sync clobbering web-authored visibility/enrichment.
 - **Rule:**
-  - The **session** (one Serato session file) is the immutable identity anchor: `session_id = hash(dj_id, stable_session_identity)` — **namespaced by `dj_id`** so a shared USB library cannot collide across DJs (AD-4).
+  - The **session** (one Serato session file) is the immutable identity anchor: `session_id = hash(dj_id, stable_session_identity)` — **namespaced by `dj_id`** so a shared USB library cannot collide across DJs (AD-4). `stable_session_identity` **must** be derived from a stable, intrinsic property of the session itself — its immutable start-anchor / first-play identity — **never** file mtime, path, or filename, so a later Serato re-save of the same session never re-keys or duplicates the set, and two distinct same-night sessions never collide. *(Resolved 2026-07-20, party — refines this AD; enforced as a contract test per epics.md Story 3.2 AC-6.)*
   - A **set** is a product unit derived from a session (Glossary §3). Set boundaries, **once synced, are stable in the cloud**: a re-parse/backfill updates play-level content keyed by `session_id` but **does not re-partition or re-key** an already-synced session. Correcting boundaries is a **deliberate cloud-side migration**, never an implicit consequence of re-sync.
   - The agent's sync upsert is **column-scoped to content columns**. User-authored **overlay** columns — visibility tier, per-track hide, Layer 2 enrichment, segments — are **disjoint and never written by the agent** (the mechanical enforcement of AD-6, contract-tested in `shared/`). An idempotent re-sync can therefore never reset a tier (AD-9) or wipe an overlay.
 

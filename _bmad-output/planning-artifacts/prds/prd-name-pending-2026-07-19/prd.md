@@ -2,7 +2,7 @@
 title: "Curfew — PRD"
 status: final
 created: 2026-07-19
-updated: 2026-07-20
+updated: 2026-07-21
 ---
 
 # PRD: Curfew
@@ -45,7 +45,7 @@ Nothing else combines all three pieces: Serato Playlists uploads history but has
   - **Climax:** The genre chart reveals a gap between what they played and what the room wanted — an actionable "do better next time" moment, not just a report.
   - **Resolution:** Leaves with two concrete takeaways — a specific forgotten track, and a genre-mix adjustment for next time at that venue.
   - **Realizes:** FR-1, FR-4 (silent auto-sync overnight), FR-16 (declinable Layer 2 prompt), FR-6 (genre breakdown).
-  - `[NOTE FOR PM]` Suggests "recently downloaded but not yet played" may be worth a direct dashboard nudge (days-scale), distinct from the 3-month aging-shelf view (FR-12). Design-phase exploration, not committed.
+  - `[NOTE FOR PM]` Suggests "recently downloaded but not yet played" may be worth a direct dashboard nudge (days-scale), distinct from the 3-month aging-shelf view (FR-12). **RESOLVED (design phase)** — committed as a quiet secondary nudge (same banner pattern as the new-set-detected nudge), threshold **30 days** since download with no play yet: long enough that a same-day download doesn't nag, short enough to read as distinct from the 3-month aging shelf (FR-12). See EXPERIENCE.md State Patterns and epics.md Story 4.4.
 
 - **UJ-2. A DJ gets curious about a friend's set, and it turns into a collaboration lead.** *(Phase 2)*
   - **Persona + context:** A DJ browsing the feed.
@@ -102,7 +102,7 @@ Nothing else combines all three pieces: Serato Playlists uploads history but has
 - **Camelot wheel** — The harmonic-mixing key notation system used for key-compatibility stats (FR-6).
 - **Layer 2 enrichment** — Optional, after-the-fact context (venue, crowd size, event type, notes) a DJ can add to a Set from the website (§4.6). Never required for core dashboard value.
 - **Segment** — A labeled time-range within a single Set (e.g. dancefloor / dinner / performance), for multi-context Sets like weddings (§4.5).
-- **Conversion rate** — % of tracks added to a DJ's library that have been played at least once in a Set (FR-11).
+- **Conversion rate** — % of tracks added to a DJ's library that have been played at least once in a Set, over a rolling 90-day window (FR-11). *(Window length confirmed 2026-07-21, Arjun — see FR-11.)*
 - **Aging shelf** — Library tracks unplayed for 3+ months (FR-12).
 - **Per-track hide** — Marking an individual track within a Set as hidden; renders as a redacted placeholder rather than being omitted (FR-22).
 - **Visibility tier** — A Set's sharing level: public, friends-only, or private (FR-23).
@@ -179,7 +179,7 @@ Before a session becomes visible to anyone but the DJ, the system checks classif
 - Format-drift resilience: golden-file regression tests against known-good session/DB fixtures catch a Serato format change before it silently corrupts synced data.
 
 **Notes:**
-- `[NOTE FOR PM]` This FR's actual gate (visibility to others) has nothing to protect until Phase 2's feed/comparisons ship — in Phase 1, every session is dashboard-only regardless of classification confidence, so the confirmation prompt never fires. The underlying classification signal is still worth computing from Phase 1 onward, since a misclassified rehearsal session polluting a DJ's own Style Evolution trend (§4.3) is a Phase 1 data-quality concern independent of the Phase 2 visibility gate — but no FR currently specifies Phase 1 filtering/flagging on that basis. Worth a design-phase look.
+- `[NOTE FOR PM]` This FR's actual gate (visibility to others) has nothing to protect until Phase 2's feed/comparisons ship — in Phase 1, every session is dashboard-only regardless of classification confidence, so the confirmation prompt never fires. The underlying classification signal is still worth computing from Phase 1 onward, since a misclassified rehearsal session polluting a DJ's own Style Evolution trend (§4.3) is a Phase 1 data-quality concern independent of the Phase 2 visibility gate. **RESOLVED (2026-07-20)** — Style Evolution (FR-9) excludes low-confidence sessions from the trend by default, but **visibly**: the view surfaces an "N low-confidence sessions hidden — show them?" affordance rather than silently erasing a real set from the DJ's own history, since the underlying signal is a heuristic confidence, not ground truth. See FR-9 and Architecture Spine / epics.md Story 1.8, 4.1.
 - `[NOTE FOR PM]` Set-boundary detection (where one set starts/ends from raw session data) is an unresolved, blocking technical validation gate — research so far only validated parsing against a single-track sample, not a real multi-track gig session. Carried forward from the brief's Known Risks; tracked in §11 Open Questions.
 - `[NOTE FOR PM]` A deeper, smarter set-detection/classification algorithm (better live-vs-practice signal, flow-aware wedding-style segmentation) was discussed and intentionally deferred to a future session — not in scope for this PRD pass. FR-27/FR-28 represent the V1 baseline, not the ceiling.
 
@@ -214,6 +214,9 @@ Raw Serato genre tags are mapped to a normalized taxonomy before display.
 
 DJ can view BPM range, genre diversity, and key-usage patterns month-over-month across their synced set history.
 
+**Consequences (testable):**
+- Sessions below the FR-27 confidence threshold are excluded from the trend by default, but **visibly, never silently** — the view surfaces an "N low-confidence sessions hidden — show them?" affordance the DJ can use to reveal them. A real set is never erased from the DJ's own history without their knowledge. *(Resolved 2026-07-20 — see FR-27 notes.)*
+
 #### FR-10: Library-to-setlist correlation
 
 DJ can see whether recently-added library tracks are making it into their sets, as a trend line over time. (Underlying conversion-rate computation lives in Library Utilization, §4.4.)
@@ -227,6 +230,9 @@ DJ can see whether recently-added library tracks are making it into their sets, 
 #### FR-11: Conversion rate
 
 DJ can view the % of tracks added to their library that have been played at least once in a set, over a rolling window.
+
+**Consequences (testable):**
+- Rolling window length is **90 days**. *(Resolved 2026-07-21, Arjun.)*
 
 #### FR-12: Aging shelf
 
@@ -377,6 +383,7 @@ DJ can sign up or log in via email + password, Google OAuth, Sign in with Apple,
 
 ### 5.1 Performance
 - Local parsing/sync of a typical library (~5,000 tracks) completes without noticeable resource usage on the DJ's machine — stats computation is arithmetic-only, no ML/inference required.
+- `[ASSUMPTION]` Proposed concrete targets, pending Arjun's confirmation (epics.md Story 1.7): a single set's stat computation ≤ 500ms; a full-library pass ≤ 10s (p95); agent idle CPU ≈ 0; no UI-perceptible lag. Not yet locked — carry into architecture/build sign-off.
 
 ### 5.2 Privacy
 - Raw Serato session files and the raw library database never leave the DJ's machine (FR-3) — only derived/structured data syncs.
@@ -389,6 +396,10 @@ DJ can sign up or log in via email + password, Google OAuth, Sign in with Apple,
 
 ### 5.4 Reliability
 - Format-drift resilience via golden-file regression tests (FR-1/FR-27 feature NFR) — a Serato format change is caught by CI before it silently corrupts synced data, shipped via a signed auto-updater.
+- Pre-release CI coverage alone only catches drift caught before release. Production-side detection — agent-side error reporting tagged with `agent_version` — closes the loop for drift that only surfaces on a real DJ's machine post-release, with affected sets backfilled from retained raw data once a fix ships. Both halves are required to call this mitigation complete (see `addendum.md`; realized in Architecture Spine AD-13, epics.md Story 3.4).
+
+### 5.5 Accessibility
+- WCAG 2.2 AA floor across the website (consumer-stakes product). Every chart ships a text-equivalent (min/max/direction caption); charts, segment-boundary dragging, and the agent's tray icon states each have a non-visual/non-color-only path (full keyboard support, text label/tooltip). See EXPERIENCE.md Accessibility Floor for the complete behavioral spec.
 
 ## 6. Product Surfaces & Platform
 
@@ -491,4 +502,5 @@ Scope is split into two phases (§1 Vision). Phase 2 isn't a backlog item — it
 
 - §4.4 (FR-11–FR-13) — Library Utilization depends on a reliable "date added to library" field from Serato's DB, not explicitly confirmed by domain research.
 - §10 (Success Metrics) — No numeric targets set for any SM; carried from the brief, to be filled in once real usage data exists.
+- §5.1 (Performance) — Proposed local-parse/stat-compute numeric targets (≤500ms/set, ≤10s p95/library, idle CPU≈0) are not yet confirmed by Arjun.
 
