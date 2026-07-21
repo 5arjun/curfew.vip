@@ -1,6 +1,10 @@
+---
+baseline_commit: 7f867cad8f0158fcaba4067f9a91fbc9565d464f
+---
+
 # Story 1.1: Monorepo scaffold with three workspaces
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,34 +23,34 @@ So that every later story builds on a consistent, reproducible foundation with n
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Root monorepo tooling + pnpm workspace** (AC: 1, 3)
-  - [ ] Create root `package.json` (private, name `curfew`, `packageManager` pin) with scripts that fan out to each workspace: `lint`, `build`, `typecheck`, and a documented `bootstrap` (install + build all three).
-  - [ ] Create `pnpm-workspace.yaml` listing the JS/TS workspace members (`web`, `shared`, and the agent's frontend package — see Task 3). **Do NOT add `_bmad`, `_bmad-output`, `output`, or `docs` as workspaces.**
-  - [ ] Add `.nvmrc` (Node 20 LTS or newer) and a real `.gitignore` (replace the current empty one): `node_modules/`, `.next/`, `out/`, `dist/`, `target/`, `.turbo/`, `*.tsbuildinfo`, `.env*`, `supabase/.branches/`, `supabase/.temp/`. **Preserve existing tracked paths** (`_bmad/`, `_bmad-output/`, `.claude/`, `docs/`, `output/`, `dj-stats.md`, `README.md`).
-  - [ ] (Optional, recommended) Add `turbo.json` to orchestrate the `lint`/`build`/`typecheck` fan-out with caching. If skipped, root `package.json` scripts must still run each workspace explicitly. See [Open Question 1](#open-questions--assumptions).
-  - [ ] Document the exact bootstrap command in root `README.md` (AC-1 hinges on this being real and runnable from a clean checkout).
-- [ ] **Task 2 — `shared/` draft contract package** (AC: 2)
-  - [ ] Scaffold `shared/` as a first-party TS package (`package.json` name `@curfew/shared`, `tsconfig.json`, build to `dist/` or expose source via `exports`). No external boilerplate.
-  - [ ] Author a **DRAFT** sync-payload TypeScript type (per-set derived payload — the AD-3 seam shape) and the fixed enums that AR-15 mandates live here: `visibility` ∈ {`public`,`friends_only`,`private`}, segment `type` ∈ {`dancefloor`,`dinner`,`performance`,`custom`}, `source` = `serato`. Mark every export clearly provisional (e.g. a `// DRAFT — not frozen until Story 1.10 (AR-1)` banner + a `CONTRACT_VERSION`/`agent_version`-carrying field).
-  - [ ] Emit a **JSON-schema stub** for the same payload as a checked-in `.json` file (this is the artifact the Rust agent consumes — Rust cannot import a TS type).
-  - [ ] Prove dual consumption: `web/` imports the TS type; `agent/` (Rust) loads the JSON-schema file (a path constant + a test that reads/parses it is sufficient at this stage). See [Dev Notes → Contract dual-consumption](#the-shared-contract-ac-2--the-one-thing-to-get-structurally-right).
-- [ ] **Task 3 — `agent/` (Tauri 2 + Rust) skeleton** (AC: 1, 3)
-  - [ ] Scaffold `agent/` first-party as a Tauri 2 app: minimal frontend (the tray/settings surface is native + minimal per UX-DR23 — do **not** build a full web UI here) + `agent/src-tauri/` Rust core (`Cargo.toml`, `tauri.conf.json`, `src/`, `capabilities/`). Rust edition 2021, Rust stable.
-  - [ ] Ensure `cargo build`, `cargo fmt --check`, `cargo clippy` all pass on an empty-but-real core. **Do NOT add `triseratops`/`id3`/parser deps yet** — those arrive in Story 1.3 (with the pinned-git-commit discipline, AR-5). This story only proves the shell compiles.
-  - [ ] Register the agent frontend package in the pnpm workspace so `pnpm install`/`build` covers it.
-- [ ] **Task 4 — `web/` (Next.js 16) skeleton** (AC: 1, 3)
-  - [ ] Scaffold `web/` first-party with `create-next-app` (App Router, TypeScript, ESLint). This is the **Vercel-deployed cloud app** — keep default SSR/ISR output; **do NOT set `output: 'export'`** (that constraint applies only to a Tauri-hosted frontend, which `web/` is not — see [Dev Notes → Two different Next.js contexts](#two-different-nextjs-contexts--do-not-conflate)).
-  - [ ] Configure `transpilePackages: ['@curfew/shared']` (or equivalent) so `web/` consumes `shared/`.
-  - [ ] `pnpm --filter web build` and `lint` pass.
-- [ ] **Task 5 — `supabase/` migrations seed** (AC: 4)
-  - [ ] `supabase init` at repo root → `supabase/config.toml` + `supabase/migrations/`.
-  - [ ] Add one initial additive-only migration (empty or a trivial no-op / comment-only `.sql`) via `supabase migration new init`. Document the **additive-only** rule (AR-12 / AD-15) inline and/or in `supabase/README.md`: no dropping/renaming live columns, ever.
-- [ ] **Task 6 — CI pipeline** (`.github/workflows/ci.yml`) (AC: 1, 4)
-  - [ ] On push + PR: install (pnpm, frozen lockfile), then **lint + build each workspace**: `shared` (tsc/build), `web` (next lint + next build), `agent` (`cargo fmt --check` + `cargo clippy -D warnings` + `cargo build`).
-  - [ ] Apply the Supabase migration cleanly in CI (Docker is available on GitHub `ubuntu-latest`): `supabase db start` → `supabase migration up` (or `supabase db reset`), asserting a clean apply (AC-4).
-  - [ ] **Explicitly out of scope for CI here:** signed Tauri bundling / notarization / installers — that is Epic 2 (AR-14, `tauri-action`). CI compiles the Rust core; it does not produce or sign installers.
-- [ ] **Task 7 — Clean-checkout verification** (AC: 1)
-  - [ ] From a fresh clone, run the documented bootstrap command and confirm all three workspaces install + build with no manual fix-ups. Record the exact command + observed output in the Dev Agent Record.
+- [x] **Task 1 — Root monorepo tooling + pnpm workspace** (AC: 1, 3)
+  - [x] Create root `package.json` (private, name `curfew`, `packageManager` pin) with scripts that fan out to each workspace: `lint`, `build`, `typecheck`, and a documented `bootstrap` (install + build all three).
+  - [x] Create `pnpm-workspace.yaml` listing the JS/TS workspace members (`web`, `shared`, and the agent's frontend package — see Task 3). **Do NOT add `_bmad`, `_bmad-output`, `output`, or `docs` as workspaces.**
+  - [x] Add `.nvmrc` (Node 20 LTS or newer) and a real `.gitignore` (replace the current empty one): `node_modules/`, `.next/`, `out/`, `dist/`, `target/`, `.turbo/`, `*.tsbuildinfo`, `.env*`, `supabase/.branches/`, `supabase/.temp/`. **Preserve existing tracked paths** (`_bmad/`, `_bmad-output/`, `.claude/`, `docs/`, `output/`, `dj-stats.md`, `README.md`).
+  - [x] (Optional, recommended) Add `turbo.json` to orchestrate the `lint`/`build`/`typecheck` fan-out with caching. If skipped, root `package.json` scripts must still run each workspace explicitly. See [Open Question 1](#open-questions--assumptions).
+  - [x] Document the exact bootstrap command in root `README.md` (AC-1 hinges on this being real and runnable from a clean checkout).
+- [x] **Task 2 — `shared/` draft contract package** (AC: 2)
+  - [x] Scaffold `shared/` as a first-party TS package (`package.json` name `@curfew/shared`, `tsconfig.json`, build to `dist/` or expose source via `exports`). No external boilerplate.
+  - [x] Author a **DRAFT** sync-payload TypeScript type (per-set derived payload — the AD-3 seam shape) and the fixed enums that AR-15 mandates live here: `visibility` ∈ {`public`,`friends_only`,`private`}, segment `type` ∈ {`dancefloor`,`dinner`,`performance`,`custom`}, `source` = `serato`. Mark every export clearly provisional (e.g. a `// DRAFT — not frozen until Story 1.10 (AR-1)` banner + a `CONTRACT_VERSION`/`agent_version`-carrying field).
+  - [x] Emit a **JSON-schema stub** for the same payload as a checked-in `.json` file (this is the artifact the Rust agent consumes — Rust cannot import a TS type).
+  - [x] Prove dual consumption: `web/` imports the TS type; `agent/` (Rust) loads the JSON-schema file (a path constant + a test that reads/parses it is sufficient at this stage). See [Dev Notes → Contract dual-consumption](#the-shared-contract-ac-2--the-one-thing-to-get-structurally-right).
+- [x] **Task 3 — `agent/` (Tauri 2 + Rust) skeleton** (AC: 1, 3)
+  - [x] Scaffold `agent/` first-party as a Tauri 2 app: minimal frontend (the tray/settings surface is native + minimal per UX-DR23 — do **not** build a full web UI here) + `agent/src-tauri/` Rust core (`Cargo.toml`, `tauri.conf.json`, `src/`, `capabilities/`). Rust edition 2021, Rust stable.
+  - [x] Ensure `cargo build`, `cargo fmt --check`, `cargo clippy` all pass on an empty-but-real core. **Do NOT add `triseratops`/`id3`/parser deps yet** — those arrive in Story 1.3 (with the pinned-git-commit discipline, AR-5). This story only proves the shell compiles.
+  - [x] Register the agent frontend package in the pnpm workspace so `pnpm install`/`build` covers it.
+- [x] **Task 4 — `web/` (Next.js 16) skeleton** (AC: 1, 3)
+  - [x] Scaffold `web/` first-party with `create-next-app` (App Router, TypeScript, ESLint). This is the **Vercel-deployed cloud app** — keep default SSR/ISR output; **do NOT set `output: 'export'`** (that constraint applies only to a Tauri-hosted frontend, which `web/` is not — see [Dev Notes → Two different Next.js contexts](#two-different-nextjs-contexts--do-not-conflate)).
+  - [x] Configure `transpilePackages: ['@curfew/shared']` (or equivalent) so `web/` consumes `shared/`.
+  - [x] `pnpm --filter web build` and `lint` pass.
+- [x] **Task 5 — `supabase/` migrations seed** (AC: 4)
+  - [x] `supabase init` at repo root → `supabase/config.toml` + `supabase/migrations/`.
+  - [x] Add one initial additive-only migration (empty or a trivial no-op / comment-only `.sql`) via `supabase migration new init`. Document the **additive-only** rule (AR-12 / AD-15) inline and/or in `supabase/README.md`: no dropping/renaming live columns, ever.
+- [x] **Task 6 — CI pipeline** (`.github/workflows/ci.yml`) (AC: 1, 4)
+  - [x] On push + PR: install (pnpm, frozen lockfile), then **lint + build each workspace**: `shared` (tsc/build), `web` (next lint + next build), `agent` (`cargo fmt --check` + `cargo clippy -D warnings` + `cargo build`).
+  - [x] Apply the Supabase migration cleanly in CI (Docker is available on GitHub `ubuntu-latest`): `supabase db start` → `supabase migration up` (or `supabase db reset`), asserting a clean apply (AC-4).
+  - [x] **Explicitly out of scope for CI here:** signed Tauri bundling / notarization / installers — that is Epic 2 (AR-14, `tauri-action`). CI compiles the Rust core; it does not produce or sign installers.
+- [x] **Task 7 — Clean-checkout verification** (AC: 1)
+  - [x] From a fresh clone, run the documented bootstrap command and confirm all three workspaces install + build with no manual fix-ups. Record the exact command + observed output in the Dev Agent Record.
 
 ## Dev Notes
 
@@ -142,10 +146,88 @@ No previous *story* (1.1 is first). Recent git history is entirely planning-doc 
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+claude-opus-4-8 (Claude Opus 4.8)
 
 ### Debug Log References
 
+Environment/tooling issues hit during implementation and how they were resolved (no code-logic bugs — all scaffold/tooling):
+
+- **Toolchain absent on dev machine.** pnpm, Rust, and Supabase CLI were all missing. Resolved: pnpm via `corepack enable pnpm` (11.15.1); Rust via `brew install rustup` + `rustup default stable` (1.97.1) — note Homebrew's rustup is **keg-only**, so cargo/clippy/rustfmt live at `/opt/homebrew/opt/rustup/bin` (must be on PATH); Supabase CLI via direct GitHub binary (2.109.1) because `brew install supabase` failed on outdated Command Line Tools.
+- **Supabase CLI wrapper needs a companion binary.** The release tarball ships both `supabase` (wrapper) and `supabase-go`; installing only the wrapper made `--version` work but `db start` fail. Resolved by installing `supabase-go` alongside it.
+- **pnpm supply-chain build gate.** `pnpm install` exited 1 (`ERR_PNPM_IGNORED_BUILDS`) and the repo's supply-chain hook injected an `allowBuilds:` block requiring a decision for `sharp` and `unrs-resolver`. Both ship prebuilt platform binaries via optional deps, so their native build scripts are unnecessary → set `allowBuilds: false` for both (plus pnpm-native `ignoredBuiltDependencies`). Install then exits 0.
+- **shared typecheck.** The contract-parity test uses `node:path` + `import.meta.url`; `tsc --noEmit` needed `@types/node` (added as a shared devDep).
+- **Docker down locally** — started Docker Desktop to verify the migration; `supabase db start` + `supabase db reset` replay the init migration cleanly (exit 0). Stack stopped afterward to leave the machine clean.
+
 ### Completion Notes List
 
+First-party, from-scratch monorepo scaffold — **no external greenfield boilerplate adopted** (AC-3). Deliberately narrow: stand up the three workspaces + Supabase migrations + one CI pipeline, prove install/build/lint, expose a **draft** contract. No parsing/stats/auth/sync/UI (those are 1.2→1.10 / Epics 2+).
+
+**Acceptance criteria — all met & verified locally:**
+- **AC-1** — `pnpm run bootstrap` from a simulated clean checkout (source copied, all build artifacts excluded) installs + builds all three workspaces, **exit 0** (pnpm install → turbo build of shared/web/agent → `cargo build`). CI (`.github/workflows/ci.yml`) runs lint + build on each workspace on push + PR.
+- **AC-2** — `shared/` exposes a **DRAFT** sync-payload TS type + a JSON-schema stub, dual-consumed for real: `web/app/page.tsx` imports the TS type/values from `@curfew/shared` (compiled into `next build` via `transpilePackages`); the Rust agent loads + parses `shared/schema/sync-payload.schema.json` in a passing `cargo test`. A shared vitest (5 tests) asserts the TS ↔ JSON-schema enum/version parity so the two representations can't drift.
+- **AC-3** — Scaffold is first-party. Official framework scaffolders (`create-next-app`, `create-tauri-app`) were used to generate the workspaces, then trimmed to Curfew's fixed `agent/ · web/ · shared/` layout (NOT the templates' `apps/`+`packages/`). No SaaS/greenfield starter adopted.
+- **AC-4** — `supabase init` seeded `config.toml` + `migrations/`; one additive-only no-op migration (`20260721180917_init.sql`) applies cleanly (proven via `supabase db reset`). Additive-only rule (AD-15/AR-12) documented in the migration header + `supabase/README.md`. CI applies it against ephemeral Postgres.
+
+**Verification summary (real repo):** JS/TS turbo — lint 4/4, typecheck 4/4, build 3/3 (`web` next build compiled, SSR default — no static export), test 5/5 (shared). Rust agent — `cargo fmt --check` clean, `cargo clippy -D warnings` clean, `cargo build` OK, `cargo test` 1/1 (shared-schema consumption). Supabase — `migration up` / `db reset` clean apply.
+
+**Key decisions / assumptions (from the story's Open Questions):**
+- **Turborepo adopted** (Open Q1) for the lint/build/typecheck fan-out + caching; root scripts drive it. Rust is orchestrated via `pnpm run build:agent` (`cargo`), kept out of the JS graph.
+- **Agent frontend kept minimal/static** (Open Q2): the vite/TS demo from `create-tauri-app` was removed in favor of a committed static `agent/ui/index.html` (UX-DR23: native + minimal). `tauri.conf.json` `frontendDist` → `../ui`, so `cargo build` is self-sufficient (no prior JS build needed). The demo `greet` command + `tauri-plugin-opener` were stripped for a truly empty-but-real core; `src-tauri/src/` structured for the future `watcher→parser→joiner→stat-engine→store→sync-queue` filters (1.3–1.7).
+- **`shared/` consumed via workspace source + `transpilePackages`** (Open Q3); a `dist/` build also exists (`tsc`) so the workspace has a real build task, but `web/` doesn't require it.
+
+**Notes for reviewer / next dev:**
+- Rust from Homebrew rustup is keg-only — add `export PATH="/opt/homebrew/opt/rustup/bin:$PATH"` to use `cargo` (documented in root + `agent/README.md`).
+- `web/` intentionally keeps SSR/ISR (Vercel app) — do **not** add `output: 'export'`. The `output: 'export'` constraint is only for a Tauri-hosted frontend.
+- The `shared/` contract is **DRAFT / not frozen** until Story 1.10; banner + `CONTRACT_VERSION` in place.
+
 ### File List
+
+**Root tooling**
+- `package.json` (new) — workspace root `curfew`, scripts (build/lint/typecheck/test + agent cargo scripts + bootstrap), `packageManager` pin, turbo devDep.
+- `pnpm-workspace.yaml` (new) — members `shared`/`web`/`agent`; `allowBuilds`/`ignoredBuiltDependencies` for sharp & unrs-resolver.
+- `pnpm-lock.yaml` (new)
+- `turbo.json` (new)
+- `.nvmrc` (new) — Node 22
+- `.gitignore` (modified) — replaced empty file with real ignores.
+- `README.md` (modified) — replaced stub with layout + prerequisites + bootstrap docs.
+- `.github/workflows/ci.yml` (new) — 3 jobs: js, agent (Rust), supabase.
+
+**shared/**
+- `shared/package.json`, `shared/tsconfig.json`, `shared/tsconfig.build.json` (new)
+- `shared/src/index.ts` (new) — DRAFT `SyncPayloadDraft` + AR-15 enums + `CONTRACT_VERSION` + schema path const.
+- `shared/schema/sync-payload.schema.json` (new) — JSON-schema mirror (Rust-consumed).
+- `shared/src/index.test.ts` (new) — TS↔schema parity (vitest).
+- `shared/README.md` (new)
+
+**agent/** (Tauri 2 + Rust; generated via create-tauri-app then trimmed)
+- `agent/package.json`, `agent/turbo.json`, `agent/README.md`, `agent/.gitignore` (new)
+- `agent/scripts/check-ui.mjs` (new) — the workspace build/lint (asserts static UI).
+- `agent/ui/index.html` (new) — committed minimal tray/settings surface.
+- `agent/src-tauri/Cargo.toml`, `Cargo.lock`, `build.rs`, `.gitignore` (new)
+- `agent/src-tauri/tauri.conf.json` (new) — productName Curfew Agent, `frontendDist: ../ui`.
+- `agent/src-tauri/capabilities/default.json` (new) — core:default only (opener removed).
+- `agent/src-tauri/src/main.rs`, `agent/src-tauri/src/lib.rs` (new) — minimal `run()` + shared-schema consumption + test.
+- `agent/src-tauri/icons/*` (new) — generated icon set (12 files).
+
+**web/** (Next.js 16; generated via create-next-app then trimmed)
+- `web/package.json` (new) — `@curfew/shared` workspace dep + typecheck script.
+- `web/next.config.ts` (new) — `transpilePackages: ['@curfew/shared']`, no static export.
+- `web/app/layout.tsx` (new) — Curfew metadata, google-font import removed (hermetic build).
+- `web/app/page.tsx` (new) — consumes `@curfew/shared` (type + runtime values).
+- `web/app/globals.css`, `web/app/favicon.ico`, `web/eslint.config.mjs`, `web/tsconfig.json`, `web/.gitignore`, `web/README.md`, `web/public/*.svg` (new, from scaffold).
+- Removed from scaffold: nested `web/pnpm-workspace.yaml`, `web/CLAUDE.md`, `web/AGENTS.md`, `web/app/page.module.css`.
+
+**supabase/**
+- `supabase/config.toml`, `supabase/.gitignore` (new, from `supabase init`)
+- `supabase/migrations/20260721180917_init.sql` (new) — additive-only no-op seed.
+- `supabase/README.md` (new) — additive-only rule.
+
+**Story bookkeeping**
+- `_bmad-output/implementation-artifacts/1-1-monorepo-scaffold-with-three-workspaces.md` (modified) — frontmatter `baseline_commit`, task checkboxes, this record, status.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (modified) — story status.
+
+## Change Log
+
+| Date | Version | Description |
+|------|---------|-------------|
+| 2026-07-21 | 0.1 | Story 1.1 implemented: from-scratch monorepo scaffold (`agent/` Tauri 2 + Rust · `web/` Next.js 16 · `shared/` draft contract) + `supabase/` additive-only migrations + CI. All 4 ACs met and verified locally; status → review. |

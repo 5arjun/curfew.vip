@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Curfew Agent</title>
+    <style>
+      :root { color-scheme: light dark; }
+      html, body {
+        margin: 0;
+        height: 100%;
+        font: 14px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif;
+      }
+      body {
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: Canvas;
+        color: CanvasText;
+      }
+      main { text-align: center; max-width: 22rem; }
+      h1 { font-size: 1.1rem; margin: 0 0 0.25rem; }
+      p { margin: 0.25rem 0; opacity: 0.75; }
+      code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Curfew Agent</h1>
+      <p>Local capture service.</p>
+      <p>
+        This minimal surface is a placeholder for the native tray + settings panel
+        (UX-DR23). The real work runs in the Rust core (<code>src-tauri/</code>).
+      </p>
+    </main>
+  </body>
+</html>

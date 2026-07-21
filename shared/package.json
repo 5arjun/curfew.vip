@@ -1,0 +1,32 @@
+{
+  "name": "@curfew/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Curfew's versioned agent<->cloud sync contract. DRAFT — not frozen until Story 1.10 (AR-1).",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./schema/sync-payload.schema.json": "./schema/sync-payload.schema.json"
+  },
+  "files": [
+    "src",
+    "schema",
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}

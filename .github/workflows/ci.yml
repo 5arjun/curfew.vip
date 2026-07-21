@@ -1,0 +1,106 @@
+name: CI
+
+# Lints + builds each workspace and applies the Supabase migration cleanly.
+# This is the regression gate for the monorepo scaffold (Story 1.1).
+# NOTE: signed Tauri bundling / notarization / installers are intentionally OUT
+# OF SCOPE here — that is Epic 2 (AR-14). CI compiles the Rust core; it does not
+# produce or sign installers.
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  js:
+    name: JS/TS (shared · web · agent-ui)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test
+
+  agent:
+    name: Agent (Rust core)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Tauri 2 Linux build prerequisites (WebKitGTK etc.). macOS/Windows use
+      # system frameworks and need none of this; only the Linux runner does.
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libsoup-3.0-dev \
+            build-essential \
+            file
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: agent/src-tauri
+
+      - name: Format check
+        run: cargo fmt --manifest-path agent/src-tauri/Cargo.toml -- --check
+
+      - name: Clippy (deny warnings)
+        run: cargo clippy --manifest-path agent/src-tauri/Cargo.toml -- -D warnings
+
+      - name: Build
+        run: cargo build --manifest-path agent/src-tauri/Cargo.toml
+
+      - name: Test (incl. shared-contract consumption)
+        run: cargo test --manifest-path agent/src-tauri/Cargo.toml
+
+  supabase:
+    name: Supabase migration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # ubuntu-latest ships Docker; boot the local Postgres and apply migrations.
+      - name: Start local Postgres
+        run: supabase db start
+
+      - name: Apply migrations (assert clean apply)
+        run: supabase migration up

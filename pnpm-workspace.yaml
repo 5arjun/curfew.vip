@@ -1,0 +1,23 @@
+# Curfew pnpm workspace.
+# Members are the JS/TS workspaces only. The Rust core (agent/src-tauri) is NOT
+# a JS package and is intentionally absent. Planning/tooling dirs (_bmad, _bmad-output,
+# output, docs, .claude) are deliberately NOT workspaces.
+#
+# Dependency rule (ARCHITECTURE-SPINE AD-3): agent -> shared, web -> shared;
+# agent and web NEVER depend on each other. Both reach the cloud only through
+# the versioned sync contract in shared/.
+packages:
+  - shared
+  - web
+  - agent
+
+# pnpm 10+ blocks dependency build scripts by default and this repo's supply-chain
+# gate requires an explicit decision per package. sharp and unrs-resolver (pulled
+# transitively by Next.js) ship prebuilt platform binaries via optional deps, so
+# their native build scripts are not needed — denied here for a reproducible install.
+allowBuilds:
+  sharp: false
+  unrs-resolver: false
+ignoredBuiltDependencies:
+  - sharp
+  - unrs-resolver

@@ -1,0 +1,28 @@
+# Curfew monorepo .gitignore
+# NOTE: existing tracked paths (_bmad/, _bmad-output/, .claude/, docs/, output/,
+# dj-stats.md, README.md) are intentionally NOT ignored and remain versioned.
+
+# --- JS/TS ---
+node_modules/
+.next/
+out/
+dist/
+.turbo/
+*.tsbuildinfo
+.pnpm-store/
+
+# --- Rust / Tauri ---
+target/
+
+# --- Env / secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Supabase local stack (ephemeral; migrations/ and config.toml ARE tracked) ---
+supabase/.branches/
+supabase/.temp/
+
+# --- OS / editor noise ---
+.DS_Store
+*.log

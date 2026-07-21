@@ -1,0 +1,12 @@
+{
+  "name": "agent",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Curfew local agent (Tauri 2). Rust core in src-tauri/; minimal native tray/settings surface in ui/.",
+  "scripts": {
+    "build": "node ./scripts/check-ui.mjs",
+    "lint": "node ./scripts/check-ui.mjs",
+    "typecheck": "node ./scripts/check-ui.mjs"
+  }
+}

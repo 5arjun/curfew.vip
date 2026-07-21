@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://curfew.app/schema/sync-payload.draft.json",
+  "title": "Curfew Sync Payload (DRAFT)",
+  "description": "DRAFT — NOT FROZEN until Story 1.10 (AR-1). The single agent<->cloud derived-only seam (AD-3). Language-neutral mirror of SyncPayloadDraft in @curfew/shared. Additive-only after freeze (AD-15).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_version", "agent_version", "source", "set", "segments"],
+  "properties": {
+    "contract_version": {
+      "description": "Contract version this payload was produced against.",
+      "type": "integer",
+      "const": 1
+    },
+    "agent_version": {
+      "description": "Semver of the producing agent.",
+      "type": "string"
+    },
+    "source": {
+      "description": "Capture source (AR-15 enum).",
+      "type": "string",
+      "enum": ["serato"]
+    },
+    "set": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["external_id", "started_at", "ended_at", "visibility", "plays"],
+      "properties": {
+        "external_id": {
+          "description": "Stable idempotency key for the set.",
+          "type": "string"
+        },
+        "started_at": { "type": "string", "format": "date-time" },
+        "ended_at": { "type": "string", "format": "date-time" },
+        "visibility": {
+          "description": "AR-15 enum.",
+          "type": "string",
+          "enum": ["public", "friends_only", "private"]
+        },
+        "plays": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/play" }
+        }
+      }
+    },
+    "segments": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/segment" }
+    }
+  },
+  "$defs": {
+    "play": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["position", "played_at", "confidence"],
+      "properties": {
+        "position": { "type": "integer", "minimum": 1 },
+        "played_at": { "type": "string", "format": "date-time" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "segment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "started_at", "ended_at"],
+      "properties": {
+        "type": {
+          "description": "AR-15 enum.",
+          "type": "string",
+          "enum": ["dancefloor", "dinner", "performance", "custom"]
+        },
+        "started_at": { "type": "string", "format": "date-time" },
+        "ended_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}
