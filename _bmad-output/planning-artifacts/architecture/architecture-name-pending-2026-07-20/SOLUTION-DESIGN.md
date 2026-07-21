@@ -166,6 +166,75 @@ FR-14/FR-28 need the agent to *suggest* where a set's "dancefloor" segment actua
 
 **The resulting algorithm** (AD-17): bucket the session into fixed time windows; a window is a dancefloor *candidate* if density and median BPM clear floors **calibrated from that DJ's own historical plays** (not a fixed constant — genres run at very different tempos); adjacent candidates merge into a segment, confirmed only if its transition-smoothness clears its own floor; long dead stretches become an idle/gap marker; a session can yield zero, one, or several dancefloor segments.
 
+### 3.7 Subscription & billing (Epic 7, AD-18/AD-19)
+
+Phase 1 is a **paid launch at $6/mo** (PRD §7) — this is the one write path into the system that isn't the agent's set sync, so it earns its own flow. It sits outside FR-1..FR-29 (it governs Epic 7 in `epics.md`, not a numbered FR), which is why it's an addendum rather than a rewrite of the original 17 ADs.
+
+**Checkout — a DJ already has an account before they can subscribe (AD-10), so `dj_id` is known up front:**
+
+```mermaid
+sequenceDiagram
+  participant DJ
+  participant Web as Next.js (authenticated)
+  participant Stripe
+  participant Route as Route Handler (webhook, Node runtime)
+  participant DB as Postgres (SECURITY DEFINER fn)
+  DJ->>Web: click Subscribe (Pricing / entry flow)
+  Web->>Stripe: create Checkout Session (client_reference_id / metadata.dj_id = DJ's id, trial_period_days)
+  Stripe-->>DJ: hosted Checkout page
+  DJ->>Stripe: pays / starts trial
+  Stripe->>Route: webhook: checkout.session.completed (signed)
+  Route->>Route: verify signature; dedupe on event.id
+  Route->>Stripe: re-fetch canonical subscription object
+  Route->>DB: apply_subscription_event(dj_id from metadata, status, stripe_customer_id, stripe_subscription_id, current_period_end)
+  DB-->>Route: ok (billing columns only, RLS bypass scoped to this fn)
+```
+
+Two things make this safe rather than a second bespoke write API creeping in beside AD-8's rule:
+- **`dj_id` never has to be guessed.** Because Checkout is only reachable from an authenticated session, the DJ's id rides along as Stripe metadata from the very first request — the webhook reads it back rather than re-deriving identity from an email/customer lookup (which would collide with AD-10's verified-email account linking).
+- **The write is a single `SECURITY DEFINER` function, not a raw table `UPDATE` with an elevated key.** That function is the *entire* surface area of AD-8's sanctioned exception — it can touch the four billing columns and nothing else, the same containment AD-16 already gives the agent's content-only upsert.
+
+**Ongoing events (renewal, cancellation, failed payment) — idempotent, like the sync path:**
+
+```mermaid
+sequenceDiagram
+  participant Stripe
+  participant Route as Route Handler
+  participant DB as Postgres
+  Stripe->>Route: webhook: customer.subscription.updated / .deleted / invoice.payment_failed
+  Route->>Route: verify signature; seen event.id before? skip if so
+  Route->>Stripe: re-fetch canonical subscription state (never trust payload verbatim)
+  Route->>DB: apply_subscription_event(...)
+  Note over DB: subscription_status stored verbatim (Stripe's own value) — no local reinterpretation
+```
+
+Stripe delivers webhooks **at-least-once and unordered**; re-fetching the canonical object (rather than trusting whatever the event payload says) plus deduping on `event.id` is what stops a late-arriving stale event from reviving a subscription a DJ already canceled — the same failure class AD-4 already solves for the sync path, solved here for the billing path.
+
+**The access gate — restricts the web experience only, never the agent:**
+
+```mermaid
+sequenceDiagram
+  participant DJ
+  participant Agent as Tauri agent
+  participant Web as Next.js dashboard
+  Note over Agent: subscription_status is invisible here — always parses, queues, syncs (AD-4)
+  DJ->>Agent: plays a gig (subscription lapsed or not)
+  Agent->>Agent: parse -> stats -> local SQLite -> sync (unconditional)
+  DJ->>Web: open dashboard
+  Web->>Web: check subscription_status (route guard)
+  alt active or trialing
+    Web-->>DJ: full dashboard
+  else past_due / canceled
+    Web-->>DJ: paywall — "reactivate to see your sets" (data is safe, nothing lost)
+  end
+  DJ->>Web: reactivates via Customer Portal
+  Note over Web: next webhook flips subscription_status back to active — already-synced sets appear immediately, no backfill needed
+```
+
+This is the hard invariant (AD-19): the paywall is a **web route guard reading one column**, fully decoupled from the agent and from the sync endpoint. A DJ who lapses doesn't lose data or even lose *capture* — only the web view of it — and reactivating is just a status flip, not a resync, because nothing ever stopped syncing in the first place.
+
+**Why Stripe Checkout, not a bespoke payment flow:** the product's whole thin-cloud posture (§1) is "buy the undifferentiated part, build the differentiated part." Payments/PCI compliance/dunning/trial logic/a self-serve cancel portal are exactly the undifferentiated part — Stripe Checkout + Customer Portal cover all of it hosted, so Curfew never touches a card number or builds subscription-lifecycle UI by hand.
+
 ## 4. Data model (narrative)
 
 ```mermaid
@@ -182,6 +251,7 @@ erDiagram
 - **`plays`** — the normalized record: one row per played track, carrying `in_library`, **both** raw and normalized genre plus `taxonomy_version` (AD-12), BPM, key, Camelot.
 - **Overlay columns / tables** — `segments`, enrichment, per-track hide, visibility tier. **Web-authored, cloud-only, disjoint from content columns** (AD-6, AD-16). This disjointness is contract-tested in `shared/`.
 - **`follows`** + shared-set RLS read policies — the *only* structural additions Phase 2 needs (AD-15).
+- **Billing columns on `djs`** — `stripe_customer_id`, `stripe_subscription_id`, `subscription_status`, `current_period_end`, added additively (AD-15). DJ-readable via existing per-DJ RLS; DJ-**writable by no one** — the only writer is the webhook's `SECURITY DEFINER` function (AD-18, AD-19).
 
 **Two stores, one owner per data class (AD-5):** cloud Postgres is the cross-device system of record; local SQLite is a durable parse + offline cache and is authoritative for a set *only until it syncs*. That wording matters — it's what stops a DJ's laptop and studio machine from becoming two conflicting owners of the same history.
 
@@ -189,7 +259,7 @@ erDiagram
 
 - **The strongest control is non-transmission.** Raw libraries never leave the machine (AD-2), so the most sensitive data has no cloud attack surface at all.
 - **Per-DJ isolation is enforced in the database, not the app** — a null-safe RLS policy `auth.uid() IS NOT NULL AND auth.uid() = dj_id` (AD-7). A bug in application code cannot leak one DJ's data to another, because the filter is below the app.
-- **All cloud writes go through Supabase + RLS** (AD-8); there is no bespoke API server to get the policy wrong in.
+- **All cloud writes go through Supabase + RLS** (AD-8); there is no bespoke API server to get the policy wrong in. The **one exception is billing** (AD-18): a Stripe-signed webhook writes through a single `SECURITY DEFINER` Postgres function scoped to four billing columns only — never a raw elevated-key `UPDATE` — so the exception has the same contained blast radius as every RLS-guarded path around it, and no RLS policy ever grants a DJ write access to those columns.
 - **Privacy is not retroactive.** Phase 1 sets are stored private-equivalent and are **never** bulk-exposed the day Phase 2's read policies ship (AD-9) — a privacy shock the adversarial review caught.
 - **Agent filesystem access is capability-scoped** to the configured Serato path; the agent can read that folder and nothing else it isn't granted.
 - **Auth tokens** live in Tauri's secure storage on the agent, not browser storage (AD-10).
@@ -225,6 +295,7 @@ The architecture's **no-rewrite guarantee (AD-15)** is the bridge between them: 
 - **Ops posture is almost entirely managed** — no servers to patch, no queue to babysit. Cross-platform signed builds + the updater feed are produced by one `tauri-action` CI workflow.
 - **The one operational signal that matters:** the agent's parse-error rate, broken down by `agent_version`. A spike is the leading indicator that Serato changed its format. The incident playbook is §3.3: patch → auto-update → backfill.
 - **Environments:** a dedicated Supabase prod project + preview branches for dev/PRs; migrations are additive-only CLI files in the monorepo (also the enforcement arm of AD-15). Backup/DR rides Supabase managed backups (PITR on the paid tier), with a DJ's local SQLite as a secondary recovery source.
+- **Billing adds Stripe's standard processing fee** (~2.9% + $0.30/transaction at time of writing — verify at implementation) on top of the $6/mo price; no other new fixed cost. **The billing operational signal** mirrors the parse-error one above: repeated `invoice.payment_failed` events or a spike in `past_due` DJs is the leading indicator of a webhook regression or a card-expiry wave (§3.7).
 
 ## 8. Risks & open questions
 
@@ -235,6 +306,7 @@ The architecture's **no-rewrite guarantee (AD-15)** is the bridge between them: 
 - ✅ **`triseratops` license** — MPL-2.0 confirmed from source (safe for a proprietary product); pin a git commit, not the stale `0.0.3` crate.
 - ✅ **Launch geography** — decided **US-only at launch**; a CCPA-level posture is sufficient at v1, GDPR-equivalent review deferred until international expansion is real. (The formal CCPA-compliance review itself remains a pre-launch checklist item.)
 - ✅ **FR-6 "most played artists" Unknown-fallback** — decided (Arjun): rank artist-tagged plays only, no "Unknown" bucket and **no** "N untagged" footnote. Untagged plays still count in every non-artist stat and still show as "Unknown" in the tracklist (AD-11), so SM-C1 honesty rides the tracklist, not the leaderboard. Recorded as SPEC-name-pending CAP-5.
+- ✅ **Billing architecture (Epic 7)** — added as an addendum (AD-18, AD-19; see §3.7). Stripe Checkout + Customer Portal; webhook is the one sanctioned AD-8 exception, scoped to four additive `djs` columns via a `SECURITY DEFINER` function; the access gate binds the web experience only, never the agent's local capture/sync (hard invariant). Went through the same reviewer gate as the original 17 ADs (web-currency + adversarial + rubric passes; findings applied — dj_id linkage, webhook idempotency, mechanical column-scoping, current Supabase key-naming caveat).
 
 **Still open (what's needed to close each):**
 

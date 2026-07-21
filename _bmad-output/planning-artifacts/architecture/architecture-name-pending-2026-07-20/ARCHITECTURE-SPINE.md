@@ -6,16 +6,19 @@ altitude: initiative
 paradigm: local-first hybrid — "smart edge, thin cloud" (pipes-and-filters agent + modular-monolith cloud)
 scope: >-
   Curfew end-to-end platform — local Serato agent + cloud backend + web app.
-  Governs PRD features FR-1..FR-29 across Phase 1 (personal reflection) and Phase 2 (social).
+  Governs PRD features FR-1..FR-29 across Phase 1 (personal reflection) and Phase 2 (social),
+  plus a billing addendum (AD-18, AD-19) governing Epic 7 (Subscription & Billing, epics.md),
+  which sits outside the numbered FRs.
 status: final
 created: 2026-07-20
 updated: 2026-07-20
-binds: [FR-1..FR-29]
+binds: [FR-1..FR-29, "Epic 7 (Subscription & Billing)"]
 sources:
   - _bmad-output/planning-artifacts/prds/prd-name-pending-2026-07-19/prd.md
   - _bmad-output/planning-artifacts/prds/prd-name-pending-2026-07-19/addendum.md
   - _bmad-output/planning-artifacts/research/technical-dj-stats-platform-end-to-end-system-architecture-serato-app-web-research-2026-07-17.md
   - _bmad-output/planning-artifacts/ux-designs/ux-name-pending-2026-07-19/EXPERIENCE.md
+  - _bmad-output/planning-artifacts/epics.md
 companions: [SOLUTION-DESIGN.md]
 ---
 
@@ -157,6 +160,22 @@ graph TD
 - **Prevents:** a fixed global BPM/gap constant that fits one DJ's genre and silently misfires on another; assuming every session has exactly one dancefloor block to find; a coincidentally similar-tempo non-mixed block (dedications, ambiance) being misread as a real set.
 - **Rule:** the agent buckets a session into fixed time windows and computes, per window, **play density**, **median BPM**, and the **fraction of consecutive track-pairs with a small BPM delta** (a continuity/beatmatching proxy). A window is a dancefloor *candidate* only if density and BPM clear floors **calibrated per-DJ from that DJ's own historical plays** — never a hardcoded global constant (a house DJ's floor sits far above a hip-hop DJ's). Adjacent candidates merge into a segment, which is **confirmed** only once its transition-smoothness clears its own floor: validated against the real session corpus, an isolated non-mixed ceremony stretch measured ~42% smooth transitions against ~65–78% for confirmed real mixed sets, so smoothness is used as a **confirming gate**, not the primary signal — it did not separate cleanly on its own in every case tested (a formalities block can coincidentally score as "smooth" too). Long no-play stretches collapse to an **idle/gap** marker, never a forced segment. **A session yields zero, one, or several dancefloor segments — never assumed to be exactly one**: validated against a real 8.6-hour session that bundled a morning dancefloor block, a multi-hour non-dancefloor stretch, and a separate evening dancefloor block, because Serato was never closed between the underlying real-world events (e.g. a baraat, then the ceremony, then the reception). *(Architect call, validated 2026-07-20 against the real 474-session local corpus — resolves SM-1/OQ#1.)*
 
+### AD-18 — Stripe Checkout; the webhook route handler is the one sanctioned AD-8 exception `[ADOPTED]`
+
+- **Binds:** Epic 7 (Subscription & Billing); the billing write path.
+- **Prevents:** a hand-rolled payment form/subscription state machine; the webhook landing on a second runtime/deployment surface; an ambiguous or duplicated write path for subscription state; a duplicate or out-of-order Stripe webhook delivery corrupting subscription state; a webhook event writing to the wrong DJ's row.
+- **Rule:** billing runs on **Stripe Checkout** (hosted checkout page + trial support + self-serve Customer Portal for manage/cancel) — no bespoke payment UI. The webhook is a **Next.js Route Handler in the existing `web/` deployment on Vercel**, pinned to the **Node.js runtime (not Edge)** so Stripe's synchronous signature verification works without the Edge-only async crypto provider — a second runtime for one webhook would contradict AD-14's "one Next.js deployment, no premature microservices." The handler authenticates the request via **Stripe's signature** (raw body + signing secret via `stripe.webhooks.constructEvent`), not a Supabase JWT.
+  - **`dj_id` linkage:** because Checkout is only reachable by an already-authenticated DJ (AD-10 — the account already exists before a subscription can start), the Checkout Session is created carrying `client_reference_id` / `metadata.dj_id` = that DJ's id. The webhook resolves `dj_id` **from the event's own metadata**, never by re-deriving identity from email or a customer lookup — closing the "which `djs` row" ambiguity that a distinct-email or pre-verification edge case (AD-10) could otherwise create.
+  - **Idempotency:** the handler dedupes on Stripe's own `event.id` before applying any state change (Stripe redelivers at-least-once, unordered), and on a subscription-changed event it treats the payload as a cue to **re-fetch the canonical subscription object from the Stripe API** rather than trusting the event's field values verbatim — so a stale, out-of-order retry can never resurrect an already-canceled subscription. (The same class of problem AD-4 solves for the sync path, solved here for the billing path.)
+  - **Mechanical write-scoping:** the webhook writes through a single **Postgres `SECURITY DEFINER` function** (e.g. `apply_subscription_event(...)`) that touches **only** the four AD-19 billing columns — never a raw table `UPDATE` from server code — so "billing columns only" is enforced in the database, the same way AD-16 contract-tests the agent's content-column scoping. This function is the **only** caller of the elevated key from billing code. *(Naming note: Supabase is mid-migration off the legacy `service_role` key to `sb_publishable_…`/`sb_secret_…` API keys — new projects stopped receiving the legacy key in late 2025 — so confirm the current key type for this project at implementation time rather than assuming `service_role`.)*
+  - The free-trial window is sourced from Stripe's native `trial_period_days` on the Checkout Session, not a hand-rolled trial tracker (avoids a second source of trial-state truth); the trial length itself (recommended default: 14 days) is a business parameter set in Stripe config, not an architecture decision.
+
+### AD-19 — Subscription state is additive on `djs`, DJ-write-excluded; the access gate binds the web experience only, never the agent `[ADOPTED]`
+
+- **Binds:** Epic 7; the `djs` schema; the `djs` RLS write policy; the web route-guard layer; AD-4's sync endpoint (explicitly exempted).
+- **Prevents:** billing logic leaking into the edge↔cloud sync contract (AD-3) or the idempotent sync path (AD-4); an implementer gating sync "for consistency" with the web paywall; a reinterpreted subscription-status enum drifting from Stripe's own state; a DJ's own authenticated session writing or forging its own billing state through a future DJ-writable update policy on `djs`.
+- **Rule:** four nullable columns are added to `djs` as an **additive-only migration** (AD-15): `stripe_customer_id`, `stripe_subscription_id`, `subscription_status`, `current_period_end`. `subscription_status` stores **Stripe's own status string verbatim** (`trialing`/`active`/`past_due`/`canceled`/`unpaid`/`paused`/`incomplete`/…) — the webhook is a thin passthrough, never a second state machine; the column is `text`, not a restrictive DB enum, so a Stripe status added later never breaks the write. There is no separate trial-end column: while `subscription_status = 'trialing'`, `current_period_end` **is** the trial end. Existing per-DJ RLS (AD-7) already covers a DJ **reading** their own new columns. **No RLS `UPDATE` policy on `djs` ever grants a DJ write access to these four columns** — the only writer is AD-18's `SECURITY DEFINER` function, invoked by the webhook; if `djs` later gains any DJ-writable update policy (e.g. display name), that policy's column grant list must explicitly exclude the four billing columns. **Hard invariant:** the access gate restricts **the web experience only**. The agent's local capture (parse → local SQLite → sync-queue) and the idempotent set-sync endpoint (`PUT /sets/:set_id`, AD-4) are **never** gated by `subscription_status` — billing state is invisible to the agent and to the sync contract. A lapsed subscriber's agent keeps parsing and queuing every set locally and **resumes syncing on reactivation with no data loss**; only web routes serving the dashboard/stats check `subscription_status`.
+
 ## Consistency Conventions
 
 | Concern | Convention |
@@ -166,11 +185,11 @@ graph TD
 | Dates / times | UTC ISO-8601 on the wire; `played_at` sourced from the session file. |
 | Sync payload | The `shared/` versioned schema is the only contract shape; `agent_version` on every set (AD-3). |
 | Unknown data | Missing metadata renders as a visible **"Unknown"**, carrying the `in_library` flag — never omitted, never guessed (AD-11; SM-C1 keeps the Unknown rate honest). |
-| Cloud mutation | Supabase/PostgREST + RLS only; agent writes only via idempotent set sync (AD-8). |
+| Cloud mutation | Supabase/PostgREST + RLS only; agent writes only via idempotent set sync (AD-8). The Stripe webhook route handler is the one named exception, scoped to billing columns only (AD-18). |
 | Auth / tokens | Supabase JWT + refresh; agent token in Tauri secure storage (AD-10). |
 | Errors (agent) | Reported to error tracking tagged with `agent_version` (AD-13); user-facing copy is calm/technical per EXPERIENCE.md Failure Register ("Sync interrupted. Retrying automatically."). |
 | Errors (wire/API) | JSON error envelope `{ code, message }` (PostgREST/Supabase error shape); the agent maps these to the calm Failure-Register copy — never surfaces a raw provider error. |
-| Enums (canonical values) | `visibility` ∈ {`public`, `friends_only`, `private`}; segment `type` ∈ {`dancefloor`, `dinner`, `performance`, `custom`}; `source` = `serato` (v1). Fixed strings, defined once in `shared/`. |
+| Enums (canonical values) | `visibility` ∈ {`public`, `friends_only`, `private`}; segment `type` ∈ {`dancefloor`, `dinner`, `performance`, `custom`}; `source` = `serato` (v1); `subscription_status` = Stripe's own subscription-status string, passed through verbatim (AD-19), not redefined here. Fixed strings, defined once in `shared/`. |
 
 ## Stack
 
@@ -186,6 +205,7 @@ graph TD
 | Next.js | 16 |
 | React / TypeScript | current |
 | Supabase | Postgres + Auth + Realtime + Storage |
+| Stripe | Checkout + Customer Portal + Webhooks (subscriptions API) |
 | Web host | Vercel |
 | CI / release | `tauri-action` (GitHub Actions) |
 | Update feed | static-JSON on GitHub Releases / S3 |
@@ -236,7 +256,7 @@ erDiagram
   djs ||--o{ follows : "follows (edge)"
 ```
 
-- The **session** is the immutable anchor keyed `hash(dj_id, session_identity)` (AD-16); a `set` is derived from it. `sets` carries a denormalized `derived` (jsonb) render-cache so dashboards render without recomputation; `plays` rows are the normalized record and carry `in_library`, raw + normalized genre, and `taxonomy_version` (AD-12). **Content columns (agent-written) and overlay columns (web-written: `segments`, enrichment, hide, visibility) are disjoint** (AD-16); overlays are cloud-only (AD-6). `follows` + shared-set read policies are the Phase 2 additions (AD-15).
+- The **session** is the immutable anchor keyed `hash(dj_id, session_identity)` (AD-16); a `set` is derived from it. `sets` carries a denormalized `derived` (jsonb) render-cache so dashboards render without recomputation; `plays` rows are the normalized record and carry `in_library`, raw + normalized genre, and `taxonomy_version` (AD-12). **Content columns (agent-written) and overlay columns (web-written: `segments`, enrichment, hide, visibility) are disjoint** (AD-16); overlays are cloud-only (AD-6). `follows` + shared-set read policies are the Phase 2 additions (AD-15). `djs` additionally carries four additive billing columns — `stripe_customer_id`, `stripe_subscription_id`, `subscription_status`, `current_period_end` — written only by the webhook route handler (AD-18, AD-19).
 
 **Deployment & environments:**
 
@@ -246,10 +266,12 @@ erDiagram
 | Web app | Vercel | Next.js SSR/ISR; free/low tier at launch. |
 | Backend | Supabase (managed) | Postgres + Auth + Realtime + Storage; self-hostable later (no lock-in) — not v1. |
 | CI/CD | GitHub Actions (`tauri-action`) | Cross-platform signed builds + auto-generated updater JSON/`.sig`; signing certs + updater key as encrypted CI secrets. |
+| Billing | Stripe (managed) | Checkout + Customer Portal, hosted by Stripe; webhook lands on `web/`'s own Vercel deployment, Node.js runtime (AD-18) — no separate billing service. Stripe secret API key (Checkout/Portal session creation) + webhook signing secret + the elevated DB key used only by the `SECURITY DEFINER` function, all as encrypted Vercel env vars. |
 
 > **Environments & migrations (decided 2026-07-20):** a dedicated Supabase **prod** project + **preview branches** for dev/PRs; schema changes ship as **Supabase-CLI migration files committed in the monorepo**, additive-only — the enforcement arm of AD-15.
 > **Backup / DR:** Supabase managed backups (PITR on the paid tier) protect the cloud system of record; a DJ's **local SQLite is a secondary recovery source** for their own sets (AD-13).
 > **Abuse / rate-limiting:** rely on Supabase's built-in auth/API rate limits + RLS at v1 (AD-8 forbids a custom server); revisit dedicated throttling on `PUT /sets/:id` and social writes at scale.
+> **Billing failure signal:** repeated `invoice.payment_failed` / a spike in `past_due` DJs, and any webhook delivery failure surfaced in the Stripe dashboard, is the billing-side equivalent of AD-13's parse-error-rate signal — the leading indicator something needs attention (a broken webhook deploy, a DJ's card expiring at scale).
 
 **Source tree (scaffold, not a mirror to maintain):**
 
@@ -272,6 +294,7 @@ curfew/
 | Per-track hide & visibility (FR-22, FR-23) — Phase 2 | Supabase (RLS) + `web/` (render) | AD-7, AD-9 |
 | Community comparisons (FR-24, FR-25) — Phase 2 | Supabase (SQL over shared sets) | AD-1 (scene-aggregate exception), AD-7 |
 | Per-DJ isolation / privacy (§5.2) | Supabase RLS | AD-7, AD-8 |
+| Subscription & billing (Epic 7, epics.md) — outside FR-1..29 | Stripe Checkout/Portal + `web/` route handler (webhook) | AD-18, AD-19 |
 
 ## Deferred
 
