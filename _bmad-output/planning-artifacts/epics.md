@@ -2,6 +2,7 @@
 stepsCompleted:
   - step-01-validate-prerequisites
   - step-02-design-epics
+  - step-03-create-stories
 scopeDecision: "Phase 1 is the MVP — epics/stories are being detailed for Phase 1 now; Phase 2 (social) is captured in the requirements inventory but its epics/stories are deferred to a later pass (Arjun, 2026-07-20)."
 inputDocuments:
   - _bmad-output/planning-artifacts/prds/prd-name-pending-2026-07-19/prd.md
@@ -173,6 +174,8 @@ This document provides the complete epic and story breakdown for Curfew, decompo
 > - **The `shared/` derived contract is frozen-forever (additive-only, AR-1/AR-15) yet designed in Epic 1, before Epic 3 renders it.** Epic 1's contract stories must take the **Set Detail + Style Evolution UX specs as explicit inputs**; this contract is the one artifact to over-invest in getting right.
 > - **FR-27's classification signal is computed in Epic 1 but has no Phase-1 consumer** unless **Epic 4** uses it to exclude likely-rehearsal sessions from Style Evolution trends (a Phase-1 data-quality concern the PRD leaves open). **Open design decision** — carry into Epic 4 story design.
 > - **✅ RESOLVED — billing scope (Arjun, 2026-07-20): paid launch.** Phase 1 charges $6/mo from launch, so **Epic 7: Subscription & Billing** is added below. Two follow-ups: (a) billing sits **outside the current architecture spine's FR-1..29 scope** — the payment-provider integration + webhook handler likely warrants a brief **architecture addendum**, and is the one sanctioned exception to AD-8's "no bespoke write path" (scoped to billing events, user-visible subscription state still RLS-guarded); (b) consider a **free-trial window** so SM-2 ("personal value stands alone") can still be observed before the paywall converts.
+>
+> - **📌 Open doc-sync debt (party 2026-07-20):** decisions made in *this* epics doc that are owed back to their source specs before implementation-readiness sign-off — **(a)** FR-27 "exclude-**visibly**" from Style Evolution (Stories 1.8, 4.1) → **PRD**; **(b)** `session_identity` must be a stable intrinsic session property, not file mtime/name (Story 3.2 AC-6) → **Architecture Spine (AR-2)**; **(c)** the 30-day recently-downloaded-nudge threshold (Story 4.4) → **PRD** (owed since the UX review, two sessions running). NFR-1 stat-engine targets (Story 1.7) are proposed, pending Arjun's confirm.
 
 ### Epic 1: Foundation & Proven Parsing
 
@@ -189,7 +192,7 @@ A DJ creates one Curfew account via any of four paths (email+password, Google, A
 ### Epic 3: Post-Set Sync & Personal Dashboard  ⭐ core value moment
 
 The completed set syncs automatically to the cloud (idempotent `PUT` on a deterministic `set_id`, offline-queued and drained on reconnect, content-column-scoped so overlays are never clobbered), and appears on the DJ's web dashboard the next morning — where they open it and see the per-set summary (top tracks/artists, genre breakdown, BPM distribution, Camelot mixing, length, track count) and the energy arc. Establishes the Obsidian web token system and the signature floating nav as the first authenticated surfaces, plus format-drift resilience and backfill. This is the product's core morning-after reflection moment. *(UJ-1)*
-**FRs covered:** FR-4, FR-6, FR-7. **ARs:** AR-2, AR-7, AR-8, AR-9 *(create the `visibility` column + private-equivalent default now — additive-only Phase-2 groundwork, so Phase-2 read-policies never retroactively expose Phase-1 sets)*. **NFRs:** NFR-4. *Design note:* the sync seam is the system's single load-bearing integration — **`shared/` contract tests for idempotency (deterministic `set_id`, no backfill dupes, shared-USB non-collision) and content/overlay column-disjointness are first-class acceptance criteria**, not afterthoughts. **UX:** *(builds on the token system from Epic 2)* UX-DR2 (floating nav — first authenticated surface), UX-DR4 (set card), UX-DR5 (new-set nudge), UX-DR6 (energy-arc chart), UX-DR7 (chart summary), UX-DR8 (tracklist), UX-DR13 (chips), UX-DR17 (dashboard + set detail), UX-DR18 (voice/failure register), UX-DR19–22 (states, primitives, a11y, responsive).
+**FRs covered:** FR-4, FR-6, FR-7. **ARs:** AR-2, AR-7, AR-8, AR-9 *(create the `visibility` column + private-equivalent default now — additive-only Phase-2 groundwork, so Phase-2 read-policies never retroactively expose Phase-1 sets)*. **NFRs:** NFR-4. *Design note:* the sync seam is the system's single load-bearing integration — **`shared/` contract tests for idempotency (deterministic `set_id`, no backfill dupes, shared-USB non-collision) and content/overlay column-disjointness are first-class acceptance criteria**, not afterthoughts. **UX:** *(builds on the token system from Epic 2)* UX-DR2 (floating nav — first authenticated surface), UX-DR4 (set card), UX-DR5 (new-set nudge), UX-DR6 (energy-arc chart), UX-DR7 (chart summary), UX-DR8 (tracklist), UX-DR13 (chips), UX-DR15 (avatar), UX-DR17 (dashboard + set detail + profile/settings), UX-DR18 (voice/failure register), UX-DR19–22 (states, primitives, a11y, responsive).
 
 ### Epic 4: Style Evolution & Library Utilization
 
@@ -208,5 +211,745 @@ A prospective DJ can discover Curfew through a public marketing Landing page (th
 
 ### Epic 7: Subscription & Billing
 
-A DJ can subscribe to Curfew ($6/mo) from the Pricing/entry flow via a payment provider (e.g. Stripe Checkout), manage or cancel through a provider-hosted customer portal, and the product gates the authenticated experience on subscription status — a lapsed/inactive subscription restricts the web experience while the **local agent keeps capturing sets locally** (nothing is lost; data resumes syncing on reactivation). Subscription state lives on the `djs` account as **additive columns** (AR-12); the payment webhook is handled by a Next.js route handler / Supabase Edge Function — the one sanctioned exception to AD-8's "no bespoke write path," scoped to billing events only. Launch-gating: **must ship before public paid launch, but is not required to validate SM-1/SM-2** on the builder's own use.
-**FRs covered:** — *(no numbered FR; realizes PRD §7 monetization + the UX-DR14 pricing CTA)*. **Consideration:** a free-trial window so SM-2 can be observed before the paywall. **🔒 Hard invariant:** the subscription gate restricts the **web experience only — never the local agent's capture**; a lapsed subscriber keeps parsing sets into local SQLite, and they resume syncing on reactivation, so the "nothing is lost" promise holds. **⚠️ Architecture gap:** payment provider + webhook pattern is outside the spine's FR-1..29 scope — resolve via a brief architecture addendum before this epic's story creation.
+A DJ can subscribe to Curfew ($6/mo) from the Pricing/entry flow via a payment provider (e.g. Stripe Checkout), manage or cancel through a provider-hosted customer portal, and the product gates the authenticated experience on subscription status — a lapsed/inactive subscription restricts the web experience while the **local agent keeps capturing sets locally** (nothing is lost; data resumes syncing on reactivation). Subscription state lives on the `djs` account as **additive columns** (AR-12); the payment webhook is handled by a Next.js Route Handler pinned to the Node.js runtime (not Edge) — the one sanctioned exception to AD-8's "no bespoke write path," scoped to billing events only. Launch-gating: **must ship before public paid launch, but is not required to validate SM-1/SM-2** on the builder's own use.
+**FRs covered:** — *(no numbered FR; realizes PRD §7 monetization + the UX-DR14 pricing CTA)*. **Consideration:** a free-trial window so SM-2 can be observed before the paywall. **🔒 Hard invariant:** the subscription gate restricts the **web experience only — never the local agent's capture**; a lapsed subscriber keeps parsing sets into local SQLite, and they resume syncing on reactivation, so the "nothing is lost" promise holds. **✅ Architecture resolved (2026-07-20):** the billing addendum is now in the Architecture Spine (**AD-18** Stripe Checkout + Node-runtime webhook Route Handler as the one sanctioned AD-8 exception, writing via a single `SECURITY DEFINER` `apply_subscription_event(...)` scoped to four columns; **AD-19** additive `djs` billing columns, `subscription_status` = Stripe's verbatim text, DJ-write-excluded, web-only access gate) and SOLUTION-DESIGN §3.7. Story creation for this epic proceeds against AD-18/AD-19.
+
+---
+
+## Epic 1: Foundation & Proven Parsing
+
+Stand up the monorepo (`agent/` · `web/` · `shared/`) and the versioned sync contract, then build and **prove** the local parse/enrich/stat engine against real Serato sessions — closing the **SM-1** parsing-correctness gate offline, before any cloud or code-signing spend. Ordered so the parser-validation spike (1.2) precedes committing the pipeline, and the `shared/` contract is frozen last (1.10), after parsing reality is known.
+
+### Story 1.1: Monorepo scaffold with three workspaces
+
+As a developer,
+I want a from-scratch monorepo with `agent/` (Tauri 2 + Rust), `web/` (Next.js 16), and `shared/` (versioned contract package) wired into one CI pipeline,
+So that every later story builds on a consistent, reproducible foundation with no external starter to fight.
+
+**Acceptance Criteria:**
+
+1. **Given** a clean checkout, **When** I run the documented bootstrap command, **Then** all three workspaces install and build, **And** the CI skeleton runs lint + build on each workspace. *(AR-16, AR-1)*
+2. **Given** the `shared/` package, **When** it is imported by `agent/` and `web/`, **Then** it exposes a provisional (draft, not yet frozen) sync-payload TS type + JSON-schema stub both can consume. *(AR-1)*
+3. **Given** the repository, **When** inspected, **Then** there is no adopted external greenfield boilerplate — the scaffold is first-party. *(AR-16)*
+4. **Given** a `supabase/migrations/` folder is seeded, **When** CI runs, **Then** the additive-only migration structure is in place (empty/initial migration applies cleanly). *(AR-12)*
+
+### Story 1.2: Parser-validation spike against real sessions
+
+As a product owner,
+I want a throwaway spike that runs the candidate `.session` parsing approach against the riskiest real Serato session types before we commit the full pipeline,
+So that the clean-room implementation is validated against reality and the frozen contract is de-risked (SM-1).
+
+**Acceptance Criteria:**
+
+1. **Given** at least one real multi-track wedding session, one USB-hosted-library session, and one WAV-heavy-library session, **When** the spike runs, **Then** it emits parsed play counts + track identities per session and a written go/no-go with observed format quirks. *(Design note a, NFR-5)*
+2. **Given** the spike output, **When** compared against ground truth (Serato's own display or the DJ's recollection), **Then** every discrepancy is enumerated and classed as parser-fixable or format-limitation.
+3. **Given** the spike concludes, **Then** its learnings are recorded as explicit inputs to the `shared/` contract shape (Story 1.10) — the contract is not frozen before this. *(Design note c)*
+4. **Given** the spike concludes, **Then** its code is explicitly **throwaway** — Stories 1.3–1.7 build the production parser fresh; the spike is never extended into production. *(Winston, party 2026-07-20)*
+
+### Story 1.3: Clean-room `.session` parser
+
+As a developer,
+I want a clean-room Rust parser that reads a Serato `.session` file into an ordered list of plays (track ref + timestamps),
+So that the raw as-played sequence is available on-device for enrichment and stats.
+
+**Acceptance Criteria:**
+
+1. **Given** a valid `.session` file, **When** parsed, **Then** an ordered list of plays with per-play timestamp and track reference is produced. *(AR-5)*
+2. **Given** the pinned `triseratops` git commit + `id3` crate, **When** the parser uses them, **Then** it depends on the exact pinned commit (not the stale crates.io `0.0.3`). *(AR-5)*
+3. **Given** a malformed or truncated `.session`, **When** parsed, **Then** it fails safely with a diagnostic (never a panic that crashes the agent) **And** the raw file is retained for backfill. *(AR-5, AR-7)*
+4. **Given** the same file, **When** parsed twice, **Then** output is deterministic (identical ordered plays).
+
+### Story 1.4: Library join for in-library enrichment
+
+As a DJ,
+I want each played in-library track resolved to its BPM/key/genre from the Serato library DB,
+So that my per-set stats reflect real track metadata.
+
+**Acceptance Criteria:**
+
+1. **Given** a legacy `database V2` library, **When** a played track is in-library, **Then** BPM/key/genre resolve from it. *(FR-2, AR-5)*
+2. **Given** a Serato 4+ `master.sqlite` library, **When** a played track is in-library, **Then** BPM/key/genre resolve from it. *(FR-2, AR-5)*
+3. **Given** tracks referenced by relative vs absolute paths, **When** joined, **Then** paths resolve against the configured library root correctly. *(AR-5)*
+4. **Given** an in-library track missing a metadata field, **Then** that field routes to the embedded-tag fallback (Story 1.5), never a guess.
+
+### Story 1.5: Off-library embedded-tag fallback with visible "Unknown"
+
+As a DJ,
+I want tracks not in my Serato library to still get BPM/key/genre from their embedded file tags, and to show "Unknown" when truly absent,
+So that off-library plays are never silently dropped or fabricated.
+
+**Acceptance Criteria:**
+
+1. **Given** an off-library track, **When** enriched, **Then** BPM comes from the Serato Autotags GEOB, key from ID3 `TKEY` (or Vorbis), genre from ID3 `TCON` (or Vorbis). *(FR-2)*
+2. **Given** neither library nor embedded source has a value, **When** displayed, **Then** the field shows "Unknown" — never omitted, never guessed. *(FR-2)*
+3. **Given** local audio DSP / key-finding, **Then** it is out of scope — no DSP is invoked. *(FR-2 scope)*
+
+### Story 1.6: Edge genre normalization, versioned
+
+As a DJ,
+I want raw Serato genre tags normalized to a fixed Curfew taxonomy on the agent, storing raw + normalized + `taxonomy_version` per play,
+So that genre stats are consistent and trends recompute cleanly after the table evolves.
+
+**Acceptance Criteria:**
+
+1. **Given** a raw genre string, **When** normalized against the fixed table, **Then** a normalized value + the current `taxonomy_version` are stored alongside the raw string. *(FR-8, AR-6)*
+2. **Given** a raw genre absent from the table, **When** normalized, **Then** it maps to the table's defined default bucket deterministically (never dropped).
+3. **Given** V1, **Then** the taxonomy is not DJ-editable — no edit UI exists. *(FR-8)*
+
+### Story 1.7: Core per-set stat engine
+
+As a DJ,
+I want the agent to compute per-set stats arithmetically from the enriched plays,
+So that accurate summaries and the energy arc render with no ML or cloud round-trip.
+
+**Acceptance Criteria:**
+
+1. **Given** an enriched set, **When** stats compute, **Then** it produces most-played tracks; most-played artists (**artist-tagged plays only** — no "Unknown" bucket, no untagged footnote); genre breakdown; BPM distribution; key/Camelot mixing stats; set length; track count. *(FR-6 foundation, CAP-5)*
+2. **Given** the same set, **When** the energy-arc series computes, **Then** BPM-vs-timestamp points are produced. *(FR-7 foundation)*
+3. **Given** any stat, **When** computed, **Then** it is arithmetic-only — no ML/inference is invoked. *(NFR-1, NFR-3)*
+4. **Given** a ~5,000-track library and a typical set, **When** the full parse→enrich→stat pipeline runs, **Then** it meets concrete targets: a single set's stat computation ≤ 500 ms, a full-library pass ≤ 10 s (p95), agent idle CPU ≈ 0, and no UI-perceptible lag. *(NFR-1; targets confirmed 2026-07-21, Arjun)*
+
+### Story 1.8: Live/practice confidence signal
+
+As the system,
+I want a live-vs-practice classification confidence computed per session from Phase 1 onward, with no user-facing prompt,
+So that the signal exists for later use (Phase 2 confirmation; Epic 4 trend exclusion) without gating anything now.
+
+**Acceptance Criteria:**
+
+1. **Given** a parsed session, **When** classified, **Then** a confidence value is computed and stored. *(FR-27)*
+2. **Given** Phase 1, **Then** no confirmation prompt is shown **And** the DJ's own dashboard is never gated by this signal. *(FR-27)*
+3. **Given** the Epic 4 decision to exclude low-confidence sessions from Style Evolution **visibly** (a reveal, never a silent erase), **Then** the signal is exposed in a form Epic 4 can both filter on **And** surface an "N sessions hidden — show them?" affordance from. *(Resolved 2026-07-20: exclude-**visibly**; PRD-sync owed)*
+4. **Given** distinguishing home rehearsal from a live gig by data alone, **Then** it is out of scope — the signal is a heuristic confidence, not ground truth. *(FR-27 scope)*
+
+### Story 1.9: Golden-file regression harness
+
+As a developer,
+I want CI golden-file regression tests over known-good `.session`/library fixtures,
+So that a Serato format change is caught before it silently corrupts synced data.
+
+**Acceptance Criteria:**
+
+1. **Given** golden `.session` + `database V2` + `master.sqlite` fixtures with expected parsed output, **When** CI runs, **Then** any deviation fails the build. *(NFR-4, NFR-5, AR-7 layer 1)*
+2. **Given** a newly discovered format quirk, **When** a fixture is added, **Then** it becomes a permanent regression guard.
+3. **Given** the fixture set, **Then** it covers both legacy and Serato 4+ library formats. *(AR-5)*
+
+### Story 1.10: Freeze the `shared/` sync contract
+
+As a developer,
+I want the `shared/` versioned sync-payload / stat-output contract frozen (TS types + JSON-schema) after the spike, validated on both agent and cloud, additive-only, carrying `agent_version`,
+So that the one frozen-forever hub artifact reflects parsing reality and its Set Detail + Style Evolution consumers.
+
+**Acceptance Criteria:**
+
+1. **Given** the spike + stat-engine outputs and the Set Detail + Style Evolution UX specs as inputs, **When** the contract is authored, **Then** its shape covers everything those consumers render. *(AR-1, AR-15, Design note b)*
+2. **Given** the contract, **When** a payload is built on the agent and received on the cloud, **Then** both validate against the same schema via contract tests in `shared/`. *(AR-1)*
+3. **Given** a proposed contract change, **When** CI runs, **Then** only additive changes pass; every payload carries `agent_version`; the cloud accepts the last N agent versions. *(AR-1)*
+4. **Given** sequencing, **Then** the contract is frozen only after Story 1.2's spike — never before. *(Design note c)*
+
+## Epic 2: Account & Agent Onboarding
+
+A DJ creates one Curfew account via any of four paths, installs the signed local agent, confirms their Serato data folder (including on USB), and the agent quietly captures completed sets into local SQLite. Establishes the cloud foundation (Supabase + null-safe RLS + additive migrations + prod/preview), the Obsidian token system as the first web surface, the signed-build/auto-updater pipeline, and the tray UI. *(UJ-3)*
+
+### Story 2.1: Supabase cloud foundation + isolation baseline
+
+As a developer,
+I want a Supabase prod project with preview branches, an additive-only migration pipeline, a `djs` table 1:1 with `auth.users`, and null-safe per-DJ RLS,
+So that all cloud data is per-DJ isolated at the DB layer from the very first row.
+
+**Acceptance Criteria:**
+
+1. **Given** the Supabase setup, **When** a dev/PR branch is created, **Then** it gets its own preview branch and prod is a separate project. *(AR-12)*
+2. **Given** a schema change, **When** shipped, **Then** it is an additive-only Supabase-CLI migration committed in the monorepo; a drop/rename of a live column is rejected. *(AR-12)*
+3. **Given** a `djs` row, **Then** it is 1:1 with `auth.users`, created idempotently on verified email, **And** RLS enforces `auth.uid() IS NOT NULL AND auth.uid() = dj_id` (unreachable across DJs even with an API-layer bug). *(AR-4, AR-10, NFR-2)*
+4. **Given** the account model, **Then** it anticipates an additive `subscription_status` concept for Epic 7 (no billing logic added yet). *(Epic 2 design note b)*
+
+### Story 2.2: Obsidian design-token system + web shell
+
+As a developer,
+I want the Obsidian dark token system and a base web shell implemented as the first web surface,
+So that every later screen — starting with auth — is styled against real tokens, not placeholders.
+
+**Acceptance Criteria:**
+
+1. **Given** the token set, **Then** background `#121415`, five surface-container elevation tiers, Electric Lavender primary, and the dusty-rose error family are defined as reusable tokens. *(UX-DR1)*
+2. **Given** typography, **Then** Hanken Grotesk (headlines), Inter (body), and Geist mono (`mono-data`/`label-sm`) are wired to the type scale. *(UX-DR1)*
+3. **Given** spacing/radius, **Then** a 4px baseline is used **And** `rounded.full` (9999px) is reserved exclusively for floating nav, avatar, and status dots. *(UX-DR1)*
+4. **Given** the web shell, **When** rendered, **Then** it consumes only tokens (no hard-coded colors) and core text passes WCAG 2.2 AA. *(UX-DR21)*
+
+> **Sizing note (party 2026-07-20):** original single Story 2.3 (four auth paths + linking + phone-on-file) was ~4 dev sessions — split into 2.3a / 2.3b / 2.3c per Amelia/Winston.
+
+### Story 2.3a: Email-identity path (email+password + passkey)
+
+As a DJ,
+I want to sign up / log in with email+password and optionally enable a passkey,
+So that I have a base Curfew identity anchored to my verified email.
+
+**Acceptance Criteria:**
+
+1. **Given** email+password signup, **When** I verify my email, **Then** one `dj` account exists anchored to that verified email. *(FR-29, AR-10)*
+2. **Given** the email path, **When** I add a passkey (WebAuthn), **Then** it attaches as an add-on to that same account — not a separate identity. *(FR-29, AR-10)*
+3. **Given** an auth failure, **Then** the calm inline auth-failed copy shows (no modal, no alarm color). *(UX-DR18, UX-DR19)*
+
+### Story 2.3b: OAuth paths + account linking (Google, Apple)
+
+As a DJ,
+I want to sign in with Google or Apple and land on my one account,
+So that my provider choice never forks me into duplicate identities.
+
+**Acceptance Criteria:**
+
+1. **Given** Google or Apple sign-in, **When** the verified email matches an existing `dj`, **Then** it links to that same account (idempotent on verified email). *(FR-29, AR-10)*
+2. **Given** Google or Apple sign-in with a new verified email, **When** it completes, **Then** a `dj` account is created idempotently. *(AR-10)*
+3. **Given** distinct verified emails across providers, **Then** they are **not** auto-merged in v1. *(AR-10)*
+
+### Story 2.3c: Phone-on-file (post-OAuth prompt)
+
+As a DJ,
+I want a phone number captured after OAuth signup,
+So that every account has a phone on file as required.
+
+**Acceptance Criteria:**
+
+1. **Given** Google or Apple signup, **When** it completes without a phone on file, **Then** I am prompted once for a phone number (single-field, required). *(FR-29, UX-DR19 phone-required)*
+2. **Given** the phone-required state, **Then** it renders as the specified one-field post-OAuth screen, not a blocking modal wall. *(UX-DR19)*
+
+### Story 2.4: Auth UI components
+
+As a DJ,
+I want polished auth components that match the design system,
+So that signing in feels native to Curfew's console voice.
+
+**Acceptance Criteria:**
+
+1. **Given** the auth form, **Then** ghost-style inputs (transparent, bottom-border, mono values, label-sm labels) render. *(UX-DR3)*
+2. **Given** passkey enable, **Then** the Biometric Anchor row (fingerprint badge + radio indicator) renders. *(UX-DR3)*
+3. **Given** Google/Apple sign-in, **Then** each uses its official button lockup and mandated colors (the one sanctioned palette exception); primary/secondary buttons have no pills or gradients. *(UX-DR3)*
+4. **Given** keyboard-only use, **Then** the full auth flow is operable **And** focus rings use the lavender glow at AA contrast. *(UX-DR21)*
+
+### Story 2.5: Agent shell + tray UI
+
+As a DJ,
+I want the local agent to live as a menu-bar/tray icon with a minimal settings panel,
+So that it stays out of my way while showing sync state.
+
+**Acceptance Criteria:**
+
+1. **Given** the agent runs, **Then** its only UI is a tray icon with four states — idle / syncing / failed / drive-not-connected — each carrying a text label/tooltip (not color/glyph alone). *(FR-5, UX-DR23, UX-DR21)*
+2. **Given** I open settings, **Then** the panel exposes only the Serato folder path override, in native OS chrome (not skinned to website tokens). *(FR-5, UX-DR23)*
+3. **Given** the agent, **Then** it is never a full window and never mirrors the website UI. *(UX-DR22)*
+
+### Story 2.6: Serato folder auto-detection + first-run confirm
+
+As a DJ,
+I want the agent to auto-find my Serato data folder (including on USB), let me confirm/override it, and resume when a drive reconnects,
+So that setup is one confirmation and keeps working across removable media.
+
+**Acceptance Criteria:**
+
+1. **Given** OS defaults (`~/Music/_Serato_/` on macOS, Windows equivalent), **When** the agent starts, **Then** it auto-discovers the Serato data directory **And** scans connected removable/USB volumes. *(FR-1)*
+2. **Given** nothing is found, **Then** I can set a manual path override via the tray. *(FR-1)*
+3. **Given** first run, **When** a path is detected, **Then** I confirm or edit it before it is used — never silent auto-selection. *(UX-DR19 first-run, UX-DR20 confirm-never-silent)*
+4. **Given** a removable drive is reconnected, **Then** the agent auto-detects it and resumes watching. *(FR-1)*
+
+### Story 2.7: Local-only raw-data boundary
+
+As a DJ,
+I want the agent's filesystem access scoped to only my configured Serato path, and raw files never to leave my machine,
+So that my private library data stays local by construction.
+
+**Acceptance Criteria:**
+
+1. **Given** the agent, **Then** its filesystem capability is scoped to the configured Serato path only (not broad disk access). *(FR-3, NFR-2)*
+2. **Given** any network transmission, **Then** raw `.session` files and the raw library DB are never sent off-machine — only derived/structured data leaves, over HTTPS. *(FR-3, NFR-2)*
+3. **Given** a contract test on the outbound payload, **Then** it asserts no raw-file blob is present. *(AR-1)*
+
+### Story 2.8: Set capture into local SQLite
+
+As a DJ,
+I want completed sets captured and stored durably in local SQLite via the Epic 1 engine,
+So that my sets survive offline and are available to sync and backfill.
+
+**Acceptance Criteria:**
+
+1. **Given** a completed Serato session with no DJ action, **When** detected, **Then** the agent runs the Epic 1 parse/enrich/stat engine and writes the result + retained raw to local SQLite. *(FR-1, AR-3)*
+2. **Given** local SQLite, **Then** it serves as durable parse + offline cache + raw retention, authoritative for a set until it syncs. *(AR-3)*
+3. **Given** a set already captured, **When** re-detected, **Then** it is not duplicated locally (deterministic session identity). *(AR-2 foundation)*
+4. **Given** an interrupted or partial session (laptop sleep, agent crash, drive yanked mid-gig), **Then** "completed" is defined by an explicit completion signal — a partial capture is marked **incomplete** and is **not** synced as if it were the whole night; it either resumes or is flagged, never silently truncated. *(Boundary's hole #3, party 2026-07-20 — sharpens FR-1's "completed session")*
+
+> **Sizing note (party 2026-07-20):** original single Story 2.9 (two-OS signing + notarization + updater keypair) split into 2.9a / 2.9b / 2.9c per Winston — and **local development self-tests unsigned throughout** (signing blocks distribution, not dev; Epic 2 design note a). Ship order: 2.9a first (macOS-first launch is the accepted fallback if the Windows EV cert's identity verification drags).
+
+### Story 2.9a: macOS signed build + notarization
+
+As a developer,
+I want `tauri-action` producing a signed, notarized macOS build,
+So that macOS DJs can install an agent Gatekeeper trusts.
+
+**Acceptance Criteria:**
+
+1. **Given** the CI pipeline, **When** a macOS release is cut, **Then** it produces an Apple Developer ID-signed, notarized build; the cert lives as an encrypted CI secret. *(AR-14)*
+2. **Given** local development, **Then** the agent self-tests unsigned. *(Design note a)*
+
+### Story 2.9b: Windows signed build
+
+As a developer,
+I want `tauri-action` producing a Windows OV/EV-signed installer,
+So that Windows DJs can install without a SmartScreen block.
+
+**Acceptance Criteria:**
+
+1. **Given** the CI pipeline, **When** a Windows release is cut, **Then** it produces an OV/EV-signed installer; the cert lives as an encrypted CI secret. *(AR-14)*
+2. **Given** the Windows EV cert's identity verification can take 1–3 weeks, **Then** a macOS-first launch (Story 2.9a) is an accepted fallback while it clears. *(Design note a)*
+
+### Story 2.9c: Signed auto-updater pipeline
+
+As a developer,
+I want a signed auto-updater with its own keypair,
+So that we can push format-drift fixes DJs' agents will trust and apply.
+
+**Acceptance Criteria:**
+
+1. **Given** a release, **Then** `tauri-action` auto-generates the updater JSON + `.sig`. *(AR-14)*
+2. **Given** the updater, **Then** it uses a **separate mandatory update-signing keypair**, distinct from the platform code-signing certs; the updater key lives as an encrypted CI secret. *(AR-14)*
+
+### Story 2.10: Agent secure token storage
+
+As a DJ,
+I want the agent to authenticate to the cloud and persist its refresh token securely,
+So that my sets sync under my account without re-login and without exposing tokens.
+
+**Acceptance Criteria:**
+
+1. **Given** the agent links to my account, **Then** it obtains a Supabase JWT + refresh token and persists the refresh token via Tauri secure storage (not browser storage). *(AR-10)*
+2. **Given** an expired JWT, **When** the agent syncs, **Then** it refreshes transparently. *(AR-10)*
+3. **Given** the stored token, **Then** it is scoped to my `dj` account so captured sets sync under the correct `dj_id`. *(AR-10, AR-4)*
+
+### Story 2.11: Account deletion + data export (manual runbook)
+
+As a DJ,
+I want a way to delete my account and its data, and to get an export of it, on request,
+So that handing Curfew my whole library history isn't a one-way trip — even before a self-serve control exists.
+
+**Acceptance Criteria:**
+
+1. **Given** a deletion request, **Then** a documented, tested runbook cascades a delete of every row owned by `dj_id` across all tables (`sessions`, `sets`, `plays`, `segments`, enrichment overlays, `djs`), deletes the Stripe customer if one exists, and purges the local agent SQLite on next launch. *(NFR-2 / CCPA-level posture; Paige's catch, party 2026-07-20)*
+2. **Given** an export request, **Then** the same runbook produces the DJ's derived data in a portable format.
+3. **Given** MVP scope, **Then** this is a **manual/operator runbook + a "delete my account" support link** (surfaced from the Profile/Settings screen, Story 3.10) — **not** a self-serve in-app feature; full self-serve deletion + automated portability are backlogged. *(Ruling, party 2026-07-20: CCPA thresholds don't bind a launch-size business)*
+4. **Given** Curfew later lists on the Apple App Store or Google Play, **Then** their in-app-account-deletion guideline triggers and this must become a self-serve feature — tracked now, built then. *(Winston / Mary, party 2026-07-20)*
+
+## Epic 3: Post-Set Sync & Personal Dashboard  ⭐ core value moment
+
+The completed set syncs automatically (idempotent `PUT` on a deterministic `set_id`, offline-queued, content-column-scoped), and appears on the DJ's web dashboard the next morning — where they open it and see the per-set summary and energy arc. Establishes the Obsidian web surfaces (floating nav first), format-drift resilience, and backfill. This is the product's core morning-after reflection moment. *(UJ-1)*
+
+### Story 3.1: Sessions/sets/plays schema + visibility + content/overlay split
+
+As a developer,
+I want the cloud schema for `sessions`, `sets`, `plays` with a `visibility` column defaulting to private-equivalent and content vs overlay columns kept disjoint,
+So that synced content lands cleanly and Phase-2 read-policies never retroactively expose Phase-1 sets.
+
+**Acceptance Criteria:**
+
+1. **Given** the schema, **Then** `sessions` (immutable anchor), `sets` (with denormalized `derived` jsonb render-cache), and `plays` (with `in_library`, raw + normalized genre, `taxonomy_version`) exist. *(AR-15)*
+2. **Given** `visibility`, **Then** it is the enum {public, friends_only, private} **And** Phase-1 sets default to private-equivalent and are never retroactively exposed. *(AR-9)*
+3. **Given** content vs overlay columns, **Then** they are disjoint (overlay columns exist but are agent-untouchable). *(AR-8)*
+4. **Given** the change, **Then** it ships as an additive-only migration. *(AR-12)*
+
+### Story 3.2: Idempotent set sync
+
+As a DJ,
+I want each completed set to sync via an idempotent `PUT /sets/:set_id` on a deterministic namespaced id, updating only content columns,
+So that a set appears in the cloud exactly once and re-parses never duplicate it or clobber overlays.
+
+**Acceptance Criteria:**
+
+1. **Given** a set, **When** synced, **Then** it PUTs to `set_id = hash(dj_id, session_identity)` — deterministic, never a fresh UUID, never session-identity alone. *(FR-4, AR-2)*
+2. **Given** a re-parse/re-run, **When** synced again, **Then** content updates in place with no duplicate row and no re-keying/re-partition. *(AR-2)*
+3. **Given** the upsert, **Then** it is column-scoped to content columns; overlay columns are never touched, enforced by a `shared/` contract test. *(AR-8)*
+4. **Given** two DJs sharing a USB library, **Then** their sessions do not collide (dj_id is in the key). *(AR-2)*
+5. **Given** contract tests for idempotency, no-backfill-dupes, shared-USB non-collision, and content/overlay disjointness, **Then** they are first-class passing acceptance criteria, not afterthoughts.
+6. **Given** `session_identity` (the input to the AC-1 hash), **Then** it is derived from a **stable intrinsic property of the session** (its immutable start-anchor / first-play identity) — **never** file mtime, path, or filename — so a later Serato re-save does not re-key or duplicate the set, **And** two distinct same-night sessions never collide. *(Boundary's hole #1, party 2026-07-20 — refines AR-2; architecture-spine-sync owed)*
+
+### Story 3.3: Offline sync queue
+
+As a DJ,
+I want a set completed while offline to queue locally and sync automatically on reconnect,
+So that I never lose a set to a bad connection at the venue.
+
+**Acceptance Criteria:**
+
+1. **Given** no connectivity at set completion, **When** the set is captured, **Then** it queues in local SQLite. *(FR-4)*
+2. **Given** connectivity returns, **Then** the queue drains automatically and idempotently (retries produce no duplicates). *(FR-4, AR-2)*
+3. **Given** the tray, **Then** it reflects "offline / queued" with a text-labeled glyph. *(UX-DR19 sync-offline, UX-DR23)*
+4. **Given** two agents on one account draining the same shared-USB session (a rare multi-device / shared-USB edge persona), **When** both `PUT` the same `set_id`, **Then** MVP behavior is explicit **last-write-wins** on content columns — accepted as a deliberate MVP choice (not a silent gap); a writer-of-record rule is deferred and does **not** change the architecture spine. *(Ruling, party 2026-07-20 — Arjun)*
+
+### Story 3.4: Format-drift resilience + backfill
+
+As the system,
+I want agent-side error reporting tagged by `agent_version` and the ability to backfill affected sets from retained raw data,
+So that a Serato format change is detected and recoverable without data loss.
+
+**Acceptance Criteria:**
+
+1. **Given** a parse/enrich error, **When** it occurs, **Then** it is reported tagged with `agent_version`. *(AR-7 layer 2, NFR-4)*
+2. **Given** a fix shipped via the signed auto-updater, **When** affected sets are reprocessed, **Then** they backfill from raw data retained in local SQLite. *(AR-7 layer 3 + backfill)*
+3. **Given** format-drift is detected, **Then** the tray shows the calm "format-drift paused" state and copy. *(UX-DR18, UX-DR19)*
+4. **Given** the three drift layers (CI golden files, tagged error reporting, signed updater + backfill), **Then** all three are present. *(AR-7)*
+
+### Story 3.5: Floating pill nav
+
+As a DJ,
+I want the signature floating pill nav present on every authenticated screen,
+So that navigation is consistent, glanceable, and keyboard-operable.
+
+**Acceptance Criteria:**
+
+1. **Given** any logged-in screen, **Then** the bottom-center glassy pill nav (backdrop-blur over surface-container @90%, hairline border) is present. *(UX-DR2)*
+2. **Given** the nav, **Then** the active item is solid lavender **And** the menu trigger opens an upward popover (hover desktop / tap touch) for secondary items. *(UX-DR2)*
+3. **Given** keyboard-only use, **Then** every nav item and the popover are fully operable. *(UX-DR2, UX-DR21)*
+4. **Given** mobile, **Then** the nav stays bottom-anchored. *(UX-DR22)*
+
+### Story 3.6: Dashboard home
+
+As a DJ,
+I want a dashboard showing my recent sets as cards, with a cold-start state and a new-set nudge,
+So that the morning after a gig I land somewhere that reflects my night.
+
+**Acceptance Criteria:**
+
+1. **Given** synced sets, **Then** each renders as a Card-Reflection set card (hairline border, no shadow, mono date/session-id header, genre chips, energy-arc thumbnail); clicking anywhere opens Set Detail. *(UX-DR4, UX-DR13, UX-DR17)*
+2. **Given** no sets yet, **Then** the cold dashboard state renders, positive-framed with no error tone. *(UX-DR19 cold dashboard)*
+3. **Given** a newly detected set, **Then** the declinable inline New-Set Nudge (lavender @20% border, pulsing lavender dot, "NEW SET DETECTED", equal-weight Add/Skip, no alarm colors) shows; Skip persists per-set and never re-prompts. *(UX-DR5, UX-DR19)*
+4. **Given** the nudge, **Then** it is never a modal and never a push. *(UX-DR5, UX-DR20)*
+
+### Story 3.7: Set Detail summary + tracklist
+
+As a DJ,
+I want a Set Detail view with the full per-set summary and tracklist,
+So that I can study exactly what I played and how it landed.
+
+**Acceptance Criteria:**
+
+1. **Given** a set, **Then** Set Detail shows most-played tracks/artists, genre breakdown, BPM distribution, key/Camelot mixing stats, set length, and track count. *(FR-6, UX-DR17)*
+2. **Given** most-played artists, **Then** it ranks artist-tagged plays only (no Unknown bucket, no untagged footnote). *(FR-6, CAP-5)*
+3. **Given** the tracklist, **Then** per-track timeline rows (title, artist, timestamp) render with a vertical connector; the top "impact" track gets a highlighted node + peak-metric annotation; "View Full Tracklist" expands from the top-tracks summary; unknown track data uses the FR-2 fallback. *(UX-DR8)*
+4. **Given** a long tracklist, **Then** it paginates / "load more" — never infinite scroll. *(UX-DR20)*
+
+### Story 3.8: Energy arc chart + chart summary
+
+As a DJ,
+I want the energy arc rendered as a line chart with an auto-generated plain-language caption,
+So that I can feel the pulse of the room and still get the takeaway if the chart can't render or I can't see it.
+
+**Acceptance Criteria:**
+
+1. **Given** a set's BPM-vs-time series, **Then** the shared energy-arc chart renders (lavender 2px stroke, no fill, dashed baseline, hover/tap point annotation) with no zoom/pan in v1. *(FR-7, UX-DR6)*
+2. **Given** every chart, **Then** a Chart Summary caption is generated (templated min/max/direction, e.g. "BPM ranged 122–128, climbing through the back half"). *(UX-DR7)*
+3. **Given** a render failure, **Then** the Chart Summary is the fallback. *(UX-DR7, UX-DR19 chart-failed)*
+4. **Given** a screen-reader user, **Then** the Chart Summary is the accessible text-equivalent **And** the UJ-1 "genre gap" climax is reachable without seeing the chart. *(UX-DR7, UX-DR21)*
+5. **Given** a set that spans a DST transition or crosses timezones, **Then** the energy-arc timeline is monotonic — stored UTC + offset, with no repeated hour and no negative time deltas — so neither the chart nor its downstream segment detection (Story 5.2) is corrupted. *(Boundary's hole #2, party 2026-07-20)*
+
+### Story 3.9: Console voice, failure register, state/a11y/responsive pass
+
+As a DJ,
+I want consistent console-voice copy, calm failure messaging, and a full state/accessibility/responsive pass across the dashboard surfaces,
+So that the product feels like the "After-Hours Archive" and never celebratory or alarmist.
+
+**Acceptance Criteria:**
+
+1. **Given** all copy, **Then** it uses the After-Hours Archive console voice ("Initialize Session," "Archive Insight," "Session: Syncing…") and calm/technical failure strings (sync-failed, drive-disconnected, format-drift-paused, login-failed, email-already-registered, chart-failed) with no exclamations. *(UX-DR18)*
+2. **Given** the product, **Then** it contains no streak counters, celebratory badges, or "you're crushing it"; no core stat is gated behind an enrichment prompt; no celebratory micro-interactions fire on stat milestones. *(UX-DR18, UX-DR20 — SM-C2 non-negotiable)*
+3. **Given** the dashboard surfaces, **Then** the specified state patterns render (cold dashboard, new-set, unknown track data, sync offline/queued, drive-not-connected, sync-failed/retrying, format-drift paused, chart-failed). *(UX-DR19)*
+4. **Given** the site, **Then** WCAG 2.2 AA holds, scroll-driven motion is absent on logged-in surfaces, **And** layout is the fixed centered 1100px grid adapting fluidly to tablet/phone. *(UX-DR20, UX-DR21, UX-DR22)*
+
+### Story 3.10: Profile/Settings screen
+
+As a DJ,
+I want a Profile/Settings screen reachable from the floating nav's avatar, where I manage my account and privacy,
+So that there is one home for my identity and controls that later features plug into.
+
+**Acceptance Criteria:**
+
+1. **Given** any authenticated screen, **Then** the floating nav shows my Avatar (circular `rounded.full`, hairline border, image only) as the Profile/Settings trigger — no other interaction. *(UX-DR15, UX-DR2)*
+2. **Given** I open Profile/Settings, **Then** it shows and lets me manage my account details — email, phone on file, and linked auth providers (email / Google / Apple / passkey). *(UX-DR17, FR-29)*
+3. **Given** the screen, **Then** it provides the privacy section and is the designated host surface for the location opt-in toggle (Story 5.7) and the billing-management entry (Story 7.4), which those stories populate — the shell exists independently of them. *(UX-DR17)*
+4. **Given** a settings change, **When** saved, **Then** the settings-saved inline confirm renders (no modal, calm console voice). *(UX-DR19 settings-saved, UX-DR18)*
+5. **Given** the design system, **Then** the screen uses only Obsidian tokens **And** meets WCAG 2.2 AA. *(UX-DR1, UX-DR21)*
+
+## Epic 4: Style Evolution & Library Utilization
+
+A DJ can see how their playing style trends over time and hold their library accountable — conversion rate, an aging shelf with a prep-crate action, and time-to-first-play. Reuses the shared trend-chart utility. Style Evolution excludes likely-rehearsal sessions via the FR-27 signal. *(UJ-5, UJ-6)*
+
+### Story 4.1: Style Evolution trend view (excludes low-confidence)
+
+As a DJ,
+I want a month-over-month trend of my BPM range, genre diversity, and key usage that excludes likely-rehearsal sessions,
+So that I can see how my style is actually evolving in real gigs.
+
+**Acceptance Criteria:**
+
+1. **Given** ≥1 month of synced sets, **Then** Style Evolution shows BPM range, genre diversity, and key-usage patterns month-over-month using the shared trend chart. *(FR-9, UX-DR6)*
+2. **Given** the FR-27 confidence signal, **Then** sessions below the confidence threshold are excluded from the trend **by default but never silently** — the view shows "N low-confidence sessions hidden — show them?" and the DJ can reveal them; a real set is never erased from the DJ's own history without their knowledge. *(FR-27 — resolved 2026-07-20: exclude-**visibly**; PRD-sync owed. Rationale: Story 1.8 documents the signal as heuristic, not ground truth, so silent deletion isn't defensible.)*
+3. **Given** <1 month of history, **Then** the insufficient-history state renders, positive-framed (not an error). *(UX-DR19)*
+4. **Given** each chart, **Then** it ships a Chart Summary text-equivalent. *(UX-DR7, UX-DR21)*
+
+### Story 4.2: Library-to-setlist correlation trend
+
+As a DJ,
+I want a trend line of whether my recently-added library tracks are making it into sets,
+So that I know if my digging is translating to the dancefloor.
+
+**Acceptance Criteria:**
+
+1. **Given** library add-dates and play history, **Then** a trend line over time shows the share of recently-added tracks that appear in sets. *(FR-10)*
+2. **Given** the chart, **Then** it reuses the shared trend-chart utility + Chart Summary. *(UX-DR6, UX-DR7)*
+3. **Given** sparse data, **Then** the insufficient-history state applies. *(UX-DR19)*
+
+### Story 4.3: Conversion-rate LED-pip meter
+
+As a DJ,
+I want my conversion rate — % of added tracks played ≥1 time over a rolling 90-day window — as an LED-pip meter,
+So that I can gauge how much of my library I actually use.
+
+**Acceptance Criteria:**
+
+1. **Given** a rolling 90-day window, **Then** conversion rate = % of tracks added to the library in the last 90 days that have been played ≥1 time in a set is computed. *(FR-11 — window length confirmed 2026-07-21, Arjun)*
+2. **Given** the display, **Then** it renders as filled/empty square "pips" (hardware-LED-meter style), not a bar or a bare percentage. *(UX-DR11)*
+3. **Given** the metric, **Then** the 90-day rolling-window definition is shown so the number is interpretable.
+4. **Given** a library track missing both `tadd` and `uadd` (~6% of tracks, per Architecture Spine Open Questions #2), **Then** it is excluded from the conversion-rate denominator and disclosed via a distinct "Unknown add-date" count — never silently folded into the computed percentage. *(Architecture Spine OQ#2 graceful-fallback requirement; SM-C1)*
+
+### Story 4.4: Aging shelf with prep-crate action
+
+As a DJ,
+I want a list of library tracks unplayed for 3+ months, sortable by days-unplayed, each with an "add to prep crate" action,
+So that neglected tracks resurface and I can act on them.
+
+**Acceptance Criteria:**
+
+1. **Given** library tracks unplayed 3+ months (from add date or last play), **Then** they list in the aging shelf, sortable by days-unplayed. *(FR-12, UX-DR12)*
+2. **Given** a row, **Then** it carries an explicit "add to prep crate" action — the one place the product nudges toward action. *(UX-DR12)*
+3. **Given** nothing is aging, **Then** the positive-framed empty state renders. *(UX-DR19 aging-shelf-empty)*
+4. **Given** recently-downloaded-not-yet-played tracks (30-day threshold — *[ASSUMPTION], PRD-sync owed*), **Then** the recently-downloaded nudge state renders. *(UX-DR19)*
+5. **Given** a library track missing both `tadd` and `uadd` with no play history to fall back on (~6% of tracks, per Architecture Spine Open Questions #2), **Then** it renders in a distinct "Unknown add-date" state on the aging shelf rather than being silently omitted or defaulted into a sort position. *(Architecture Spine OQ#2 graceful-fallback requirement; SM-C1)*
+
+### Story 4.5: Time-to-first-play
+
+As a DJ,
+I want to see the elapsed time between adding a track and first playing it,
+So that I understand how long tracks sit before they debut.
+
+**Acceptance Criteria:**
+
+1. **Given** a track added then first played, **Then** time-to-first-play = (first-play timestamp − add timestamp) is computed and displayed. *(FR-13)*
+2. **Given** a track never played, **Then** it is represented distinctly (not counted as zero).
+3. **Given** the metric across the library, **Then** an aggregate view (e.g. distribution/median) is shown.
+4. **Given** a track missing both `tadd` and `uadd` (~6% of tracks, per Architecture Spine Open Questions #2), **Then** time-to-first-play renders as "Unknown" (per FR-2's Unknown convention) and is excluded from the aggregate view — never computed against a missing timestamp. *(Architecture Spine OQ#2 graceful-fallback requirement; SM-C1)*
+
+## Epic 5: Set Segments & Layer 2 Enrichment
+
+A DJ can add meaning on top of an immutable as-played set — labeled time-range segments (algorithm-suggested, confirmed via drag or keyboard, or added manually), per-segment stat slices, and Layer 2 enrichment (venue / crowd / event / notes, with optional off-by-default location suggestion). All overlays are web-authored and cloud-only; nothing here is ever required for core dashboard stats. *(UJ-7, UJ-4-lite)*
+
+### Story 5.1: Segments overlay schema
+
+As a developer,
+I want a cloud-only `segments` overlay table with a fixed type enum, disjoint from content columns,
+So that segment overlays never touch agent-written content and stay web-authored.
+
+**Acceptance Criteria:**
+
+1. **Given** the schema, **Then** `segments` rows are overlay / cloud-only, web-authored, never written back to the agent. *(AR-8)*
+2. **Given** segment `type`, **Then** it is the fixed enum {dancefloor, dinner, performance, custom}. *(AR-15)*
+3. **Given** a segment, **Then** it references a set without altering that set's content columns. *(AR-8)*
+
+### Story 5.2: Segment-detection algorithm
+
+As a DJ,
+I want the agent to suggest segment boundaries from my session's timing patterns, calibrated to my own history,
+So that splitting a set into meaningful parts starts from a smart guess, not a blank slate.
+
+**Acceptance Criteria:**
+
+1. **Given** a session, **Then** it is bucketed into fixed time windows with per-window play density, median BPM, and consecutive-pair BPM-delta smoothness computed. *(AR-13)*
+2. **Given** a dancefloor candidate, **Then** it qualifies only if density + BPM clear floors calibrated per-DJ from that DJ's own history (never a global constant); adjacent candidates merge; a segment confirms only if transition-smoothness clears its own floor. *(AR-13)*
+3. **Given** long no-play stretches, **Then** they mark an idle/gap. *(AR-13)*
+4. **Given** a session, **Then** it may yield zero, one, or several dancefloor segments — never assume exactly one. *(AR-13, FR-28)*
+5. **Given** a session spanning a DST transition, **Then** consecutive-pair time deltas stay non-negative and monotonic (the timeline is UTC-based), so per-window density and BPM-delta-smoothness are not corrupted by a repeated hour. *(Boundary's hole #2, party 2026-07-20)*
+
+### Story 5.3: Segment editor
+
+As a DJ,
+I want to confirm/adjust suggested boundaries by dragging or keyboard, or add my own,
+So that segmenting a set is fast, precise, and accessible.
+
+**Acceptance Criteria:**
+
+1. **Given** suggested boundaries, **Then** they render as draggable dividers over the energy arc; a "+" adds a manual boundary. *(FR-14, FR-28, UX-DR9)*
+2. **Given** keyboard-only use, **Then** Tab reaches a boundary, arrows nudge, Enter confirms — a full keyboard path. *(UX-DR9, UX-DR20, UX-DR21)*
+3. **Given** confirm, **Then** it commits; segments remain editable anytime. *(UX-DR9)*
+4. **Given** each segment, **Then** it is typed (dancefloor/dinner/performance) or custom-labeled. *(FR-14)*
+
+### Story 5.4: Segment-scoped stats
+
+As a DJ,
+I want per-set stats sliceable by segment,
+So that I can compare, say, the dinner hour to the peak dancefloor.
+
+**Acceptance Criteria:**
+
+1. **Given** a set with segments, **When** I select a segment, **Then** the FR-6/FR-7 stats recompute scoped to that segment via cloud SQL re-aggregation over `plays`. *(FR-15, AR-8)*
+2. **Given** segment stats, **Then** they derive from synced content (cloud may re-aggregate), not from re-running the agent. *(AR-8)*
+3. **Given** no segments, **Then** whole-set stats show as before — segments are additive, never required.
+
+### Story 5.5: Layer 2 enrichment form
+
+As a DJ,
+I want to add venue, crowd size, event type, and notes to any synced set after the fact,
+So that I can enrich the record without it ever blocking my core stats.
+
+**Acceptance Criteria:**
+
+1. **Given** a synced set, **Then** an inline, expandable Layer 2 form (venue, crowd size, event type, free-text notes) is available beneath stats — never modal, never blocking, always skippable. *(FR-16, UX-DR10)*
+2. **Given** Layer 2 data, **Then** it is web-authored overlay, cloud-only, never required for core dashboard value. *(FR-16, AR-8)*
+3. **Given** no enrichment, **Then** all core stats still render fully. *(FR-16, UX-DR20 — no gating)*
+
+### Story 5.6: Enrichment-driven comparisons
+
+As a DJ,
+I want Layer 2 tags to unlock richer comparisons,
+So that enriching sets pays off with insights I couldn't get otherwise.
+
+**Acceptance Criteria:**
+
+1. **Given** enriched sets, **Then** comparisons like BPM-in-club vs BPM-in-radio become available, keyed off Layer 2 tags. *(FR-17)*
+2. **Given** un-enriched sets, **Then** the comparison simply omits them — enrichment is never required for core stats. *(FR-17)*
+3. **Given** a comparison, **Then** it is framed descriptively, consistent with the product's non-competitive voice.
+
+### Story 5.7: Opt-in location venue suggestion
+
+As a DJ,
+I want an optional, off-by-default location-based venue suggestion that I confirm or edit,
+So that tagging a venue is faster without ever silently recording where I am.
+
+**Acceptance Criteria:**
+
+1. **Given** location suggestion, **Then** it is off by default (opt-in). *(FR-18, NFR-2)*
+2. **Given** it is enabled, **When** a set completes, **Then** the agent captures approximate device location and the website reverse-geocodes it to a suggested venue name. *(FR-18)*
+3. **Given** a suggestion, **Then** it appears as an editable pre-filled field I confirm or edit — never silently saved. *(FR-18, UX-DR10, UX-DR20)*
+4. **Given** it is disabled, **Then** no location is captured. *(FR-18, NFR-2)*
+
+## Epic 6: Marketing & Entry Surfaces
+
+A prospective DJ can discover Curfew through a public Landing page, read a Features walkthrough and a single-tier Pricing page, and enter the signup/login flow (rendered as an overlay on Landing). Launch-facing; sequenced late since SM-1/SM-2 validate on the builder's own use before it exists.
+
+### Story 6.1: Landing page
+
+As a prospective DJ,
+I want a marketing Landing page that hooks me with "compared to what?" and restrained scroll-driven motion,
+So that I immediately grasp what Curfew offers.
+
+**Acceptance Criteria:**
+
+1. **Given** the Landing page, **Then** it presents the "compared to what?" hook with a scroll-driven motion hero used on the Landing only. *(UX-DR16)*
+2. **Given** logged-in surfaces, **Then** they stay still — scroll motion never leaks past Landing. *(UX-DR16, UX-DR20)*
+3. **Given** accessibility, **Then** reduced-motion is honored **And** AA contrast holds. *(UX-DR21)*
+
+### Story 6.2: Features walkthrough
+
+As a prospective DJ,
+I want a Features page walking through what Curfew does,
+So that I can evaluate it before signing up.
+
+**Acceptance Criteria:**
+
+1. **Given** the Features page, **Then** it walks through the core Phase-1 capabilities in the console voice. *(UX-DR16, UX-DR18)*
+2. **Given** the design system, **Then** the page uses only Obsidian tokens.
+
+### Story 6.3: Pricing page
+
+As a prospective DJ,
+I want a single-tier Pricing page,
+So that I see the one plan without a confusing comparison grid.
+
+**Acceptance Criteria:**
+
+1. **Given** the Pricing page, **Then** it shows a single-tier Pricing Card ($6/mo) with a large `display-lg` price + mono "/month" unit and a primary-button CTA to Signup/Login. *(UX-DR14)*
+2. **Given** the card, **Then** there is no comparison table, plan picker, ribbon, or discount badge. *(UX-DR14)*
+3. **Given** the CTA, **When** clicked, **Then** it routes into the auth overlay (Story 6.4).
+
+### Story 6.4: Login/Signup overlay on Landing
+
+As a prospective DJ,
+I want the login/signup flow to appear as an overlay on the Landing page,
+So that entering never dumps me on a blank page.
+
+**Acceptance Criteria:**
+
+1. **Given** a login/signup CTA, **When** clicked, **Then** the auth flow renders as an overlay on Landing — never a separate blank page. *(UX-DR16)*
+2. **Given** the overlay, **Then** it hosts the Epic 2 auth components/paths. *(UX-DR3, FR-29)*
+3. **Given** dismissal, **When** the overlay closes, **Then** it returns to Landing intact.
+
+## Epic 7: Subscription & Billing
+
+A DJ subscribes ($6/mo, with a free trial) via Stripe Checkout, manages/cancels via the hosted Customer Portal, and the web experience is access-gated on subscription status while the **local agent keeps capturing sets regardless** — nothing is lost, and data resumes syncing on reactivation. Grounded in AD-18/AD-19 (Architecture Spine) + SOLUTION-DESIGN §3.7. Launch-gating but not required to validate SM-1/SM-2.
+
+### Story 7.1: Billing columns + write-scoped `SECURITY DEFINER` function
+
+As a developer,
+I want four additive billing columns on `djs` plus a single `SECURITY DEFINER` function that is their only writer,
+So that subscription state lives on the account with a database-enforced, minimal write surface.
+
+**Acceptance Criteria:**
+
+1. **Given** an additive migration, **Then** `djs` gains nullable `stripe_customer_id`, `stripe_subscription_id`, `subscription_status` (text, Stripe's verbatim status), and `current_period_end`. *(AD-19, AR-12)*
+2. **Given** `subscription_status`, **Then** it is `text` (not a restrictive DB enum) **And** while `= 'trialing'`, `current_period_end` is the trial end (no separate trial column). *(AD-19)*
+3. **Given** RLS, **Then** a DJ can read their own billing columns, but no RLS `UPDATE` policy ever grants a DJ write access to them. *(AD-19)*
+4. **Given** `apply_subscription_event(...)`, **Then** it is a `SECURITY DEFINER` function that touches only these four columns and is the sole caller of the elevated key from billing code. *(AD-18)*
+
+### Story 7.2: Stripe Checkout subscribe flow
+
+As a DJ,
+I want to subscribe ($6/mo, with a free trial) via Stripe's hosted Checkout from the pricing/entry flow,
+So that I can pay without Curfew ever handling my card.
+
+**Acceptance Criteria:**
+
+1. **Given** an authenticated DJ, **When** they start checkout, **Then** the app creates a Stripe Checkout Session carrying `client_reference_id`/`metadata.dj_id` = that DJ's id and `trial_period_days` (default 14). *(AD-18)*
+2. **Given** the session, **Then** the DJ is sent to Stripe's hosted Checkout page — no bespoke payment UI. *(AD-18)*
+3. **Given** trial config, **Then** trial length is a Stripe business parameter, not hard-coded app logic. *(AD-18)*
+
+### Story 7.3: Payment webhook route handler
+
+As the system,
+I want a signature-verified, idempotent Stripe webhook that writes subscription state via the scoped function,
+So that subscription changes reach the account exactly once and can't be forged or corrupted by retries.
+
+**Acceptance Criteria:**
+
+1. **Given** the webhook, **Then** it is a Next.js Route Handler in the existing `web/` deployment pinned to the Node.js runtime (not Edge), authenticated via `stripe.webhooks.constructEvent` (raw body + signing secret), not a Supabase JWT. *(AD-18)*
+2. **Given** an event, **Then** `dj_id` is read from the event's own `metadata`, never re-derived from an email/customer lookup. *(AD-18)*
+3. **Given** at-least-once, unordered delivery, **Then** the handler dedupes on `event.id` **And** on a subscription-changed event re-fetches the canonical subscription object from the Stripe API rather than trusting the payload verbatim. *(AD-18)*
+4. **Given** a write, **Then** it goes only through `apply_subscription_event(...)` — never a raw elevated-key `UPDATE`. *(AD-18)*
+
+### Story 7.4: Customer Portal (manage/cancel)
+
+As a DJ,
+I want a self-serve Stripe Customer Portal to manage or cancel my subscription,
+So that I control my billing without contacting support.
+
+**Acceptance Criteria:**
+
+1. **Given** an authenticated subscribed DJ, **When** they open billing management, **Then** a Stripe Customer Portal session is created and they are sent to the hosted portal. *(AD-18)*
+2. **Given** a change/cancel in the portal, **Then** it arrives back via the Story 7.3 webhook and updates `subscription_status`. *(AD-18, AD-19)*
+3. **Given** the product, **Then** no subscription-lifecycle UI is hand-built. *(AD-18)*
+
+### Story 7.5: Web access-gate on subscription
+
+As a DJ,
+I want the web dashboard gated on my subscription while my agent keeps capturing sets regardless,
+So that lapsing restricts the website but never loses my data.
+
+**Acceptance Criteria:**
+
+1. **Given** a web route serving dashboard/stats, **When** accessed, **Then** a route guard allows `active`/`trialing` and restricts otherwise. *(AD-19)*
+2. **Given** the agent, **Then** its local capture (parse → local SQLite → sync-queue) and the idempotent `PUT /sets/:set_id` endpoint are never gated by `subscription_status` — billing state is invisible to the agent. *(AD-19 hard invariant)*
+3. **Given** a lapsed subscriber, **Then** their agent keeps parsing and queuing sets locally with no data loss. *(AD-19)*
+4. **Given** reactivation, **When** the next webhook flips status to active, **Then** already-synced sets appear immediately (no backfill needed). *(AD-19, §3.7)*
