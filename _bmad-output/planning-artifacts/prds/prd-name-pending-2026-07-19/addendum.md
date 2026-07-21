@@ -62,7 +62,7 @@ Baseline for FR-2/FR-6 and for SM-C1's "Unknown rate must stay honestly visible"
 - BPM (`tbpm`): 100.0% (4972/4974)
 - Key (`tkey`): 98.8% (4912/4974), Camelot-ready notation, 53 distinct keys
 - Title/file path (`tsng`/`pfil`): 100%
-- Artist (`tart`): 89.2% — FR-6's "most played artists" stat has no stated Unknown-fallback behavior for the ~11% gap; worth deciding during UX/architecture.
+- Artist (`tart`): 89.2% — **RESOLVED (2026-07-20, Arjun)**: FR-6's "most played artists" stat ranks artist-tagged plays only — no "Unknown" bucket in the ranking and no "N untagged" footnote. The ~11% no-artist plays still count in every non-artist stat and still render as "Unknown" in the tracklist (per FR-2), so SM-C1 honesty is carried by the tracklist, not the leaderboard. Recorded as SPEC-name-pending CAP-5; see Architecture Spine Open Questions #4.
 - Genre (`tgen`): 80.4% overall, but **collapses hard by file type even for in-library tracks**, independent of the taxonomy-dirtiness issue FR-8 already addresses: WAV/AIFF measured at 0% genre coverage, QuickTime-container files at 25%, vs. MP3 at 80.7%. A DJ whose library is WAV-heavy will see materially worse genre stats than one on MP3 — this isn't a long-tail edge case, it's a file-type-correlated gap FR-6/FR-9/FR-24 should account for (Unknown display per FR-2, not a silently thin chart).
 - Genre taxonomy is dirty at the string level: 169 distinct raw genre strings feed FR-8's normalization table, with a 419-track "Other" bucket in the sampled library — sets the scale of what the fixed mapping table needs to cover.
 - Release year (`ttyr`): 78.4%.

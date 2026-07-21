@@ -11,7 +11,7 @@ companions:
 sources: []
 ---
 
-> **Canonical contract.** This SPEC and the files in `companions:` are the complete, preservation-validated contract for what to build, test, and validate. The kernel below fixes the WHY, the capability set (with stable `CAP-N` IDs mapped to PRD `FR-N`), the load-bearing constraints, the non-goals, and the success gate. The companions hold the detail the kernel cites: `prd.md`/`addendum.md` for per-FR product detail and parser/field-coverage facts, `ARCHITECTURE-SPINE.md` (AD-1…AD-17 + diagrams) and `SOLUTION-DESIGN.md` for architecture invariants and walkthrough, `EXPERIENCE.md`/`DESIGN.md` for UX behavior and visual system.
+> **Canonical contract.** This SPEC and the files in `companions:` are the complete, preservation-validated contract for what to build, test, and validate. The kernel below fixes the WHY, the capability set (with stable `CAP-N` IDs mapped to PRD `FR-N`), the load-bearing constraints, the non-goals, and the success gate. The companions hold the detail the kernel cites: `prd.md`/`addendum.md` for per-FR product detail and parser/field-coverage facts, `ARCHITECTURE-SPINE.md` (AD-1…AD-19 + diagrams) and `SOLUTION-DESIGN.md` for architecture invariants and walkthrough, `EXPERIENCE.md`/`DESIGN.md` for UX behavior and visual system.
 
 # Curfew
 
@@ -79,6 +79,10 @@ Each capability cites the PRD `FR-N` it covers and its architectural governance 
   - **intent:** Keep a Serato format change from silently corrupting synced data, via golden-file CI tests, agent-side error reporting tagged with `agent_version`, a signed auto-updater, and backfill from retained local raw data after a fix.
   - **success:** A format change is caught by CI pre-release or by tagged in-the-wild error reports post-release; a signed update ships the parser fix; affected sets are re-parsed from retained local raw data and backfilled without duplication (deterministic `set_id`) or overlay loss (content-only upsert).
 
+- **CAP-15 — Subscription & billing gate** *(Phase 1, launch-gating · Epic 7 · AD-18, AD-19)*
+  - **intent:** A DJ subscribes ($6/mo, with a free trial) via Stripe Checkout and manages/cancels via the Stripe Customer Portal; the webhook is a Node-runtime Next.js Route Handler, the one sanctioned exception to AD-8's "no bespoke write path," writing only through the `SECURITY DEFINER apply_subscription_event(...)` function scoped to four additive `djs` columns.
+  - **success:** A lapsed/inactive `subscription_status` restricts the web dashboard/stats only — never the local agent's capture: the agent keeps parsing and queuing sets locally with no data loss, and already-synced-while-lapsed sets appear immediately on reactivation with no backfill needed. Must ship before public paid launch; not required to validate SM-1/SM-2.
+
 ## Constraints
 
 - **Raw-data boundary.** Raw `.session` files and the raw library DB never leave the DJ's machine; only derived/normalized JSON syncs, over HTTPS. Agent filesystem access is capability-scoped to the configured Serato path only. *(FR-3, AD-2, §5.2)*
@@ -91,7 +95,7 @@ Each capability cites the PRD `FR-N` it covers and its architectural governance 
 - **Reflection, not coaching or gamification.** Framing stays descriptive/comparative to the DJ's own baseline, never coach-graded; no streak counters, gamified-habit visuals, or celebratory milestone animations; copy favors community over status (no "best"/"winner"/ranking language). *(§6.2, SM-C2)*
 - **Platform boundary.** Serato only (no Rekordbox in V1). The agent is Tauri 2/Rust on macOS + Windows desktop; the DJ-facing experience is a responsive website (desktop/laptop-first), with no native mobile app. *(§6.3, AD-11)*
 - **US-only at launch.** A CCPA-level posture is sufficient at v1; GDPR-equivalent review is deferred until international expansion. The formal CCPA-compliance review remains a pre-launch checklist item. *(arch OQ#6)*
-- **Single subscription tier, $6/month.** A locked PM decision made deliberately against the WTP survey's one-time-payment preference; pricing surfaces show one plan with nothing to compare. *(§7)*
+- **Single subscription tier, $6/month.** A locked PM decision made deliberately against the WTP survey's one-time-payment preference; pricing surfaces show one plan with nothing to compare. The subscription gate is web-only and never reaches the local agent's capture path — billing state is invisible to sync. *(§7, AD-18, AD-19, CAP-15)*
 - **Accessibility floor.** WCAG 2.2 AA across the website; every chart ships a plain-language text-equivalent so the core value moment is reachable without seeing the chart; every drag interaction has a keyboard path. *(EXPERIENCE Accessibility Floor)*
 
 ## Non-goals
