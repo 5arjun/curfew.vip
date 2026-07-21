@@ -6,8 +6,11 @@ name: CI
 # OF SCOPE here — that is Epic 2 (AR-14). CI compiles the Rust core; it does not
 # produce or sign installers.
 
+# push runs only on main; branch validation happens via pull_request, so a PR
+# branch does not double-run the whole matrix (push + pull_request) on every push.
 on:
   push:
+    branches: [main]
   pull_request:
 
 concurrency:
@@ -100,7 +103,7 @@ jobs:
 
       # ubuntu-latest ships Docker; boot the local Postgres and apply migrations.
       - name: Start local Postgres
-        run: supabase db start
+        run: supabase start
 
       - name: Apply migrations (assert clean apply)
         run: supabase migration up

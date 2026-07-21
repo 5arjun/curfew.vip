@@ -13,7 +13,8 @@
         "title": "Curfew Agent",
         "width": 420,
         "height": 320,
-        "resizable": true
+        "resizable": true,
+        "visible": false
       }
     ],
     "security": {

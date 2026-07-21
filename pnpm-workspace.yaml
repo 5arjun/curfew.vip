@@ -15,9 +15,6 @@ packages:
 # gate requires an explicit decision per package. sharp and unrs-resolver (pulled
 # transitively by Next.js) ship prebuilt platform binaries via optional deps, so
 # their native build scripts are not needed — denied here for a reproducible install.
-allowBuilds:
-  sharp: false
-  unrs-resolver: false
 ignoredBuiltDependencies:
   - sharp
   - unrs-resolver

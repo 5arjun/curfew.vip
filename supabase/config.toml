@@ -65,7 +65,11 @@ schema_paths = []
 
 [db.seed]
 # If enabled, seeds the database after migrations during a db reset.
-enabled = true
+# Disabled: no seed data exists yet (this scaffold's only migration is a no-op),
+# and sql_paths below points at a file that isn't committed. A fresh CI volume
+# seeds automatically on first `supabase start`/`db reset`, so leaving this on
+# with a missing seed file would break the AC-4 migration-apply CI gate.
+enabled = false
 # Specifies an ordered list of seed files to load during db reset.
 # Supports glob patterns relative to supabase directory: "./seeds/*.sql"
 sql_paths = ["./seed.sql"]

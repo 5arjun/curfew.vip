@@ -4,7 +4,7 @@ baseline_commit: 7f867cad8f0158fcaba4067f9a91fbc9565d464f
 
 # Story 1.1: Monorepo scaffold with three workspaces
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -231,3 +231,34 @@ First-party, from-scratch monorepo scaffold — **no external greenfield boilerp
 | Date | Version | Description |
 |------|---------|-------------|
 | 2026-07-21 | 0.1 | Story 1.1 implemented: from-scratch monorepo scaffold (`agent/` Tauri 2 + Rust · `web/` Next.js 16 · `shared/` draft contract) + `supabase/` additive-only migrations + CI. All 4 ACs met and verified locally; status → review. |
+| 2026-07-21 | 0.2 | Code review round 1: 8 patches applied + verified, 3 deferred (tracked in `deferred-work.md`); status → done. |
+
+## Review Findings
+
+_Code review 2026-07-21 (branch diff vs `main`). 3 adversarial layers: Blind Hunter, Edge Case Hunter, Acceptance Auditor._
+
+- [x] [Review][Patch] Make agent tray-only — no window shown on launch (resolved from Decision: chose tray-only per UX-DR23). Register a minimal system tray and start the window hidden. [agent/src-tauri/tauri.conf.json:10-18]
+- [x] [Review][Patch] Invalid Supabase CLI command breaks the CI migration gate — `supabase db start` is not a subcommand; correct verb is `supabase start` (as used in `supabase/README.md`). AC-4 job fails every run. [.github/workflows/ci.yml:103]
+- [x] [Review][Patch] `bootstrap` uses `--frozen-lockfile=false` while CI uses `--frozen-lockfile` — clean-checkout bootstrap can silently mutate `pnpm-lock.yaml` and still pass, then fail CI; undermines AC-1 reproducibility. [package.json:19]
+- [x] [Review][Patch] `allowBuilds:` is not a recognized pnpm-workspace.yaml key — dead config, redundant with the `ignoredBuiltDependencies` block already present. [pnpm-workspace.yaml:18-20]
+- [x] [Review][Patch] CI runs on every `push` AND `pull_request` with no branch filter — double-runs the full 3-job matrix on PR branches; `concurrency` keyed on `github.ref` won't dedupe push vs PR refs. [.github/workflows/ci.yml:9-15]
+- [x] [Review][Patch] `turbo.json` makes `lint`/`typecheck`/`test` depend on `^build` — unnecessary since `web` consumes `@curfew/shared` from source (via `exports` + `transpilePackages`); forces a full shared build before every lint/typecheck. [turbo.json:9-17]
+- [x] [Review][Patch] `load_sync_payload_schema()` is a `pub fn` that `panic!`s on I/O/parse error — seeds the crate's public API with a panic-on-error path; should return `Result`. [agent/src-tauri/src/lib.rs:28-34]
+- [x] [Review][Patch] `web/README.md` is unmodified create-next-app boilerplate now factually wrong — claims `next/font`/Geist (import was removed) and documents `npm`/`yarn`/`bun` in a pnpm-only frozen-lockfile repo. [web/README.md:1]
+- [x] [Review][Defer] `csp: null` disables the webview Content-Security-Policy in the inherited baseline — deferred, tracked posture note (agent later loads local Serato data). [agent/src-tauri/tauri.conf.json:20]
+- [x] [Review][Defer] CI has no OS matrix — agent Rust core only built/tested on Linux; cross-platform desktop build unguarded. Deferred: cross-platform bundling is Epic 2 scope. [.github/workflows/ci.yml:48]
+- [x] [Review][Defer] TS↔schema parity test asserts only enums + version, not full property/required-key parity — structural drift can pass undetected. Deferred: deeper parity is future contract-freeze work. [agent/src-tauri/src/lib.rs:49; shared/src/index.test.ts]
+
+_Code review round 2 — 2026-07-21 (full branch diff vs `main`, including the round-1 patches above applied but uncommitted). 3 adversarial layers: Blind Hunter, Edge Case Hunter, Acceptance Auditor._
+
+- [x] [Review][Patch] No quit affordance on the new tray icon — the tray click handler toggles the window on any click type and there is no context menu with a Quit item. Once the macOS Dock icon is also hidden (see the activationPolicy patch below), there is no OS-level way to quit the agent short of Force Quit / kill. Decision (Arjun, 2026-07-21): add a minimal Quit menu item now rather than deferring to the later tray-UX story. Fixed: tray now has a "Quit Curfew Agent" menu item shown on right-click (`show_menu_on_left_click(false)`); left-click still toggles the window. [agent/src-tauri/src/lib.rs]
+- [x] [Review][Patch] Tray setup panics if the bundled default icon is missing (`app.default_window_icon().cloned().expect(...)`) — inconsistent with the sibling fix in this same diff that made `load_sync_payload_schema()` return `Result` instead of panicking. Fixed: replaced `.expect()` with `.ok_or(...)?`, propagating a normal setup error instead of panicking. [agent/src-tauri/src/lib.rs:626-630]
+- [x] [Review][Patch] No `on_window_event` handler on the main window — the native close ("X") button destroys the window instead of hiding it, so the tray click handler can never reopen it again, defeating the tray-only design this exact patch round just implemented. Fixed: `on_window_event` now intercepts `CloseRequested`, calls `prevent_close()`, and hides the window instead. [agent/src-tauri/src/lib.rs]
+- [x] [Review][Patch] No macOS `activationPolicy: "Accessory"` set — without it the app still shows a Dock icon and Cmd+Tab entry despite the "tray-only, no window on launch" fix just applied for UX-DR23. Fixed: `app.set_activation_policy(tauri::ActivationPolicy::Accessory)` called in `run()`'s setup, gated `#[cfg(target_os = "macos")]`. [agent/src-tauri/src/lib.rs]
+- [x] [Review][Patch] `supabase/config.toml` has `[db.seed] enabled = true` with `sql_paths = ["./seed.sql"]`, but no `supabase/seed.sql` was ever committed — a first-time `supabase start`/`db reset` against a fresh (ephemeral CI) volume seeds automatically and will error on the missing file, risking AC-4's "clean apply" CI gate. Fixed: set `enabled = false` with an inline comment explaining why (no seed data exists yet for this scaffold). [supabase/config.toml:66-71]
+- [x] [Review][Patch] `.nvmrc` pins Node `22` while `package.json` `engines.node` says `>=20` — the two floors disagree; a contributor on Node 20/21 satisfies `engines` but diverges from what `.nvmrc`-driven tooling (and CI's `node-version-file: .nvmrc`) actually installs. Fixed: `engines.node` bumped to `>=22` to match `.nvmrc`; README prerequisites table updated to match. [package.json:8; .nvmrc:1]
+- [x] [Review][Patch] Root `README.md` is encoded as UTF-16LE (confirmed via byte inspection — every other README in the repo is UTF-8) — renders as mojibake/garbled in most Markdown viewers, undermining AC-1's requirement that the bootstrap docs be real and readable. Fixed: converted to UTF-8 (content verified byte-identical after re-encoding, no BOM). [README.md]
+- [x] [Review][Patch] Change Log table has only one entry (v0.1, "status → review") even though `sprint-status.yaml` records a second event ("code-reviewed, 8 patches applied + verified, 3 deferred → done") — the two bookkeeping sources disagree on when the story actually finished. Fixed: added a 0.2 Change Log row for the review round 1 → done transition. [Change Log]
+- [x] [Review][Defer] `window.is_visible().unwrap_or(false)` in the tray click handler silently treats a platform query error as "not visible," which could re-show/refocus an already-visible window with no diagnostic. Low likelihood, low impact. [agent/src-tauri/src/lib.rs]
+- [x] [Review][Defer] The Supabase CI job boots the entire local stack (Postgres, Studio, Auth, Storage, Realtime, Edge Runtime, Analytics, vector, etc.) just to prove one no-op migration applies — heavy and a plausible source of CI slowness/flakiness as the project grows. Mirrors what the story's own Dev Notes prescribe, so it's an accepted tradeoff, not a code defect — flagged for future lighter-weight CI investigation. [.github/workflows/ci.yml]
+- [x] [Review][Defer] `sync_payload_schema_path()` resolves the shared schema location via `env!("CARGO_MANIFEST_DIR")`, a compile-time path baked to the build machine's source tree — fine for `cargo test` today, but this `pub` function will silently fail once called from a bundled, installed agent on an end user's machine. Real pipeline wiring is explicitly Stories 1.3+ scope. [agent/src-tauri/src/lib.rs]

@@ -5,7 +5,7 @@
   "description": "Curfew — DJ reflection platform. Monorepo: agent/ (Tauri 2 + Rust) · web/ (Next.js 16) · shared/ (versioned sync contract).",
   "packageManager": "pnpm@11.15.1",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "build": "turbo run build",
@@ -16,7 +16,7 @@
     "fmt:agent": "cargo fmt --manifest-path agent/src-tauri/Cargo.toml -- --check",
     "clippy:agent": "cargo clippy --manifest-path agent/src-tauri/Cargo.toml -- -D warnings",
     "test:agent": "cargo test --manifest-path agent/src-tauri/Cargo.toml",
-    "bootstrap": "pnpm install --frozen-lockfile=false && pnpm run build && pnpm run build:agent"
+    "bootstrap": "pnpm install --frozen-lockfile && pnpm run build && pnpm run build:agent"
   },
   "devDependencies": {
     "turbo": "^2.10.5"
