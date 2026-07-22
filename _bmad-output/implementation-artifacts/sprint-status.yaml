@@ -50,6 +50,8 @@ project: name-pending
 # 2026-07-22: story 1-3 context-engineered (clean-room .session parser, builds on 1.2's findings) → ready-for-dev
 # 2026-07-22: story 1-3 dev-story started (spec committed first per request) → in-progress
 # 2026-07-22: story 1-3 clean-room .session parser implemented (Tasks 1-5, 10 tests, gate green) → review
+# 2026-07-22: story 1-3 code-reviewed (RF-1..RF-5 + ordering correction, 21 tests, gate green) → done
+# 2026-07-22: master.sqlite play-log scope gap (1.3's Open Questions #1) resolved as new story 1-3b, added to epics.md; 2.6/2.8 ACs updated to select play-log source
 project_key: NOKEY
 tracking_system: file-system
 story_location: "{project-root}/_bmad-output/implementation-artifacts"
@@ -59,7 +61,8 @@ development_status:
   epic-1: in-progress
   1-1-monorepo-scaffold-with-three-workspaces: done
   1-2-parser-validation-spike-against-real-sessions: done
-  1-3-clean-room-session-parser: review
+  1-3-clean-room-session-parser: done
+  1-3b-master-sqlite-play-log-reader: backlog
   1-4-library-join-for-in-library-enrichment: backlog
   1-5-off-library-embedded-tag-fallback-with-visible-unknown: backlog
   1-6-edge-genre-normalization-versioned: backlog

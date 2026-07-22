@@ -179,7 +179,7 @@ This document provides the complete epic and story breakdown for Curfew, decompo
 
 ### Epic 1: Foundation & Proven Parsing
 
-Stand up the monorepo (`agent/` · `web/` · `shared/`) and the `shared/` versioned sync contract, then build and **prove** the local parsing + stat engine against real multi-track Serato sessions — clean-room `.session` parser, library join (both legacy `database V2` and Serato 4+ `master.sqlite`), off-library embedded-tag fallback with visible "Unknown," edge genre normalization (raw + normalized + `taxonomy_version`), and the core per-set stat math — all golden-file tested offline, closing the **SM-1** parsing-correctness gate before any cloud or code-signing spend. This is the risk-boundary-first foundation everything else builds on; its outcome is concretely demonstrable (point the engine at a real Serato folder → accurate normalized per-set stats).
+Stand up the monorepo (`agent/` · `web/` · `shared/`) and the `shared/` versioned sync contract, then build and **prove** the local parsing + stat engine against real multi-track Serato sessions — clean-room `.session` parser plus a `master.sqlite` play-log reader for Serato 4+ installs (two play-log sources, one `Play` contract), library join (both legacy `database V2` and Serato 4+ `master.sqlite`), off-library embedded-tag fallback with visible "Unknown," edge genre normalization (raw + normalized + `taxonomy_version`), and the core per-set stat math — all golden-file tested offline, closing the **SM-1** parsing-correctness gate before any cloud or code-signing spend. This is the risk-boundary-first foundation everything else builds on; its outcome is concretely demonstrable (point the engine at a real Serato folder → accurate normalized per-set stats).
 **FRs covered:** FR-2, FR-8, FR-27 *(signal only; prompt dormant until Phase 2)* — plus the stat-computation foundation for FR-6/FR-7. **ARs:** AR-1, AR-5, AR-6, AR-15, AR-16. **NFRs:** NFR-1, NFR-5.
 *Design notes:* (a) the epic **leads with a parser-validation spike** against real sessions before the full pipeline is committed — the algorithm is validated, the clean-room Rust implementation is not; **scope the spike to the riskiest real session types** (multi-track wedding, USB-hosted library, WAV-heavy library); (b) the `shared/` derived-payload/stat-output shape is designed against the **Set Detail + Style Evolution UX** (its frozen, additive-only consumer), not blind; (c) **freeze the `shared/` contract only *after* the spike** — freezing it before parsing reality is known risks additive-only "contract debt" that ripples to E2–E5.
 
@@ -258,6 +258,21 @@ So that the raw as-played sequence is available on-device for enrichment and sta
 2. **Given** the pinned `triseratops` git commit + `id3` crate, **When** the parser uses them, **Then** it depends on the exact pinned commit (not the stale crates.io `0.0.3`). *(AR-5)*
 3. **Given** a malformed or truncated `.session`, **When** parsed, **Then** it fails safely with a diagnostic (never a panic that crashes the agent) **And** the raw file is retained for backfill. *(AR-5, AR-7)*
 4. **Given** the same file, **When** parsed twice, **Then** output is deterministic (identical ordered plays).
+
+### Story 1.3b: `master.sqlite` play-log reader
+
+As a developer,
+I want a reader that produces the same ordered `Vec<Play>` contract as Story 1.3, sourced from Serato 4+'s `master.sqlite` (`history_session`/`history_entry` tables) instead of a legacy `.session` file,
+So that DJs on Serato 4+ — whose legacy `~/Music/_Serato_/History/Sessions/` folder no longer changes — still produce plays for the watcher/capture pipeline.
+
+**Acceptance Criteria:**
+
+1. **Given** a Serato 4+ `master.sqlite`, **When** its `history_session`/`history_entry` tables are read for a given session, **Then** an ordered list of plays is produced in the same shape Story 1.3's `Play` uses (track ref + timestamps), via direct SQL reads — no binary envelope decoding. *(AR-5)*
+2. **Given** the same session data, **When** read twice, **Then** output is deterministic (identical ordered plays), matching Story 1.3 AC-4's guarantee.
+3. **Given** a session with a malformed or unreadable row, **Then** it fails safely with a diagnostic — never a panic — consistent with Story 1.3 AC-3's failure contract.
+4. **Given** Story 2.6 (folder/library auto-detection) and Story 2.8 (set capture), **Then** this reader is the play-log source selected for DJs on a Serato 4+ install, while Story 1.3's `.session` parser remains the source for legacy `database V2` installs — the watcher never has to choose blind. *(closes the scope gap flagged in Story 1.3's Review Findings / Open Questions #1)*
+
+> **Design note:** this story exists because Story 1.2's findings (§6) found the legacy `.session` folder frozen as of 2025-12-11 on real hardware, while `master.sqlite` holds that DJ's entire live play history with no binary decoding needed. Story 1.4 ("Library join") stays scoped to **metadata enrichment only** (BPM/key/genre lookup) for both legacy and Serato-4+ libraries — it must not also become the play-log ingestion path; that would conflate two different concerns (metadata join vs. play-log source) under one story. Kept as a sibling to 1.3 rather than folded into 1.4.
 
 ### Story 1.4: Library join for in-library enrichment
 
@@ -451,6 +466,7 @@ So that setup is one confirmation and keeps working across removable media.
 2. **Given** nothing is found, **Then** I can set a manual path override via the tray. *(FR-1)*
 3. **Given** first run, **When** a path is detected, **Then** I confirm or edit it before it is used — never silent auto-selection. *(UX-DR19 first-run, UX-DR20 confirm-never-silent)*
 4. **Given** a removable drive is reconnected, **Then** the agent auto-detects it and resumes watching. *(FR-1)*
+5. **Given** the detected install is Serato 4+ (`master.sqlite` present), **Then** the agent watches `master.sqlite` for new `history_session` rows as the play-log source (Story 1.3b), not the legacy `.session` folder, which may no longer change on that install. *(FR-1; closes the scope gap flagged in Story 1.3's Review Findings)*
 
 ### Story 2.7: Local-only raw-data boundary
 
@@ -472,7 +488,7 @@ So that my sets survive offline and are available to sync and backfill.
 
 **Acceptance Criteria:**
 
-1. **Given** a completed Serato session with no DJ action, **When** detected, **Then** the agent runs the Epic 1 parse/enrich/stat engine and writes the result + retained raw to local SQLite. *(FR-1, AR-3)*
+1. **Given** a completed Serato session with no DJ action, **When** detected, **Then** the agent runs the Epic 1 parse/enrich/stat engine — Story 1.3's `.session` parser or Story 1.3b's `master.sqlite` reader, per Story 2.6's source selection — and writes the result + retained raw to local SQLite. *(FR-1, AR-3)*
 2. **Given** local SQLite, **Then** it serves as durable parse + offline cache + raw retention, authoritative for a set until it syncs. *(AR-3)*
 3. **Given** a set already captured, **When** re-detected, **Then** it is not duplicated locally (deterministic session identity). *(AR-2 foundation)*
 4. **Given** an interrupted or partial session (laptop sleep, agent crash, drive yanked mid-gig), **Then** "completed" is defined by an explicit completion signal — a partial capture is marked **incomplete** and is **not** synced as if it were the whole night; it either resumes or is flagged, never silently truncated. *(Boundary's hole #3, party 2026-07-20 — sharpens FR-1's "completed session")*
