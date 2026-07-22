@@ -4,7 +4,7 @@ baseline_commit: eb47ed1c17c857e2c080a7be8214e10594b10082
 
 # Story 1.3: Clean-room `.session` parser
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -23,39 +23,39 @@ So that the raw as-played sequence is available on-device for enrichment and sta
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Wire the pinned parser dependencies into production `Cargo.toml`** (AC: 2)
-  - [ ] In `agent/src-tauri/Cargo.toml`, add `triseratops = { git = "https://github.com/Holzhaus/triseratops.git", rev = "8e92aae1794c4f02a2405eb88ea72f251b077f0c" }` — re-verify this is still `main`'s HEAD immediately before implementing (verified unchanged as of 2026-07-22; re-check via `git ls-remote https://github.com/Holzhaus/triseratops.git main`). Do not float `main`; pin the exact commit.
-  - [ ] Add `id3 = "1.17.0"` (re-verified current on crates.io as of 2026-07-22).
-  - [ ] Remove the "NOTE: parser/enrichment crates ... are intentionally NOT added here" comment in `Cargo.toml` (it's stale once this task lands).
-  - [ ] `cargo build --manifest-path agent/src-tauri/Cargo.toml` succeeds, pulling the pinned git commit. Note: this story's own parser code (Task 2) does not call either crate — see Dev Notes → Why pin now if unused.
+- [x] **Task 1 — Wire the pinned parser dependencies into production `Cargo.toml`** (AC: 2)
+  - [x] In `agent/src-tauri/Cargo.toml`, add `triseratops = { git = "https://github.com/Holzhaus/triseratops.git", rev = "8e92aae1794c4f02a2405eb88ea72f251b077f0c" }` — re-verify this is still `main`'s HEAD immediately before implementing (verified unchanged as of 2026-07-22; re-check via `git ls-remote https://github.com/Holzhaus/triseratops.git main`). Do not float `main`; pin the exact commit.
+  - [x] Add `id3 = "1.17.0"` (re-verified current on crates.io as of 2026-07-22).
+  - [x] Remove the "NOTE: parser/enrichment crates ... are intentionally NOT added here" comment in `Cargo.toml` (it's stale once this task lands).
+  - [x] `cargo build --manifest-path agent/src-tauri/Cargo.toml` succeeds, pulling the pinned git commit. Note: this story's own parser code (Task 2) does not call either crate — see Dev Notes → Why pin now if unused.
 
-- [ ] **Task 2 — Implement the clean-room `.session` parser module** (AC: 1, 3, 4)
-  - [ ] Create `agent/src-tauri/src/parser/mod.rs` (public surface) and `agent/src-tauri/src/parser/session.rs` (the binary decode), registered via `pub mod parser;` in `lib.rs`. This follows the `watcher → parser → joiner → stat-engine → local store → sync-queue` pipeline naming already documented in `agent/src-tauri/src/lib.rs`'s module doc comment.
-  - [ ] Implement the envelope + field-ID decode fresh, against the confirmed structure in Dev Notes → Confirmed binary format below (sourced from Story 1.2's findings doc, not ported from any third-party parser — see Dev Notes → Clean-room discipline).
-  - [ ] **Top-level walk is structural, never a byte scan.** Loop over the buffer reading tag(4 bytes) + length(4-byte BE `u32`), then always advance by exactly that declared length — for **every** top-level tag, not just `oent`. When the tag is `oent`, decode it as a play (see below); any other top-level tag (e.g. the leading `vrsn` header — see Dev Notes → Confirmed binary format) is skipped by arithmetic alone. Do **not** port the spike's `i += 1` byte-by-byte resync loop — advancing by the declared length instead of scanning for a literal `"oent"` match eliminates the resync-desync risk category entirely, it isn't just deprioritized (see Dev Notes → What must NOT be inherited from the spike).
-  - [ ] Public API: `pub fn parse(data: &[u8]) -> Result<Vec<Play>, ParseError>` (pure, no IO — the primary unit-testable entry point) and `pub fn parse_session_file(path: &Path) -> Result<Vec<Play>, ParseError>` (reads the file via `std::fs::read`, maps IO failure to `ParseError::Io`, then delegates to `parse`).
-  - [ ] `Play` carries only the high-confidence fields from the findings doc's field map, **every field `Option<...>`**: `path: Option<String>` (track reference, field 2), `title` (6), `artist` (7), `label` (8), `genre` (9), `grouping` (17), `year` (23), `start_time: Option<u32>` (28), `deck: Option<u32>` (31), `duration_sec: Option<u32>` (45), `key` (51) — string fields `Option<String>`. Optional-everywhere is not defensive hedging: the spike's own real-data run observed a "High confidence" field (`artist`) come back `None` on an otherwise well-formed record (see spike sample output, findings doc §9), so absence is a normal case, not corruption. AC-1's "track reference" means the field exists on `Play`, not that it's guaranteed non-null — no play is filtered out of the result for having missing fields. Do **not** include field 15 (candidate BPM) or fields 29/53 (candidate end/modified time) — findings doc §3 marks these low-confidence; BPM must come from the library join / embedded tags (Stories 1.4/1.5), not this play-log field.
-  - [ ] Dedup by field-1 `row_id` before returning from `parse` — order-preserving (first occurrence in file order wins), using a `HashSet<u32>` of seen row IDs rather than assuming duplicates are adjacent. A play with no parseable `row_id` (`None`) is never deduped against anything. `row_id` itself is **not** a field on `Play` — it's consumed internally by `parse` purely to drive the dedup set, then dropped; downstream consumers never see it (matches the field list above, and nothing in Story 1.10's contract inputs table needs it). This is required for AC-1's "ordered list of plays" to be truthful: findings doc §5 (D1) found byte-for-byte duplicate `oent` records in roughly half of real sessions tested, which would silently double-count plays without this. Dedup must be internal/invisible to callers — `parse`'s return value is already the deduped list (findings doc §8).
-  - [ ] `ParseError` has exactly two variants, both actually reachable and tested (unlike the spike's dead `Truncated` — see Dev Notes → What must NOT be inherited from the spike): `Io(std::io::Error)` and `Truncated { offset: usize }`. **Every declared length is checked against its own enclosing bound, and a violation returns `Err(Truncated)` — never a silent clamp**: an outer `oent` record's length is checked against the remaining file buffer; an `adat` record's length is checked against its enclosing `oent`'s payload bounds (not the whole file); an individual field's length is checked against its enclosing `adat`'s payload bounds. All three levels must fail loud on overrun, not silently truncate the slice and continue with partial/wrong data — this is precisely the pattern the spike used at all three levels (`.unwrap_or(n).min(n)`-style clamps) that made `Truncated` unreachable there. Follow the `Display`/`std::error::Error` impl pattern already established by `SchemaLoadError` in `agent/src-tauri/src/lib.rs:28-43`. A file with zero recognizable `oent` tags is **not** an error — it parses to an empty `Vec` (a session with no plays is valid data, not corruption).
-  - [ ] No panics anywhere on the parse path: no `.unwrap()`, `.expect()`, or slice indexing that can go out of bounds. Every fallible step returns `Result`/`Option` and is propagated, not asserted.
+- [x] **Task 2 — Implement the clean-room `.session` parser module** (AC: 1, 3, 4)
+  - [x] Create `agent/src-tauri/src/parser/mod.rs` (public surface) and `agent/src-tauri/src/parser/session.rs` (the binary decode), registered via `pub mod parser;` in `lib.rs`. This follows the `watcher → parser → joiner → stat-engine → local store → sync-queue` pipeline naming already documented in `agent/src-tauri/src/lib.rs`'s module doc comment.
+  - [x] Implement the envelope + field-ID decode fresh, against the confirmed structure in Dev Notes → Confirmed binary format below (sourced from Story 1.2's findings doc, not ported from any third-party parser — see Dev Notes → Clean-room discipline).
+  - [x] **Top-level walk is structural, never a byte scan.** Loop over the buffer reading tag(4 bytes) + length(4-byte BE `u32`), then always advance by exactly that declared length — for **every** top-level tag, not just `oent`. When the tag is `oent`, decode it as a play (see below); any other top-level tag (e.g. the leading `vrsn` header — see Dev Notes → Confirmed binary format) is skipped by arithmetic alone. Do **not** port the spike's `i += 1` byte-by-byte resync loop — advancing by the declared length instead of scanning for a literal `"oent"` match eliminates the resync-desync risk category entirely, it isn't just deprioritized (see Dev Notes → What must NOT be inherited from the spike).
+  - [x] Public API: `pub fn parse(data: &[u8]) -> Result<Vec<Play>, ParseError>` (pure, no IO — the primary unit-testable entry point) and `pub fn parse_session_file(path: &Path) -> Result<Vec<Play>, ParseError>` (reads the file via `std::fs::read`, maps IO failure to `ParseError::Io`, then delegates to `parse`).
+  - [x] `Play` carries only the high-confidence fields from the findings doc's field map, **every field `Option<...>`**: `path: Option<String>` (track reference, field 2), `title` (6), `artist` (7), `label` (8), `genre` (9), `grouping` (17), `year` (23), `start_time: Option<u32>` (28), `deck: Option<u32>` (31), `duration_sec: Option<u32>` (45), `key` (51) — string fields `Option<String>`. Optional-everywhere is not defensive hedging: the spike's own real-data run observed a "High confidence" field (`artist`) come back `None` on an otherwise well-formed record (see spike sample output, findings doc §9), so absence is a normal case, not corruption. AC-1's "track reference" means the field exists on `Play`, not that it's guaranteed non-null — no play is filtered out of the result for having missing fields. Do **not** include field 15 (candidate BPM) or fields 29/53 (candidate end/modified time) — findings doc §3 marks these low-confidence; BPM must come from the library join / embedded tags (Stories 1.4/1.5), not this play-log field.
+  - [x] Dedup by field-1 `row_id` before returning from `parse` — order-preserving (first occurrence in file order wins), using a `HashSet<u32>` of seen row IDs rather than assuming duplicates are adjacent. A play with no parseable `row_id` (`None`) is never deduped against anything. `row_id` itself is **not** a field on `Play` — it's consumed internally by `parse` purely to drive the dedup set, then dropped; downstream consumers never see it (matches the field list above, and nothing in Story 1.10's contract inputs table needs it). This is required for AC-1's "ordered list of plays" to be truthful: findings doc §5 (D1) found byte-for-byte duplicate `oent` records in roughly half of real sessions tested, which would silently double-count plays without this. Dedup must be internal/invisible to callers — `parse`'s return value is already the deduped list (findings doc §8).
+  - [x] `ParseError` has exactly two variants, both actually reachable and tested (unlike the spike's dead `Truncated` — see Dev Notes → What must NOT be inherited from the spike): `Io(std::io::Error)` and `Truncated { offset: usize }`. **Every declared length is checked against its own enclosing bound, and a violation returns `Err(Truncated)` — never a silent clamp**: an outer `oent` record's length is checked against the remaining file buffer; an `adat` record's length is checked against its enclosing `oent`'s payload bounds (not the whole file); an individual field's length is checked against its enclosing `adat`'s payload bounds. All three levels must fail loud on overrun, not silently truncate the slice and continue with partial/wrong data — this is precisely the pattern the spike used at all three levels (`.unwrap_or(n).min(n)`-style clamps) that made `Truncated` unreachable there. Follow the `Display`/`std::error::Error` impl pattern already established by `SchemaLoadError` in `agent/src-tauri/src/lib.rs:28-43`. A file with zero recognizable `oent` tags is **not** an error — it parses to an empty `Vec` (a session with no plays is valid data, not corruption).
+  - [x] No panics anywhere on the parse path: no `.unwrap()`, `.expect()`, or slice indexing that can go out of bounds. Every fallible step returns `Result`/`Option` and is propagated, not asserted.
 
-- [ ] **Task 3 — Guarantee raw-file safety at this build stage** (AC: 3)
-  - [ ] `parse_session_file` and everything it calls must be read-only: never delete, move, rename, or truncate the source `.session` file, on either the success or the error path. At this point in the build sequence (Epic 1, before Story 2.8's durable local-SQLite raw-retention store exists), "the raw file is retained for backfill" is satisfied trivially by the parser never touching the source file — Serato's own `History/Sessions/` folder is the retention mechanism until 2.8 lands. Do **not** build any SQLite persistence in this story; that would duplicate Story 2.8's scope.
-  - [ ] Add a test asserting the source file's bytes are unchanged after a `parse_session_file` call, including a call that returns `Err`.
+- [x] **Task 3 — Guarantee raw-file safety at this build stage** (AC: 3)
+  - [x] `parse_session_file` and everything it calls must be read-only: never delete, move, rename, or truncate the source `.session` file, on either the success or the error path. At this point in the build sequence (Epic 1, before Story 2.8's durable local-SQLite raw-retention store exists), "the raw file is retained for backfill" is satisfied trivially by the parser never touching the source file — Serato's own `History/Sessions/` folder is the retention mechanism until 2.8 lands. Do **not** build any SQLite persistence in this story; that would duplicate Story 2.8's scope.
+  - [x] Add a test asserting the source file's bytes are unchanged after a `parse_session_file` call, including a call that returns `Err`.
 
-- [ ] **Task 4 — Unit tests: determinism, dedup, malformed handling, file safety** (AC: 1, 3, 4)
-  - [ ] Do not commit real Serato session data as fixtures — real `.session` files contain real personal DJ history/track names, and golden-file fixtures are explicitly Story 1.9's job, not this story's. Build small synthetic byte fixtures in-test (a helper that emits a valid `oent`/`adat` record from given field values) matching the confirmed envelope.
-  - [ ] Test: a synthetic multi-play file parses to an ordered `Vec<Play>` with correct field values (path/title/artist/start_time/deck/etc.).
-  - [ ] Test: two byte-identical `oent` records (same `row_id`) → output contains that play exactly once; ordering of the remaining plays is preserved.
-  - [ ] Test: a truncated file (an `oent`/`adat` length that points past the end of the buffer) → `Err(ParseError::Truncated { .. })`, never a panic.
-  - [ ] Test: parsing the same bytes twice yields identical output (`assert_eq!`).
-  - [ ] Test from Task 3: source file bytes unchanged after both a successful and a failing `parse_session_file` call.
-  - [ ] Test: a file with zero recognizable `oent` tags (e.g. only a leading `vrsn`-style header, or an empty buffer) → `Ok(vec![])`, not an error.
-  - [ ] All tests run under the crate's existing gates: `cargo fmt --manifest-path agent/src-tauri/Cargo.toml -- --check`, `cargo clippy --manifest-path agent/src-tauri/Cargo.toml -- -D warnings`, `cargo test --manifest-path agent/src-tauri/Cargo.toml`.
+- [x] **Task 4 — Unit tests: determinism, dedup, malformed handling, file safety** (AC: 1, 3, 4)
+  - [x] Do not commit real Serato session data as fixtures — real `.session` files contain real personal DJ history/track names, and golden-file fixtures are explicitly Story 1.9's job, not this story's. Build small synthetic byte fixtures in-test (a helper that emits a valid `oent`/`adat` record from given field values) matching the confirmed envelope.
+  - [x] Test: a synthetic multi-play file parses to an ordered `Vec<Play>` with correct field values (path/title/artist/start_time/deck/etc.).
+  - [x] Test: two byte-identical `oent` records (same `row_id`) → output contains that play exactly once; ordering of the remaining plays is preserved.
+  - [x] Test: a truncated file (an `oent`/`adat` length that points past the end of the buffer) → `Err(ParseError::Truncated { .. })`, never a panic.
+  - [x] Test: parsing the same bytes twice yields identical output (`assert_eq!`).
+  - [x] Test from Task 3: source file bytes unchanged after both a successful and a failing `parse_session_file` call.
+  - [x] Test: a file with zero recognizable `oent` tags (e.g. only a leading `vrsn`-style header, or an empty buffer) → `Ok(vec![])`, not an error.
+  - [x] All tests run under the crate's existing gates: `cargo fmt --manifest-path agent/src-tauri/Cargo.toml -- --check`, `cargo clippy --manifest-path agent/src-tauri/Cargo.toml -- -D warnings`, `cargo test --manifest-path agent/src-tauri/Cargo.toml`.
 
-- [ ] **Task 5 — Confirm the existing CI gate covers this without changes** (AC: all)
-  - [ ] `.github/workflows/ci.yml`'s existing `agent` job already runs fmt/clippy/build/test against `agent/src-tauri/Cargo.toml` (lines 81-91) — this module lives inside that same crate, so no CI file changes should be needed (unlike Story 1.2's deliberately CI-invisible spike). Verify this holds; if it doesn't, that's a signal something drifted into the wrong location.
-  - [ ] Confirm the CI runner can resolve the new git dependency (network access to GitHub is available to `ubuntu-latest` runners by default — no secrets/auth needed for a public repo).
+- [x] **Task 5 — Confirm the existing CI gate covers this without changes** (AC: all)
+  - [x] `.github/workflows/ci.yml`'s existing `agent` job already runs fmt/clippy/build/test against `agent/src-tauri/Cargo.toml` (lines 81-91) — this module lives inside that same crate, so no CI file changes should be needed (unlike Story 1.2's deliberately CI-invisible spike). Verify this holds; if it doesn't, that's a signal something drifted into the wrong location.
+  - [x] Confirm the CI runner can resolve the new git dependency (network access to GitHub is available to `ubuntu-latest` runners by default — no secrets/auth needed for a public repo).
 
 ## Dev Notes
 
@@ -151,8 +151,42 @@ Unlike Story 1.2's spike (no CI wiring, no test bar — throwaway), this module 
 
 ### Agent Model Used
 
+claude-opus-4-8 (Claude Opus 4.8), via the bmad-dev-story workflow.
+
 ### Debug Log References
+
+No blocking issues; the implementation passed the crate's full gate on the first run.
+Gate commands (Rust via keg-only Homebrew `rustup` on `PATH` — `/opt/homebrew/opt/rustup/bin`):
+- `cargo build --manifest-path agent/src-tauri/Cargo.toml` — pulls pinned `triseratops` git commit + `id3 1.17.0`, builds clean.
+- `cargo fmt --manifest-path agent/src-tauri/Cargo.toml -- --check` — clean.
+- `cargo clippy --manifest-path agent/src-tauri/Cargo.toml -- -D warnings` — no warnings.
+- `cargo test --manifest-path agent/src-tauri/Cargo.toml` — 11 passed (10 new parser tests + the pre-existing shared-contract test), 0 failed, no regressions.
 
 ### Completion Notes List
 
+- **Spec committed first** (per request) as `c62b336` before any implementation, isolating the story spec + its story-creation artifacts (sprint-status, deferred-work, party memlog) from the implementation diff. The frontmatter `baseline_commit` (`eb47ed1`) was preserved unchanged per the workflow rule.
+- **AC-2 — pinned deps**: re-verified `triseratops` `main` HEAD immediately before implementing via `git ls-remote` — still `8e92aae1794c4f02a2405eb88ea72f251b077f0c` (no drift). `id3` still `1.17.0`. Cargo resolves the dependency as `triseratops v0.0.3 (git…rev=8e92aae1)` — the pinned git commit, **not** the stale crates.io `0.0.3`. Neither crate is called by this story's code (they are wired for Stories 1.4/1.5); a declared-but-unused external crate does not trip `clippy -D warnings`, confirmed.
+- **AC-1 — ordered plays**: the top-level walk is purely structural — read `tag(4) + length(4 BE)`, always advance by the declared length, for every top-level record. The leading `vrsn` header (and any non-`oent` tag) is skipped by arithmetic; the spike's `i += 1` byte-resync loop is **not** carried forward, eliminating the resync-desync risk category. `Play` carries exactly the 11 high-confidence fields, every one `Option<…>`; `row_id` (field 1) is internal-only and dropped after driving dedup; low-confidence fields (15/BPM, 29/53, 50) are excluded.
+- **AC-1 — dedup**: order-preserving dedup by field-1 `row_id` via a `HashSet<u32>` (first occurrence wins). Tested with **non-adjacent** duplicates so an adjacent-only dedup would fail — the HashSet approach is required (findings §5/D1). A play with `row_id == None` is never deduped.
+- **AC-3 — fail loud, never clamp**: `ParseError` has exactly the two required variants (`Io`, `Truncated { offset }`), mirroring `SchemaLoadError`'s `Display`/`Error` idiom (plus `source()` for the IO chain). Declared lengths are checked against their own enclosing bound at all three levels — outer `oent` vs. file buffer, `adat` vs. `oent` payload, field vs. `adat` payload — each an `Err(Truncated)` on overrun, never a silent `.min()` clamp. All three overruns are directly tested (the spike's dead `Truncated` is now reachable and covered). A file with zero `oent` records parses to `Ok(vec![])`.
+- **AC-3 — no panics**: verified no `.unwrap()`/`.expect()`/`panic!`/panicking slice-index on the production parse path (scanned outside `#[cfg(test)]`). All reads go through `slice::get` + `checked_add` + `Option`/`Result`; every proven-in-bounds slice is justified by a prior bound check.
+- **AC-3 — raw-file safety (Task 3)**: `parse_session_file` is read-only (`std::fs::read` only). Two tests assert the source bytes are byte-for-byte unchanged after both a successful and a failing (`Truncated`) call. No SQLite persistence built (that is Story 2.8).
+- **AC-4 — determinism**: tested via `assert_eq!(parse(x), parse(x))` (`Play` derives `PartialEq`/`Eq`).
+- **Task 4 fixtures**: synthetic in-test byte builders only (no real Serato data committed — golden-file fixtures are Story 1.9). Temp-file tests write to a unique path under the system temp dir and clean up.
+- **Task 5 — CI**: no `.github/workflows/ci.yml` change needed; the existing `agent` job (ci.yml:81-91) already runs fmt/clippy/build/test against this same crate. Confirmed the git dependency resolves and builds locally (public repo → no auth needed on `ubuntu-latest`).
+- **Real-corpus validation gap (by design)**: coverage is entirely synthetic until Story 1.9's golden-file suite runs the from-scratch rewrite against real files. Flagged in the story's Dev Notes as a near-term follow-on, not a backlog item.
+
 ### File List
+
+- `agent/src-tauri/Cargo.toml` — modified: added pinned `triseratops` (git rev) + `id3 = "1.17.0"`; removed the stale "intentionally NOT added" NOTE.
+- `agent/src-tauri/src/lib.rs` — modified: added `pub mod parser;` declaration.
+- `agent/src-tauri/src/parser/mod.rs` — new: public surface (`Play`, `ParseError`, `parse_session_file`, re-export of `parse`) + test suite.
+- `agent/src-tauri/src/parser/session.rs` — new: the clean-room binary decode (structural walk, nested-bound checks, field map, dedup).
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — modified: story 1-3 status tracking (`ready-for-dev` → `in-progress` → `review`).
+
+## Change Log
+
+| Date | Change |
+|---|---|
+| 2026-07-22 | Committed story spec as a clean baseline (`c62b336`) before implementation, per request. |
+| 2026-07-22 | Implemented the clean-room `.session` parser (Tasks 1–5): pinned parser deps, structural decode with three-level overrun checks + dedup, read-only file wrapper, 10 synthetic-fixture tests. All ACs satisfied; full crate gate (fmt/clippy `-D warnings`/build/test) green. Status → review. |

@@ -10,6 +10,10 @@
 //! Dependency rule (AD-3): `agent` depends on `shared` (via the JSON-schema
 //! artifact), never on `web`.
 
+/// The `parser` pipeline filter (Story 1.3): decodes a legacy Serato `.session`
+/// file into an ordered list of plays. See [`parser`] for the format and invariants.
+pub mod parser;
+
 use std::path::PathBuf;
 
 /// Location of the language-neutral sync-contract schema the agent consumes,
