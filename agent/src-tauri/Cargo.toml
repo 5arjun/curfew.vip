@@ -30,3 +30,11 @@ serde_json = "1"
 # trip `clippy -D warnings` — only unused `use` imports do).
 triseratops = { git = "https://github.com/Holzhaus/triseratops.git", rev = "8e92aae1794c4f02a2405eb88ea72f251b077f0c" }
 id3 = "1.17.0"
+
+# Serato 4+ `master.sqlite` reads (Story 1.4's `joiner::serato4`). `bundled`
+# statically links SQLite into the binary so a packaged agent never depends on
+# whatever SQLite version the DJ's OS happens to ship — a distribution
+# requirement for a signed desktop app (AR-14), not a convenience. Compiling the
+# vendored C source needs only a C toolchain, which CI's Tauri Linux prereqs
+# (`build-essential`) already install.
+rusqlite = { version = "0.40.1", features = ["bundled"] }

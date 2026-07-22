@@ -10,6 +10,10 @@
 //! Dependency rule (AD-3): `agent` depends on `shared` (via the JSON-schema
 //! artifact), never on `web`.
 
+/// The `joiner` pipeline filter (Story 1.4): resolves a played track to the
+/// BPM/key/genre held by the DJ's Serato library, across both library formats.
+/// See [`joiner`] for the two paths and their shared invariants.
+pub mod joiner;
 /// The `parser` pipeline filter (Story 1.3): decodes a legacy Serato `.session`
 /// file into an ordered list of plays. See [`parser`] for the format and invariants.
 pub mod parser;
