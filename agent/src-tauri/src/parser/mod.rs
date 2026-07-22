@@ -10,16 +10,28 @@
 //!   malformed input yields [`ParseError`], never a crash.
 //! - **Fail loud on overrun.** A record/field whose declared length overruns its
 //!   enclosing bound is [`ParseError::Truncated`], never a silently clamped read.
+//! - **Fail loud on desync.** A walk that lands off a record boundary is
+//!   [`ParseError::Desync`], never a plausible-looking but wrong `Ok`.
 //! - **Read-only.** [`parse_session_file`] never mutates or removes the source file,
 //!   so the raw file is trivially retained for backfill (AR-7) at this build stage.
 //! - **Deterministic + de-duplicated.** Parsing the same bytes twice yields identical
 //!   output; byte-identical duplicate records are collapsed by row ID (findings §5).
+//! - **Partial results are available, not forced.** [`parse`] is strict (any failure
+//!   voids the file); [`parse_partial`] returns what decoded plus the failure, for
+//!   callers reading a session that is still being appended to mid-gig.
+//!
+//! Because this filter is the only component that ever sees raw `oent` records,
+//! anything it drops is unrecoverable downstream except by re-parsing the retained
+//! raw file — which is what makes the read-only guarantee above (AR-7, and Story
+//! 2.8's durable retention) the compensating control for the whole pipeline, and why
+//! [`ParseStats`] reports what was skipped or de-duplicated rather than silently
+//! discarding it.
 //!
 //! The binary decode itself lives in [`session`]; this module is the public surface.
 
 mod session;
 
-pub use session::parse;
+pub use session::{parse, parse_partial};
 
 use std::path::Path;
 
@@ -58,10 +70,15 @@ pub struct Play {
     pub key: Option<String>,
 }
 
-/// Everything that can go wrong parsing a `.session` file. Exactly two variants:
-/// an IO failure reading the file, and a structural overrun in the binary format.
+/// Everything that can go wrong parsing a `.session` file: an IO failure reading the
+/// file, a structural overrun, or a walk that has fallen off a record boundary.
 /// Mirrors the `Display`/`std::error::Error` idiom of `SchemaLoadError` in
 /// [`crate`](../lib.rs).
+///
+/// Callers mapping this to UI copy must distinguish the two shapes of [`Io`](Self::Io):
+/// `ErrorKind::PermissionDenied` (macOS TCC has not granted access to
+/// `~/Music/_Serato_/`) needs a "grant access" prompt, not a "your file is corrupt"
+/// message. The underlying [`std::io::Error`] is preserved via `source()`.
 #[derive(Debug)]
 pub enum ParseError {
     /// The file could not be read from disk (only reachable via [`parse_session_file`]).
@@ -69,6 +86,11 @@ pub enum ParseError {
     /// A record or field declared a length that overruns its enclosing bound. Carries
     /// the byte offset of the offending record/field for diagnostics.
     Truncated { offset: usize },
+    /// The structural walk landed somewhere that is not a record boundary — an
+    /// implausible tag, or a trailing fragment too short to be a record header. The
+    /// previous record's declared length did not lead where the format says it should,
+    /// so anything decoded past this point would be garbage presented as data.
+    Desync { offset: usize },
 }
 
 impl std::fmt::Display for ParseError {
@@ -79,6 +101,10 @@ impl std::fmt::Display for ParseError {
                 f,
                 "malformed .session: a record length overruns its bounds at byte offset {offset}"
             ),
+            ParseError::Desync { offset } => write!(
+                f,
+                "malformed .session: expected a record boundary at byte offset {offset}"
+            ),
         }
     }
 }
@@ -87,9 +113,48 @@ impl std::error::Error for ParseError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             ParseError::Io(e) => Some(e),
-            ParseError::Truncated { .. } => None,
+            ParseError::Truncated { .. } | ParseError::Desync { .. } => None,
         }
     }
+}
+
+/// What one parse saw, beyond the plays it returned.
+///
+/// Dedup and record-skipping are lossy by design, and a bare `Ok(vec![])` cannot tell
+/// "the DJ played nothing" apart from "the walk desynced immediately". These counters
+/// are what make that distinguishable downstream — and they are how Story 1.2 found
+/// the duplicate-record problem (findings §5/D1) in the first place: its spike printed
+/// raw vs. distinct row-ID counts per file.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ParseStats {
+    /// Top-level records walked, of any tag (`vrsn`, `oent`, ...).
+    pub top_level_records: usize,
+    /// Top-level `oent` records encountered, before dedup or skipping.
+    pub oent_records_seen: usize,
+    /// Plays actually returned.
+    pub plays_emitted: usize,
+    /// `oent` records dropped because their row ID had already been seen.
+    pub duplicates_dropped: usize,
+    /// `oent` records skipped for carrying no decodable `adat` sub-record.
+    pub records_skipped: usize,
+    /// Plays emitted with no parseable row ID — these are never de-duplicated, so a
+    /// high count means the dedup guarantee is weaker than it looks for this file.
+    pub plays_without_row_id: usize,
+}
+
+/// The result of a tolerant parse: what decoded, what it saw, and what went wrong.
+///
+/// `error.is_none()` means the whole buffer decoded cleanly. Otherwise `plays` holds
+/// everything decoded *before* the failure — for a session file still being appended
+/// to, that is the correct live answer, and the next write resolves the tail.
+#[derive(Debug)]
+pub struct ParseOutcome {
+    /// Plays decoded before any failure, de-duplicated and start-time ordered.
+    pub plays: Vec<Play>,
+    /// Counters for what the walk saw (see [`ParseStats`]).
+    pub stats: ParseStats,
+    /// The failure that stopped the walk, if any.
+    pub error: Option<ParseError>,
 }
 
 /// Reads a `.session` file from disk and parses it into an ordered list of [`Play`]s.
@@ -101,6 +166,18 @@ impl std::error::Error for ParseError {
 pub fn parse_session_file(path: &Path) -> Result<Vec<Play>, ParseError> {
     let data = std::fs::read(path).map_err(ParseError::Io)?;
     parse(&data)
+}
+
+/// Reads a `.session` file from disk and parses as much of it as is structurally
+/// intact — the file-backed form of [`parse_partial`], and the entry point the watcher
+/// (Story 1.6) wants for a session that is still being written during a gig.
+///
+/// **Read-only**, exactly as [`parse_session_file`]. `Err` is only ever
+/// [`ParseError::Io`]: an unreadable file has no partial result to report, whereas a
+/// readable-but-malformed one is reported inside the returned [`ParseOutcome`].
+pub fn parse_session_file_partial(path: &Path) -> Result<ParseOutcome, ParseError> {
+    let data = std::fs::read(path).map_err(ParseError::Io)?;
+    Ok(parse_partial(&data))
 }
 
 #[cfg(test)]
@@ -324,7 +401,7 @@ mod tests {
     #[test]
     fn parse_session_file_does_not_mutate_source_on_success() {
         let bytes = play_record(1, "/music/a.mp3", "A", "Artist A", 1_000, 1);
-        let (result, after) = with_temp_session(&bytes, |p| parse_session_file(p));
+        let (result, after) = with_temp_session(&bytes, parse_session_file);
 
         assert_eq!(result.unwrap().len(), 1, "valid file parses");
         assert_eq!(
@@ -343,7 +420,7 @@ mod tests {
         bytes.extend_from_slice(&1_000u32.to_be_bytes());
         bytes.extend_from_slice(&[0u8; 10]);
 
-        let (result, after) = with_temp_session(&bytes, |p| parse_session_file(p));
+        let (result, after) = with_temp_session(&bytes, parse_session_file);
 
         assert!(
             matches!(result, Err(ParseError::Truncated { .. })),
@@ -361,5 +438,223 @@ mod tests {
         let path = std::env::temp_dir().join("curfew_parser_definitely_missing_9e3f.session");
         let _ = std::fs::remove_file(&path);
         assert!(matches!(parse_session_file(&path), Err(ParseError::Io(_))));
+    }
+
+    // ---- Review findings (Story 1.3 elicitation pass, RF-1..RF-5) --------------
+
+    /// A field with an arbitrary payload width: `[id][len][bytes]`.
+    fn sized_field(id: u32, bytes: &[u8]) -> Vec<u8> {
+        let mut f = Vec::new();
+        f.extend_from_slice(&id.to_be_bytes());
+        f.extend_from_slice(&(bytes.len() as u32).to_be_bytes());
+        f.extend_from_slice(bytes);
+        f
+    }
+
+    /// RF-1: a numeric field whose payload is not exactly 4 bytes is left absent
+    /// rather than decoded from its first 4 bytes. Reading a prefix would invent a
+    /// plausible-looking wrong value.
+    #[test]
+    fn numeric_field_with_wrong_payload_width_is_ignored() {
+        let data = oent(&[
+            u32_field(1, 7),
+            text_field(2, "/music/a.mp3"),
+            sized_field(28, &[0, 0, 0x11, 0x22, 0x33, 0x44]), // 6 bytes, not 4
+            sized_field(31, &[0, 1]),                         // 2 bytes, not 4
+        ]);
+
+        let plays = parse(&data).expect("wrong-width numeric fields are not a parse failure");
+
+        assert_eq!(plays.len(), 1);
+        assert_eq!(plays[0].path.as_deref(), Some("/music/a.mp3"));
+        assert_eq!(plays[0].start_time, None, "6-byte start_time not decoded");
+        assert_eq!(plays[0].deck, None, "2-byte deck not decoded");
+    }
+
+    /// RF-1: the same guard protects the dedup key — a wrong-width field 1 yields no
+    /// row ID, so the record is emitted rather than silently collapsed against a
+    /// value read from a prefix.
+    #[test]
+    fn wrong_width_row_id_does_not_drive_dedup() {
+        let bad = oent(&[
+            sized_field(1, &[0, 0, 0, 0, 0, 0, 0, 9]), // 8 bytes, not 4
+            text_field(2, "/music/one.mp3"),
+            u32_field(28, 1_000),
+        ]);
+        let data = [bad.clone(), bad].concat();
+
+        let outcome = parse_partial(&data);
+
+        assert_eq!(outcome.plays.len(), 2, "no row ID means no dedup");
+        assert_eq!(outcome.stats.plays_without_row_id, 2);
+        assert_eq!(outcome.stats.duplicates_dropped, 0);
+    }
+
+    /// RF-2: a top-level record whose declared length understates its payload leaves
+    /// the walk mid-stream, where the next "tag" is not printable ASCII. That must
+    /// fail loud rather than walk on through garbage tag space and return a
+    /// plausible-looking but wrong play list.
+    ///
+    /// The fixture understates a *header* record, not an `oent`: a short `oent` is
+    /// caught earlier and more specifically by the inner `adat` bound check
+    /// (`Truncated`), so it would not exercise the tag check at all.
+    #[test]
+    fn desync_on_implausible_tag_errors() {
+        let mut header = vrsn_header(); // 4-byte payload
+        header[4..8].copy_from_slice(&2u32.to_be_bytes()); // ...declared as 2
+
+        let data = [
+            header,
+            play_record(1, "/music/a.mp3", "A", "Artist A", 1_000, 1),
+        ]
+        .concat();
+
+        assert!(
+            matches!(parse(&data), Err(ParseError::Desync { offset }) if offset == 10),
+            "a walk that lands off a record boundary must fail loud, not return Ok"
+        );
+    }
+
+    /// RF-2: a well-formed file ends exactly on a record boundary, so a trailing
+    /// fragment too short to hold a record header is a desync, not a clean stop.
+    #[test]
+    fn trailing_fragment_errors() {
+        let mut data = play_record(1, "/music/a.mp3", "A", "Artist A", 1_000, 1);
+        data.extend_from_slice(&[0x41, 0x42, 0x43]); // 3 stray bytes
+
+        assert!(matches!(parse(&data), Err(ParseError::Desync { .. })));
+    }
+
+    /// RF-3: an `oent` carrying no decodable `adat` is skipped and counted — never
+    /// emitted as a phantom all-`None` play that references no track.
+    #[test]
+    fn oent_without_adat_is_skipped_not_emitted() {
+        let data = [
+            tagged(b"oent", &tagged(b"junk", &[1, 2, 3, 4])),
+            play_record(1, "/music/a.mp3", "A", "Artist A", 1_000, 1),
+        ]
+        .concat();
+
+        let outcome = parse_partial(&data);
+
+        assert!(outcome.error.is_none());
+        assert_eq!(outcome.plays.len(), 1, "no phantom play emitted");
+        assert_eq!(outcome.plays[0].path.as_deref(), Some("/music/a.mp3"));
+        assert_eq!(outcome.stats.oent_records_seen, 2);
+        assert_eq!(outcome.stats.records_skipped, 1);
+    }
+
+    /// RF-4: the counters make the lossy steps visible — without them a caller cannot
+    /// tell an empty result from a silently gutted one.
+    #[test]
+    fn stats_report_what_the_walk_saw() {
+        let dup = play_record(10, "/music/dup.mp3", "Dup", "Artist", 5_000, 1);
+        let data = [
+            vrsn_header(),
+            dup.clone(),
+            play_record(11, "/music/other.mp3", "Other", "Artist2", 6_000, 2),
+            dup,
+        ]
+        .concat();
+
+        let outcome = parse_partial(&data);
+
+        assert!(outcome.error.is_none());
+        assert_eq!(outcome.stats.top_level_records, 4, "vrsn + 3 oent");
+        assert_eq!(outcome.stats.oent_records_seen, 3);
+        assert_eq!(outcome.stats.plays_emitted, 2);
+        assert_eq!(outcome.stats.duplicates_dropped, 1);
+        assert_eq!(outcome.stats.records_skipped, 0);
+        assert_eq!(outcome.stats.plays_without_row_id, 0);
+    }
+
+    /// RF-5: a session being appended to mid-gig ends in a half-written record.
+    /// `parse` is strict about it, but `parse_partial` still returns the plays that
+    /// precede it — the live answer — with the failure reported alongside.
+    #[test]
+    fn parse_partial_keeps_plays_before_a_truncated_tail() {
+        let mut data = [
+            play_record(1, "/music/a.mp3", "A", "Artist A", 1_000, 1),
+            play_record(2, "/music/b.mp3", "B", "Artist B", 2_000, 2),
+        ]
+        .concat();
+        let intact_len = data.len();
+        // A third record whose header is written but whose payload is not (yet).
+        data.extend_from_slice(b"oent");
+        data.extend_from_slice(&1_000u32.to_be_bytes());
+        data.extend_from_slice(&[0u8; 10]);
+
+        assert!(
+            matches!(parse(&data), Err(ParseError::Truncated { .. })),
+            "the strict entry point still voids the file"
+        );
+
+        let outcome = parse_partial(&data);
+        assert_eq!(outcome.plays.len(), 2, "plays before the tail survive");
+        assert_eq!(outcome.plays[0].path.as_deref(), Some("/music/a.mp3"));
+        assert_eq!(outcome.plays[1].path.as_deref(), Some("/music/b.mp3"));
+        assert!(
+            matches!(outcome.error, Some(ParseError::Truncated { offset }) if offset == intact_len),
+            "the failure offset identifies the tail, so a caller can tell it from mid-file corruption"
+        );
+    }
+
+    /// RF-5: the file-backed tolerant entry point is read-only too, and reports the
+    /// failure in the outcome rather than as `Err`.
+    #[test]
+    fn parse_session_file_partial_is_read_only() {
+        let mut bytes = play_record(1, "/music/a.mp3", "A", "Artist A", 1_000, 1);
+        bytes.extend_from_slice(b"oent");
+        bytes.extend_from_slice(&1_000u32.to_be_bytes());
+
+        let (result, after) = with_temp_session(&bytes, parse_session_file_partial);
+        let outcome = result.expect("a readable file is never Err");
+
+        assert_eq!(outcome.plays.len(), 1);
+        assert!(outcome.error.is_some());
+        assert_eq!(after, bytes, "source file bytes unchanged");
+    }
+
+    /// Ordering: plays come back in start-time order, which is what Story 1.2's
+    /// ground-truth harness actually validated against `master.sqlite` — raw file
+    /// order was never itself validated and need not match play order.
+    #[test]
+    fn orders_plays_by_start_time_not_file_order() {
+        let data = [
+            play_record(1, "/music/third.mp3", "C", "Artist", 3_000, 1),
+            play_record(2, "/music/first.mp3", "A", "Artist", 1_000, 2),
+            play_record(3, "/music/second.mp3", "B", "Artist", 2_000, 1),
+        ]
+        .concat();
+
+        let plays = parse(&data).expect("valid session parses");
+        let paths: Vec<_> = plays.iter().filter_map(|p| p.path.as_deref()).collect();
+
+        assert_eq!(
+            paths,
+            vec!["/music/first.mp3", "/music/second.mp3", "/music/third.mp3"]
+        );
+        assert_eq!(parse(&data).unwrap(), plays, "ordering stays deterministic");
+    }
+
+    /// Ordering: a play with no start time inherits the last known one, so it keeps
+    /// its file neighbourhood instead of being flung to the front of the set.
+    #[test]
+    fn play_without_start_time_keeps_its_file_neighbourhood() {
+        let no_time = oent(&[u32_field(1, 2), text_field(2, "/music/middle.mp3")]);
+        let data = [
+            play_record(1, "/music/early.mp3", "A", "Artist", 1_000, 1),
+            no_time,
+            play_record(3, "/music/late.mp3", "C", "Artist", 2_000, 1),
+        ]
+        .concat();
+
+        let plays = parse(&data).expect("valid session parses");
+        let paths: Vec<_> = plays.iter().filter_map(|p| p.path.as_deref()).collect();
+
+        assert_eq!(
+            paths,
+            vec!["/music/early.mp3", "/music/middle.mp3", "/music/late.mp3"]
+        );
     }
 }
