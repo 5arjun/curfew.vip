@@ -61,9 +61,11 @@ This is enough to satisfy AC-1's "play counts + track identities" requirement (p
 
 | Legacy file | Real date | `master.sqlite` session | Timestamps match? | Track order/names match? | Play count match? |
 |---|---|---|---|---|---|
-| `2521.session` | 2021-10-30 | id 72 | Yes, exactly (UTC↔local conversion confirmed) | Yes, exactly, in order | **No — see §5** |
-| `19544.session` | 2024-06-30 | id 400 | Yes, exactly | Yes, exactly, in order | Yes — 116 = 116 |
-| `11627.session` | 2022-08-20 | id 239 | Yes, exactly | (not individually spot-checked) | **No — see §5** |
+| `2521.session` | 2021-10-30 | id 72 | Yes, exactly (UTC↔local conversion confirmed) | Yes, exactly, in order (151/151 positions) | **No, raw — see §5** (151 deduped = 151 master) |
+| `19544.session` | 2024-06-30 | id 400 | Yes, exactly | Yes, exactly, in order (116/116 positions) | Yes — 116 = 116 |
+| `11627.session` | 2022-08-20 | id 239 | Yes, exactly | Yes, exactly, in order (253/253 positions) | **No, raw — see §5** (253 deduped = 253 master) |
+
+This table is no longer a manual/ad hoc comparison — it is produced by `ground_truth_cross_validation()` in `agent/spike-1-2-parser-validation/src/main.rs` (added during code review), which parses each legacy file, dedupes by field-1 row ID, queries `master.sqlite` by the specific `history_session.id` shown above (not just "most recent sessions"), and diffs play counts and the (artist, title) sequence position-by-position. Rerunnable via `cargo run --manifest-path agent/spike-1-2-parser-validation/Cargo.toml` — see §9 for a sample of this exact output.
 
 No live comparison against Serato's in-app History UI was performed (no interactive Serato session available in this environment); `master.sqlite` is itself the data source that UI reads from, so this is treated as an acceptable substitute for a spike. Flagged for Arjun to spot-check visually if desired — not a blocker for the go/no-go.
 
@@ -71,7 +73,7 @@ No live comparison against Serato's in-app History UI was performed (no interact
 
 ### D1 — Duplicate `oent` records inflate raw play counts (parser-fixable)
 
-`2521.session`: 302 raw `oent` records parsed, but `master.sqlite` session 72 shows **151** plays for the same gig. `11627.session`: 506 raw vs. **253** in `master.sqlite` session 239. In both cases every field-1 (history row ID) value appears **exactly twice**, and the two copies are **byte-for-byte identical** (same row ID, same timestamps, same everything) — this is the literal file containing each record twice, not two distinct real events that happen to share fields.
+`2521.session`: 302 raw `oent` records parsed, but `master.sqlite` session 72 shows **151** plays for the same gig — 151 distinct field-1 row IDs after dedup, an exact match. `11627.session`: 506 raw vs. **253** distinct row IDs after dedup, exact match against `master.sqlite` session 239. Both counts, plus the full 151/151 and 253/253 position-by-position track order/name match, are produced by the code path described in §4 (`ground_truth_cross_validation()`), not a one-off manual count.
 
 `19544.session` shows **no** duplication (116 raw = 116 distinct row IDs = 116 in `master.sqlite`). `4905.session` (the rejected Scratch-LIVE-Review file) also shows no duplication (865 raw = 865 distinct row IDs). The trigger for when a session gets double-written wasn't conclusively isolated in the time available for a spike — it doesn't correlate cleanly with file size or date. **Classification: parser-fixable.** Story 1.3's production parser must deduplicate `oent` records by field-1 row ID before computing play counts; a naive "count `oent` tags" implementation will silently double-count roughly half the corpus's sessions.
 
@@ -101,7 +103,7 @@ The story's Dev Notes flagged this as an open question; the spike confirms the r
 
 **GO on both paths**, carried into Story 1.3 with these concrete requirements:
 
-1. **Legacy `.session` parser**: build on this spike's confirmed envelope (§3), but add record deduplication by field-1 row ID (§5, D1) — this is not optional, roughly half the real corpus would otherwise report double play counts.
+1. **Legacy `.session` parser**: build on this spike's confirmed envelope (§3), but add record deduplication by field-1 row ID (§5, D1) — this is not optional, roughly half the real corpus would otherwise report double play counts. This requirement is now backed by code-verified, rerunnable evidence (§4), not just a manual spot-check.
 2. **Serato 4+ `master.sqlite` path**: build on this spike's confirmed schema (§3/§6) — lower effort, lower risk, and per §6's recommendation, worth prioritizing first.
 3. **Off-library handling (Story 1.5) is load-bearing, not a rare-case fallback** — 100% off-library on both real target sessions tested (§5, D3).
 4. **Path-join transform** (§5, D4) is a one-line fix, carry it forward.
@@ -143,13 +145,29 @@ sample track identities (first 5):
   [0] artist=None title=Some("Lady Gaga - Replay (Audio)") path=Some(".../Lady Gaga - Replay (Audio).mp3")
   ...
 in-library: 0 / 302 plays resolved against local database V2
-off-library distinct paths: 280
+off-library distinct paths: 112
 
 === Serato 4+ path: master.sqlite via rusqlite ===
   session 489 name=Some("6/26/26") start_time(epoch)=1782511038
     play count: 75
-    [sample] artist="Amit Gupta" name="Radhe Radhe - SongsMp3.Cool" genre="Bollywood" bpm=Some(69.99) key="Fm" deck="1"
+    [sample] artist=Some("Amit Gupta") name=Some("Radhe Radhe - SongsMp3.Cool") genre=Some("Bollywood") bpm=Some(69.99) key=Some("Fm") deck=Some("1")
+
+=== Ground-truth cross-validation: legacy .session vs. master.sqlite (by session ID) ===
+
+2521.session (raw=302, distinct row_id=151, missing row_id=0) vs. master.sqlite session 72 "Some("10/30/21")" (start_time=1635621537)
+  play count: raw=302 deduped=151 master=151  MATCH
+  track order/names: MATCH (all 151 positions)
+
+11627.session (raw=506, distinct row_id=253, missing row_id=0) vs. master.sqlite session 239 "Some("8/20/22")" (start_time=1661027368)
+  play count: raw=506 deduped=253 master=253  MATCH
+  track order/names: MATCH (all 253 positions)
+
+19544.session (raw=116, distinct row_id=116, missing row_id=0) vs. master.sqlite session 400 "Some("6/30/24")" (start_time=1719794508)
+  play count: raw=116 deduped=116 master=116  MATCH
+  track order/names: MATCH (all 116 positions)
 ```
+
+(`off-library distinct paths` corrected from an earlier code-review pass: the original run reported 280 due to a `Vec::dedup()` call missing a `sort()` first, which only removes *adjacent* duplicates. Fixed in `main.rs::wedding_session` — 112 is the true distinct count for this fixture. Artist/genre/key/deck/device/app_name on `Serato4Play` were also changed from bare `String` to `Option<String>` during the same pass, since a single `NULL` column previously aborted that session's entire query via `rows.collect()`.)
 
 ## 10. Contract boundary
 

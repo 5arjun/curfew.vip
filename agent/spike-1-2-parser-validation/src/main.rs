@@ -11,6 +11,7 @@ mod legacy_session;
 mod library;
 mod serato4;
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -78,6 +79,7 @@ fn wedding_session(local_library: &triseratops::library::Library) {
         "in-library: {in_library_count} / {} plays resolved against local database V2",
         plays.len()
     );
+    off_library.sort();
     off_library.dedup();
     println!("off-library distinct paths: {}", off_library.len());
 
@@ -278,6 +280,147 @@ fn serato4_path() {
     }
 }
 
+/// Cross-validates the clean-room legacy parser against `master.sqlite`'s
+/// independently-migrated history for specific known sessions (findings doc §4/§5),
+/// in code, rather than via ad hoc queries run outside the committed spike.
+fn ground_truth_cross_validation() {
+    print_header(
+        "Ground-truth cross-validation: legacy .session vs. master.sqlite (by session ID)",
+    );
+
+    let db_path = home().join("Library/Application Support/Serato/Library/master.sqlite");
+    let conn = match serato4::open_read_only(db_path.to_str().unwrap()) {
+        Ok(c) => c,
+        Err(e) => {
+            println!("OPEN ERROR: {e}");
+            return;
+        }
+    };
+
+    // (legacy .session file, master.sqlite history_session.id) pairs per findings doc §4.
+    let cases = [
+        ("2521.session", 72i64),
+        ("11627.session", 239i64),
+        ("19544.session", 400i64),
+    ];
+
+    for (file, session_id) in cases {
+        let path = home().join("Music/_Serato_/History/Sessions").join(file);
+        let data = match fs::read(&path) {
+            Ok(d) => d,
+            Err(e) => {
+                println!("{file} vs. session {session_id}: READ ERROR: {e}");
+                continue;
+            }
+        };
+        let plays = match legacy_session::parse(&data) {
+            Ok(p) => p,
+            Err(e) => {
+                println!("{file} vs. session {session_id}: PARSE ERROR: {e}");
+                continue;
+            }
+        };
+        let raw_count = plays.len();
+        let distinct_row_ids: HashSet<u32> = plays.iter().filter_map(|p| p.row_id).collect();
+        let missing_row_id = plays.iter().filter(|p| p.row_id.is_none()).count();
+
+        let session = match serato4::get_session(&conn, session_id) {
+            Ok(Some(s)) => s,
+            Ok(None) => {
+                println!("{file} vs. session {session_id}: NOT FOUND in master.sqlite");
+                continue;
+            }
+            Err(e) => {
+                println!("{file} vs. session {session_id}: QUERY ERROR: {e}");
+                continue;
+            }
+        };
+        let master_plays = match serato4::plays_for_session(&conn, session_id) {
+            Ok(p) => p,
+            Err(e) => {
+                println!("{file} vs. session {session_id}: QUERY ERROR: {e}");
+                continue;
+            }
+        };
+
+        println!("\n{file} (raw={raw_count}, distinct row_id={}, missing row_id={missing_row_id}) vs. master.sqlite session {session_id} \"{:?}\" (start_time={})",
+            distinct_row_ids.len(), session.name, session.start_time);
+        println!(
+            "  play count: raw={raw_count} deduped={} master={}  {}",
+            distinct_row_ids.len(),
+            master_plays.len(),
+            if distinct_row_ids.len() == master_plays.len() {
+                "MATCH"
+            } else {
+                "MISMATCH"
+            }
+        );
+
+        // Track order/name comparison: dedup legacy plays by first-seen row_id,
+        // sort by start_time, compare (artist, title) sequence against master.sqlite's
+        // own start_time-ordered sequence.
+        let mut seen = HashSet::new();
+        let mut deduped: Vec<&legacy_session::Play> = plays
+            .iter()
+            .filter(|p| match p.row_id {
+                Some(id) => seen.insert(id),
+                None => true,
+            })
+            .collect();
+        deduped.sort_by_key(|p| p.start_time.unwrap_or(0));
+
+        // Normalize None vs. Some("") as equivalent ("no artist") before comparing —
+        // the two data sources represent absence differently, which is not a real
+        // track-identity mismatch.
+        fn norm(s: Option<&str>) -> &str {
+            s.unwrap_or("")
+        }
+        let mismatches = deduped
+            .iter()
+            .zip(master_plays.iter())
+            .enumerate()
+            .filter(|(_, (l, m))| {
+                norm(l.artist.as_deref()) != norm(m.artist.as_deref())
+                    || norm(l.title.as_deref()) != norm(m.name.as_deref())
+            })
+            .count();
+        if deduped.len() != master_plays.len() {
+            println!(
+                "  track order/names: length mismatch (deduped={}, master={}), cannot compare positionally",
+                deduped.len(),
+                master_plays.len()
+            );
+        } else if mismatches == 0 {
+            println!(
+                "  track order/names: MATCH (all {} positions)",
+                deduped.len()
+            );
+        } else {
+            println!(
+                "  track order/names: {mismatches} of {} positions differ (by artist+title text equality)",
+                deduped.len()
+            );
+            let mut shown = 0;
+            for (i, (l, m)) in deduped.iter().zip(master_plays.iter()).enumerate() {
+                if l.artist.as_deref() == m.artist.as_deref()
+                    && l.title.as_deref() == m.name.as_deref()
+                {
+                    continue;
+                }
+                println!(
+                    "    [{i}] legacy artist={:?} title={:?}  |  master artist={:?} name={:?}",
+                    l.artist, l.title, m.artist, m.name
+                );
+                shown += 1;
+                if shown >= 5 {
+                    println!("    ... ({} more)", mismatches - shown);
+                    break;
+                }
+            }
+        }
+    }
+}
+
 fn main() {
     println!("Story 1.2 THROWAWAY SPIKE — parser validation against real sessions");
 
@@ -295,18 +438,21 @@ fn main() {
     let usb_library = match library::load("/Volumes/ARJUN SSD") {
         Ok(l) => {
             println!("loaded USB library ({} tracks)", l.tracks().count());
-            l
+            Some(l)
         }
         Err(e) => {
-            eprintln!("FATAL: failed to load USB library: {e}");
-            return;
+            eprintln!("USB library unavailable, skipping USB-dependent checks: {e}");
+            None
         }
     };
 
     wedding_session(&local_library);
-    usb_hosted_and_wav_heavy_session(&local_library, &usb_library);
+    if let Some(usb_library) = &usb_library {
+        usb_hosted_and_wav_heavy_session(&local_library, usb_library);
+    }
     wav_files_direct_read();
     serato4_path();
+    ground_truth_cross_validation();
 
     println!("\n=== done ===");
 }

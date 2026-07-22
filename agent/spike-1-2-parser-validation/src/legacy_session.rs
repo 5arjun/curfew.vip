@@ -34,6 +34,7 @@ use std::fmt;
 
 #[derive(Debug, Clone, Default)]
 pub struct Play {
+    pub row_id: Option<u32>,
     pub path: Option<String>,
     pub title: Option<String>,
     pub artist: Option<String>,
@@ -133,6 +134,9 @@ fn parse_oent_record(rec: &[u8]) -> Play {
         let payload = &rec[payload_start..payload_end];
 
         match fid {
+            1 if payload.len() == 4 => {
+                play.row_id = read_u32_be(payload, 0);
+            }
             2 => play.path = Some(decode_utf16be(payload)),
             6 => play.title = Some(decode_utf16be(payload)),
             7 => play.artist = Some(decode_utf16be(payload)),

@@ -7,17 +7,17 @@ use rusqlite::{Connection, OpenFlags, Result as SqlResult};
 
 #[derive(Debug, Clone, Default)]
 pub struct Serato4Play {
-    pub artist: String,
-    pub name: String,
-    pub genre: String,
-    pub key: String,
+    pub artist: Option<String>,
+    pub name: Option<String>,
+    pub genre: Option<String>,
+    pub key: Option<String>,
     pub bpm: Option<f64>,
     pub start_time: i64,
-    pub end_time: i64,
-    pub deck: String,
+    pub end_time: Option<i64>,
+    pub deck: Option<String>,
     pub played: bool,
-    pub device: String,
-    pub app_name: String,
+    pub device: Option<String>,
+    pub app_name: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -51,6 +51,26 @@ pub fn list_sessions(conn: &Connection, limit: i64) -> SqlResult<Vec<Serato4Sess
         })
     })?;
     rows.collect()
+}
+
+/// Fetches one session by its `history_session.id` directly — used to cross-validate
+/// a specific legacy `.session` file against its known migrated counterpart (see
+/// findings doc §4), rather than only ever looking at the most recent sessions.
+pub fn get_session(conn: &Connection, id: i64) -> SqlResult<Option<Serato4Session>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name, start_time, end_time
+         FROM history_session
+         WHERE id = ?1",
+    )?;
+    let mut rows = stmt.query_map([id], |row| {
+        Ok(Serato4Session {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            start_time: row.get(2)?,
+            end_time: row.get(3)?,
+        })
+    })?;
+    rows.next().transpose()
 }
 
 pub fn plays_for_session(conn: &Connection, session_id: i64) -> SqlResult<Vec<Serato4Play>> {
