@@ -1,5 +1,9 @@
 # Deferred Work
 
+## Deferred from: story creation of 1-3-clean-room-session-parser (2026-07-22)
+
+- **`master.sqlite` play-log scope gap needs a decision before/during Story 1.4's creation** — Story 1.2's findings (§6) recommend prioritizing `master.sqlite` as the live play-log source (it holds this DJ's entire history, no binary decoding needed), but no epics.md story currently owns reading play-log data directly from `master.sqlite`'s `history_session`/`history_entry` tables; Story 1.4 as scoped treats `master.sqlite` only as a metadata-join library. Story 1.3 deliberately stays scoped to the legacy `.session` file only. Surfacing this here (not just in Story 1.3's own Dev Notes) so it isn't lost the way the FR-27/30-day-nudge PRD-sync flags were. [_bmad-output/implementation-artifacts/1-3-clean-room-session-parser.md — Open Questions #1]
+
 ## Deferred from: code review of 1-1-monorepo-scaffold-with-three-workspaces (2026-07-21)
 
 - **`csp: null` in Tauri config** — the webview Content-Security-Policy is disabled in the baseline every later story inherits. The agent will later load/parse local Serato data; a `null` CSP tends never to get tightened. Set a restrictive CSP before the agent loads untrusted/local file content. [agent/src-tauri/tauri.conf.json:20]
