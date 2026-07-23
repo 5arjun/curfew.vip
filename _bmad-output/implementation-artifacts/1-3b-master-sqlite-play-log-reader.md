@@ -4,7 +4,7 @@ baseline_commit: 5e78510c7f571dad0c62a55fefc23eda2b0efac3
 
 # Story 1.3b: `master.sqlite` play-log reader
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -28,20 +28,20 @@ So that DJs on Serato 4+ — whose legacy `~/Music/_Serato_/History/Sessions/` f
   - [x] Public signature: `pub fn read_session(conn: &rusqlite::Connection, session_id: i64) -> rusqlite::Result<Vec<crate::parser::Play>>`. **Do not add an `open_read_only` helper to this module and do not import anything from `crate::joiner`.** The `parser` pipeline stage must stay independent of the `joiner` stage that comes after it (`lib.rs`'s documented pipeline: `watcher -> parser -> joiner -> stat-engine -> ...`) — reusing `joiner::serato4::open_read_only` from here would point that dependency backwards. Callers (a future watcher/capture story) open the connection once via the already-shipped `joiner::serato4::open_read_only(path)` and pass the same `&Connection` to both this function and `joiner::serato4::join_session` — see Dev Notes → Connection-sharing contract.
   - [x] Query exactly: `SELECT name, artist, genre, "key", start_time, deck FROM history_entry WHERE session_id = ?1 ORDER BY start_time ASC, id ASC`. Quote `"key"` (SQLite reserved word), matching `joiner/serato4.rs`'s existing precedent. The `id ASC` tiebreaker is required, not optional — copy it in from the start rather than waiting for a review pass to add it: Story 1.4's own code review (RF-1) found `start_time` is second-resolution, ties are real, and SQL leaves tied rows in undefined order without an explicit tiebreaker. `history_entry.id` is the closest analog to "file order" this format has (there is no byte-position concept in a SQL table).
   - [x] **Read every column as `Option<T>` — never assume a column is `NOT NULL`.** This includes `start_time`, even though the Story 1.2 spike's own throwaway struct (`agent/spike-1-2-parser-validation/src/serato4.rs::Serato4Play`) modeled it as a bare `i64`. `Play`'s own fields are already `Option`-everywhere by design (Story 1.3: "Optional-everywhere is not defensive hedging"); reading `start_time` as `Option<i64>` and letting a `NULL` row become `Play { start_time: None, .. }` is symmetric with that philosophy and — critically — means one row's missing timestamp doesn't fail the *entire session's* read via a type-coercion error. Convert with `.and_then(|t| u32::try_from(t).ok())`, never `as u32` (silent wraparound) and never `.unwrap()`.
-  - [x] Map columns to `Play` fields exactly as follows — **and no others**:
+  - [x] Map columns to `Play` fields exactly as follows — **and no others**. [Updated post-implementation, real-data pass: `title`/`artist`/`genre`/`key` are wrapped in a local `non_empty` helper — the real schema declares these `NOT NULL DEFAULT ''`, so an empty string, not SQL `NULL`, is this format's "absent" signal. See Open Question #4 and Completion Notes.]
     ```rust
     Play {
         path: None,                                    // see subtask below — do not attempt a path lookup
-        title: row.get::<_, Option<String>>(0)?,        // history_entry.name
-        artist: row.get::<_, Option<String>>(1)?,
+        title: row.get::<_, Option<String>>(0)?.and_then(non_empty),  // history_entry.name
+        artist: row.get::<_, Option<String>>(1)?.and_then(non_empty),
         label: None,                                   // no equivalent column
-        genre: row.get::<_, Option<String>>(2)?,
+        genre: row.get::<_, Option<String>>(2)?.and_then(non_empty),
         grouping: None,                                 // no equivalent column
         year: None,                                     // no equivalent column
         start_time: row.get::<_, Option<i64>>(4)?.and_then(|t| u32::try_from(t).ok()),
         deck: row.get::<_, Option<String>>(5)?.and_then(|d| d.parse().ok()),
         duration_sec: None,                             // see subtask below — do not derive from end_time
-        key: row.get::<_, Option<String>>(3)?,
+        key: row.get::<_, Option<String>>(3)?.and_then(non_empty),
     }
     ```
   - [x] **`path` stays `None` for every Serato 4+ play — this is load-bearing, not an oversight.** `history_entry` has no path column at all (Story 1.2 findings §8, confirmed again in Story 1.4's Dev Notes → "Serato 4+ scope boundary"); a path would require following unexplored `location_id`/`asset_id` foreign keys, which both prior stories deliberately scoped out as guessing at an unconfirmed schema (AD-11 forbids exactly this). Do not add that exploration here — it only becomes someone's job if a later story needs a path for a Serato 4+ play (e.g. an off-library embedded-tag read), and that story inherits the FK exploration, not this one.
@@ -66,6 +66,18 @@ So that DJs on Serato 4+ — whose legacy `~/Music/_Serato_/History/Sessions/` f
 - [x] **Task 3 — Confirm the existing CI gate covers this without changes** (AC: all)
   - [x] `.github/workflows/ci.yml` lines 82-91 already run fmt/clippy(`--all-targets`)/build/test against `agent/src-tauri/Cargo.toml` — this module lives inside that same crate and needs no new dependency (`rusqlite = { version = "0.40.1", features = ["bundled"] }` was already added to `agent/src-tauri/Cargo.toml` by Story 1.4). Verify this holds; no CI file changes are expected.
   - [x] No new production dependency to re-verify — unlike Stories 1.3/1.4, this story adds zero new crates. If a genuinely new crate turns out to be needed, that's a signal scope has drifted past this story's "direct SQL reads" boundary.
+
+### Review Findings
+
+- [x] [Review][Patch] Doc comment misattributes `bpm` normalization to `non_empty` — `joiner::serato4::join_session` actually normalizes `bpm` via `sane_bpm` (numeric-range check), never `non_empty` (string check) [agent/src-tauri/src/parser/serato4.rs:51-52]
+- [x] [Review][Patch] `read_session`'s `rows.collect()` aborts the entire session's read on a single row's type-coercion error — the identical failure class already logged in `deferred-work.md` for `join_session`, which explicitly asked to be revisited "during Story 1.3b"; no matching entry was added for the new function, and no test exercises an actual coercion-error path (only a graceful value-parse failure) [agent/src-tauri/src/parser/serato4.rs:69-89]
+- [x] [Review][Patch] `start_time` overflow/negative silently becomes `None` while the SQL `ORDER BY` still sorts on the raw, now-invisible value — untested, and `start_time`'s real-world range was never independently confirmed the way `deck`'s was [agent/src-tauri/src/parser/serato4.rs:78-80]
+- [x] [Review][Patch] Test coverage gaps: no test for empty-string `title`, and no test for `deck` values `"3"`/`"4"` — both explicitly measured by this story's own real-data pass but never exercised by a test [agent/src-tauri/src/parser/serato4.rs tests]
+- [x] [Review][Patch] Task 1's checked-off code sample still shows the pre-real-data-pass mapping (no `.and_then(non_empty)`) — stale relative to the shipped implementation [1-3b-master-sqlite-play-log-reader.md Task 1]
+- [x] [Review][Patch] `lib.rs`'s `parser` module doc still describes it as decoding only "a legacy Serato `.session` file" — doesn't mention the new Serato 4+ direct-SQL reader [agent/src-tauri/src/lib.rs:17-19]
+- [x] [Review][Patch] `Play::deck`'s doc comment ("observed values 1 or 2") is now incomplete — this story's real-data pass confirms decks 3 and 4 in production [agent/src-tauri/src/parser/mod.rs:67]
+- [x] [Review][Defer] Connection-sharing contract (one `Connection` passed to both `read_session` and `join_session`) has no integration test anywhere — real gap, not required by any AC/task [agent/src-tauri/src/parser/serato4.rs, agent/src-tauri/src/joiner/serato4.rs] — deferred, pre-existing
+- [x] [Review][Defer] A `history_entry.session_id` row that is SQL `NULL` would be silently unreachable via `WHERE session_id = ?1` (three-valued SQL logic) — no evidence this column can be `NULL` in production; speculative only [agent/src-tauri/src/parser/serato4.rs:61-67] — deferred, pre-existing
 
 ## Dev Notes
 
@@ -191,3 +203,4 @@ claude-sonnet-5 (Claude Code)
 | 2026-07-23 | Story drafted (context-engineered): `master.sqlite` play-log reader producing `parser::Play` directly via SQL, reusing the same table `joiner::serato4::join_session` (Story 1.4) already reads, deliberately not adding `bpm` to `Play` to keep one contract across both play-log sources. |
 | 2026-07-23 | Implemented `parser::serato4::read_session` (Tasks 1-3): direct-SQL play-log reader against `history_entry`, 9 new unit tests, full crate gate green (61 tests total, 0 regressions). No CI changes needed; no new dependency. `deferred-work.md` annotated per Dev Notes (join_session redundancy confirmed for genre/key). → review |
 | 2026-07-23 | Real-data pass: a real `master.sqlite` was inspected read-only (schema + aggregates only, nothing committed). Fixed a genuine gap — `name`/`artist`/`genre`/`key` are `NOT NULL DEFAULT ''` in the real schema (empty string, not `NULL`, is the "absent" signal); `read_session` now normalizes empty text fields to `None` via a local `non_empty` helper, matching `joiner::non_empty`'s existing precedent for the same table. 1 new test (62 total), full crate gate still green. `deck` values, `end_time`'s `-1` sentinel, and `location_id`/`asset_id`'s real existence (~4.6% resolution rate as a candidate `in_library` signal) confirmed and logged to `deferred-work.md` and Open Questions #1/#3/#4 — none wired into code, per Story 1.4's explicit scope carve-out. |
+| 2026-07-23 | Code review (Blind Hunter + Edge Case Hunter + Acceptance Auditor, parallel): 18 findings after triage — 0 decision-needed, 7 patch, 2 defer, 9 dismissed as noise (verified against the live code, not taken at face value — e.g. a claimed test-count discrepancy and a "whitespace not trimmed" edge case both turned out to be non-issues on inspection). All 7 patches applied: fixed a doc-comment misattribution (`bpm` normalization wrongly credited to `non_empty`), mirrored the existing `join_session` type-coercion deferred-work entry for the new `read_session` (now applies to both), added 3 tests (empty-string title, deck values 3/4, out-of-range `start_time`), corrected the stale Task 1 code sample and two stale doc comments (`lib.rs`'s `parser` module doc, `Play::deck`'s "observed values 1 or 2"). Full gate re-verified green: 65 tests, fmt clean, clippy clean. → done |

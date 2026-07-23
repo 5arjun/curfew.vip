@@ -49,7 +49,8 @@ use super::Play;
 /// against a live file during this story, superseding the schema Story 1.2's spike
 /// inferred. SQL `NULL` is therefore not how this format represents "absent" for these
 /// columns; an empty string is, exactly as [`crate::joiner::non_empty`] already treats
-/// it for the same table's `bpm`/`key`/`genre` in `joiner::serato4::join_session`. Text
+/// it for the same table's `key`/`genre` in `joiner::serato4::join_session` (`bpm` is
+/// normalized separately there, via a numeric-range check, not `non_empty`). Text
 /// fields are normalized through a local [`non_empty`] for the same reason that
 /// function's doc comment gives: `Some("")` would look like a resolved value and block
 /// Story 1.5's fallback from ever running for that field. Duplicated rather than
@@ -390,5 +391,80 @@ mod tests {
         insert_entry(&conn, 7, Some("A"), None, None, None, Some(1_000), None);
 
         assert_eq!(read_session(&conn, 999).expect("query succeeds"), vec![]);
+    }
+
+    /// An empty-string `name` is normalized to `None`, mirroring the same treatment
+    /// already covered for `artist`/`genre`/`key` — this story's own real-data pass
+    /// measured a 0.6% empty-title rate, so this path is real, not theoretical.
+    #[test]
+    fn empty_string_title_is_absent() {
+        let conn = in_memory_history();
+        insert_entry(
+            &conn,
+            7,
+            Some(""),
+            Some("Artist A"),
+            None,
+            None,
+            Some(1_000),
+            None,
+        );
+
+        let plays = read_session(&conn, 7).expect("query succeeds");
+
+        assert_eq!(plays[0].title, None, "empty title reads as absent");
+        assert_eq!(plays[0].artist.as_deref(), Some("Artist A"));
+    }
+
+    /// `deck` values `"3"` and `"4"` parse cleanly — confirmed real by this story's
+    /// real-data pass (a 4-deck controller setup is genuinely in use, not just
+    /// theoretical), unlike the `"1"`/`"2"` cases already covered elsewhere.
+    #[test]
+    fn deck_values_three_and_four_parse() {
+        let conn = in_memory_history();
+        insert_entry(
+            &conn,
+            7,
+            Some("A"),
+            None,
+            None,
+            None,
+            Some(1_000),
+            Some("3"),
+        );
+        insert_entry(
+            &conn,
+            7,
+            Some("B"),
+            None,
+            None,
+            None,
+            Some(2_000),
+            Some("4"),
+        );
+
+        let plays = read_session(&conn, 7).expect("query succeeds");
+
+        assert_eq!(plays[0].deck, Some(3));
+        assert_eq!(plays[1].deck, Some(4));
+    }
+
+    /// A `start_time` outside `u32`'s range (e.g. negative) fails the `try_from`
+    /// conversion and reads as `None`, same as any other unparseable value — but the
+    /// row's SQL `ORDER BY` position is still driven by the raw, now-invisible value.
+    /// No evidence this occurs in production (real data confirmed `start_time` is
+    /// `NOT NULL` and defaults to the current time), so this pins current behavior
+    /// rather than asserting a fix; see `deferred-work.md` for the open question.
+    #[test]
+    fn out_of_range_start_time_is_none_not_a_panic() {
+        let conn = in_memory_history();
+        insert_entry(&conn, 7, Some("A"), None, None, None, Some(-1), None);
+
+        let plays = read_session(&conn, 7).expect("query succeeds");
+
+        assert_eq!(
+            plays[0].start_time, None,
+            "negative start_time is not a valid u32"
+        );
     }
 }

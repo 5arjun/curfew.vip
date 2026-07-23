@@ -14,8 +14,9 @@
 /// BPM/key/genre held by the DJ's Serato library, across both library formats.
 /// See [`joiner`] for the two paths and their shared invariants.
 pub mod joiner;
-/// The `parser` pipeline filter (Story 1.3): decodes a legacy Serato `.session`
-/// file into an ordered list of plays. See [`parser`] for the format and invariants.
+/// The `parser` pipeline filter: decodes a legacy Serato `.session` file (Story 1.3)
+/// or reads Serato 4+'s `master.sqlite` play log directly (Story 1.3b) into an ordered
+/// list of plays. See [`parser`] for the formats and invariants.
 pub mod parser;
 
 use std::path::PathBuf;
