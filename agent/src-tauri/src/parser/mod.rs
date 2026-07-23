@@ -29,8 +29,10 @@
 //!
 //! The binary decode itself lives in [`session`]; this module is the public surface.
 
+mod serato4;
 mod session;
 
+pub use serato4::read_session;
 pub use session::{parse, parse_partial};
 
 use std::path::Path;

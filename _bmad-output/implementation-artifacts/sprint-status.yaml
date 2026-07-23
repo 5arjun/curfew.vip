@@ -43,6 +43,8 @@
 generated: 2026-07-21
 last_updated: 2026-07-23
 project: name-pending
+# 2026-07-23: story 1-3b dev-story started
+# 2026-07-23: story 1-3b master.sqlite play-log reader implemented (Tasks 1-3, 9 new tests, gate green) → review
 # 2026-07-21: story 1-2 dev-story started
 # 2026-07-21: story 1-2 spike complete (GO recommendation, findings doc written) → review
 # 2026-07-21: story 1-1 code-reviewed (8 patches applied + verified, 3 deferred) → done
@@ -68,7 +70,7 @@ development_status:
   1-1-monorepo-scaffold-with-three-workspaces: done
   1-2-parser-validation-spike-against-real-sessions: done
   1-3-clean-room-session-parser: done
-  1-3b-master-sqlite-play-log-reader: ready-for-dev
+  1-3b-master-sqlite-play-log-reader: review
   1-4-library-join-for-in-library-enrichment: done
   1-5-off-library-embedded-tag-fallback-with-visible-unknown: backlog
   1-6-edge-genre-normalization-versioned: backlog
