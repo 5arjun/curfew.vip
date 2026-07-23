@@ -63,7 +63,12 @@ pub struct JoinedMetadata {
     pub in_library: bool,
     /// Beats per minute, as analysed by Serato.
     pub bpm: Option<f64>,
-    /// Musical key in Camelot notation, e.g. `"1A"` — raw, exactly as stored.
+    /// Musical key, raw and exactly as stored at the source. When sourced from the
+    /// library join, this is Camelot notation, e.g. `"1A"` (findings §3). When
+    /// sourced from an embedded file tag ([`embedded_tags`]'s fallback), it is
+    /// whatever the tagging tool wrote — `TKEY`/Vorbis `KEY` carry no notation
+    /// guarantee, and nothing on this struct distinguishes which source a value
+    /// came from.
     pub key: Option<String>,
     /// Genre, raw and un-normalized (normalization is Story 1.6).
     pub genre: Option<String>,

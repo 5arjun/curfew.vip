@@ -44,6 +44,23 @@ use super::{non_empty, sane_bpm, JoinedMetadata};
 const VORBIS_KEY_FIELD: &str = "KEY";
 const VORBIS_GENRE_FIELD: &str = "GENRE";
 
+/// Calls into the pinned `triseratops` dependency's Autotags parser, treating a
+/// panic the same as a parse `Err`: no data, not a crash.
+///
+/// `take_autotags` (the pinned commit's `src/tag/autotags.rs`) calls
+/// `take_version(input).unwrap()`, which panics on any input under 2 bytes (its own
+/// test confirms `take_version(&[0x0A])` errors). Both `Autotags::parse_id3` and
+/// `Autotags::parse_flac` funnel through it, so a truncated or malformed GEOB/
+/// Vorbis-comment payload — entirely plausible for an arbitrary off-library file —
+/// can panic rather than return `Err`. `.ok()` alone can't catch that; this module's
+/// "infallible by design" contract needs `catch_unwind` at this one boundary, since
+/// the panic originates inside a pinned dependency this story doesn't own.
+fn parse_autotags_safely(
+    parse: impl FnOnce() -> Result<Autotags, triseratops::error::Error> + std::panic::UnwindSafe,
+) -> Option<Autotags> {
+    std::panic::catch_unwind(parse).ok().and_then(Result::ok)
+}
+
 /// Fills any `None` field on `metadata` from the played track's own embedded file
 /// tag, using `path` (the play's file path) to locate it.
 ///
@@ -114,7 +131,7 @@ fn read_embedded_tags(path: &str) -> EmbeddedFields {
             let mut fields = extract_vorbis_fields(comments);
             fields.bpm = comments
                 .get(Autotags::FLAC_COMMENT)
-                .and_then(|value| Autotags::parse_flac(value.as_bytes()).ok())
+                .and_then(|value| parse_autotags_safely(|| Autotags::parse_flac(value.as_bytes())))
                 .and_then(|autotags| sane_bpm(autotags.bpm));
             fields
         }
@@ -171,7 +188,7 @@ fn extract_id3_fields(tag: &id3::Tag) -> EmbeddedFields {
     let bpm = tag
         .encapsulated_objects()
         .find(|object| object.description == Autotags::ID3_TAG)
-        .and_then(|object| Autotags::parse_id3(&object.data).ok())
+        .and_then(|object| parse_autotags_safely(|| Autotags::parse_id3(&object.data)))
         .and_then(|autotags| sane_bpm(autotags.bpm));
 
     EmbeddedFields { bpm, key, genre }
@@ -282,6 +299,22 @@ mod tests {
         assert_eq!(fields.bpm, None);
     }
 
+    /// A GEOB frame matching the Serato Autotags description but with under 2 bytes
+    /// of data must not panic — the pinned `triseratops` commit's `take_autotags`
+    /// calls `take_version(input).unwrap()`, which errors (and would panic without
+    /// `parse_autotags_safely`'s `catch_unwind`) on exactly this input shape.
+    #[test]
+    fn id3_geob_with_truncated_payload_is_no_data_not_panic() {
+        use id3::TagLike;
+
+        let mut tag = id3::Tag::new();
+        tag.add_frame(geob_frame(Autotags::ID3_TAG, vec![0x01]));
+
+        let fields = extract_id3_fields(&tag);
+
+        assert_eq!(fields.bpm, None);
+    }
+
     /// A legacy numeric TCON value is stored as-is, unparsed — proves the
     /// "raw, not `.genre_parsed()`" decision.
     #[test]
@@ -296,12 +329,36 @@ mod tests {
         assert_eq!(fields.genre.as_deref(), Some("(17)"));
     }
 
-    /// A file with no ID3 tag at all: all three fields `None`, no panic.
-    /// `id3::Tag::read_from_path` itself resolves this to `ErrorKind::NoTag`, which
-    /// `read_id3_tags` maps to "no data" like every other `id3` error.
+    /// A path that doesn't exist at all: all three fields `None`, no panic.
+    /// `id3::Tag::read_from_path` resolves this to an IO `Err`, which `read_id3_tags`
+    /// maps to "no data" like every other `id3` error — distinct from the
+    /// `ErrorKind::NoTag` case below (an existing file that simply has no tag).
     #[test]
     fn read_id3_tags_missing_file_is_no_data() {
         let fields = read_id3_tags("/definitely/does/not/exist/curfew_1_5_test.mp3");
+
+        assert_eq!(fields, EmbeddedFields::default());
+    }
+
+    /// An existing, readable file with no ID3 tag at all: all three fields `None`,
+    /// no panic. This is Task 5(f)'s literal scenario — `id3::Tag::read_from_path`
+    /// resolves a tag-less file to `ErrorKind::NoTag`, which `read_id3_tags` maps to
+    /// "no data" the same as every other `id3` error, distinct from the
+    /// missing-path/IO-error case above.
+    #[test]
+    fn read_id3_tags_tagless_file_is_no_data() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "curfew_embedded_tags_notag_test_{}_{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::write(&path, b"not an id3 tag, just plain bytes").expect("temp fixture write");
+
+        let fields = read_id3_tags(path.to_str().expect("temp path is UTF-8"));
+        let _ = std::fs::remove_file(&path);
 
         assert_eq!(fields, EmbeddedFields::default());
     }
@@ -382,15 +439,18 @@ mod tests {
         assert_eq!(decoded.bpm, 140.0);
     }
 
-    // `lofty` 0.24.0 has no from-scratch writer for a minimal, self-contained
-    // FLAC/OGG container — `VorbisComments::save_to`/`dump_to` only patch metadata
-    // into an *existing* valid audio stream (STREAMINFO block, OggS pages), which
-    // would mean hand-rolling real container bytes to test a thin wrapper. Per the
-    // story's own guidance (Task 5), skipped rather than over-invested in; the pure
-    // `extract_vorbis_fields`/`flac_autogain_field_decodes_bpm` tests above already
-    // carry this path's real coverage. The dispatch/content-sniffing test just below
-    // exercises the equivalent IO wrapper on the ID3 side instead, where `id3` does
-    // offer a full from-scratch writer.
+    // `lofty` 0.24.0 has no from-scratch *writer* for a FLAC/OGG container
+    // (`VorbisComments::save_to`/`dump_to` only patch metadata into an existing
+    // valid audio stream), so the FLAC dispatch test below hand-builds minimal
+    // container bytes directly instead — the same approach the ID3 dispatch test
+    // takes with a hand-built MPEG frame sync, and the only way to drive
+    // `read_embedded_tags`'s `FileType::Flac` match arm through real content
+    // sniffing rather than calling `extract_vorbis_fields`/`Autotags::parse_flac`
+    // directly. OGG Vorbis dispatch is left uncovered by a real-file test: unlike
+    // FLAC's flat metadata-block layout, Ogg's page framing (CRC32-checksummed
+    // pages) is real container-format work disproportionate to a one-line
+    // `extract_vorbis_fields` reuse — the same "don't over-invest" call this
+    // story's own Task 5 guidance already makes for the thin IO-path test.
 
     // ---- Content-sniffing dispatch (real temp file, `read_embedded_tags`) -----
 
@@ -432,6 +492,80 @@ mod tests {
         assert_eq!(fields.key.as_deref(), Some("3A"));
         assert_eq!(fields.genre.as_deref(), Some("Techno"));
         assert_eq!(fields.bpm, Some(132.0));
+    }
+
+    /// Builds a minimal, spec-valid FLAC file byte-for-byte: the `fLaC` marker, a
+    /// mandatory STREAMINFO block (lofty only requires its length be `>= 18` bytes;
+    /// content is irrelevant to tag reading), and one VORBIS_COMMENT block carrying
+    /// `fields` in the standard `u32-LE-length-prefixed "KEY=VALUE"` layout `lofty`'s
+    /// own reader expects.
+    fn minimal_flac_bytes(fields: &[(&str, &str)]) -> Vec<u8> {
+        let mut comment_block = Vec::new();
+        let vendor = b"curfew-test";
+        comment_block.extend_from_slice(&(vendor.len() as u32).to_le_bytes());
+        comment_block.extend_from_slice(vendor);
+        comment_block.extend_from_slice(&(fields.len() as u32).to_le_bytes());
+        for (key, value) in fields {
+            let entry = format!("{key}={value}");
+            comment_block.extend_from_slice(&(entry.len() as u32).to_le_bytes());
+            comment_block.extend_from_slice(entry.as_bytes());
+        }
+
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"fLaC");
+        // STREAMINFO block header: not last, 34-byte zeroed content (the
+        // spec-mandated minimum size for this block).
+        bytes.push(0x00);
+        bytes.extend_from_slice(&34u32.to_be_bytes()[1..]);
+        bytes.extend_from_slice(&[0u8; 34]);
+        // VORBIS_COMMENT block header (type 4), marked as the last metadata block.
+        bytes.push(0x80 | 0x04);
+        let comment_len = comment_block.len() as u32;
+        bytes.extend_from_slice(&comment_len.to_be_bytes()[1..]);
+        bytes.extend_from_slice(&comment_block);
+        bytes
+    }
+
+    /// A FLAC file is routed to the Vorbis-comment path by content (the `fLaC`
+    /// marker, on a no-extension file), and its `SERATO_AUTOGAIN` field decodes
+    /// through the real `read_embedded_tags` dispatch — not just the pure
+    /// `extract_vorbis_fields`/`Autotags::parse_flac` calls `flac_autogain_field_decodes_bpm`
+    /// exercises directly. This is the FLAC-branch counterpart to the ID3 dispatch
+    /// test above.
+    #[test]
+    fn read_embedded_tags_routes_a_flac_file_by_content_and_decodes_autogain() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "curfew_embedded_tags_flac_test_{}_{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+
+        let autotags = Autotags {
+            version: triseratops::tag::generic::Version { major: 1, minor: 1 },
+            bpm: 140.0,
+            auto_gain: 0.0,
+            gain_db: 0.0,
+        };
+        let mut encoded = Vec::new();
+        autotags.write_flac(&mut encoded).expect("flac encode");
+        let encoded = String::from_utf8(encoded).expect("flac envelope is ASCII/base64");
+
+        let bytes = minimal_flac_bytes(&[
+            ("GENRE", "Techno"),
+            ("KEY", "5A"),
+            (Autotags::FLAC_COMMENT, &encoded),
+        ]);
+        std::fs::write(&path, &bytes).expect("temp fixture write");
+
+        let fields = read_embedded_tags(path.to_str().expect("temp path is UTF-8"));
+        let _ = std::fs::remove_file(&path);
+
+        assert_eq!(fields.genre.as_deref(), Some("Techno"));
+        assert_eq!(fields.key.as_deref(), Some("5A"));
+        assert_eq!(fields.bpm, Some(140.0));
     }
 
     // ---- `fill_gaps` orchestration ---------------------------------------------
