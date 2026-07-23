@@ -4,7 +4,7 @@ baseline_commit: 50b6338399038e8d2ad8d72fa7ef921c18f89363
 
 # Story 1.6: Edge genre normalization, versioned
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -85,6 +85,31 @@ So that genre stats are consistent and trends recompute cleanly after the table 
 - [x] **Task 5 — Confirm the existing CI gate covers this without changes** (AC: all)
   - [x] This module lives inside the already-gated `agent/src-tauri` crate, and adds **no new dependency** (pure-Rust `std`-only table + lookup). `.github/workflows/ci.yml`'s existing `agent` job (fmt check, `clippy --all-targets -D warnings`, build, test — steps at lines ~81-91) already covers it. **No CI changes should be needed** — same reasoning Stories 1.3/1.4/1.5 used. If you find a change is needed, that's new information, not a reason to add a workaround speculatively.
   - [x] If (and only if) you chose to add a new crate for the table (you shouldn't — see Task 1), re-verify its current non-yanked version on crates.io immediately before adding it and note it here, per this project's standing dependency-verification discipline. *(N/A — no crate added; the taxonomy is a pure `std`-only `const` table with a linear-scan lookup, so `Cargo.toml` is untouched.)*
+
+## Review Findings
+
+_Code review 2026-07-23 (bmad-code-review, 3 parallel layers: Blind Hunter, Edge Case Hunter, Acceptance Auditor). **Acceptance Auditor returned a clean pass — no AC or scope-boundary violations.** 15 distinct findings after dedup: 3 patch, 3 defer, 6 dismissed. **Verification caveat:** the four-command cargo gate could NOT be re-run during this review (Windows box, no Rust toolchain) — any applied patch must have `fmt --check` / `clippy --all-targets -D warnings` / `build` / `test` re-run on macOS/CI before merge._
+
+### Patch (unchecked)
+
+- [x] [Review][Patch] **APPLIED.** `normalize` doc claimed blank-handling is "consistent with `non_empty`," but `non_empty` returns `Some("   ")` for whitespace while `normalize` returns `None` — reworded to "same spirit, extended one step (normalize trims first)". [agent/src-tauri/src/genre.rs — `normalize` doc]
+- [x] [Review][Patch] **APPLIED.** Module doc called the key fold "allocation-free," but `to_lowercase()` allocates on every call — reworded to note the per-call key allocation and that only the `bucket_for` scan is allocation-free. [agent/src-tauri/src/genre.rs — module doc "Deterministic (AC-2)" invariant]
+- [x] [Review][Patch] **APPLIED.** Added `table_content_is_version_pinned` test: a dependency-free FNV-1a fingerprint over the taxonomy + a hand-verified `(21, 115)` count + a `TAXONOMY_VERSION == 1` pin, so any add/remove/spelling edit trips CI and forces a conscious version bump. Fingerprint `0xb3fd_bf5c_96db_e8a0` computed by an independent reference impl of the same algorithm/order. [agent/src-tauri/src/genre.rs — tests module]
+
+### Defer (logged to deferred-work.md)
+
+- [x] [Review][Defer] Exact-equality matching on a trim+lowercase key silently degrades recognized genres to "Other" on: internal whitespace runs/tabs (`"deep  house"`), un-listed punctuation/separator variants (`"drum&bass"`, `"r & b"`, curly apostrophe/dash), non-ASCII folding (Turkish-`İ`, NFD-decomposed), and multi-value tags (`"House / Techno"`) [agent/src-tauri/src/genre.rs — `normalize`/`bucket_for`] — deferred: no consumer yet (worst case is "Other", never a wrong value); refine against a real Serato-genre fixture when Story 1.7 consumes `normalize`
+- [x] [Review][Defer] Taxonomy content gaps for the stated electronic/DJ target (`"melodic house"`, `"organic house"`, `"big room"`, `"grime"`, `"footwork"`, …) silently map to "Other" [agent/src-tauri/src/genre.rs — `TAXONOMY`] — deferred: this is the OQ2 content-refinement the spec explicitly carved out (mechanism vs. content); refine the bucket/alias set anytime and bump `TAXONOMY_VERSION`
+- [x] [Review][Defer] Legacy ID3v1 numeric TCON `"(17)"` maps to "Other" though index 17 == Rock, an in-taxonomy bucket [agent/src-tauri/src/genre.rs — `legacy_numeric_tcon_forms_map_to_default_bucket`] — deferred: V1 deliberately took OQ3 option (b); revisit option (a) (decode the 0–191 table) if real libraries surface numeric TCONs, and bump `TAXONOMY_VERSION`
+
+### Dismissed (6)
+
+- **`DEFAULT_BUCKET = "Other"` is in-band with a real genre tagged "Other".** Mitigated: `raw` is preserved verbatim so the two remain distinguishable, and a track literally tagged "Other" bucketing to "Other" is arguably correct.
+- **`NormalizedGenre` derives no `Serialize` / isn't `#[non_exhaustive]`.** The spec explicitly scopes persistence/wire out; adding derives now would contradict the persistence boundary (the consuming story adds the wire representation).
+- **"first-match scan is order-dependent / no negative-determinism test."** Already guarded by the existing `no_alias_is_shared_across_buckets` test, which fails CI if the invariant is ever violated — the mechanism exists.
+- **"doc-to-code ratio is a maintenance liability."** The heavy rationale-first doc style is the mandated house style (Dev Notes: mirror `parser/mod.rs`, `joiner/mod.rs`).
+- **"intra-doc links may not resolve."** Verified they resolve: `embedded_tags` is `pub mod`, `fill_gaps` is `pub fn`, `Play.genre` is `pub`.
+- **"raw stored untrimmed while key is trimmed (asymmetric)."** This is the spec-mandated verbatim-raw behavior (AD-12); downstream dedup should key on `normalized`, not `raw`.
 
 ## Dev Notes
 

@@ -28,9 +28,10 @@
 //!   silently manufacture a normalized value for a track that never had a genre. The
 //!   default bucket is only for a genre that is *present but unrecognized*.
 //! - **Deterministic** (AC-2). The same raw string always maps to the same bucket, run
-//!   to run: the table is a compile-time constant and the lookup is a pure, allocation-
-//!   free case-fold/trim of the key with no ordering ambiguity (each alias belongs to
-//!   exactly one bucket).
+//!   to run: the table is a compile-time constant and the lookup is a pure case-fold/trim
+//!   of the key with no ordering ambiguity (each alias belongs to exactly one bucket). The
+//!   fold allocates one lowercased key per call; the table scan itself
+//!   ([`bucket_for`]) is allocation-free.
 //! - **Raw preserved verbatim.** The stored [`NormalizedGenre::raw`] is byte-identical
 //!   to the input — never trimmed, lowercased, or rewritten (same discipline as
 //!   [`crate::joiner::non_empty`], which normalizes only the emptiness test). Case- and
@@ -244,8 +245,10 @@ pub struct NormalizedGenre {
 /// Total and infallible (see the module docs). The three defined outcomes:
 /// - `None` in → `None` out. An absent genre stays absent (the AD-11 "Unknown" path);
 ///   a present-but-blank/whitespace-only string is treated as absent-equivalent and
-///   also returns `None`, consistent with [`crate::joiner::non_empty`]'s "an empty
-///   string is not a real value."
+///   also returns `None`. This follows the spirit of [`crate::joiner::non_empty`]'s "an
+///   empty string is not a real value," extended one step: `non_empty` rejects only the
+///   exact empty string (it returns `Some("   ")` for whitespace), whereas `normalize`
+///   trims first, so a whitespace-only genre is `None` here too.
 /// - a *known* raw (any case, surrounding whitespace ignored) → `Some` with its
 ///   taxonomy bucket.
 /// - a *present-but-unrecognized* raw → `Some` with [`DEFAULT_BUCKET`] (AC-2).
@@ -433,5 +436,74 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// Version-bump tripwire (AD-12). The whole re-normalization story depends on
+    /// [`TAXONOMY_VERSION`] being bumped whenever [`TAXONOMY`] or [`DEFAULT_BUCKET`]
+    /// changes — otherwise two fleet agents can produce different normalized values
+    /// under the *same* version and the cloud can't tell them apart. The "bump this"
+    /// comment on [`TAXONOMY_VERSION`] is prose that nothing enforces, so this test
+    /// pins a content fingerprint against the current version: any add, removal, or
+    /// in-place spelling edit changes the fingerprint and trips the assert, whose
+    /// message tells the editor to re-pin it **and** bump the version in the same
+    /// commit — making the bump a conscious step, not a thing to forget.
+    ///
+    /// The fingerprint is a deterministic, dependency-free FNV-1a hash over the
+    /// default-bucket string and every canonical bucket name + alias. A hand-verifiable
+    /// `(buckets, aliases)` count is pinned alongside it as a cross-check. `EXPECTED_FNV`
+    /// is computed by the *same* function this test runs, so it is reproducible on every
+    /// platform — unlike `std::hash::DefaultHasher`, whose output isn't stable across
+    /// toolchains. If this fails because you changed the table on purpose: copy the
+    /// `actual` value from the panic into `EXPECTED_FNV`, update the counts, and bump
+    /// [`TAXONOMY_VERSION`], all in the same commit.
+    #[test]
+    fn table_content_is_version_pinned() {
+        const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+        const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+        fn fold(mut h: u64, s: &str) -> u64 {
+            for b in s.bytes() {
+                h ^= b as u64;
+                h = h.wrapping_mul(FNV_PRIME);
+            }
+            // A separator no alias contains, so ("ab","c") can't hash like ("a","bc").
+            h ^= 0x1f;
+            h.wrapping_mul(FNV_PRIME)
+        }
+
+        let mut buckets = 0usize;
+        let mut aliases = 0usize;
+        let mut actual = fold(FNV_OFFSET, DEFAULT_BUCKET);
+        for (bucket, alias_list) in TAXONOMY {
+            buckets += 1;
+            actual = fold(actual, bucket);
+            for alias in *alias_list {
+                aliases += 1;
+                actual = fold(actual, alias);
+            }
+        }
+
+        // Hand-verifiable cross-check (counted directly off the table), so this half of
+        // the guard holds regardless of the hash pin.
+        assert_eq!(
+            (buckets, aliases),
+            (21, 115),
+            "taxonomy structure changed — re-pin the counts + EXPECTED_FNV and bump \
+             TAXONOMY_VERSION in the same commit; fingerprint is now {actual:#018x}"
+        );
+
+        // Content fingerprint pin. See the doc comment for how to re-pin on a real
+        // taxonomy change. `EXPECTED_FNV` was computed by an independent reference
+        // implementation of this exact `fold`/order over the v1 table; a mismatch here
+        // means either the table changed or the two implementations diverged.
+        const EXPECTED_FNV: u64 = 0xb3fd_bf5c_96db_e8a0;
+        assert_eq!(
+            actual, EXPECTED_FNV,
+            "taxonomy content changed — re-pin EXPECTED_FNV to {actual:#018x} and bump \
+             TAXONOMY_VERSION in the same commit"
+        );
+        assert_eq!(
+            TAXONOMY_VERSION, 1,
+            "content is pinned to version 1; bump it (and re-pin above) on any table edit"
+        );
     }
 }

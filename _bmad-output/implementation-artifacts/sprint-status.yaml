@@ -43,6 +43,7 @@
 generated: 2026-07-21
 last_updated: 2026-07-23
 project: name-pending
+# 2026-07-23: story 1-6 code-reviewed (bmad-code-review, 3 parallel layers): Acceptance Auditor clean pass (all ACs/scope/tasks met); 3 patches applied (corrected false "consistent with non_empty" whitespace claim, corrected "allocation-free" doc overstatement, added table_content_is_version_pinned FNV+count+version tripwire so a TAXONOMY edit without a TAXONOMY_VERSION bump fails CI), 3 deferred (exact-equality match brittleness on internal-whitespace/punctuation/Unicode/multi-value tags, V1 taxonomy content gaps, "(17)" legacy-TCON→Other OQ3-b — all degrade only to "Other", never wrong, no consumer yet), 6 dismissed; 12 inline tests. ⚠️ patched test/doc code NOT re-gated on this Windows box (no Rust toolchain) — fmt/clippy/build/test must be re-run on macOS/CI before merge → done
 # 2026-07-23: story 1-6 dev-story started → in-progress
 # 2026-07-23: story 1-6 implemented: net-new pure genre::normalize filter (agent/src-tauri/src/genre.rs) producing raw+normalized+taxonomy_version triple against a compile-time-const Curfew taxonomy (~21 electronic/DJ buckets, TAXONOMY_VERSION=1, DEFAULT_BUCKET="Other"); infallible-by-design like embedded_tags::fill_gaps; missing None kept distinct from present-but-unrecognized default bucket; "(17)"-form legacy TCON → default bucket (OQ3 opt b); blank → None (OQ4); case/whitespace-insensitive lookup key, raw preserved verbatim (OQ5); 11 inline tests; no new dep, no shared/ change, parser/joiner types frozen. ⚠️ cargo gate NOT run — no Rust toolchain on this Windows machine (prior stories gated from macOS); completed by hand-review per user direction, gate deferred to CI/reviewer (deferred-work.md) → review
 # 2026-07-23: story 1-5 code-reviewed (bmad-code-review, 3 parallel layers): 5 patches applied (panic guard on Autotags::parse_id3/parse_flac via catch_unwind, JoinedMetadata::key doc corrected, FLAC dispatch test + truncated-GEOB regression test added, tag-less-file test added, test-count claims corrected), 2 deferred (lofty id3v2_compression_support FLAC edge case, content-vs-extension dispatch doc overstatement), 9 dismissed; 83 tests, gate green → done
@@ -81,7 +82,7 @@ development_status:
   1-3b-master-sqlite-play-log-reader: done
   1-4-library-join-for-in-library-enrichment: done
   1-5-off-library-embedded-tag-fallback-with-visible-unknown: done
-  1-6-edge-genre-normalization-versioned: review
+  1-6-edge-genre-normalization-versioned: done
   1-7-core-per-set-stat-engine: backlog
   1-8-live-practice-confidence-signal: backlog
   1-9-golden-file-regression-harness: backlog
