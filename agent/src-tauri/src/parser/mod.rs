@@ -29,8 +29,10 @@
 //!
 //! The binary decode itself lives in [`session`]; this module is the public surface.
 
+mod serato4;
 mod session;
 
+pub use serato4::read_session;
 pub use session::{parse, parse_partial};
 
 use std::path::Path;
@@ -62,7 +64,8 @@ pub struct Play {
     pub year: Option<String>,
     /// Play start time — Unix epoch, UTC (field 28).
     pub start_time: Option<u32>,
-    /// Deck the track played on — observed values 1 or 2 (field 31).
+    /// Deck the track played on. Legacy `.session` field 31: observed values 1 or 2.
+    /// Serato 4+'s `history_entry.deck` (Story 1.3b): observed values 1-4.
     pub deck: Option<u32>,
     /// Played duration in seconds (field 45).
     pub duration_sec: Option<u32>,
