@@ -136,8 +136,14 @@ const TAXONOMY: &[(&str, &[&str])] = &[
             "jump up",
         ],
     ),
-    ("Dubstep", &["dubstep", "brostep", "riddim", "melodic dubstep"]),
-    ("Bass", &["bass", "bass music", "uk bass", "future bass", "wave"]),
+    (
+        "Dubstep",
+        &["dubstep", "brostep", "riddim", "melodic dubstep"],
+    ),
+    (
+        "Bass",
+        &["bass", "bass music", "uk bass", "future bass", "wave"],
+    ),
     ("Trap", &["trap", "festival trap", "hybrid trap"]),
     (
         "Garage",
@@ -151,20 +157,61 @@ const TAXONOMY: &[(&str, &[&str])] = &[
             "future garage",
         ],
     ),
-    ("Breakbeat", &["breakbeat", "breaks", "big beat", "nu skool breaks"]),
-    ("Hard Dance", &["hard dance", "hardstyle", "hardcore", "gabber", "rawstyle"]),
-    ("Disco", &["disco", "nu-disco", "nu disco", "italo disco", "disco house"]),
-    ("Funk / Soul", &["funk", "soul", "funk & soul", "funk and soul"]),
-    ("Hip-Hop", &["hip-hop", "hip hop", "hiphop", "rap", "boom bap"]),
+    (
+        "Breakbeat",
+        &["breakbeat", "breaks", "big beat", "nu skool breaks"],
+    ),
+    (
+        "Hard Dance",
+        &["hard dance", "hardstyle", "hardcore", "gabber", "rawstyle"],
+    ),
+    (
+        "Disco",
+        &[
+            "disco",
+            "nu-disco",
+            "nu disco",
+            "italo disco",
+            "disco house",
+        ],
+    ),
+    (
+        "Funk / Soul",
+        &["funk", "soul", "funk & soul", "funk and soul"],
+    ),
+    (
+        "Hip-Hop",
+        &["hip-hop", "hip hop", "hiphop", "rap", "boom bap"],
+    ),
     ("R&B", &["r&b", "rnb", "r and b", "contemporary r&b"]),
-    ("Pop", &["pop", "dance pop", "electropop", "synthpop", "synth-pop"]),
-    ("Rock", &["rock", "indie rock", "alternative rock", "classic rock"]),
+    (
+        "Pop",
+        &["pop", "dance pop", "electropop", "synthpop", "synth-pop"],
+    ),
+    (
+        "Rock",
+        &["rock", "indie rock", "alternative rock", "classic rock"],
+    ),
     (
         "Ambient",
-        &["ambient", "downtempo", "chillout", "chill out", "chill", "lofi", "lo-fi"],
+        &[
+            "ambient",
+            "downtempo",
+            "chillout",
+            "chill out",
+            "chill",
+            "lofi",
+            "lo-fi",
+        ],
     ),
-    ("Electronica", &["electronica", "electronic", "edm", "idm", "dance"]),
-    ("Reggae / Dancehall", &["reggae", "dancehall", "ragga", "dub"]),
+    (
+        "Electronica",
+        &["electronica", "electronic", "edm", "idm", "dance"],
+    ),
+    (
+        "Reggae / Dancehall",
+        &["reggae", "dancehall", "ragga", "dub"],
+    ),
     ("Latin", &["latin", "reggaeton", "salsa", "cumbia"]),
     ("Afrobeats", &["afrobeats", "afrobeat", "amapiano"]),
 ];
@@ -282,8 +329,8 @@ mod tests {
     /// dropped, and is still version-stamped.
     #[test]
     fn present_but_unrecognized_maps_to_default_bucket() {
-        let out = normalize(Some("totally-made-up-genre-xyz"))
-            .expect("a present genre is never dropped");
+        let out =
+            normalize(Some("totally-made-up-genre-xyz")).expect("a present genre is never dropped");
 
         assert_eq!(out.normalized, DEFAULT_BUCKET);
         assert_eq!(out.normalized, "Other");
@@ -346,7 +393,10 @@ mod tests {
     fn every_produced_value_is_version_stamped() {
         for input in ["Trance", "Techno", "some-obscure-tag", "(17)"] {
             let out = normalize(Some(input)).expect("present genre normalizes");
-            assert_eq!(out.taxonomy_version, TAXONOMY_VERSION, "{input:?} unstamped");
+            assert_eq!(
+                out.taxonomy_version, TAXONOMY_VERSION,
+                "{input:?} unstamped"
+            );
         }
     }
 
