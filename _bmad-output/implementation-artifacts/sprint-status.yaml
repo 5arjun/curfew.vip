@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-21
-last_updated: 2026-07-22
+last_updated: 2026-07-23
 project: name-pending
 # 2026-07-21: story 1-2 dev-story started
 # 2026-07-21: story 1-2 spike complete (GO recommendation, findings doc written) → review
@@ -57,6 +57,7 @@ project: name-pending
 # 2026-07-22: story 1-4 joiner implemented, both library formats (Tasks 1-6, 25 new tests, mutation-verified, gate green); flags volume-hosted path resolution as unproven (Open Question #6) → review
 # 2026-07-22: story 1-4 code-reviewed (RF-1 join_session keyed on history_entry.id + total ordering, RF-2 duplicate-path test; RF-3 path encoding + RF-4 in_library spine deviation logged to deferred-work.md; 49 tests, gate green) → review
 # 2026-07-22: story 1-4 code-reviewed 2nd pass (bmad-code-review): doc test-count arithmetic fixed, empty-path guard added, serato4::open_read_only failure-mode tests added, duplicate-path assumption hedged; sane_bpm upper bound + join_session row-error blast-radius logged to deferred-work.md; 52 tests, gate green → done
+# 2026-07-23: story 1-3b context-engineered (master.sqlite play-log reader, direct SQL against history_entry, no new Play field for BPM to keep one contract across both play-log sources) → ready-for-dev
 project_key: NOKEY
 tracking_system: file-system
 story_location: "{project-root}/_bmad-output/implementation-artifacts"
@@ -67,7 +68,7 @@ development_status:
   1-1-monorepo-scaffold-with-three-workspaces: done
   1-2-parser-validation-spike-against-real-sessions: done
   1-3-clean-room-session-parser: done
-  1-3b-master-sqlite-play-log-reader: backlog
+  1-3b-master-sqlite-play-log-reader: ready-for-dev
   1-4-library-join-for-in-library-enrichment: done
   1-5-off-library-embedded-tag-fallback-with-visible-unknown: backlog
   1-6-edge-genre-normalization-versioned: backlog
