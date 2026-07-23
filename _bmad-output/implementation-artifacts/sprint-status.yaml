@@ -43,6 +43,8 @@
 generated: 2026-07-21
 last_updated: 2026-07-23
 project: name-pending
+# 2026-07-23: story 1-6 dev-story started → in-progress
+# 2026-07-23: story 1-6 implemented: net-new pure genre::normalize filter (agent/src-tauri/src/genre.rs) producing raw+normalized+taxonomy_version triple against a compile-time-const Curfew taxonomy (~21 electronic/DJ buckets, TAXONOMY_VERSION=1, DEFAULT_BUCKET="Other"); infallible-by-design like embedded_tags::fill_gaps; missing None kept distinct from present-but-unrecognized default bucket; "(17)"-form legacy TCON → default bucket (OQ3 opt b); blank → None (OQ4); case/whitespace-insensitive lookup key, raw preserved verbatim (OQ5); 11 inline tests; no new dep, no shared/ change, parser/joiner types frozen. ⚠️ cargo gate NOT run — no Rust toolchain on this Windows machine (prior stories gated from macOS); completed by hand-review per user direction, gate deferred to CI/reviewer (deferred-work.md) → review
 # 2026-07-23: story 1-5 code-reviewed (bmad-code-review, 3 parallel layers): 5 patches applied (panic guard on Autotags::parse_id3/parse_flac via catch_unwind, JoinedMetadata::key doc corrected, FLAC dispatch test + truncated-GEOB regression test added, tag-less-file test added, test-count claims corrected), 2 deferred (lofty id3v2_compression_support FLAC edge case, content-vs-extension dispatch doc overstatement), 9 dismissed; 83 tests, gate green → done
 # 2026-07-23: story 1-5 implemented: off-library embedded-tag fallback (joiner::embedded_tags::fill_gaps) — id3 crate for MP3/WAV/AIFF, new lofty dependency for FLAC/OGG Vorbis comments, triseratops::tag::Autotags reused for GEOB and Vorbis-comment BPM decode; content-sniffed dispatch (not extension-based); OGG BPM and MP4/M4A out of scope. 15 new tests (80 total), full crate gate green → review
 # 2026-07-23: story 1-5 dev-story started
@@ -79,7 +81,7 @@ development_status:
   1-3b-master-sqlite-play-log-reader: done
   1-4-library-join-for-in-library-enrichment: done
   1-5-off-library-embedded-tag-fallback-with-visible-unknown: done
-  1-6-edge-genre-normalization-versioned: ready-for-dev
+  1-6-edge-genre-normalization-versioned: review
   1-7-core-per-set-stat-engine: backlog
   1-8-live-practice-confidence-signal: backlog
   1-9-golden-file-regression-harness: backlog

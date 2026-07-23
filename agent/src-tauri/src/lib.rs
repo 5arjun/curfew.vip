@@ -10,6 +10,11 @@
 //! Dependency rule (AD-3): `agent` depends on `shared` (via the JSON-schema
 //! artifact), never on `web`.
 
+/// The `genre` pipeline filter (Story 1.6): normalizes a raw genre string to the
+/// fixed Curfew taxonomy, producing a raw + normalized + `taxonomy_version` triple
+/// (AD-12). Sits after the `joiner` (which supplies the raw genre) and before the
+/// stat-engine (which will consume the normalized value). See [`genre`].
+pub mod genre;
 /// The `joiner` pipeline filter (Story 1.4): resolves a played track to the
 /// BPM/key/genre held by the DJ's Serato library, across both library formats.
 /// See [`joiner`] for the two paths and their shared invariants.
