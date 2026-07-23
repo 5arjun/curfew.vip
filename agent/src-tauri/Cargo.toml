@@ -31,6 +31,13 @@ serde_json = "1"
 triseratops = { git = "https://github.com/Holzhaus/triseratops.git", rev = "8e92aae1794c4f02a2405eb88ea72f251b077f0c" }
 id3 = "1.17.0"
 
+# Vorbis-comment reads for FLAC/OGG (Story 1.5's embedded-tag fallback, the Vorbis
+# half of AD-11 that `id3` doesn't cover). Default features disabled: the only
+# default feature (`id3v2_compression_support`) pulls in `flate2` for ID3v2
+# compression this story never needs — all ID3 reads go through `id3` above, not
+# lofty. Used narrowly for FLAC/OGG Vorbis-comment field access only.
+lofty = { version = "0.24.0", default-features = false }
+
 # Serato 4+ `master.sqlite` reads (Story 1.4's `joiner::serato4`). `bundled`
 # statically links SQLite into the binary so a packaged agent never depends on
 # whatever SQLite version the DJ's OS happens to ship — a distribution

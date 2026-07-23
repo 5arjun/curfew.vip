@@ -7,31 +7,38 @@
 //! it is the only component that ever reads the library catalogue (AD-1: the edge
 //! owns the session↔library join; the cloud never re-derives it).
 //!
-//! Two library formats, two submodules, one output type:
+//! Three submodules, one output type:
 //! - [`legacy`] — the pre-Serato-4 `_Serato_/database V2` binary catalogue, joined by
 //!   file path against a [`crate::parser::Play`].
 //! - [`serato4`] — Serato 4+'s `master.sqlite`, where the same three fields are
 //!   already denormalized onto the play row, so the "join" is a read, not a lookup.
+//! - [`embedded_tags`] — the off-library fallback (Story 1.5): reads BPM/key/genre
+//!   straight from the played file's own ID3 or Vorbis-comment tags for whatever
+//!   `legacy`/`serato4` left `None`.
 //!
-//! Design invariants (Story 1.4):
+//! Design invariants (Story 1.4, extended by Story 1.5):
 //! - **Never guess** (AD-11). A field that is absent, empty, or unparseable in the
 //!   source comes back `None`. A fabricated or partially-decoded value would be
 //!   indistinguishable from a real one downstream.
 //! - **No panics on the join path.** Every fallible step returns `Result`/`Option`,
 //!   matching the bar set by Stories 1.1 and 1.3 — including path handling, which
 //!   never assumes a filename is valid Unicode (Story 1.2 findings §5/D2).
-//! - **Read-only.** Neither format's source file is opened for writing; Serato may
-//!   hold the same files open during a gig.
-//! - **Raw values only.** Genre is returned exactly as the library stores it —
+//! - **Read-only.** No source file is opened for writing; Serato may hold the same
+//!   files open during a gig.
+//! - **Raw values only.** Genre is returned exactly as the source stores it —
 //!   normalization (FR-8/AD-12, raw + normalized + `taxonomy_version`) is Story 1.6's
-//!   job, and key is already Camelot notation at the source (findings §3).
+//!   job, and key is already Camelot notation at the source (findings §3) or taken
+//!   raw from the embedded tag.
 //!
-//! What this filter deliberately does *not* do: read embedded file tags (Story 1.5),
-//! reconcile its result against the play log's own inline `genre`/`key`
-//! ([`crate::parser::Play`] carries those from a different source — the merge policy
-//! belongs to whichever stage assembles the final per-play record), or display
-//! "Unknown" (a `None` here is the input to that chain, not the end of it).
+//! What this filter deliberately does *not* do: reconcile its result against the play
+//! log's own inline `genre`/`key` ([`crate::parser::Play`] carries those from a
+//! different source — the merge policy belongs to whichever stage assembles the final
+//! per-play record), run local audio DSP or key-finding (Story 1.5 AC-3, explicitly
+//! out of scope), or display "Unknown" (a `None` here is the input to that chain, not
+//! the end of it).
 
+/// Off-library embedded-tag fallback (Story 1.5, AC-1/AC-2/AC-3).
+pub mod embedded_tags;
 /// Legacy `database V2` library join (Story 1.4, AC-1/AC-3).
 pub mod legacy;
 /// Serato 4+ `master.sqlite` metadata read (Story 1.4, AC-2).
@@ -56,7 +63,12 @@ pub struct JoinedMetadata {
     pub in_library: bool,
     /// Beats per minute, as analysed by Serato.
     pub bpm: Option<f64>,
-    /// Musical key in Camelot notation, e.g. `"1A"` — raw, exactly as stored.
+    /// Musical key, raw and exactly as stored at the source. When sourced from the
+    /// library join, this is Camelot notation, e.g. `"1A"` (findings §3). When
+    /// sourced from an embedded file tag ([`embedded_tags`]'s fallback), it is
+    /// whatever the tagging tool wrote — `TKEY`/Vorbis `KEY` carry no notation
+    /// guarantee, and nothing on this struct distinguishes which source a value
+    /// came from.
     pub key: Option<String>,
     /// Genre, raw and un-normalized (normalization is Story 1.6).
     pub genre: Option<String>,
