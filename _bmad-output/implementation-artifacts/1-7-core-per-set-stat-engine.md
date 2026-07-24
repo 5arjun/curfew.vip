@@ -4,7 +4,7 @@ baseline_commit: 53eaacc720594d035c8b963a0b6406563c1e8e95
 
 # Story 1.7: Core per-set stat engine
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -99,6 +99,17 @@ So that accurate summaries and the energy arc render with no ML or cloud round-t
     - **(AC-3)** a smoke assertion that no function in this module's dependency graph pulls in a scoring/ML crate — this is really enforced by Cargo.toml having no such dependency (Task 5's audit), not a runtime test, but note it in a test doc comment for discoverability.
     - **(determinism)** running the full per-set computation twice over the same `Vec<EnrichedPlay>` yields identical output — mirrors `genre::normalize_is_deterministic` / `parser::parse_is_deterministic`.
   - [x] Gate: `cargo fmt --manifest-path agent/src-tauri/Cargo.toml -- --check`, `cargo clippy --manifest-path agent/src-tauri/Cargo.toml --all-targets -- -D warnings`, `cargo build --manifest-path agent/src-tauri/Cargo.toml`, `cargo test --manifest-path agent/src-tauri/Cargo.toml`. **This machine has no Rust toolchain either** (verified: `cargo`/`rustc` not on `PATH` during story creation) — same situation Story 1.6 hit on its implementation machine. If the dev-story implementation also happens on a toolchain-less machine, do **not** skip the gate silently; log it to `deferred-work.md` exactly as Story 1.6 did, and get it run on a macOS/CI box before merge. Do not let a second story in a row merge with an unverified gate without an explicit, tracked follow-up.
+
+### Review Findings
+
+- [x] [Review][Patch] `bpm_distribution` panics on a non-finite BPM via `.expect()`, violating this story's own "no `.unwrap()`/`.expect()` on production paths" idiom [agent/src-tauri/src/stats/mod.rs:272-275] — fixed: `sort_by(|a, b| a.total_cmp(b))`, no panic path
+- [x] [Review][Patch] Genre/key source-selection `.or()` in `enrich` treats a present-but-blank string as "present," silently discarding a real fallback value [agent/src-tauri/src/stats/mod.rs:89,92] — fixed: added `non_blank` helper, applied before `.or()` on both sides; 2 new tests
+- [x] [Review][Patch] `deferred-work.md`'s `TrackIdentity` collision entry only names the Serato-4+ title+artist case; the code also collides all blank-title/blank-artist/no-path plays into one shared bucket, which the entry should also name [agent/src-tauri/src/stats/mod.rs:141-148] — fixed: entry widened to cover the blank/blank case
+- [x] [Review][Patch] `CamelotKey`'s doc comment overclaims — "can never be invalid once constructed" isn't enforced (both fields are `pub`, no smart-constructor boundary) [agent/src-tauri/src/stats/camelot.rs:24-26] — fixed: doc comment now states this is a convention `parse` upholds, not a type-level guarantee
+- [x] [Review][Patch] `enrich_session` — one of Task 1's two named deliverables — has no direct test [agent/src-tauri/src/stats/mod.rs:118-123] — fixed: added `enrich_session_maps_pairs_in_order` test
+- [x] [Review][Defer] `enrich_session`'s `&[(Play, JoinedMetadata)]` signature requires callers to pre-zip by position, resting on an implicit, untested invariant that `parser::serato4`'s and `joiner::serato4`'s independently-maintained SQL queries stay row-order-aligned [agent/src-tauri/src/stats/mod.rs:118-123] — deferred, pre-existing (no live caller yet; revisit when Story 1.10/Epic 2 wires the real pipeline)
+
+Cargo gate re-run after patches (macOS, rustup toolchain 1.97.1): fmt, clippy -D warnings, build, test all green — 120 tests passing (117 + 3 new).
 
 ## Dev Notes
 

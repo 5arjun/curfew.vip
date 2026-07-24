@@ -21,9 +21,11 @@ pub enum Letter {
 
 /// A validated Camelot-notation key, e.g. `8A` or `12B`.
 ///
-/// `number` is always in `1..=12` — [`parse`] is the only constructor, and it rejects
-/// anything outside that range, so a `CamelotKey` value can never be "invalid" once
-/// constructed.
+/// `number` is in `1..=12` for every value [`parse`] produces — it rejects anything
+/// outside that range. Both fields are `pub` (a plain value type, no smart-constructor
+/// boundary), so this is a convention `parse` upholds, not a type-level guarantee;
+/// nothing stops other code in this crate from constructing an out-of-range value
+/// directly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CamelotKey {
     pub number: u8,

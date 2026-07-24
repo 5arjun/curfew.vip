@@ -43,6 +43,7 @@
 generated: 2026-07-21
 last_updated: 2026-07-24
 project: name-pending
+# 2026-07-24: story 1-7 code-reviewed (bmad-code-review, 3 parallel layers): 5 patches applied (bpm_distribution .expect() panic on non-finite BPM replaced with total_cmp; genre/key .or() source-selection now treats blank/whitespace-only as absent via new non_blank helper, 2 tests added; deferred-work.md TrackIdentity entry widened to cover the blank/blank collision case; CamelotKey doc comment corrected to not overclaim type-level invariant enforcement; enrich_session given direct test coverage), 1 deferred (enrich_session's implicit pairing-order invariant between parser::serato4/joiner::serato4's independently-maintained SQL queries — no live caller yet), 5 dismissed (facade/no-entry-point suggestion, ranking-helper double-hashing efficiency, indirect-only artist-ranking coverage, genre_breakdown/taxonomy test coupling, camelot::parse leading-zero leniency); 120 tests, full cargo gate green (fmt, clippy -D warnings, build, test) → done
 # 2026-07-24: story 1-7 implemented: stats::mod (EnrichedPlay assembly, per-set summary stats, energy arc) and stats::camelot (Camelot parsing/compatibility/mixing stats); pub mod stats registered in lib.rs; two deferred-work.md entries logged (TrackIdentity path-collision, AC-4 full-pipeline-benchmark scope gap). Full four-command cargo gate run and green on this machine (fmt, clippy -D warnings, build, test — 117 passed) — gate was not deferred this time. No new dependency; parser::Play/joiner::JoinedMetadata/genre::NormalizedGenre/shared/CI untouched → review
 # 2026-07-24: story 1-7 dev-story started → in-progress
 # 2026-07-24: story 1-7 context-engineered (core per-set stat engine): new EnrichedPlay assembly step closing Story 1.6's deferred genre-source-selection question (plus a newly-identified key-source-selection question); per-set summary stats (most-played tracks/artists per CAP-5, genre breakdown, BPM distribution, set length, track count); new stats::camelot submodule for Camelot-wheel mixing stats; energy-arc series (FR-7 foundation); arithmetic-only guarantee; AC-4's unconfirmed performance targets addressed via a generous regression-guard benchmark plus an explicit scope-gap log for the untestable full-pipeline half. Flags a newly-discovered gotcha: Serato 4+ plays never carry a path, so track identity falls back to (title, artist). No new dependency; parser::Play/joiner::JoinedMetadata/genre::NormalizedGenre/shared/CI untouched -> ready-for-dev
@@ -86,7 +87,7 @@ development_status:
   1-4-library-join-for-in-library-enrichment: done
   1-5-off-library-embedded-tag-fallback-with-visible-unknown: done
   1-6-edge-genre-normalization-versioned: done
-  1-7-core-per-set-stat-engine: review
+  1-7-core-per-set-stat-engine: done
   1-8-live-practice-confidence-signal: backlog
   1-9-golden-file-regression-harness: backlog
   1-10-freeze-the-shared-sync-contract: backlog

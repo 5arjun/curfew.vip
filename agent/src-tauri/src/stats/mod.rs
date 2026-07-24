@@ -65,6 +65,14 @@ pub struct EnrichedPlay {
     pub camelot: Option<CamelotKey>,
 }
 
+/// A "cleared" tag is stored as `""` or whitespace-only, not a real value — mirrors
+/// [`crate::joiner::non_empty`]'s intent but also folds out whitespace-only content,
+/// since a present-but-blank string must not block a source-selection fallback to a
+/// real value in [`enrich`].
+fn non_blank(s: &str) -> Option<&str> {
+    (!s.trim().is_empty()).then_some(s)
+}
+
 /// Assembles one [`EnrichedPlay`] from a play and its joined metadata (Task 1).
 ///
 /// Total and infallible — same idiom as [`crate::genre::normalize`] and
@@ -73,23 +81,33 @@ pub struct EnrichedPlay {
 /// Boundaries section fixes:
 /// - **genre**: prefer `joined.genre` (already resolved through the full
 ///   library/embedded-tag fallback chain, Stories 1.4/1.5) and fall back to
-///   `play.genre` (the play-log's own inline tag) only when `joined.genre` is `None`.
-///   Whichever raw string wins is fed into [`genre::normalize`]; the two are never
-///   merged or concatenated.
+///   `play.genre` (the play-log's own inline tag) when `joined.genre` is `None` **or
+///   blank/whitespace-only** (a "cleared" tag stored as `""`/`" "` is not a real
+///   value). Whichever raw string wins is fed into [`genre::normalize`]; the two are
+///   never merged or concatenated.
 /// - **key**: prefer `play.key` (confirmed Camelot notation at the source for both
 ///   formats) and fall back to `joined.key` (not guaranteed Camelot notation when it
-///   came from an embedded-tag fallback) only when `play.key` is `None`. Whichever raw
-///   string wins is validated by [`camelot::parse`]; an unparseable key becomes
-///   `camelot: None`, never a fabricated position.
+///   came from an embedded-tag fallback) when `play.key` is `None` **or
+///   blank/whitespace-only**. Whichever raw string wins is validated by
+///   [`camelot::parse`]; an unparseable key becomes `camelot: None`, never a
+///   fabricated position.
 ///
 /// `bpm` is `joined.bpm` directly (`Play` has no `bpm` field by design — BPM is
 /// scoped to the library join for both formats). `title`/`artist`/`path`/`start_time`
 /// come from `play`'s own fields; no other source carries them.
 pub fn enrich(play: &Play, joined: &JoinedMetadata) -> EnrichedPlay {
-    let genre_raw = joined.genre.as_deref().or(play.genre.as_deref());
+    let genre_raw = joined
+        .genre
+        .as_deref()
+        .and_then(non_blank)
+        .or(play.genre.as_deref().and_then(non_blank));
     let genre = genre::normalize(genre_raw);
 
-    let key_raw = play.key.as_deref().or(joined.key.as_deref());
+    let key_raw = play
+        .key
+        .as_deref()
+        .and_then(non_blank)
+        .or(joined.key.as_deref().and_then(non_blank));
     let camelot = key_raw.and_then(camelot::parse);
 
     EnrichedPlay {
@@ -269,10 +287,7 @@ pub fn bpm_distribution(plays: &[EnrichedPlay]) -> BpmDistribution {
         return BpmDistribution::default();
     }
 
-    values.sort_by(|a, b| {
-        a.partial_cmp(b)
-            .expect("bpm values are finite per the joiner's sane_bpm filter")
-    });
+    values.sort_by(|a, b| a.total_cmp(b));
 
     let count = values.len();
     let min = values[0];
@@ -415,6 +430,15 @@ mod tests {
         assert_eq!(enrich(&p, &j).genre, None);
     }
 
+    /// (Review patch) A blank/whitespace-only `JoinedMetadata.genre` (a "cleared" tag)
+    /// does not block falling back to a real `Play.genre` value.
+    #[test]
+    fn enrich_falls_back_to_play_genre_when_joined_genre_is_blank() {
+        let p = play(None, None, None, None, Some("Techno"));
+        let j = joined(None, None, Some("   "));
+        assert_eq!(enrich(&p, &j).genre, normalize(Some("Techno")));
+    }
+
     /// (Task 1) `Play.key` wins over `JoinedMetadata.key` when both are present.
     #[test]
     fn enrich_prefers_play_key_over_joined_key() {
@@ -458,6 +482,50 @@ mod tests {
         let p = play(None, None, None, None, None);
         let j = joined(None, Some("Cmaj"), None);
         assert_eq!(enrich(&p, &j).camelot, None);
+    }
+
+    /// (Review patch) A blank/whitespace-only `Play.key` does not block falling back
+    /// to a real `JoinedMetadata.key` value.
+    #[test]
+    fn enrich_falls_back_to_joined_key_when_play_key_is_blank() {
+        let p = play(None, None, None, Some(" "), None);
+        let j = joined(None, Some("7A"), None);
+        assert_eq!(
+            enrich(&p, &j).camelot,
+            Some(CamelotKey {
+                number: 7,
+                letter: camelot::Letter::A
+            })
+        );
+    }
+
+    /// (Task 1) `enrich_session` maps each `(Play, JoinedMetadata)` pair through
+    /// `enrich` while preserving input order.
+    #[test]
+    fn enrich_session_maps_pairs_in_order() {
+        let pairs = vec![
+            (
+                play(None, Some("Track A"), None, None, None),
+                joined(Some(120.0), None, None),
+            ),
+            (
+                play(None, Some("Track B"), None, None, None),
+                joined(Some(128.0), None, None),
+            ),
+        ];
+
+        let enriched_plays = enrich_session(&pairs);
+        assert_eq!(
+            enriched_plays,
+            vec![
+                enrich(&pairs[0].0, &pairs[0].1),
+                enrich(&pairs[1].0, &pairs[1].1),
+            ]
+        );
+        assert_eq!(
+            enriched_plays.iter().map(|p| &p.title).collect::<Vec<_>>(),
+            vec![&Some("Track A".to_string()), &Some("Track B".to_string())]
+        );
     }
 
     /// (Task 1) A play with a path and a play without one both produce a usable
