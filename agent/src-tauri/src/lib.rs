@@ -23,6 +23,12 @@ pub mod joiner;
 /// or reads Serato 4+'s `master.sqlite` play log directly (Story 1.3b) into an ordered
 /// list of plays. See [`parser`] for the formats and invariants.
 pub mod parser;
+/// The `stat-engine` pipeline filter (Story 1.7): assembles a `parser::Play` and its
+/// `joiner::JoinedMetadata` into one `EnrichedPlay` record, then computes per-set
+/// summary stats, Camelot-wheel mixing stats, and the energy-arc series — all
+/// arithmetic-only (NFR-1, NFR-3). See [`stats`] for the assembly step and stat
+/// functions.
+pub mod stats;
 
 use std::path::PathBuf;
 
