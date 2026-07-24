@@ -43,6 +43,7 @@
 generated: 2026-07-21
 last_updated: 2026-07-24
 project: name-pending
+# 2026-07-24: story 1-8 context-engineered (live/practice confidence signal): new confidence.rs module classifying a whole session's Vec<EnrichedPlay> into a heuristic SessionConfidence value (dense/continuous-no-long-gap sessions score low per PRD FR-27's own worked example; too-few-plays and gappy sessions both score high, confidence being symmetric not directional); explicitly scoped away from AD-17's calibrated segment-detection machinery (different granularity, no history to calibrate from yet, Epic 5's job) and from any UI/persistence (AC-2 satisfied by omission, no consumer wired yet). Recommended default thresholds (MIN_PLAYS_FOR_AMBIGUITY=4, LONG_GAP_THRESHOLD_SEC=300, LOW_CONFIDENCE_VALUE=0.2) flagged as [ASSUMPTION] for Arjun — no prior doc locks a number for this signal. No new dependency; stats::EnrichedPlay/joiner/parser/genre/shared/CI untouched -> ready-for-dev
 # 2026-07-24: story 1-7 code-reviewed (bmad-code-review, 3 parallel layers): 5 patches applied (bpm_distribution .expect() panic on non-finite BPM replaced with total_cmp; genre/key .or() source-selection now treats blank/whitespace-only as absent via new non_blank helper, 2 tests added; deferred-work.md TrackIdentity entry widened to cover the blank/blank collision case; CamelotKey doc comment corrected to not overclaim type-level invariant enforcement; enrich_session given direct test coverage), 1 deferred (enrich_session's implicit pairing-order invariant between parser::serato4/joiner::serato4's independently-maintained SQL queries — no live caller yet), 5 dismissed (facade/no-entry-point suggestion, ranking-helper double-hashing efficiency, indirect-only artist-ranking coverage, genre_breakdown/taxonomy test coupling, camelot::parse leading-zero leniency); 120 tests, full cargo gate green (fmt, clippy -D warnings, build, test) → done
 # 2026-07-24: story 1-7 implemented: stats::mod (EnrichedPlay assembly, per-set summary stats, energy arc) and stats::camelot (Camelot parsing/compatibility/mixing stats); pub mod stats registered in lib.rs; two deferred-work.md entries logged (TrackIdentity path-collision, AC-4 full-pipeline-benchmark scope gap). Full four-command cargo gate run and green on this machine (fmt, clippy -D warnings, build, test — 117 passed) — gate was not deferred this time. No new dependency; parser::Play/joiner::JoinedMetadata/genre::NormalizedGenre/shared/CI untouched → review
 # 2026-07-24: story 1-7 dev-story started → in-progress
@@ -88,7 +89,7 @@ development_status:
   1-5-off-library-embedded-tag-fallback-with-visible-unknown: done
   1-6-edge-genre-normalization-versioned: done
   1-7-core-per-set-stat-engine: done
-  1-8-live-practice-confidence-signal: backlog
+  1-8-live-practice-confidence-signal: ready-for-dev
   1-9-golden-file-regression-harness: backlog
   1-10-freeze-the-shared-sync-contract: backlog
   epic-1-retrospective: optional
