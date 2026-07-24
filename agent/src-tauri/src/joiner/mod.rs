@@ -70,7 +70,8 @@ pub struct JoinedMetadata {
     /// guarantee, and nothing on this struct distinguishes which source a value
     /// came from.
     pub key: Option<String>,
-    /// Genre, raw and un-normalized (normalization is Story 1.6).
+    /// Genre, raw and un-normalized (normalization is Story 1.6's
+    /// [`crate::genre::normalize`]).
     pub genre: Option<String>,
 }
 

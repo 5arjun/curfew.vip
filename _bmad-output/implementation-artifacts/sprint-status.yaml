@@ -43,6 +43,9 @@
 generated: 2026-07-21
 last_updated: 2026-07-23
 project: name-pending
+# 2026-07-23: story 1-6 code-reviewed (bmad-code-review, 3 parallel layers): Acceptance Auditor clean pass (all ACs/scope/tasks met); 3 patches applied (corrected false "consistent with non_empty" whitespace claim, corrected "allocation-free" doc overstatement, added table_content_is_version_pinned FNV+count+version tripwire so a TAXONOMY edit without a TAXONOMY_VERSION bump fails CI), 3 deferred (exact-equality match brittleness on internal-whitespace/punctuation/Unicode/multi-value tags, V1 taxonomy content gaps, "(17)" legacy-TCON→Other OQ3-b — all degrade only to "Other", never wrong, no consumer yet), 6 dismissed; 12 inline tests. ⚠️ patched test/doc code NOT re-gated on this Windows box (no Rust toolchain) — fmt/clippy/build/test must be re-run on macOS/CI before merge → done
+# 2026-07-23: story 1-6 dev-story started → in-progress
+# 2026-07-23: story 1-6 implemented: net-new pure genre::normalize filter (agent/src-tauri/src/genre.rs) producing raw+normalized+taxonomy_version triple against a compile-time-const Curfew taxonomy (~21 electronic/DJ buckets, TAXONOMY_VERSION=1, DEFAULT_BUCKET="Other"); infallible-by-design like embedded_tags::fill_gaps; missing None kept distinct from present-but-unrecognized default bucket; "(17)"-form legacy TCON → default bucket (OQ3 opt b); blank → None (OQ4); case/whitespace-insensitive lookup key, raw preserved verbatim (OQ5); 11 inline tests; no new dep, no shared/ change, parser/joiner types frozen. ⚠️ cargo gate NOT run — no Rust toolchain on this Windows machine (prior stories gated from macOS); completed by hand-review per user direction, gate deferred to CI/reviewer (deferred-work.md) → review
 # 2026-07-23: story 1-5 code-reviewed (bmad-code-review, 3 parallel layers): 5 patches applied (panic guard on Autotags::parse_id3/parse_flac via catch_unwind, JoinedMetadata::key doc corrected, FLAC dispatch test + truncated-GEOB regression test added, tag-less-file test added, test-count claims corrected), 2 deferred (lofty id3v2_compression_support FLAC edge case, content-vs-extension dispatch doc overstatement), 9 dismissed; 83 tests, gate green → done
 # 2026-07-23: story 1-5 implemented: off-library embedded-tag fallback (joiner::embedded_tags::fill_gaps) — id3 crate for MP3/WAV/AIFF, new lofty dependency for FLAC/OGG Vorbis comments, triseratops::tag::Autotags reused for GEOB and Vorbis-comment BPM decode; content-sniffed dispatch (not extension-based); OGG BPM and MP4/M4A out of scope. 15 new tests (80 total), full crate gate green → review
 # 2026-07-23: story 1-5 dev-story started
@@ -65,6 +68,7 @@ project: name-pending
 # 2026-07-22: story 1-4 code-reviewed (RF-1 join_session keyed on history_entry.id + total ordering, RF-2 duplicate-path test; RF-3 path encoding + RF-4 in_library spine deviation logged to deferred-work.md; 49 tests, gate green) → review
 # 2026-07-22: story 1-4 code-reviewed 2nd pass (bmad-code-review): doc test-count arithmetic fixed, empty-path guard added, serato4::open_read_only failure-mode tests added, duplicate-path assumption hedged; sane_bpm upper bound + join_session row-error blast-radius logged to deferred-work.md; 52 tests, gate green → done
 # 2026-07-23: story 1-3b context-engineered (master.sqlite play-log reader, direct SQL against history_entry, no new Play field for BPM to keep one contract across both play-log sources) → ready-for-dev
+# 2026-07-23: story 1-6 context-engineered (edge genre normalization, versioned: net-new pure genre::normalize filter producing raw+normalized+taxonomy_version against a compile-time-fixed Curfew taxonomy; infallible-by-design like embedded_tags::fill_gaps; missing None kept distinct from present-but-unrecognized default bucket; no new dep, no shared/ contract change, no store/source-selection yet) -> ready-for-dev
 project_key: NOKEY
 tracking_system: file-system
 story_location: "{project-root}/_bmad-output/implementation-artifacts"
@@ -78,7 +82,7 @@ development_status:
   1-3b-master-sqlite-play-log-reader: done
   1-4-library-join-for-in-library-enrichment: done
   1-5-off-library-embedded-tag-fallback-with-visible-unknown: done
-  1-6-edge-genre-normalization-versioned: backlog
+  1-6-edge-genre-normalization-versioned: done
   1-7-core-per-set-stat-engine: backlog
   1-8-live-practice-confidence-signal: backlog
   1-9-golden-file-regression-harness: backlog
