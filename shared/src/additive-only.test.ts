@@ -11,13 +11,14 @@ const current = JSON.parse(
   readFileSync(resolvePath(packageRoot, "schema/sync-payload.schema.json"), "utf8"),
 );
 
-/** Resolves a single-level `$ref` (`"#/$defs/xxx"`) against its own schema root. */
+/** Resolves a (possibly chained) `$ref` (`"#/$defs/xxx"`) against its own schema root. */
 function resolveRef(node: any, root: any): any {
-  if (node && typeof node === "object" && typeof node.$ref === "string") {
-    const key = node.$ref.replace("#/$defs/", "");
-    return root.$defs[key];
+  let resolved = node;
+  while (resolved && typeof resolved === "object" && typeof resolved.$ref === "string") {
+    const key = resolved.$ref.replace("#/$defs/", "");
+    resolved = root.$defs[key];
   }
-  return node;
+  return resolved;
 }
 
 /** All primitive JSON-schema `type`s a node can take on, resolving `$ref`/`oneOf`. */
@@ -63,17 +64,46 @@ function assertAdditiveOnly(path: string, baselineNode: any, currentNode: any): 
     }
   }
 
+  const bRequired: string[] = bNode.required ?? [];
   if (bNode.required) {
     expect(cNode.required, `${path}: lost its "required" array`).toBeDefined();
-    for (const key of bNode.required) {
+    for (const key of bRequired) {
       expect(
         cNode.required,
         `${path}: "${key}" was removed from required — AD-15 forbids this`,
       ).toContain(key);
     }
   }
+  for (const key of cNode.required ?? []) {
+    expect(
+      bRequired,
+      `${path}: "${key}" was newly added to required — AD-15 forbids adding a new required field (old payloads don't carry it)`,
+    ).toContain(key);
+  }
+
+  if (bNode.enum) {
+    expect(cNode.enum, `${path}: lost its "enum" constraint`).toBeDefined();
+    for (const value of bNode.enum) {
+      expect(
+        cNode.enum,
+        `${path}: enum value ${JSON.stringify(value)} was removed — AD-15 forbids narrowing an enum`,
+      ).toContainEqual(value);
+    }
+  }
+
+  if (bNode.const !== undefined) {
+    expect(
+      cNode.const,
+      `${path}: "const" changed from ${JSON.stringify(bNode.const)} to ${JSON.stringify(cNode.const)} — AD-15 forbids this`,
+    ).toEqual(bNode.const);
+  }
+
+  if (bNode.pattern !== undefined) {
+    expect(cNode.pattern, `${path}: lost its "pattern" constraint`).toBeDefined();
+  }
 
   if (bNode.items) {
+    expect(cNode.items, `${path}: lost its "items" schema`).toBeDefined();
     assertAdditiveOnly(`${path}[]`, bNode.items, cNode.items);
   }
 

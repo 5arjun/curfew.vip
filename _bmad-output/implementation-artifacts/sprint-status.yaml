@@ -100,7 +100,7 @@ development_status:
   1-7-core-per-set-stat-engine: done
   1-8-live-practice-confidence-signal: done
   1-9-golden-file-regression-harness: done
-  1-10-freeze-the-shared-sync-contract: review
+  1-10-freeze-the-shared-sync-contract: done
   epic-1-retrospective: optional
 
   # ---- Epic 2: Account & Agent Onboarding ----

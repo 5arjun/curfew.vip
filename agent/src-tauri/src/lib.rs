@@ -186,6 +186,10 @@ mod tests {
             schema["properties"]["segments"].is_null(),
             "top-level segments must not be present on the frozen sync payload (AD-6/AD-16)"
         );
+        assert!(
+            schema["$defs"]["segment"].is_null(),
+            "$defs.segment must not be present on the frozen sync payload (AD-6/AD-16)"
+        );
 
         // Story 1.10 Task 2: set.plays[] shape, sourced from EnrichedPlay + JoinedMetadata.in_library.
         let play_required = schema["$defs"]["play"]["required"]
@@ -202,9 +206,16 @@ mod tests {
             serde_json::json!("boolean"),
             "play.in_library must be a required, non-nullable boolean"
         );
+        let mut genre_required: Vec<&str> = schema["$defs"]["genre"]["required"]
+            .as_array()
+            .expect("genre $def must declare required fields")
+            .iter()
+            .map(|v| v.as_str().expect("required entries must be strings"))
+            .collect();
+        genre_required.sort_unstable();
         assert_eq!(
-            schema["$defs"]["genre"]["required"],
-            serde_json::json!(["raw", "normalized", "taxonomy_version"]),
+            genre_required,
+            vec!["normalized", "raw", "taxonomy_version"],
             "play.genre must carry raw/normalized/taxonomy_version verbatim (AD-12)"
         );
 
@@ -228,9 +239,16 @@ mod tests {
                 "derived.{field} must be required on the frozen sync payload"
             );
         }
+        let mut confidence_required: Vec<&str> = schema["$defs"]["confidence"]["required"]
+            .as_array()
+            .expect("confidence $def must declare required fields")
+            .iter()
+            .map(|v| v.as_str().expect("required entries must be strings"))
+            .collect();
+        confidence_required.sort_unstable();
         assert_eq!(
-            schema["$defs"]["confidence"]["required"],
-            serde_json::json!(["value", "track_count", "long_gap_count"]),
+            confidence_required,
+            vec!["long_gap_count", "track_count", "value"],
             "derived.confidence must mirror SessionConfidence's fields (Story 1.8)"
         );
     }
