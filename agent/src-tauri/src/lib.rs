@@ -3,13 +3,20 @@
 //! Architecture (ARCHITECTURE-SPINE / SOLUTION-DESIGN §2): this core is a
 //! pipes-and-filters pipeline —
 //!   watcher -> parser -> joiner -> stat-engine -> local store -> sync-queue
-//! each an independently testable filter with a typed hand-off. Those filters
-//! land in Stories 1.3-1.7; this story only proves the shell compiles and that
-//! the Rust side can consume the shared sync contract (AC-2).
+//! each an independently testable filter with a typed hand-off (`confidence` is a
+//! sibling consumer of the stat-engine's output, not a stage in this chain — see
+//! [`confidence`]). Those filters land in Stories 1.3-1.7; this story only proves the
+//! shell compiles and that the Rust side can consume the shared sync contract (AC-2).
 //!
 //! Dependency rule (AD-3): `agent` depends on `shared` (via the JSON-schema
 //! artifact), never on `web`.
 
+/// The live/practice confidence signal (Story 1.8, FR-27): classifies a whole
+/// session's [`stats::EnrichedPlay`]s into a heuristic [`confidence::SessionConfidence`].
+/// Not a sequential pipeline stage — a sibling consumer of the stat-engine's output,
+/// classifying the session those plays came from in parallel with (not instead of)
+/// Story 1.7's per-set stats. See [`confidence`].
+pub mod confidence;
 /// The `genre` pipeline filter (Story 1.6): normalizes a raw genre string to the
 /// fixed Curfew taxonomy, producing a raw + normalized + `taxonomy_version` triple
 /// (AD-12). Sits after the `joiner` (which supplies the raw genre) and before the

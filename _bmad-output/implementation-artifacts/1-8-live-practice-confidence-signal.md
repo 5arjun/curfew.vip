@@ -4,7 +4,7 @@ baseline_commit: 0c78794c3f0cc742cdafeb69c07a25c33b3828ad
 
 # Story 1.8: Live/practice confidence signal
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -33,10 +33,10 @@ So that the signal exists for later use (Phase 2 confirmation; Epic 4 trend excl
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Define the `confidence` module + `classify` entrypoint** (AC: 1, 4)
-  - [ ] Create `agent/src-tauri/src/confidence.rs` as a **flat single file**, mirroring `genre.rs`'s pattern (one pure concern, one entrypoint) — not a directory like `stats/`/`joiner`/`parser`, which each hold several independently-testable sub-concerns; this story has exactly one.
-  - [ ] Register `pub mod confidence;` in `agent/src-tauri/src/lib.rs` next to the existing `pub mod genre;` / `pub mod joiner;` / `pub mod parser;` / `pub mod stats;`, with a doc comment explaining it is **not** a sequential stage in the documented pipeline (`watcher -> parser -> joiner -> stat-engine -> local store -> sync-queue`) but a sibling consumer of the same `stats::EnrichedPlay` output the stat-engine produces — it classifies the session those plays came from, in parallel with (not instead of) Story 1.7's per-set stats. Update the pipeline doc-comment line in `lib.rs` to note this (a parenthetical is enough — do not restructure the arrow-chain; confidence doesn't feed local store/sync-queue in this story).
-  - [ ] Define:
+- [x] **Task 1 — Define the `confidence` module + `classify` entrypoint** (AC: 1, 4)
+  - [x] Create `agent/src-tauri/src/confidence.rs` as a **flat single file**, mirroring `genre.rs`'s pattern (one pure concern, one entrypoint) — not a directory like `stats/`/`joiner`/`parser`, which each hold several independently-testable sub-concerns; this story has exactly one.
+  - [x] Register `pub mod confidence;` in `agent/src-tauri/src/lib.rs` next to the existing `pub mod genre;` / `pub mod joiner;` / `pub mod parser;` / `pub mod stats;`, with a doc comment explaining it is **not** a sequential stage in the documented pipeline (`watcher -> parser -> joiner -> stat-engine -> local store -> sync-queue`) but a sibling consumer of the same `stats::EnrichedPlay` output the stat-engine produces — it classifies the session those plays came from, in parallel with (not instead of) Story 1.7's per-set stats. Update the pipeline doc-comment line in `lib.rs` to note this (a parenthetical is enough — do not restructure the arrow-chain; confidence doesn't feed local store/sync-queue in this story).
+  - [x] Define:
     ```rust
     #[derive(Debug, Clone, Copy, PartialEq)]
     pub struct SessionConfidence {
@@ -54,16 +54,16 @@ So that the signal exists for later use (Phase 2 confirmation; Epic 4 trend excl
         pub long_gap_count: usize,
     }
     ```
-  - [ ] Write `pub fn classify(plays: &[crate::stats::EnrichedPlay]) -> SessionConfidence`. **Total and infallible** — same idiom as `genre::normalize`/`stats::bpm_distribution`: every input (including an empty slice) has a defined output, no `Result`, no panic path.
+  - [x] Write `pub fn classify(plays: &[crate::stats::EnrichedPlay]) -> SessionConfidence`. **Total and infallible** — same idiom as `genre::normalize`/`stats::bpm_distribution`: every input (including an empty slice) has a defined output, no `Result`, no panic path.
 
-- [ ] **Task 2 — Session shape signals** (AC: 1)
-  - [ ] **Reuse, don't reimplement**: call `crate::stats::track_count(plays)` for the play count — do not re-derive `plays.len()` separately.
-  - [ ] Compute consecutive-play gaps: collect `plays.iter().filter_map(|p| p.start_time)` (preserves the existing chronological order — `enrich_session` guarantees it, so this function must not re-sort), then walk consecutive pairs with `saturating_sub` (never panic on an out-of-order value, mirroring `stats::set_length_sec`'s same discipline) to get each gap in seconds.
-  - [ ] Plays with `start_time: None` are simply absent from the gap walk (skipped, not treated as zero-length gaps) — a documented approximation, not a silent guess, since a play's *position* in the session is still known even when its exact timestamp isn't.
-  - [ ] **Fewer than 2 known start_times → gaps are unknowable.** Do not divide by zero or index out of bounds; this case degrades to Task 3's safe default.
+- [x] **Task 2 — Session shape signals** (AC: 1)
+  - [x] **Reuse, don't reimplement**: call `crate::stats::track_count(plays)` for the play count — do not re-derive `plays.len()` separately.
+  - [x] Compute consecutive-play gaps: collect `plays.iter().filter_map(|p| p.start_time)` (preserves the existing chronological order — `enrich_session` guarantees it, so this function must not re-sort), then walk consecutive pairs with `saturating_sub` (never panic on an out-of-order value, mirroring `stats::set_length_sec`'s same discipline) to get each gap in seconds.
+  - [x] Plays with `start_time: None` are simply absent from the gap walk (skipped, not treated as zero-length gaps) — a documented approximation, not a silent guess, since a play's *position* in the session is still known even when its exact timestamp isn't.
+  - [x] **Fewer than 2 known start_times → gaps are unknowable.** Do not divide by zero or index out of bounds; this case degrades to Task 3's safe default.
 
-- [ ] **Task 3 — Confidence heuristic** (AC: 1, 4 — the story's one open design decision; see Open Questions #1)
-  - [ ] Recommended default constants (name them, document each as `[ASSUMPTION]`, first-ever numbers proposed for this signal — no prior doc locks them):
+- [x] **Task 3 — Confidence heuristic** (AC: 1, 4 — the story's one open design decision; see Open Questions #1)
+  - [x] Recommended default constants (name them, document each as `[ASSUMPTION]`, first-ever numbers proposed for this signal — no prior doc locks them):
     ```rust
     /// Fewer real plays than this is confidently "not a set" (PRD FR-27's own
     /// example: "a single track briefly cued"). [ASSUMPTION]
@@ -77,24 +77,24 @@ So that the signal exists for later use (Phase 2 confirmation; Epic 4 trend excl
     /// (AC-4). [ASSUMPTION]
     const LOW_CONFIDENCE_VALUE: f64 = 0.2;
     ```
-  - [ ] Tiering (mirrors the PRD's own worked examples almost verbatim):
+  - [x] Tiering (mirrors the PRD's own worked examples almost verbatim):
     1. `track_count < MIN_PLAYS_FOR_AMBIGUITY` → `confidence = 1.0` (obviously not a set — confidently classifiable, high confidence).
     2. Fewer than 2 known `start_time`s (gaps unknowable, Task 2) → `confidence = 1.0` (safe default — never manufacture an "ambiguous" reading from data that can't support it).
     3. `track_count >= MIN_PLAYS_FOR_AMBIGUITY` **and** zero gaps `>= LONG_GAP_THRESHOLD_SEC` → `confidence = LOW_CONFIDENCE_VALUE` (dense, continuous, no natural break — the PRD's explicitly-named ambiguous case).
     4. Otherwise (at least one long gap present) → `confidence = 1.0` (naturally punctuated — confidently classifiable as a real set).
-  - [ ] Doc-comment this function heavily with the "heuristic proxy, not ground truth" framing from AC-4 and the Scope Boundaries section — a future reader must not mistake `confidence` for a live/practice probability.
+  - [x] Doc-comment this function heavily with the "heuristic proxy, not ground truth" framing from AC-4 and the Scope Boundaries section — a future reader must not mistake `confidence` for a live/practice probability.
 
-- [ ] **Task 4 — Unit tests** (AC: all)
-  - [ ] Inline `#[cfg(test)] mod tests` in `confidence.rs` — same convention as every prior story; no `tests/` dir, no new `[dev-dependencies]`.
-  - [ ] Each test carries a `///` doc comment citing the AC/scope rule it proves — house style, see `genre.rs`/`stats/mod.rs`.
-  - [ ] Cover at minimum:
+- [x] **Task 4 — Unit tests** (AC: all)
+  - [x] Inline `#[cfg(test)] mod tests` in `confidence.rs` — same convention as every prior story; no `tests/` dir, no new `[dev-dependencies]`.
+  - [x] Each test carries a `///` doc comment citing the AC/scope rule it proves — house style, see `genre.rs`/`stats/mod.rs`.
+  - [x] Cover at minimum:
     - **(AC-1)** `track_count < MIN_PLAYS_FOR_AMBIGUITY` (e.g. 1-2 synthetic plays) → `confidence == 1.0`.
     - **(AC-1, AC-4)** `track_count >= MIN_PLAYS_FOR_AMBIGUITY`, consecutive `start_time`s all closely spaced (all gaps `< LONG_GAP_THRESHOLD_SEC`) → `confidence == LOW_CONFIDENCE_VALUE`, `long_gap_count == 0`.
     - **(AC-1)** same play count, but one gap `>= LONG_GAP_THRESHOLD_SEC` → `confidence == 1.0`, `long_gap_count >= 1`.
     - **(Task 2)** fewer than 2 plays with a known `start_time` (including all-`None`) → `confidence == 1.0`, no panic.
     - **(Task 1)** empty `plays` slice → defined output, no panic.
     - **(determinism)** running `classify` twice over the same input yields identical output — mirrors `genre::normalize_is_deterministic`/`stats`'s own determinism test.
-  - [ ] Gate: `cargo fmt --manifest-path agent/src-tauri/Cargo.toml -- --check`, `cargo clippy --manifest-path agent/src-tauri/Cargo.toml --all-targets -- -D warnings`, `cargo build --manifest-path agent/src-tauri/Cargo.toml`, `cargo test --manifest-path agent/src-tauri/Cargo.toml`. If this machine lacks a Rust toolchain, do not skip the gate silently — log it to `deferred-work.md` and get it run on a macOS/CI box before merge, per this project's standing discipline (Stories 1.5/1.6 both hit this).
+  - [x] Gate: `cargo fmt --manifest-path agent/src-tauri/Cargo.toml -- --check`, `cargo clippy --manifest-path agent/src-tauri/Cargo.toml --all-targets -- -D warnings`, `cargo build --manifest-path agent/src-tauri/Cargo.toml`, `cargo test --manifest-path agent/src-tauri/Cargo.toml`. If this machine lacks a Rust toolchain, do not skip the gate silently — log it to `deferred-work.md` and get it run on a macOS/CI box before merge, per this project's standing discipline (Stories 1.5/1.6 both hit this).
 
 ## Dev Notes
 
@@ -167,14 +167,33 @@ Recent per-story shape (Stories 1.4-1.7): spec commit → implementation commit 
 
 ### Agent Model Used
 
+Claude Sonnet 5 (claude-sonnet-5)
+
 ### Debug Log References
+
+- Full four-command cargo gate run on this machine via the pre-installed but unlinked `rustup` toolchain (`/Users/arjun/.rustup/toolchains/stable-aarch64-apple-darwin/bin`, not on `PATH` by default): `cargo fmt -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo build`, `cargo test`. Gate was **not** deferred — no toolchain-missing situation this time, unlike Stories 1.5/1.6.
+- `cargo fmt -- --check` failed once on the test module's `enriched(None), enriched(None), enriched(None), enriched(None)]` vec literal exceeding line width; fixed by running `cargo fmt` (rustfmt reflowed it to one element per line).
+- `cargo clippy` flagged `clippy::if_same_then_else` on the initial four-tier `if`/`else if` chain (tiers 1, 2, and 4 all returned the same `1.0` literal). Collapsed to a single inverted boolean condition (`if track_count >= MIN_PLAYS_FOR_AMBIGUITY && start_times.len() >= 2 && long_gap_count == 0 { LOW_CONFIDENCE_VALUE } else { 1.0 }`) — same tiering semantics (all four cases from Task 3 still produce the documented output), expressed without duplicate branches. Re-ran fmt+clippy clean after the fix.
+- Final gate: `cargo test` → 126 passed (120 pre-existing + 6 new in `confidence::tests`), 0 failed.
 
 ### Completion Notes List
 
+- Implemented `agent/src-tauri/src/confidence.rs`: `SessionConfidence` struct (`confidence`, `track_count`, `long_gap_count`) and `pub fn classify(plays: &[EnrichedPlay]) -> SessionConfidence`, total and infallible per the established `genre::normalize`/`stats::bpm_distribution` idiom.
+- `classify` reuses `stats::track_count` (no reimplementation), computes consecutive-play gaps via `filter_map(|p| p.start_time)` + `.windows(2)` + `saturating_sub` (never re-sorts, never panics on an out-of-order value), and applies the Task 3 tiering: too-few-plays, gaps-unknowable, and long-gap-present all map to `confidence = 1.0`; only the dense/continuous/zero-long-gap case (with ≥`MIN_PLAYS_FOR_AMBIGUITY` plays and ≥2 known start times) maps to `LOW_CONFIDENCE_VALUE` (0.2) — confidence is symmetric per Open Questions #2, not directional.
+- Registered `pub mod confidence;` in `lib.rs` with a doc comment clarifying it is a sibling consumer of `stats::EnrichedPlay`, not a sequential pipeline stage; updated the pipeline doc-comment line with a parenthetical noting the same, without restructuring the arrow-chain.
+- 6 new inline tests in `confidence.rs` covering: too-few-plays, dense/continuous (low confidence), one-long-gap (high confidence), fewer-than-two-known-start-times (including all-`None`, no panic), empty slice, and determinism. Each carries a doc comment citing the AC/task it proves.
+- No UI, no persistence, no gating logic, no AD-17 calibration machinery added — all per the story's binding Scope Boundaries. No new dependency. `stats::EnrichedPlay`/`joiner`/`parser`/`genre`/`shared`/CI untouched, confirmed by the File List below.
+- Open Questions #1 (exact thresholds) ships the story's recommended defaults verbatim (`MIN_PLAYS_FOR_AMBIGUITY = 4`, `LONG_GAP_THRESHOLD_SEC = 300`, `LOW_CONFIDENCE_VALUE = 0.2`), each flagged `[ASSUMPTION]` in the doc comment for Arjun's confirmation — not independently re-derived or adjusted by this implementation.
+- **Validated against real data, per Open Questions #1's suggestion.** Ran `classify` over all 489 real sessions in `~/Library/Application Support/Serato/Library/master.sqlite` via a throwaway (not committed) `cargo run --example` script: no panics, 174 sessions (35.6%) scored `LOW_CONFIDENCE_VALUE`, 315 (64.4%) scored `1.0`. Surfaced one real edge case worth flagging for the eventual threshold review — an 865-play session spanning only ~27.5 minutes (rapid library previewing, not real track changes, per its `played=1` rows) scores the same low-confidence tier as an ordinary dense set, since the heuristic has no density/upper-bound signal. Not fixed (thresholds are Arjun's call, AD-11 forbids guessing a new rule); logged to `deferred-work.md`.
+
 ### File List
+
+- `agent/src-tauri/src/confidence.rs` (new)
+- `agent/src-tauri/src/lib.rs` (modified — registered `pub mod confidence;`, updated pipeline doc-comment)
 
 ## Change Log
 
 | Date | Change |
 |---|---|
 | 2026-07-24 | Story 1.8 context-engineered (live/practice confidence signal): new `confidence.rs` module classifying a whole session's `Vec<EnrichedPlay>` into a heuristic `SessionConfidence` (dense/continuous-no-long-gap sessions score low, per PRD FR-27's own worked example; too-few-plays and gappy sessions both score high, since confidence is symmetric, not directional); explicitly scoped away from AD-17's calibrated segment-detection machinery (different granularity, no history to calibrate from yet) and from any UI/persistence (AC-2 satisfied by omission — no consumer wired yet, matching Story 1.7's `enrich_session` precedent). No new dependency; `stats::EnrichedPlay`/`joiner`/`parser`/`genre`/`shared`/CI untouched. Status → ready-for-dev. |
+| 2026-07-25 | Story 1.8 implemented: `confidence.rs` (`SessionConfidence`, `classify`) built to spec; `lib.rs` updated to register the module. Task 3's `if`/`else if` chain collapsed to one boolean condition to satisfy `clippy::if_same_then_else` (semantics unchanged). Full four-command cargo gate run and green on this machine (fmt, clippy -D warnings, build, test — 126 passed, 6 new). No new dependency; `stats`/`joiner`/`parser`/`genre`/`shared`/CI untouched. Status → review. |
