@@ -4,7 +4,7 @@ baseline_commit: 8208b1d0f166235ddcf798b58392536f323a7b17
 
 # Story 1.9: Golden-file regression harness
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -86,6 +86,12 @@ So that a Serato format change is caught before it silently corrupts synced data
 - [x] **Task 6 — Deferred-work + sprint-status housekeeping** (AC: 2)
   - Update every deferred-work.md entry Task 1 investigated, per that task's logging instruction (append findings, don't delete entries).
   - If Task 1 surfaces a **new** format quirk not already tracked anywhere, log it as a new deferred-work.md entry (per this project's standing convention, one entry per discovery, dated and file/line-anchored) even if a fixture already guards it going forward.
+
+### Review Findings
+
+- [x] [Review][Patch] `golden_duplicate_row_id_session_dedups_by_row_id` broke full-struct-equality discipline [agent/src-tauri/tests/golden_session.rs:90-113] — fixed: expected `Play`s now enumerate every field instead of `..Default::default()`.
+- [x] [Review][Patch] `golden_duplicate_path_resolves_to_the_last_record` broke full-struct-equality discipline [agent/src-tauri/tests/golden_legacy_library.rs:144-148] — fixed: now asserts the full `JoinedMetadata` struct instead of three individual field asserts.
+- [x] [Review][Defer] Golden `.session` fixtures never cover two plays tied on `start_time` [agent/src-tauri/tests/golden_session.rs] — deferred, pre-existing. No inline test elsewhere pins `sort_by_start_time`'s stable-sort guarantee either; low severity (would require a deliberate switch to an unstable sort to regress).
 
 ## Dev Notes
 

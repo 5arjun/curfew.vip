@@ -1,5 +1,9 @@
 # Deferred Work
 
+## Deferred from: code review of 1-9-golden-file-regression-harness (2026-07-25)
+
+- **Golden `.session` fixtures never cover two plays tied on `start_time`.** `sort_by_start_time` (parser/session.rs) relies on `sort_by_key`'s stable-sort guarantee to keep tied-timestamp plays in file order, but neither the new golden suite nor any existing inline test pins this with a fixture that actually has two plays sharing a `start_time`. Low severity — a regression would require someone to deliberately swap to an unstable sort — but worth a fixture (golden or inline) next time this file is touched. [agent/src-tauri/tests/golden_session.rs]
+
 ## Deferred from: code review of 1-8-live-practice-confidence-signal (2026-07-25)
 
 - **No guard against a violated `start_time`-sorted-order invariant in `classify`/`count_long_gaps`.** `count_long_gaps` walks consecutive pairs of known `start_time`s with `saturating_sub`, so if `plays` were ever passed out of chronological order (violating `enrich_session`'s guarantee, which this module trusts rather than re-verifies), a reversed pair silently reads as a 0-second gap instead of surfacing corrupted/out-of-order input — the same class of implicit, unenforced cross-module ordering invariant already deferred for `stats::enrich_session` below. There is no live caller of `classify` yet (mirrors that same precedent), so this is not an active bug; revisit once a real caller shape is known (same trigger condition as the `enrich_session` entry). [agent/src-tauri/src/confidence.rs — `count_long_gaps`]

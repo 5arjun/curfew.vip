@@ -92,17 +92,27 @@ fn golden_duplicate_row_id_session_dedups_by_row_id() {
             path: Some("/music/dup.mp3".to_string()),
             title: Some("Dup".to_string()),
             artist: Some("Artist".to_string()),
+            label: None,
+            genre: None,
+            grouping: None,
+            year: None,
             start_time: Some(5_000),
             deck: Some(1),
-            ..Default::default()
+            duration_sec: None,
+            key: None,
         },
         Play {
             path: Some("/music/other.mp3".to_string()),
             title: Some("Other".to_string()),
             artist: Some("Artist2".to_string()),
+            label: None,
+            genre: None,
+            grouping: None,
+            year: None,
             start_time: Some(6_000),
             deck: Some(2),
-            ..Default::default()
+            duration_sec: None,
+            key: None,
         },
     ];
 

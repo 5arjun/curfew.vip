@@ -142,7 +142,14 @@ fn golden_duplicate_path_resolves_to_the_last_record() {
     assert_eq!(library.len(), 1, "one path is one entry, not two");
 
     let joined = joiner::legacy::join(&play_at("/Users/arjun/Music/dupe.mp3"), &library);
-    assert_eq!(joined.bpm, Some(128.0), "the later record's BPM wins");
-    assert_eq!(joined.genre.as_deref(), Some("Fresh"));
-    assert_eq!(joined.key.as_deref(), Some("8B"));
+    assert_eq!(
+        joined,
+        JoinedMetadata {
+            in_library: true,
+            bpm: Some(128.0),
+            key: Some("8B".to_string()),
+            genre: Some("Fresh".to_string()),
+        },
+        "the later record's fields win"
+    );
 }
