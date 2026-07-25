@@ -4,7 +4,7 @@ baseline_commit: 8208b1d0f166235ddcf798b58392536f323a7b17
 
 # Story 1.9: Golden-file regression harness
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -30,7 +30,7 @@ So that a Serato format change is caught before it silently corrupts synced data
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Real-data reconnaissance (read-only; informs Tasks 2-4, closes several standing deferred-work items)** (AC: 2, 3)
+- [x] **Task 1 — Real-data reconnaissance (read-only; informs Tasks 2-4, closes several standing deferred-work items)** (AC: 2, 3)
   - This machine has Arjun's real Serato data, already inspected by Stories 1.2/1.3b/1.4/1.8 (see paths below). Several code-review findings from those stories explicitly deferred a real-data check to "Story 1.9's fixture work" — do that check now, log findings to `deferred-work.md`, and **only** turn a finding into a code change if the fixture work surfaces a genuine bug (AD-11: log, don't guess; never fix speculatively).
   - Known real paths (confirmed by prior stories, re-verify each still exists before reading — do not error the story if one is missing, e.g. the USB drive may not be mounted):
     - `~/Music/_Serato_/History/Sessions/2521.session` — multi-track wedding session (302 plays).
@@ -46,7 +46,7 @@ So that a Serato format change is caught before it silently corrupts synced data
     5. **Legacy numeric TCON genre forms** — while inspecting real embedded tags is out of this story's fixture scope (see Scope Boundaries), if the `database V2`/`.session` scan incidentally surfaces a numeric-form genre string (e.g. `"(17)"`), note it for `deferred-work.md`'s existing genre-taxonomy entry; do not go out of your way to hunt for this one.
   - For each check: log the outcome (confirmed / refuted / inconclusive / SSD unavailable) as an update to the **existing** deferred-work.md entry (do not delete the entry — append a `[REAL DATA FOUND <date>, Story 1.9]` note the way Story 1.3b's entries already do), and if a check reveals a genuine quirk worth guarding against, build a **synthetic** fixture in Tasks 2-3 that reproduces the shape of that quirk (never the real bytes themselves).
 
-- [ ] **Task 2 — `.session` golden fixtures + harness** (AC: 1, 2, 3)
+- [x] **Task 2 — `.session` golden fixtures + harness** (AC: 1, 2, 3)
   - Create `agent/src-tauri/tests/golden_session.rs` (a `cargo test`-discovered integration test file).
   - Build fixture bytes using the same tag/length/value structure as `parser/mod.rs`'s existing inline test helpers (`oent`, `adat`/`tagged`, `text_field`, `u32_field`, `vrsn_header`) — either by duplicating those small helpers locally in the new test file (integration tests cannot import a crate's private inline test module) or, if it doesn't fight the borrow/visibility rules, extracting them to a `pub(crate)` test-support module the two locations share. Prefer duplication if extraction adds meaningful complexity — these are ~10-line pure functions, not worth a shared-module abstraction for two call sites.
   - At minimum, cover fixtures for:
@@ -58,7 +58,7 @@ So that a Serato format change is caught before it silently corrupts synced data
   - Each fixture file lives under `agent/src-tauri/tests/fixtures/session/` with a descriptive name (e.g. `multi_play.session`, `duplicate_row_id.session`, `desync_bad_header.session`, `truncated_field.session`) generated once (e.g. via a throwaway `#[test]`-adjacent generator you run once and commit the output, or a small local `main()`/example you don't keep) and committed as binary files — the "golden" artifact AC-1 asks for.
   - Each test reads its fixture via `parser::parse_session_file`/`parse_session_file_partial` (exercise the file-reading entry points, not just `parse`/`parse_partial` on in-memory bytes, since the golden-file harness's job is specifically to catch drift in file-backed real usage) and asserts the exact expected `Vec<Play>` / `ParseOutcome`, matching the assertion style already used in `parser/mod.rs`'s inline tests (full-struct `assert_eq!`, not spot-checks).
 
-- [ ] **Task 3 — `database V2` golden fixtures + harness** (AC: 1, 2, 3)
+- [x] **Task 3 — `database V2` golden fixtures + harness** (AC: 1, 2, 3)
   - Create `agent/src-tauri/tests/golden_legacy_library.rs`.
   - Constructing valid `database V2` bytes from scratch is more involved than `.session` (it's `triseratops::library::database::parse`'s format, not a format this codebase's own tests currently hand-build). Before writing a byte-builder from scratch, inspect the pinned `triseratops` commit's own test fixture at `~/.cargo/git/checkouts/triseratops-*/8e92aae/tests/data/library/usb_drive/_Serato_/database V2` (2,538 bytes) — it is a small, already-synthetic (MPL-2.0, the same license already adopted per AD-11), non-personal fixture the upstream crate ships for its own tests. Use it as a reference for the byte shape, and as a candidate base to copy in directly (checking it carries the `Field::Track`/`Field::BPM`/`Field::Key`/`Field::Genre`/`Field::FilePath` variants `LegacyLibrary::from_database_bytes` reads) rather than reverse-engineering the format from zero.
   - At minimum, cover fixtures for:
@@ -69,7 +69,7 @@ So that a Serato format change is caught before it silently corrupts synced data
   - Fixture files live under `agent/src-tauri/tests/fixtures/legacy_library/`, committed as binary files (this format is not human-editable text, unlike Task 4's recommended approach — see that task's note on why `master.sqlite` differs).
   - Tests call `LegacyLibrary::from_database_bytes` directly on the fixture's bytes (read via `std::fs::read` in the test) — this exercises the same decode path `LegacyLibrary::load` uses without needing a full `<library_root>/_Serato_/database V2` directory shape on disk.
 
-- [ ] **Task 4 — `master.sqlite` golden fixtures + harness** (AC: 1, 2, 3)
+- [x] **Task 4 — `master.sqlite` golden fixtures + harness** (AC: 1, 2, 3)
   - Create `agent/src-tauri/tests/golden_serato4.rs`.
   - **Recommended fixture format: a checked-in `.sql` script, not a binary `.sqlite` file.** Reasons: (a) it stays git-diffable and human-reviewable, unlike a binary blob; (b) it matches the existing established pattern — `parser/serato4.rs::in_memory_history()` and `joiner/serato4.rs::in_memory_history()` already build the exact same `history_entry` schema in-memory via `execute_batch` with a SQL string; a checked-in `.sql` fixture is the same technique with the SQL moved to a file instead of a Rust string literal; (c) `rusqlite`'s bundled SQLite version is pinned by the crate, so a hand-crafted binary `.sqlite` file risks a page-format mismatch this codebase doesn't otherwise need to worry about. This is this story's one open design decision if you'd rather do it differently — see Open Questions.
   - Fixture files live under `agent/src-tauri/tests/fixtures/serato4/` as `.sql` scripts (e.g. `history_session_and_entries.sql`) containing `CREATE TABLE`/`INSERT` statements for `history_session`/`history_entry` covering the union of both functions' columns: `id`, `session_id`, `name`, `artist`, `genre`, `"key"`, `start_time`, `deck`, **and `bpm`** (`join_session` reads `bpm` but `read_session` does not — check both functions' `SELECT`s directly, they are not identical).
@@ -79,11 +79,11 @@ So that a Serato format change is caught before it silently corrupts synced data
     - The confirmed-real `end_time = -1` "unset" sentinel and empty-string "absent" convention (both already documented in `parser/serato4.rs`'s doc comments as confirmed-real, not yet fixture-covered) — a row with `end_time = -1` and empty-string `genre`/`key`, asserting they resolve to `None`, not `Some("")`/a derived duration.
     - A multi-deck session (real data confirms deck values "1"-"4" occur) to guard the `deck` text-to-`u32` parse.
 
-- [ ] **Task 5 — Confirm CI coverage, no CI changes expected** (AC: 1)
+- [x] **Task 5 — Confirm CI coverage, no CI changes expected** (AC: 1)
   - `cargo test --manifest-path agent/src-tauri/Cargo.toml` (the existing `agent` CI job step, `.github/workflows/ci.yml`) auto-discovers every file under `agent/src-tauri/tests/` as its own test binary — no `Cargo.toml` or `ci.yml` edit is needed for the new tests to run and gate the build. Verify this locally (`cargo test --manifest-path agent/src-tauri/Cargo.toml` picks up `golden_session`/`golden_legacy_library`/`golden_serato4` as separate test binaries in the output) rather than assuming it.
   - Gate: `cargo fmt --manifest-path agent/src-tauri/Cargo.toml -- --check`, `cargo clippy --manifest-path agent/src-tauri/Cargo.toml --all-targets -- -D warnings`, `cargo build --manifest-path agent/src-tauri/Cargo.toml`, `cargo test --manifest-path agent/src-tauri/Cargo.toml`. If this machine lacks a linked Rust toolchain, don't skip silently — log it to `deferred-work.md` per the standing discipline (Stories 1.5/1.6), though Story 1.8's Debug Log References note the toolchain is present at `~/.rustup/toolchains/stable-aarch64-apple-darwin/bin` (not on `PATH` by default).
 
-- [ ] **Task 6 — Deferred-work + sprint-status housekeeping** (AC: 2)
+- [x] **Task 6 — Deferred-work + sprint-status housekeeping** (AC: 2)
   - Update every deferred-work.md entry Task 1 investigated, per that task's logging instruction (append findings, don't delete entries).
   - If Task 1 surfaces a **new** format quirk not already tracked anywhere, log it as a new deferred-work.md entry (per this project's standing convention, one entry per discovery, dated and file/line-anchored) even if a fixture already guards it going forward.
 
@@ -143,8 +143,54 @@ Recent per-story shape (Stories 1.4-1.8): spec commit → implementation commit 
 
 ### Agent Model Used
 
+Claude Sonnet 5 (claude-sonnet-5), via `bmad-dev-story`.
+
 ### Debug Log References
+
+- Rust toolchain present at `~/.rustup/toolchains/stable-aarch64-apple-darwin/bin` (rustup-installed but not on default `PATH`) — same as Story 1.8; exported explicitly for every cargo invocation this session.
+- Task 1's real-data reconnaissance ran via two throwaway `cargo run --example` scripts (`recon_1_9.rs`, `recon_1_9b.rs`) and Task 3's `normal_catalogue.database` fixture provenance was confirmed via a third (`inspect_triseratops_fixture.rs`); a fourth (`gen_session_fixtures.rs`) and fifth (`gen_legacy_library_fixtures.rs`) generated the checked-in `.session`/`database V2` fixture bytes once. All five were deleted after use — none committed, per the story's binding scope rule that real Serato data may be read but never written to a commit, and per Task 2/3's "generate once, commit only the output" instruction.
+- `/Volumes/ARJUN SSD` was not mounted this session, so Task 1 checks 1–2 (volume-hosted path resolution, Unicode/case encoding) could not run against the USB library; logged as unavailable per Open Question #3, with a partial root-hosted substitute check run instead (see Completion Notes).
 
 ### Completion Notes List
 
+**Task 1 — Real-data reconnaissance (all 5 checks run; findings logged to deferred-work.md):**
+- Confirmed present: `2521.session`, `19544.session`, local `database V2` (930 track records), `master.sqlite` (23,254 `history_entry` rows). **Not mounted:** `/Volumes/ARJUN SSD` — USB `database V2` unavailable this run.
+- **Check 4 (RF-2 trailing-fragment): REFUTED as a live concern.** Ran the strict `parser::parse_session_file` over all 474 real `.session` files — 474/474 parsed `Ok`, zero `Desync`, zero `Truncated`. No real trailing-padding shape exists to model a fixture on.
+- **Check 3 (duplicate-path tiebreak): inconclusive.** Local `database V2` has 930 track records, 930 unique paths — zero duplicates. The larger USB catalogue (where a re-analysed duplicate is more likely) was unavailable. `golden_legacy_library.rs`'s `duplicate_path.database` fixture therefore documents the current last-wins *implementation*, not a real-data-confirmed shape.
+- **Checks 1–2 (volume-hosted path resolution, Unicode/case encoding): unavailable this run (SSD not mounted).** As a partial substitute, compared the local (root-hosted) `database V2`'s path convention (`"Users/arjun/..."`, no leading slash) against the matching real `.session` play's path (`"/Users/arjun/..."`, absolute) — re-confirms the existing "strip one leading `/`" convention for root-hosted libraries. Does not touch the volume-hosted question, which remains open.
+- **Check 5 (numeric TCON): none observed.** Zero `"(<digit>"`-shaped genre strings among the local catalogue's 930 records.
+- All five findings appended to their existing deferred-work.md entries (dated `[REAL DATA FOUND 2026-07-25, Story 1.9]`); no entry was deleted, no new entry was needed (no genuine new quirk surfaced), and no production code was touched (AD-11: nothing here rose to the level of a confirmed bug).
+
+**Tasks 2–4 — Golden fixtures + harnesses (zero production code changes; three new integration-test files, ten fixture files):**
+- `tests/golden_session.rs` (5 tests) against `tests/fixtures/session/*.session`: a full-field-coverage multi-play session with mixed field presence and start-time reordering, a duplicate-row-ID dedup case, a header-understatement `Desync` case (plus its `parse_session_file_partial` counterpart), and a field-level `Truncated` case. All fixtures hand-built with the tag/length/value envelope `parser/mod.rs`'s own inline tests use, duplicated locally (integration tests can't import a private inline test module).
+- `tests/golden_legacy_library.rs` (3 tests) against `tests/fixtures/legacy_library/*.database`: `normal_catalogue.database` is a **direct copy** of `triseratops`' own MPL-2.0 test fixture (pinned commit `8e92aae1...`, 4 tracks, collectively covering BPM/key/genre) per the story's explicit recommendation — avoided reverse-engineering the format from zero. `no_file_path.database` and `duplicate_path.database` are hand-built, mirroring `joiner/legacy.rs`'s existing inline tests of the same names/shapes.
+- `tests/golden_serato4.rs` (1 test) against `tests/fixtures/serato4/history_session_and_entries.sql`: one checked-in `.sql` script (Open Question #1's recommended default, not challenged) loaded via `execute_batch`, exercising **both** `parser::read_session` and `joiner::serato4::join_session` against the same shared `Connection` and session ID — closing the "connection-sharing contract has no integration test" deferred-work.md gap as a side effect. One fixture, four rows, covers the normal multi-row case, the confirmed-real `end_time = -1`/empty-string-absent convention, and the real-confirmed multi-deck "1"–"4" range in a single file.
+- Every test asserts full-struct equality (`Play`/`JoinedMetadata`), matching house style; no spot-checks.
+
+**Task 5 — CI/gate confirmation:**
+- `cargo test` auto-discovered all three new integration-test binaries with zero `Cargo.toml`/`ci.yml` changes, as predicted.
+- Full four-command gate run and green on this machine: `cargo fmt -- --check` (one pass needed — `cargo fmt` reflowed the three new test files' line-wrapping, no logic change), `cargo clippy --all-targets -- -D warnings` (clean), `cargo build` (clean), `cargo test` — **127 existing + 9 new golden tests = 136 passed, 0 failed.**
+
+**Task 6 — Housekeeping:** deferred-work.md updated (5 entries annotated, Task 1's section above); sprint-status.yaml updated to `in-progress` at start, `review` at completion (Step 9).
+
+**Scope discipline:** No file under `agent/src-tauri/src/**` was modified — Task 1's reconnaissance did not surface a confirmed bug (AD-11: only fix what's proven wrong), so this story is fixture-and-test-only, as its own Dev Notes predicted ("closer in shape to Story 1.2's spike... than to a typical single-module story").
+
 ### File List
+
+**New:**
+- `agent/src-tauri/tests/golden_session.rs`
+- `agent/src-tauri/tests/golden_legacy_library.rs`
+- `agent/src-tauri/tests/golden_serato4.rs`
+- `agent/src-tauri/tests/fixtures/session/multi_play.session`
+- `agent/src-tauri/tests/fixtures/session/duplicate_row_id.session`
+- `agent/src-tauri/tests/fixtures/session/desync_bad_header.session`
+- `agent/src-tauri/tests/fixtures/session/truncated_field.session`
+- `agent/src-tauri/tests/fixtures/legacy_library/normal_catalogue.database`
+- `agent/src-tauri/tests/fixtures/legacy_library/no_file_path.database`
+- `agent/src-tauri/tests/fixtures/legacy_library/duplicate_path.database`
+- `agent/src-tauri/tests/fixtures/serato4/history_session_and_entries.sql`
+
+**Modified:**
+- `_bmad-output/implementation-artifacts/deferred-work.md` (Task 1/6 findings)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (status transitions)
+- `_bmad-output/implementation-artifacts/1-9-golden-file-regression-harness.md` (this file — task checkboxes, Dev Agent Record)
