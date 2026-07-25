@@ -4,7 +4,7 @@ baseline_commit: fc5ac1781ba33d2b489192a3e78ee8539ab616f3
 
 # Story 1.10: Freeze the `shared/` sync contract
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -30,7 +30,7 @@ So that the one frozen-forever hub artifact reflects parsing reality and its Set
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Fix the draft's two content/overlay disjointness bugs before designing anything else (AC: 1, 2)**
+- [x] **Task 1 — Fix the draft's two content/overlay disjointness bugs before designing anything else (AC: 1, 2)**
 
   The current DRAFT payload (`shared/src/index.ts`) puts two fields on the agent's outbound payload that AD-6/AD-16 explicitly forbid the agent from ever writing. Both must be removed from the frozen shape; this is not a style preference, it is the exact invariant AR-8 requires this story's contract tests to enforce ("Agent's upsert is column-scoped to content columns; overlay columns are disjoint and never touched (contract-tested in `shared/`)").
 
@@ -38,7 +38,7 @@ So that the one frozen-forever hub artifact reflects parsing reality and its Set
   2. **Remove the top-level `segments` array from the outbound payload.** AD-6 lists "segment edits (FR-14)" as the same class of web-authored overlay. Segment *detection* (AD-17, FR-28) — the only mechanism that could populate this array with real data — is explicitly Epic 5's job: `agent/src-tauri/src/stats/mod.rs`'s own module doc states "segment detection (AD-17/FR-28 — Epic 5's job against this module later, even though AD-17 already names this module as where it will eventually live)." Nothing in Epic 1 computes a segment, so an agent-authored `segments` field in a *frozen* contract would either ship permanently empty or, worse, invite a future story to "helpfully" start populating it from the agent side, directly violating AD-16's column-scoping rule. Delete `SyncSegmentDraft` and the `segments` field entirely. Keep `SEGMENT_TYPE`/`SegmentType` exported unchanged (still the AR-15 fixed enum for the cloud-side `segments` table Epic 5 will create) — again, only its presence in the sync payload was wrong. When Epic 5 needs to *suggest* segment boundaries from the agent, that is a new, explicitly-designed additive field on a future story, not a resurrection of this one.
   3. Add an explicit contract test in `shared/` (alongside Task 5's additive-only guard, or as its own test) asserting the frozen JSON-schema's `set` object's `properties` does **not** contain `visibility` or `segments` — a regression guard for exactly the mistake this task fixes, in case a future story reintroduces either field without reading this rationale.
 
-- [ ] **Task 2 — Design `set.plays[]` from the real stat-engine output (AC: 1)**
+- [x] **Task 2 — Design `set.plays[]` from the real stat-engine output (AC: 1)**
 
   Base the per-play shape on `agent/src-tauri/src/stats/mod.rs`'s `EnrichedPlay` (Story 1.7's assembled per-play record, the closest thing to "ground truth" for what a play looks like after the full parse→join→genre pipeline) plus `JoinedMetadata.in_library` (`agent/src-tauri/src/joiner/mod.rs`), which `EnrichedPlay` itself does **not** carry — see Dev Notes' "EnrichedPlay is missing `in_library`" note before assuming it's a straight 1:1 mirror.
 
@@ -52,7 +52,7 @@ So that the one frozen-forever hub artifact reflects parsing reality and its Set
   - `in_library: boolean` — from `JoinedMetadata.in_library`, **not** from `EnrichedPlay` (which doesn't carry this field — see Dev Notes). Required, not optional: this is the flag the Consistency Conventions table requires to travel with every play ("Missing metadata renders as a visible 'Unknown', carrying the `in_library` flag — never omitted, never guessed").
   - **Do not include a raw file `path` field.** `EnrichedPlay.path` is an absolute local filesystem path (e.g. `/Users/arjun/Downloads/.../track.mp3` or a Windows equivalent) — sending it to the cloud leaks local username/folder structure for no UX payoff Set Detail or Style Evolution need (neither renders a path; the tracklist shows title/artist/timestamp). This is flagged as Open Question #1 below (not silently decided) because a future Epic 4 feature (FR-10, library-to-setlist correlation) may eventually need *some* stable per-track identity — additive-only means a purpose-built (possibly hashed/opaque) identity field can be added later without reopening this freeze.
 
-- [ ] **Task 3 — Design the `set.derived` render-cache blob (AC: 1)**
+- [x] **Task 3 — Design the `set.derived` render-cache blob (AC: 1)**
 
   ARCHITECTURE-SPINE.md's Structural Seed section says "`sets` carries a denormalized `derived` (jsonb) render-cache so dashboards render without recomputation" (AR-15). Group every stat-engine/confidence output the Set Detail and Style Evolution UX specs need under one `derived` object on `set`, sourced from `agent/src-tauri/src/stats/mod.rs` (Story 1.7) and `agent/src-tauri/src/confidence.rs` (Story 1.8):
 
@@ -66,7 +66,7 @@ So that the one frozen-forever hub artifact reflects parsing reality and its Set
   - `energy_arc: Array<{ started_at: string, bpm: number }>` (ISO 8601 timestamps) — from `stats::energy_arc`/`EnergyArcPoint`. Only points with both fields present (already filtered by the Rust function); chronological order preserved. This is UX-DR6's `energy-arc-chart` data source and DESIGN.md's cited point-annotation feature (hover/tap shows "Energy peak at 02:15" + a comparison line) — the chart-summary auto-caption (UX-DR7) is computed client-side from this series, not precomputed here.
   - `confidence: { value: number, track_count: number, long_gap_count: number }` — from `confidence::classify`/`SessionConfidence` (Story 1.8, FR-27). Required, not optional — Epic 4's Story 4.1 AC-3 (epics.md line 337) explicitly depends on this signal being synced so Style Evolution can "exclude low-confidence sessions **visibly**... and surface an 'N sessions hidden — show them?' affordance," which is impossible if the value never left the agent. `confidence.rs`'s own module doc says as much: "no `shared/` sync-contract field yet" was true only *before* this story; this story is what closes that gap. Field names mirror `SessionConfidence` exactly (`confidence` → `value` to avoid a `derived.confidence.confidence` stutter; `track_count`/`long_gap_count` unchanged).
 
-- [ ] **Task 4 — Rewrite `shared/src/index.ts` and `shared/schema/sync-payload.schema.json` to the frozen shape (AC: 1, 2, 4)**
+- [x] **Task 4 — Rewrite `shared/src/index.ts` and `shared/schema/sync-payload.schema.json` to the frozen shape (AC: 1, 2, 4)**
 
   - Rename `SyncPayloadDraft` → `SyncPayload`, `SyncPlayDraft` → `SyncPlay`; delete `SyncSegmentDraft` (Task 1). Apply Tasks 2-3's field designs to `SyncPlay` and a new `SyncSetDerived` (or inline) type on `SyncPayload.set.derived`.
   - Update every "DRAFT — NOT FROZEN until Story 1.10" banner (there are three: the `index.ts` file header, the JSON-schema's `description`, and `README.md`'s top warning) to a "FROZEN — additive-only forever" banner citing this story and AD-15. Keep the existing "two consumers, one contract" explanation in the README; it remains accurate.
@@ -74,7 +74,7 @@ So that the one frozen-forever hub artifact reflects parsing reality and its Set
   - Update `shared/schema/sync-payload.schema.json`'s `$defs` to match: keep `play` (redesigned per Task 2), drop `segment` (Task 1). `additionalProperties: false` stays at every level — unchanged discipline.
   - Add a short "Adding a field after freeze" section to `README.md`: new fields are always optional (not in `required`) unless the story explicitly re-derives every already-synced historical payload (out of scope for any Epic 1/2/3 story today) — this is the mechanical rule Task 5's CI guard enforces; stating it in the README saves a future contributor from re-deriving AD-15 from first principles.
 
-- [ ] **Task 5 — Additive-only CI guard, closing the existing deferred-work.md gap (AC: 3)**
+- [x] **Task 5 — Additive-only CI guard, closing the existing deferred-work.md gap (AC: 3)**
 
   deferred-work.md already flags this exact gap from Story 1.1's review: *"Shallow TS↔schema parity check — the parity test (Rust + vitest) asserts only the AR-15 enums and `contract_version`, not full property sets / required keys. Structural drift between the TS type and JSON schema can pass both guards. Deferred to contract-freeze work (Story 1.10)."* Close it now:
 
@@ -83,16 +83,16 @@ So that the one frozen-forever hub artifact reflects parsing reality and its Set
   3. Widen the existing `shared/src/index.test.ts` parity test (currently checks only the AR-15 enums + `contract_version`, per the deferred-work.md citation above) to also assert the full `required` array and top-level property set match between the TS-exported shape and the JSON-schema — not just enums. This directly closes the cited gap, not just works around it with a second test.
   4. No CI workflow change is needed: both new/widened tests live in `shared/src/*.test.ts`, already run by the existing `js` job's `pnpm test` step (`.github/workflows/ci.yml`) — verify this locally (`pnpm --filter @curfew/shared test`) rather than assuming it, mirroring Story 1.9 Task 5's discipline.
 
-- [ ] **Task 6 — Document the `agent_version`/last-N-acceptance policy (AC: 3)**
+- [x] **Task 6 — Document the `agent_version`/last-N-acceptance policy (AC: 3)**
 
   `agent_version: string` (semver) is already a required top-level field in the draft — keep it required, unchanged. Add a doc comment on `SyncPayload.agent_version` (and a short paragraph in `README.md`) recording AR-1's policy verbatim: *contract evolution is additive-only, and the cloud must accept the last N `agent_version`s* — explicitly noting **N is not yet chosen** (no cloud exists to enforce a window against; this is a placeholder for whichever Epic 2/3 story implements the sync-ingestion endpoint) and that AD-13's backfill mechanism (raw data retained locally, re-synced after a fix ships) is the safety net if an old agent version is ever rejected. Do not invent a number or build an enforcement mechanism here — this task is documentation only, per the Scope Boundaries.
 
-- [ ] **Task 7 — Update the two existing consumers to the frozen shape (AC: 2)**
+- [x] **Task 7 — Update the two existing consumers to the frozen shape (AC: 2)**
 
   - `agent/src-tauri/src/lib.rs`'s `parses_shared_sync_contract_schema` test currently asserts `schema["properties"]["set"]["properties"]["visibility"]["enum"]` and `schema["$defs"]["segment"]["properties"]["type"]["enum"]` — both now-removed paths (Task 1). Update this test to assert against the frozen shape instead: keep the `contract_version`/`source` enum assertions (unchanged), and add assertions proving the new required `set.plays[].in_library`/`genre`/`camelot_key` shape and `set.derived.confidence` are present as the schema now defines them (mirroring this test's existing style: literal path assertions against parsed JSON, not a full schema-validator dependency). This is production test code this story **does** touch, unlike Story 1.9's zero-`src/`-changes discipline — the test exists specifically to prove Rust-side consumption of whatever `shared/` currently defines, so it must track this story's redesign.
   - `web/app/page.tsx` imports `type SyncPayloadDraft` and destructures `SyncPayloadDraft["source"]` — update the type name to `SyncPayload` (Task 4's rename). It does not reference `.set.visibility` or `.segments` directly (checked: only `source` and the module-level `CONTRACT_VERSION`/`VISIBILITY` constants), so no other edit is needed there.
 
-- [ ] **Task 8 — Gate + housekeeping (AC: all)**
+- [x] **Task 8 — Gate + housekeeping (AC: all)**
   - Run the full gate: `pnpm --filter @curfew/shared build`, `pnpm --filter @curfew/shared typecheck`, `pnpm --filter @curfew/shared test`, and the repo-root `pnpm lint && pnpm typecheck && pnpm build && pnpm test` (the same commands the `js` CI job runs). Separately, `cargo fmt --manifest-path agent/src-tauri/Cargo.toml -- --check`, `cargo clippy --manifest-path agent/src-tauri/Cargo.toml --all-targets -- -D warnings`, `cargo build --manifest-path agent/src-tauri/Cargo.toml`, `cargo test --manifest-path agent/src-tauri/Cargo.toml` (Task 7's Rust test change). If this machine lacks a linked Rust toolchain, don't skip silently — the toolchain has been found at `~/.rustup/toolchains/stable-aarch64-apple-darwin/bin` (not on default `PATH`) on this machine for Stories 1.6/1.8/1.9; export it explicitly rather than logging a fresh "toolchain missing" deferral.
   - Update deferred-work.md: mark the Story 1.1 "Shallow TS↔schema parity check" entry resolved, citing Task 5's new tests. If Task 2's path-exclusion or Task 1's visibility/segments removal surfaces any other standing deferred-work.md entry this story's design choices touch, cross-reference it there too (do not delete entries — append, per this project's standing convention).
   - This is the last story in Epic 1 (epics.md: Story 1.10 is the epic's final story before `epic-1-retrospective`). After this story reaches `done`, consider whether `epic-1-retrospective` should run before Epic 2 starts — that decision is Arjun's, not this story's to make.
@@ -152,3 +152,60 @@ Recent per-story shape (Stories 1.6-1.9): context-engineer commit → implement 
 1. **[PRODUCT — recommended default given] Should any per-play track-identity field (e.g. a hashed/opaque path token) be in the v1 frozen payload for Epic 4's future library-to-setlist correlation (FR-10)?** Task 2 recommends excluding the raw file path entirely from v1 (privacy: leaks local username/folder structure; no current UX consumer needs it). Additive-only means a purpose-built identity field can be added later without reopening this freeze, so the recommended default is to defer this decision to whichever Epic 4 story implements FR-10, rather than guess at its shape now. Proceed with exclusion unless Arjun prefers reserving a field now.
 2. **[DESIGN — recommended default given] `agent_version`'s "last N" acceptance-window value is left unset (Task 6, documentation only).** No cloud exists yet to enforce it against. Proceed with documenting the policy without a number, per Task 6.
 3. **[PRODUCT] Is Epic 1 "done" once this story reaches `done`, warranting `epic-1-retrospective` before Epic 2 starts?** Not this story's call — flagged in Task 8 for Arjun.
+
+## Dev Agent Record
+
+### Agent Model Used
+
+Claude Sonnet 5 (claude-sonnet-5), via `bmad-dev-story`.
+
+### Debug Log References
+
+- Rust toolchain present at `~/.rustup/toolchains/stable-aarch64-apple-darwin/bin` (rustup-installed but not on default `PATH`) — same as Stories 1.6/1.8/1.9; exported explicitly for every cargo invocation this session.
+- No new dependency added to any workspace.
+
+### Completion Notes List
+
+**Task 1 — Fixed both disjointness bugs:** Removed `set.visibility` and the top-level `segments` array from `SyncPayload` in `shared/src/index.ts` and their corresponding entries from `shared/schema/sync-payload.schema.json` (including deleting the `segment` `$def`). `VISIBILITY`/`Visibility` and `SEGMENT_TYPE`/`SegmentType` stay exported unchanged, with doc comments clarifying they're now cloud-side-only enums. Added regression guards in `shared/src/index.test.ts` asserting `set.visibility`/top-level `segments`/`$defs.segment` are all absent from the frozen schema, plus a matching Rust-side assertion in `lib.rs`.
+
+**Task 2 — `SyncPlay` designed from `EnrichedPlay` + `JoinedMetadata.in_library`:** All 8 fields per the story's recommendation (`position`, `title`, `artist`, `started_at`, `bpm`, `genre{raw,normalized,taxonomy_version}`, `camelot_key`, `in_library`) — every field except `position`/`in_library` is a required-but-nullable key (never omitted), matching `EnrichedPlay`'s "every field optional, nothing silently defaulted" discipline. `camelot_key` encoded as a Camelot-notation string (JSON-schema `pattern: "^(1[0-2]|[1-9])[AB]$"`), not the two-field Rust struct. No `path` field — excluded per the story's privacy rationale (Open Question #1).
+
+**Task 3 — `SyncSetDerived` designed from `stats::mod.rs` + `confidence.rs`:** All 9 fields (`most_played_tracks`, `most_played_artists`, `genre_breakdown`, `bpm_distribution`, `camelot_mixing_stats`, `set_length_sec`, `track_count`, `energy_arc`, `confidence`) mapped verbatim from their Rust source functions/structs, grouped under `set.derived`. `confidence.value`/`track_count`/`long_gap_count` mirror `SessionConfidence` exactly (renamed `confidence`→`value` to avoid a `derived.confidence.confidence` stutter). `bpm_distribution`/`camelot_mixing_stats`/`genre_breakdown.no_genre_count` are required non-nullable numeric fields (never `null`), matching their Rust functions' "defined value, never NaN" contracts.
+
+**Task 4 — `shared/src/index.ts` + `shared/schema/sync-payload.schema.json` rewritten to the frozen shape:** `SyncPayloadDraft`→`SyncPayload`, `SyncPlayDraft`→`SyncPlay` renamed; `SyncSegmentDraft` deleted. All three "DRAFT — NOT FROZEN" banners (index.ts file header, schema `description`, README top warning) replaced with "FROZEN — additive-only forever" banners citing Story 1.10 and AD-15. `CONTRACT_VERSION` stays `1`; its doc comment rephrased to note a version bump is now reserved for a hypothetical deliberate contract fork, since routine evolution is additive-only and needs no bump. Schema `$id` updated from `sync-payload.draft.json` to `sync-payload.json`. `additionalProperties: false` preserved at every object level, including the new `derived` object and its nested stat objects.
+
+**Task 5 — Additive-only CI guard (closes the Story 1.1 review's deferred-work.md gap):** Checked in `shared/schema/sync-payload.schema.frozen-baseline.json` (byte-for-byte copy of the frozen schema, verified via `diff`). New `shared/src/additive-only.test.ts` recursively walks the baseline against the current schema (resolving `$ref`/`oneOf`/`items`/`properties`/`required` at every nesting level, including every `$defs` entry) and fails with an AD-15-referencing message on any removed/retyped property or `required` entry; new properties pass freely. Widened `shared/src/index.test.ts` beyond the four original enum/version checks to also assert the full top-level `SyncPayload`/`set`/`SyncPlay`/`SyncSetDerived`/`confidence` `required` arrays and property sets match the TS interface shapes verbatim, plus explicit visibility/segments-absence regression tests (Task 1.3). No CI workflow change needed — both test files live under `shared/src/*.test.ts`, already run by the existing `js` job's `pnpm test` step; verified locally via `pnpm --filter @curfew/shared test` (13/13 passed).
+
+**Task 6 — `agent_version`/last-N policy documented:** Doc comment added on `SyncPayload.agent_version` in `index.ts` and a new "`agent_version` acceptance policy" section in `README.md`, both recording AR-1's policy verbatim (additive-only evolution, cloud accepts the last N agent versions) with N explicitly left unset (no cloud exists yet) and AD-13's backfill mechanism noted as the safety net. Documentation only — no enforcement mechanism built, per the Scope Boundaries.
+
+**Task 7 — Both existing consumers updated:** `agent/src-tauri/src/lib.rs`'s `parses_shared_sync_contract_schema` test rewritten — kept the `contract_version`/`source` enum assertions, replaced the removed `visibility`/`segment` enum assertions with explicit absence assertions, and added new assertions proving `set.plays[]`'s required fields (`position`, `genre`, `camelot_key`, `in_library`) and `set.derived`'s required fields (all 9, plus `confidence`'s 3 sub-fields) are present as the frozen schema now defines them — literal path assertions against parsed JSON, matching the test's existing style. Also corrected a stale "DRAFT until Story 1.10" doc comment on `SYNC_PAYLOAD_SCHEMA_RELPATH` to reflect the freeze. `web/app/page.tsx`'s `SyncPayloadDraft` type import/usage renamed to `SyncPayload`; no other edit needed there (confirmed: it only references `.source`, not `.set.visibility`/`.segments`, matching the story's own pre-check).
+
+**Task 8 — Gate + housekeeping:**
+- Full gate green: `pnpm --filter @curfew/shared build/typecheck/test` (13/13 tests passed) + repo-root `pnpm lint && pnpm typecheck && pnpm build && pnpm test` (all green, including `web`'s Next.js build with the renamed `SyncPayload` type) + `cargo fmt --check`/`cargo clippy --all-targets -- -D warnings`/`cargo build`/`cargo test` on the rustup toolchain (136/136 passed, including the widened `parses_shared_sync_contract_schema`).
+- `deferred-work.md` updated: the Story 1.1 "Shallow TS↔schema parity check" entry marked `[RESOLVED 2026-07-25, Story 1.10]`, citing the new/widened tests. Two new entries added under a new "implementation of 1-10" section (`EnrichedPlay` missing `in_library` — a real gap flagged for whoever writes the Epic 2/3 payload-construction glue; raw `path` exclusion — a recorded product decision, not a defect). The existing `enrich_session` pairing-order-invariant entry annotated with a cross-reference noting Story 1.10 froze the consuming wire shape but still didn't build a real caller.
+- Epic-1-retrospective timing left as Open Question #3 for Arjun, per Task 8's explicit note that this is not this story's call.
+
+**Scope discipline:** Zero changes to `agent/src-tauri/src/{stats,confidence.rs,genre.rs,joiner,parser}/**`, `.github/workflows/ci.yml`, or any Supabase/cloud path — confirmed by the File List below. No `agent/`-side payload-construction function, local-store schema, or sync-queue built.
+
+### File List
+
+**New:**
+- `shared/schema/sync-payload.schema.frozen-baseline.json`
+- `shared/src/additive-only.test.ts`
+
+**Modified:**
+- `shared/src/index.ts`
+- `shared/schema/sync-payload.schema.json`
+- `shared/src/index.test.ts`
+- `shared/README.md`
+- `agent/src-tauri/src/lib.rs`
+- `web/app/page.tsx`
+- `_bmad-output/implementation-artifacts/deferred-work.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
+
+## Change Log
+
+| Date | Change |
+|---|---|
+| 2026-07-25 | Story 1.10 context-engineered (freeze the `shared/` sync contract): designed the frozen `set.plays[]`/`set.derived` shape from the real Story 1.7/1.8 stat-engine + confidence outputs; fixed two content/overlay disjointness bugs in the DRAFT payload (`set.visibility`, top-level `segments`); flagged `EnrichedPlay` missing `in_library` and the raw-path privacy exclusion as open items; scoped to `shared/` + two existing consumer touch-points only. Status → ready-for-dev. |
+| 2026-07-25 | Story 1.10 implemented: froze `shared/src/index.ts` + `shared/schema/sync-payload.schema.json` to the designed shape (`SyncPayload`/`SyncPlay`/`SyncSetDerived`, `SyncPayloadDraft` family renamed/removed); added the additive-only CI guard (frozen-baseline snapshot + `additive-only.test.ts` + widened `index.test.ts` parity checks), closing the Story 1.1 review's deferred-work.md gap; documented the `agent_version` last-N policy; updated both existing consumers (`lib.rs`'s schema test, `web/app/page.tsx`'s type import). Full gate green (pnpm lint/typecheck/build/test + cargo fmt/clippy/build/test, 136 Rust tests passed). Two deferred-work.md entries added, one annotated. Status → review. |

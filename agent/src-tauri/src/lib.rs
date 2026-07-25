@@ -41,7 +41,7 @@ use std::path::PathBuf;
 /// Location of the language-neutral sync-contract schema the agent consumes,
 /// relative to this crate's manifest dir (`agent/src-tauri`). Rust cannot import
 /// the TypeScript type in `@curfew/shared`, so the checked-in JSON-schema file is
-/// the seam. DRAFT until Story 1.10 (AR-1).
+/// the seam. Frozen, additive-only forever as of Story 1.10 (AD-15).
 pub const SYNC_PAYLOAD_SCHEMA_RELPATH: &str = "../../shared/schema/sync-payload.schema.json";
 
 /// Absolute path to the shared sync-contract schema, resolved from this crate.
@@ -158,6 +158,10 @@ mod tests {
 
     /// AC-2 (Rust side): the agent can load the shared JSON-schema and it carries
     /// the contract version + the AR-15 fixed enums, matching `@curfew/shared`.
+    ///
+    /// Also proves the frozen shape from Story 1.10: `set.plays[]` carries the
+    /// `EnrichedPlay`/`JoinedMetadata.in_library`-derived fields, and
+    /// `set.derived.confidence` carries the Story 1.8 confidence signal.
     #[test]
     fn parses_shared_sync_contract_schema() {
         let schema = load_sync_payload_schema().expect("shared sync-contract schema must load");
@@ -171,15 +175,63 @@ mod tests {
             serde_json::json!(["serato"]),
             "source enum drifted from @curfew/shared"
         );
+
+        // Story 1.10 Task 1: visibility/segments are web-authored overlays (AD-6)
+        // and must never appear on the agent's outbound payload.
+        assert!(
+            schema["properties"]["set"]["properties"]["visibility"].is_null(),
+            "set.visibility must not be present on the frozen sync payload (AD-6/AD-16)"
+        );
+        assert!(
+            schema["properties"]["segments"].is_null(),
+            "top-level segments must not be present on the frozen sync payload (AD-6/AD-16)"
+        );
+
+        // Story 1.10 Task 2: set.plays[] shape, sourced from EnrichedPlay + JoinedMetadata.in_library.
+        let play_required = schema["$defs"]["play"]["required"]
+            .as_array()
+            .expect("play $def must declare required fields");
+        for field in ["position", "genre", "camelot_key", "in_library"] {
+            assert!(
+                play_required.iter().any(|v| v == field),
+                "play.{field} must be required on the frozen sync payload"
+            );
+        }
         assert_eq!(
-            schema["properties"]["set"]["properties"]["visibility"]["enum"],
-            serde_json::json!(["public", "friends_only", "private"]),
-            "visibility enum drifted from @curfew/shared"
+            schema["$defs"]["play"]["properties"]["in_library"]["type"],
+            serde_json::json!("boolean"),
+            "play.in_library must be a required, non-nullable boolean"
         );
         assert_eq!(
-            schema["$defs"]["segment"]["properties"]["type"]["enum"],
-            serde_json::json!(["dancefloor", "dinner", "performance", "custom"]),
-            "segment type enum drifted from @curfew/shared"
+            schema["$defs"]["genre"]["required"],
+            serde_json::json!(["raw", "normalized", "taxonomy_version"]),
+            "play.genre must carry raw/normalized/taxonomy_version verbatim (AD-12)"
+        );
+
+        // Story 1.10 Task 3: set.derived carries the stat-engine + confidence outputs.
+        let derived_required = schema["$defs"]["derived"]["required"]
+            .as_array()
+            .expect("derived $def must declare required fields");
+        for field in [
+            "most_played_tracks",
+            "most_played_artists",
+            "genre_breakdown",
+            "bpm_distribution",
+            "camelot_mixing_stats",
+            "set_length_sec",
+            "track_count",
+            "energy_arc",
+            "confidence",
+        ] {
+            assert!(
+                derived_required.iter().any(|v| v == field),
+                "derived.{field} must be required on the frozen sync payload"
+            );
+        }
+        assert_eq!(
+            schema["$defs"]["confidence"]["required"],
+            serde_json::json!(["value", "track_count", "long_gap_count"]),
+            "derived.confidence must mirror SessionConfidence's fields (Story 1.8)"
         );
     }
 }
