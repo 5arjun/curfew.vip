@@ -5,8 +5,7 @@
 //!   watcher -> parser -> joiner -> stat-engine -> local store -> sync-queue
 //! each an independently testable filter with a typed hand-off (`confidence` is a
 //! sibling consumer of the stat-engine's output, not a stage in this chain — see
-//! [`confidence`]). Those filters land in Stories 1.3-1.7; this story only proves the
-//! shell compiles and that the Rust side can consume the shared sync contract (AC-2).
+//! [`confidence`]). Those filters land in Stories 1.3-1.7.
 //!
 //! Dependency rule (AD-3): `agent` depends on `shared` (via the JSON-schema
 //! artifact), never on `web`.

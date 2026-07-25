@@ -71,16 +71,19 @@ const LOW_CONFIDENCE_VALUE: f64 = 0.2;
 /// two cases can, via `track_count`/`long_gap_count`, without a second field.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SessionConfidence {
-    /// `0.0` = most ambiguous (dense, continuous, no natural break — could be a real
-    /// set or a realistic home rehearsal, per PRD FR-27), `1.0` = most confidently
-    /// classifiable (either "obviously a real set" or "obviously not a set"). A
-    /// heuristic proxy, never a ground-truth live/practice label (AC-4).
+    /// [`LOW_CONFIDENCE_VALUE`] = most ambiguous (dense, continuous, no natural break
+    /// — could be a real set or a realistic home rehearsal, per PRD FR-27), `1.0` =
+    /// most confidently classifiable (either "obviously a real set" or "obviously not
+    /// a set"). A heuristic proxy, never a ground-truth live/practice label (AC-4).
     pub confidence: f64,
     /// Total plays considered (transparency for callers/tests — mirrors why
     /// [`crate::stats::camelot::CamelotMixingStats`] exposes its three counts instead
     /// of a pre-divided rate).
     pub track_count: usize,
-    /// How many consecutive-play gaps met or exceeded [`LONG_GAP_THRESHOLD_SEC`].
+    /// How many gaps between consecutive *known-`start_time`* plays met or exceeded
+    /// [`LONG_GAP_THRESHOLD_SEC`]. Plays with `start_time: None` are filtered out
+    /// before pairing (see [`classify`]'s docs), so two plays far apart in the real
+    /// play order but adjacent after filtering are counted as one gap.
     pub long_gap_count: usize,
 }
 
@@ -169,6 +172,18 @@ mod tests {
 
         assert_eq!(out.confidence, 1.0);
         assert_eq!(out.track_count, 2);
+    }
+
+    /// (AC-1) Exactly `MIN_PLAYS_FOR_AMBIGUITY - 1` plays, closely spaced — still
+    /// below the ambiguity floor, so this must stay high-confidence even though the
+    /// gaps alone would otherwise qualify for the low-confidence tier at one more play.
+    #[test]
+    fn one_below_min_plays_threshold_is_high_confidence() {
+        let plays = vec![enriched(Some(0)), enriched(Some(180)), enriched(Some(360))];
+        let out = classify(&plays);
+
+        assert_eq!(out.confidence, 1.0);
+        assert_eq!(out.track_count, MIN_PLAYS_FOR_AMBIGUITY - 1);
     }
 
     /// (AC-1, AC-4) Enough plays, all closely spaced (no long gap) → the dense,

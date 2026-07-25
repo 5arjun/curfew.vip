@@ -4,7 +4,7 @@ baseline_commit: 0c78794c3f0cc742cdafeb69c07a25c33b3828ad
 
 # Story 1.8: Live/practice confidence signal
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -95,6 +95,16 @@ So that the signal exists for later use (Phase 2 confirmation; Epic 4 trend excl
     - **(Task 1)** empty `plays` slice → defined output, no panic.
     - **(determinism)** running `classify` twice over the same input yields identical output — mirrors `genre::normalize_is_deterministic`/`stats`'s own determinism test.
   - [x] Gate: `cargo fmt --manifest-path agent/src-tauri/Cargo.toml -- --check`, `cargo clippy --manifest-path agent/src-tauri/Cargo.toml --all-targets -- -D warnings`, `cargo build --manifest-path agent/src-tauri/Cargo.toml`, `cargo test --manifest-path agent/src-tauri/Cargo.toml`. If this machine lacks a Rust toolchain, do not skip the gate silently — log it to `deferred-work.md` and get it run on a macOS/CI box before merge, per this project's standing discipline (Stories 1.5/1.6 both hit this).
+
+## Review Findings
+
+- [x] [Review][Defer] Dense/continuous tier can fire off a low ratio of known-timestamps to total plays, and has no density/rate ceiling — both already reproduced on real data in this diff's own deferred-work.md entry. — Edge Case Hunter and Blind Hunter independently found that (a) a session with a large `track_count` but very few known `start_time`s (e.g. 2 known out of 200 plays) has its entire tier decided by that 2-point sample, and (b) a very-high-density/short-duration session (rapid library previewing) scores the same `LOW_CONFIDENCE_VALUE` as an ordinary dense set — not theoretical, this is the exact 865-play/~27.5-minute session already logged in this diff's `deferred-work.md` entry. [agent/src-tauri/src/confidence.rs:104-132] — deferred: already logged, thresholds are Arjun's call (Open Questions #1), not a code guess (AD-11 discipline)
+- [x] [Review][Patch] `SessionConfidence.confidence` field doc contradicts its own constant's doc on the meaning of `0.0`. [agent/src-tauri/src/confidence.rs:74-77]
+- [x] [Review][Patch] Dev Agent Record's File List omits two files the diff actually modifies (`deferred-work.md`, `sprint-status.yaml`). [_bmad-output/implementation-artifacts/1-8-live-practice-confidence-signal.md]
+- [x] [Review][Patch] `long_gap_count` doc doesn't disclose that `start_time: None` plays are filtered out before pairing, so two plays far apart in real order can be counted as one gap post-filter. [agent/src-tauri/src/confidence.rs:83]
+- [x] [Review][Patch] Untested boundary at `track_count == MIN_PLAYS_FOR_AMBIGUITY - 1` (3 plays) — tests cover 2 and 4 plays but never the exact tier-flip boundary. [agent/src-tauri/src/confidence.rs tests]
+- [x] [Review][Patch] `lib.rs` retains a stale Story-1.1 sentence ("this story only proves the shell compiles...") in the same paragraph this diff edited to add the `confidence` module note. [agent/src-tauri/src/lib.rs:8-9]
+- [x] [Review][Defer] No guard against a violated `start_time`-sorted-order invariant — mirrors Story 1.7's already-deferred `enrich_session` pairing-order issue; `count_long_gaps`'s `saturating_sub` silently reads a reversed pair as a 0-second gap instead of surfacing corrupted/out-of-order input. No live caller yet, same situation as the 1.7 precedent. [agent/src-tauri/src/confidence.rs:138-143] — deferred, pre-existing pattern
 
 ## Dev Notes
 
@@ -190,6 +200,8 @@ Claude Sonnet 5 (claude-sonnet-5)
 
 - `agent/src-tauri/src/confidence.rs` (new)
 - `agent/src-tauri/src/lib.rs` (modified — registered `pub mod confidence;`, updated pipeline doc-comment)
+- `_bmad-output/implementation-artifacts/deferred-work.md` (modified — logged the real-data density/short-duration edge case found during validation)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (modified — status log entries)
 
 ## Change Log
 
