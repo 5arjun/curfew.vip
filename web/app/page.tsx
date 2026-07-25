@@ -1,9 +1,9 @@
-import { CONTRACT_VERSION, VISIBILITY, type SyncPayloadDraft } from "@curfew/shared";
+import { CONTRACT_VERSION, VISIBILITY, type SyncPayload } from "@curfew/shared";
 
 // Proves web/ consumes @curfew/shared: a runtime import (CONTRACT_VERSION, VISIBILITY)
-// plus a type-only import (SyncPayloadDraft). Server Component (default) => rendered
+// plus a type-only import (SyncPayload). Server Component (default) => rendered
 // on the server, reinforcing that web/ keeps SSR (no static export).
-const draftContractSource: SyncPayloadDraft["source"] = "serato";
+const contractSource: SyncPayload["source"] = "serato";
 
 export default function Home() {
   return (
@@ -11,7 +11,7 @@ export default function Home() {
       <h1 style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>Curfew</h1>
       <p>DJ reflection platform — web app scaffold.</p>
       <p style={{ opacity: 0.7, fontSize: "0.9rem" }}>
-        Sync contract v{CONTRACT_VERSION} (draft) · source: {draftContractSource} · visibility
+        Sync contract v{CONTRACT_VERSION} (frozen) · source: {contractSource} · visibility
         options: {VISIBILITY.join(", ")}
       </p>
     </main>
