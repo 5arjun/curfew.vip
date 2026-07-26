@@ -21,7 +21,10 @@ story.
 2. Create an organization if one doesn't already exist, and attach a billing
    plan. The **paid tier is required**: it's what the Architecture Spine's
    deployment table assumes for point-in-time-recovery (PITR) backups, and
-   the free tier does not support preview branching (step 2).
+   the free tier does not support preview branching (step 2). **Pricing and
+   plan features change over time — verify current tier gating at
+   [supabase.com/pricing](https://supabase.com/pricing) before relying on
+   this claim; it reflects what was true as of 2026-07-25.**
 3. Create a new project inside that organization. This is the **prod**
    project — a single dedicated project, not shared with any preview branch.
 4. Record the project's reference id (visible in the project's Settings →
