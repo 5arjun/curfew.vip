@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(6);
+select plan(10);
 
 -- Seed two auth users; the AFTER INSERT trigger (handle_new_dj) should create
 -- exactly one matching public.djs row for each.
@@ -43,6 +43,51 @@ select results_eq(
   $$ select id from public.djs order by id $$,
   $$ values ('11111111-1111-1111-1111-111111111111'::uuid) $$,
   'authenticated DJ A sees only their own djs row, not DJ B''s'
+);
+
+reset role;
+reset request.jwt.claims;
+
+-- Case 3b: the mirror of Case 3 -- as authenticated DJ B, a select on djs
+-- returns only DJ B's row, not DJ A's. Isolation must hold in both
+-- directions, not just the one checked above.
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}';
+
+select results_eq(
+  $$ select id from public.djs order by id $$,
+  $$ values ('22222222-2222-2222-2222-222222222222'::uuid) $$,
+  'authenticated DJ B sees only their own djs row, not DJ A''s'
+);
+
+reset role;
+reset request.jwt.claims;
+
+-- Case 3c: the "read-only via RLS, write-only via trigger" design (Task 3)
+-- means authenticated has no write grant at all on djs -- prove it, don't
+-- just assert it in a comment.
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
+
+select throws_ok(
+  $$ insert into public.djs (id) values ('33333333-3333-3333-3333-333333333333') $$,
+  '42501'::char(5),
+  NULL,
+  'authenticated cannot insert into djs (no insert grant)'
+);
+
+select throws_ok(
+  $$ update public.djs set created_at = now() where id = '11111111-1111-1111-1111-111111111111' $$,
+  '42501'::char(5),
+  NULL,
+  'authenticated cannot update djs (no update grant)'
+);
+
+select throws_ok(
+  $$ delete from public.djs where id = '11111111-1111-1111-1111-111111111111' $$,
+  '42501'::char(5),
+  NULL,
+  'authenticated cannot delete from djs (no delete grant)'
 );
 
 reset role;

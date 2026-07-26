@@ -41,7 +41,7 @@ $$;
 
 create trigger on_auth_user_created
   after insert on auth.users
-  for each row execute procedure public.handle_new_dj();
+  for each row execute function public.handle_new_dj();
 
 -- Task 3 — null-safe RLS (AC-3, AD-7)
 --

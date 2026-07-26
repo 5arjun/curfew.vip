@@ -96,6 +96,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Static, dependency-free checks run first so a violation fails fast,
+      # before paying for the Docker/Postgres round-trip below.
+      - name: Additive-only migration guard
+        run: supabase/scripts/check-additive-only-migrations.sh supabase/migrations
+
+      - name: Additive-only migration guard self-test
+        run: supabase/scripts/check-additive-only-migrations.test.sh
+
       - name: Install Supabase CLI
         uses: supabase/setup-cli@v1
         with:
@@ -110,6 +118,3 @@ jobs:
 
       - name: Run pgTAP tests
         run: supabase test db supabase/tests
-
-      - name: Additive-only migration guard
-        run: supabase/scripts/check-additive-only-migrations.sh supabase/migrations

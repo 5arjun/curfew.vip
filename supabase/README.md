@@ -9,7 +9,7 @@ supabase/
   config.toml                       # local project config
   migrations/                       # additive-only, CLI-generated, committed
     20260721180917_init.sql              # no-op seed (Story 1.1)
-    <ts>_create_djs_table.sql            # djs table + trigger + RLS (Story 2.1)
+    20260726012050_create_djs_table.sql  # djs table + trigger + RLS (Story 2.1)
   tests/                             # pgTAP suites (`supabase test db`)
     djs_isolation_test.sql
   scripts/
