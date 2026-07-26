@@ -42,6 +42,7 @@
 
 generated: 2026-07-21
 last_updated: 2026-07-25
+# 2026-07-25: EPIC 1 PRE-RETRO REVIEW (adversarial party). Verified complete & gate-green (136 cargo + 13 shared tests re-run on macOS; clean freeze). Two product decisions recorded: (A) launch ingestion is GO-FORWARD ONLY, no historical backfill — empty/sparse dashboard IS the launch experience; (B) Epic 4 'played' = played-on-Curfew, reframe copy history-as-asset never receipt. 8 action_items filed (see below + epic-1-review-decisions-2026-07-25.md). Epic 1 findings #1-5 triaged with firing triggers.
 # 2026-07-25: story 1-10 implemented: fixed both content/overlay disjointness bugs (removed set.visibility and top-level segments from the outbound payload; kept VISIBILITY/SEGMENT_TYPE exported for future cloud-side use) + designed and froze the full set.plays[]/set.derived shape (SyncPlay: position/title/artist/started_at/bpm/genre{raw,normalized,taxonomy_version}/camelot_key/in_library, no path; SyncSetDerived: most_played_tracks/most_played_artists/genre_breakdown/bpm_distribution/camelot_mixing_stats/set_length_sec/track_count/energy_arc/confidence) sourced verbatim from Story 1.7/1.8's EnrichedPlay/JoinedMetadata.in_library/NormalizedGenre/CamelotKey/SessionConfidence; renamed SyncPayloadDraft->SyncPayload, SyncPlayDraft->SyncPlay, deleted SyncSegmentDraft; three DRAFT banners (index.ts, schema description, README) flipped to FROZEN; CONTRACT_VERSION doc comment updated for the freeze; new additive-only CI guard closing the Story 1.1 review's "shallow TS<->schema parity check" deferred-work.md gap (checked-in schema/sync-payload.schema.frozen-baseline.json + new src/additive-only.test.ts recursively diffing current-vs-baseline properties/required/types at every $defs nesting level; widened index.test.ts to assert full required/property sets, not just enums, at every level incl. a new explicit visibility/segments-absence regression guard); documented the agent_version last-N-acceptance policy (N left unset, no cloud yet) in both index.ts and README; updated the two existing consumers (agent/src-tauri/src/lib.rs's parses_shared_sync_contract_schema test now asserts the frozen shape + visibility/segments absence; web/app/page.tsx's type import renamed SyncPayloadDraft->SyncPayload). Two deferred-work.md entries added/annotated (EnrichedPlay missing in_library — real gap, not this story's to fix in agent/; raw path exclusion — a recorded product decision, not a defect) plus a cross-reference note on the existing enrich_session pairing-order entry. Zero changes to agent/src-tauri/src/{stats,confidence.rs,genre.rs,joiner,parser}/** or any cloud/pipeline code, as scoped. Full gate green: pnpm lint/typecheck/build/test (13 shared tests, all green) + cargo fmt/clippy -D warnings/build/test (136 passed, incl. the widened schema test) → review
 # 2026-07-25: story 1-10 context-engineered (freeze the shared/ sync contract): fixes two content/overlay disjointness bugs in the DRAFT payload before designing anything else (set.visibility and a top-level segments array both violate AD-6/AD-16 — both are web-authored overlays, never agent-written; segments has no Epic-1 producer at all, since segment detection is explicitly Epic 5's job); designs the frozen set.plays[]/set.derived shape from the real Story 1.7/1.8 stat-engine + confidence outputs (EnrichedPlay, JoinedMetadata.in_library, NormalizedGenre, CamelotKey, SessionConfidence); flags EnrichedPlay is missing in_library (not this story's to fix in agent/); excludes raw file path from the wire (privacy, flagged as Open Question #1 for Arjun re: future Epic 4 FR-10 correlation); adds a new additive-only CI guard in shared/ closing the Story 1.1 review's "shallow TS<->schema parity check" deferred-work.md gap; touches shared/ plus the two existing consumer touch-points (agent/src-tauri/src/lib.rs's schema test, web/app/page.tsx's type import) only — no pipeline wiring, no cloud, both explicitly out of scope -> ready-for-dev
 # 2026-07-25: story 1-9 code-reviewed (bmad-code-review, 3 parallel layers): 2 patches applied (golden_duplicate_row_id_session_dedups_by_row_id and golden_duplicate_path_resolves_to_the_last_record both broke the story's own full-struct-equality discipline via partial-field assertions; both now assert the whole Play/JoinedMetadata struct), 1 decision resolved (MPL-2.0 attribution for the copied triseratops fixture — inline doc comment accepted as sufficient, no NOTICE file needed), 1 deferred (golden .session fixtures never cover two plays tied on start_time; low severity, no inline test covers it either), 18 dismissed as noise or already handled by pre-existing inline unit tests elsewhere in the crate (session_id filtering, NULL bpm/deck/artist, empty-session, off-library join, error paths — all independently verified present in parser/serato4.rs, joiner/serato4.rs, joiner/legacy.rs, parser/mod.rs, parser/session.rs); full cargo gate re-run green after patches (fmt, clippy -D warnings, build, test — 136 passed) → done
@@ -172,3 +173,47 @@ development_status:
   7-4-customer-portal-manage-cancel: backlog
   7-5-web-access-gate-on-subscription: backlog
   epic-7-retrospective: optional
+
+# Action items — carried into the Epic 1 retrospective / Epic 2 story creation.
+# Full rationale + decisions: implementation-artifacts/epic-1-review-decisions-2026-07-25.md
+action_items:
+  - id: ai-1
+    status: open
+    source: epic-1-review 2026-07-25
+    trigger: Story 2.8 (pipeline wiring)
+    item: "Payload glue: correlation-keyed pairing (serato4 history_entry.id / legacy file-index), assert-and-DEGRADE (log+agent_version+positional fallback, raw retained) — not assert-and-die. Reads EnrichedPlay + paired JoinedMetadata.in_library per pair (EnrichedPlay lacks in_library)."
+  - id: ai-2
+    status: open
+    source: epic-1-review 2026-07-25
+    trigger: first build/bundle story (Epic 2, AR-14)
+    item: "BLOCKER: sync_payload_schema_path() uses env!(CARGO_MANIFEST_DIR) — absent on a bundled agent, sync broken on every installed copy. Embed schema as compile-time resource; make it part of DoD for 'bundles correctly'."
+  - id: ai-3
+    status: open
+    source: epic-1-review 2026-07-25
+    trigger: Story 2.5 agent shell / before 2.8 loads local files
+    item: "Set a restrictive CSP in the agent-shell baseline (currently csp:null in tauri.conf.json). Hardening, do it early — a null CSP never gets tightened later."
+  - id: ai-4
+    status: open
+    source: epic-1-review 2026-07-25
+    trigger: Epic 4 + real fleet data
+    item: "Confidence thresholds: FREEZE as-is (do-not-touch; tuning on one DJ is theater). Add one sentence to Story 4.1 re: 865-play rapid-preview blind spot (no density ceiling)."
+  - id: ai-5
+    status: open
+    source: epic-1-review 2026-07-25
+    trigger: before Epic 3 renders in-library badge
+    item: "Serato-4+ in_library hardcoded true (spine deviation). Owned open question — needs a 2nd real profile before trusting asset_id>0 (~4.6% off one profile). Resolve before the badge renders a visible lie."
+  - id: ai-6
+    status: open
+    source: epic-1-review 2026-07-25
+    trigger: retro / bmad-correct-course propagation
+    item: "DECISION A — launch ingestion is GO-FORWARD ONLY (no historical backfill). Propagate to PRD §1/§3 + Glossary 'played', Architecture Spine (AR-2 backfill framing), epics.md Overview + Epic 3 UX (design sparse-first). Empty/sparse dashboard IS the launch experience."
+  - id: ai-7
+    status: open
+    source: epic-1-review 2026-07-25
+    trigger: retro / Epic 4 story rework
+    item: "DECISION B — Epic 4 'played' = played-on-Curfew; reframe copy history-as-asset, NEVER receipt ('your history', never 'since you joined'). 4.4 aging-shelf + 4.5 time-to-first-play are cold-start-broken as written — re-spec or gate. Propagate to PRD FR-10..13, epics.md 4.2-4.5, UX EXPERIENCE.md."
+  - id: ai-8
+    status: open
+    source: epic-1-review 2026-07-25
+    trigger: retro process
+    item: "'Gate green' in dev logs sometimes meant 'deferred to CI' (Windows box, no Rust toolchain — esp. story 1.6). Make the local gate a hard precondition, or treat CI as the sole source of truth."
