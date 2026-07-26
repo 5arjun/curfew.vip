@@ -1,6 +1,10 @@
+---
+baseline_commit: c0e3cc11df0c4cb483b1975963e7bcfd5ec2dde9
+---
+
 # Story 2.1: Supabase cloud foundation + isolation baseline
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -27,13 +31,13 @@ So that all cloud data is per-DJ isolated at the DB layer from the very first ro
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — `djs` table migration (AC: 3, 4)**
+- [x] **Task 1 — `djs` table migration (AC: 3, 4)**
   - Run `supabase migration new create_djs_table` (per `supabase/README.md`'s documented workflow) to generate a correctly-timestamped file in `supabase/migrations/`.
   - Schema: `public.djs (id uuid primary key references auth.users(id) on delete cascade, created_at timestamptz not null default now())`. `id` **is** the DJ's identity — equal to `auth.uid()` for that DJ — and is what every future table's `dj_id` foreign key will reference (`sessions.dj_id references public.djs(id)`, etc., built in Story 3.1). Do not name this column `dj_id` inside `djs` itself; `id`/`auth.users(id)`-mirroring is the standard Supabase convention and keeps the FK direction unambiguous.
   - `on delete cascade`: if an `auth.users` row is ever removed via Supabase's admin API, the orphaned `djs` row goes with it. This does not replace Story 2.11's manual deletion runbook (which cascades deletes across `sessions`/`sets`/`plays`/overlays — tables that reference `djs.id`, not `auth.users.id` directly); it's a structural safety net one level up.
   - Add a migration-file comment noting AD-19: `subscription_status` + 3 sibling billing columns arrive later as an **additive** migration in Epic 7 — this table's shape does not need to change to accommodate them, only grow.
 
-- [ ] **Task 2 — Idempotent-creation trigger (AC: 3)**
+- [x] **Task 2 — Idempotent-creation trigger (AC: 3)**
   - Standard Supabase pattern: a `SECURITY DEFINER` function + an `AFTER INSERT ON auth.users` trigger.
     ```sql
     create function public.handle_new_dj()
@@ -56,12 +60,12 @@ So that all cloud data is per-DJ isolated at the DB layer from the very first ro
   - `set search_path = ''` is deliberate (Supabase's documented hardening for `SECURITY DEFINER` functions touching `auth.users` — prevents search-path hijacking); use fully-qualified `public.djs` inside the function body, as shown.
   - Fires unconditionally on every `auth.users` insert (not gated on `email_confirmed_at`) — idempotency is `ON CONFLICT (id) DO NOTHING` on the primary key, which is all this story needs. **Do not** try to reimplement "same verified email → one account" identity-linking here: that is Supabase Auth's own cross-provider linking behavior, configured in Story 2.3b, not a Postgres trigger concern. See Open Question #2.
 
-- [ ] **Task 3 — Null-safe RLS (AC: 3)**
+- [x] **Task 3 — Null-safe RLS (AC: 3)**
   - `alter table public.djs enable row level security;`
   - One policy only: `create policy "djs_select_own" on public.djs for select using (auth.uid() is not null and auth.uid() = id);` — the exact null-safe predicate AC-3 and AD-7 specify verbatim. The `auth.uid() is not null` half matters independently of the equality check: without it, an unauthenticated request where `auth.uid()` evaluates `null` could otherwise match a row that itself has `id = null`, which can't happen here (PK, not-null) but is the null-safety discipline AD-7 names explicitly — apply it as written, don't simplify to bare `auth.uid() = id`.
   - No `for insert`/`for update`/`for delete` policy — see Scope boundaries. RLS enabled + zero write policies means every role except the trigger's elevated `SECURITY DEFINER` context is read-only-or-nothing on this table by construction.
 
-- [ ] **Task 4 — pgTAP tests proving Tasks 1-3 (AC: 3)**
+- [x] **Task 4 — pgTAP tests proving Tasks 1-3 (AC: 3)**
   - New test file(s) under `supabase/tests/` (Supabase CLI's `supabase test db` convention — **verify the current CLI's expected directory/invocation at implementation time**, e.g. `supabase test db --help` or the CLI's local-development-testing docs; this is the same class of "conventions shift version to version, confirm before assuming" caveat the Architecture Spine already flags for the `service_role`/`sb_secret_…` key-naming migration).
   - Cases to cover:
     1. Inserting a row into `auth.users` produces exactly one matching `public.djs` row with the same `id`.
@@ -70,13 +74,13 @@ So that all cloud data is per-DJ isolated at the DB layer from the very first ro
     4. As `anon`/no JWT (`auth.uid()` null), `select * from public.djs` returns zero rows.
   - Wire `supabase test db` (or the verified equivalent) into the existing `supabase` job in `.github/workflows/ci.yml`, after the current `supabase migration up` step.
 
-- [ ] **Task 5 — Additive-only CI guard over migration files (AC: 2)**
+- [x] **Task 5 — Additive-only CI guard over migration files (AC: 2)**
   - `supabase/README.md` already states the additive-only rule as team convention; this task makes it CI-enforced, the way Story 1.10 made the sync contract's additive-only rule CI-enforced (`shared/src/additive-only.test.ts`) rather than convention-only.
   - Because Supabase migrations are individually-immutable, append-only files (unlike the sync contract's one evolving type file), the simplest correct guard is a **static scan of migration SQL text**, not a schema-state diff: grep every file in `supabase/migrations/*.sql` for forbidden DDL — case-insensitive `DROP COLUMN`, `DROP TABLE` (without an explicit escape comment), `RENAME COLUMN`, `RENAME TO`, `ALTER COLUMN ... TYPE` — and fail if found. A new migration file is scanned once, permanently; there is no baseline file to keep in sync, unlike Story 1.10's frozen-schema-snapshot approach (that pattern doesn't fit here — it would need updating every time a legitimate new column lands, which defeats the point).
   - Implement as `supabase/scripts/check-additive-only-migrations.sh` (or equivalent), wired as a new step in the `supabase` CI job. Allow a rare, deliberate exception via an explicit inline marker (e.g. a `-- additive-only: allow` comment on the offending line) rather than an unconditional hard-fail, so a genuinely-approved exception (there isn't one today) doesn't require disabling the whole guard.
   - This story's own `create_djs_table` migration (Task 1) must pass the guard cleanly — it's pure `CREATE`, no forbidden verbs.
 
-- [ ] **Task 6 — Cloud provisioning runbook (AC: 1)**
+- [x] **Task 6 — Cloud provisioning runbook (AC: 1)**
   - New `supabase/PROVISIONING.md` (or a new section in `supabase/README.md` — dev's call), documenting the manual steps to stand up the real infrastructure AC-1 describes:
     1. Create a Supabase organization/prod project (requires a Supabase account + billing — the paid tier is what the Architecture Spine's deployment table assumes for PITR backups).
     2. Connect the GitHub repo via Supabase's GitHub integration and enable branching, so every PR against `main` gets its own ephemeral preview database seeded from the same `supabase/migrations/`.
@@ -84,7 +88,7 @@ So that all cloud data is per-DJ isolated at the DB layer from the very first ro
     4. Record which CI secrets this unlocks for later stories (e.g. `SUPABASE_ACCESS_TOKEN`, a project ref) without adding them to CI now — no story before this one's cloud project exists needs them, and the current `supabase` CI job intentionally runs against an ephemeral local Postgres only (`.github/workflows/ci.yml`'s existing `supabase start` step), not the real project.
   - This task's completion bar is **the runbook being written and accurate**, not the cloud project existing — see Scope boundaries and Open Question #1.
 
-- [ ] **Task 7 — Gate + housekeeping (AC: all)**
+- [x] **Task 7 — Gate + housekeeping (AC: all)**
   - Run the full gate: `supabase start` / `supabase migration up` (clean apply, unchanged from today) + Task 4's `supabase test db` + Task 5's additive-only script, all locally before pushing. Also the repo-root JS gate (`pnpm lint && pnpm typecheck && pnpm build && pnpm test`) — unaffected by this story but must stay green since `.github/workflows/ci.yml`'s `js`/`agent`/`supabase` jobs are independent and this story only touches the `supabase` one.
   - Update `deferred-work.md` if Task 4's CLI-convention verification (Task 4) or Task 6's provisioning uncover anything that should be logged rather than guessed at.
 
@@ -134,14 +138,36 @@ Recent per-story shape (Stories 1.6-1.10): context-engineer commit → implement
 
 ### Agent Model Used
 
+Claude Sonnet 5 (claude-sonnet-5)
+
 ### Debug Log References
+
+- Manual RLS/trigger verification against local Postgres (`docker exec ... psql`) before writing the pgTAP suite surfaced a real gap: `alter table djs enable row level security` + a `for select` policy alone is not sufficient — `authenticated`/`anon` need an explicit base `GRANT SELECT` or Postgres fails closed with `permission denied for table djs` instead of returning an RLS-filtered result. Fixed with `grant select on public.djs to authenticated, anon;`. Confirmed load-bearing by temporarily removing the grant, re-running `supabase db reset` + `supabase test db`, observing 3/6 pgTAP tests fail with the same permission error, then restoring the grant and confirming all 6 pass again. Logged as a real-data finding in `deferred-work.md` for Story 3.1's tables.
+- Resolved Open Question #3 (pgTAP CLI convention) against the installed CLI (2.109.1): `supabase test new --template pgtap <name>` scaffolds `supabase/tests/<name>_test.sql`; `supabase test db <path>` runs it via a `pg_prove`-backed container. `pgtap` extension is not pre-installed — the test file creates it itself.
 
 ### Completion Notes List
 
+- Task 1-3: `supabase/migrations/20260726012050_create_djs_table.sql` creates `public.djs` (1:1 with `auth.users`, `on delete cascade`), the `handle_new_dj` `SECURITY DEFINER` trigger (idempotent via `on conflict (id) do nothing`, `search_path = ''` hardening), RLS enabled with a single null-safe `for select` policy, plus the base `grant select` needed for the policy to actually apply (see Debug Log). Verified directly against local Postgres via `supabase db reset` + manual `set role`/`request.jwt.claims` sessions: trigger creates exactly one row per `auth.users` insert, idempotency holds, DJ A's authenticated session sees only DJ A's row, anon (no JWT) sees zero rows (not a permission error).
+- Task 4: `supabase/tests/djs_isolation_test.sql` — 6 pgTAP assertions covering all 4 cases from the task spec (per-user row creation ×2, idempotency, authenticated cross-DJ isolation, anon zero-rows via `results_eq`/`is`). Verified the suite is meaningful by re-running it against a deliberately broken migration (grant removed) and confirming 3/6 tests fail with the expected error, then confirming all 6 pass again once fixed. Wired as a new `supabase test db supabase/tests` step in `.github/workflows/ci.yml`'s `supabase` job, after the existing `supabase migration up` step.
+- Task 5: `supabase/scripts/check-additive-only-migrations.sh` — static case-insensitive scan of `supabase/migrations/*.sql` for `DROP COLUMN`, `DROP TABLE`, `RENAME COLUMN`, `RENAME TO`, `ALTER COLUMN ... TYPE`, with an inline `-- additive-only: allow` escape hatch. Covered by `supabase/scripts/check-additive-only-migrations.test.sh`, a standalone bash test harness (11 cases: each forbidden pattern rejected, additive DDL/`SET DEFAULT` not a false positive, escape marker respected, missing/empty migrations dir is a no-op pass) — all 11 pass. Confirmed the guard passes cleanly against this story's own migration. Wired as a new step in the `supabase` CI job, after the pgTAP step.
+- Task 6: `supabase/PROVISIONING.md` documents the account-level steps to create the real Supabase org/prod project, connect GitHub preview branching, and `supabase link` + `supabase db push` the committed migrations for the first time, plus which CI secrets that later unlocks (not wired into CI now). `supabase/README.md` updated to reference the new table, the CI-enforced additive-only guard, the pgTAP test command, and the provisioning runbook.
+- Task 7: Full local gate run and green: `supabase db reset` (clean apply of both migrations), `supabase test db supabase/tests` (6/6 pass), `supabase/scripts/check-additive-only-migrations.sh` (clean) and its own test harness (11/11 pass), plus the repo-root JS gate (`pnpm lint && pnpm typecheck && pnpm build && pnpm test` — all green, 13 shared tests unaffected). `deferred-work.md` updated with two real-data findings from Tasks 4/6 (the GRANT gotcha for future DJ-owned tables, and the confirmed pgTAP CLI convention). No changes to `agent/`, `web/`, or `shared/` — matches this story's Project Structure Notes.
+
 ### File List
+
+- `supabase/migrations/20260726012050_create_djs_table.sql` (new)
+- `supabase/tests/djs_isolation_test.sql` (new)
+- `supabase/scripts/check-additive-only-migrations.sh` (new)
+- `supabase/scripts/check-additive-only-migrations.test.sh` (new)
+- `supabase/PROVISIONING.md` (new)
+- `supabase/README.md` (modified)
+- `.github/workflows/ci.yml` (modified)
+- `_bmad-output/implementation-artifacts/deferred-work.md` (modified)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (modified)
 
 ## Change Log
 
 | Date | Change |
 |---|---|
 | 2026-07-25 | Story 2.1 context-engineered (Supabase cloud foundation + isolation baseline): scoped to the `djs` table + idempotent-creation trigger + null-safe RLS + a CI-enforced additive-only migration guard (static SQL scan, not a schema-diff baseline) + a written cloud-provisioning runbook. Flags the real Supabase prod-project/preview-branch creation as an account-level action outside this story's reach (Open Question #1, mirrors AR-14 code-signing procurement precedent). No `sessions`/`sets`/`plays` schema (Story 3.1), no billing columns (Epic 7 — AC-4 satisfied by documentation only), no `supabase-js` client code in `agent/`/`web/` yet. Status → ready-for-dev. |
+| 2026-07-25 | Story 2.1 implemented: `djs` table + `handle_new_dj` trigger + null-safe RLS (Tasks 1-3), including a base `grant select` fix discovered by manually exercising RLS against local Postgres (RLS alone fails closed without it — logged in deferred-work.md for Story 3.1). 6-case pgTAP suite (Task 4), CI-enforced additive-only guard script + its own 11-case test harness (Task 5), and `supabase/PROVISIONING.md` runbook (Task 6). Full local gate green: `supabase db reset`, pgTAP suite, additive-only guard, repo-root `pnpm lint/typecheck/build/test`. Status → review. |

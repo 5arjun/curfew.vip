@@ -107,3 +107,9 @@ jobs:
 
       - name: Apply migrations (assert clean apply)
         run: supabase migration up
+
+      - name: Run pgTAP tests
+        run: supabase test db supabase/tests
+
+      - name: Additive-only migration guard
+        run: supabase/scripts/check-additive-only-migrations.sh supabase/migrations
