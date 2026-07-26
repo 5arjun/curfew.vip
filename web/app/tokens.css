@@ -1,0 +1,94 @@
+/**
+ * Obsidian design-token system (UX-DR1). Dark-only by explicit, non-negotiable
+ * design constraint — there is no light theme and no prefers-color-scheme toggle.
+ *
+ * Source of truth: _bmad-output/planning-artifacts/ux-designs/ux-name-pending-2026-07-19/DESIGN.md
+ * Some tokens below (secondary/tertiary families, *-fixed variants, inverse-*,
+ * surface-dim/bright/variant, background/on-background) are not yet consumed by
+ * any component. DESIGN.md treats them as reserved scaffolding, not dead weight —
+ * keep them defined even though unused today.
+ */
+
+:root {
+  /* Color: background / surface */
+  --color-background: #121415;
+  --color-on-background: #e2e2e3;
+  --color-surface: #121415;
+  --color-surface-dim: #121415;
+  --color-surface-bright: #38393a;
+  --color-surface-container-lowest: #0c0e0f;
+  --color-surface-container-low: #1a1c1d;
+  --color-surface-container: #1e2021;
+  --color-surface-container-high: #282a2b;
+  --color-surface-container-highest: #333536;
+  --color-surface-variant: #333536;
+  --color-surface-tint: #cbbeff;
+  --color-on-surface: #e2e2e3;
+  --color-on-surface-variant: #cac4d5;
+  --color-inverse-surface: #e2e2e3;
+  --color-inverse-on-surface: #2f3132;
+  --color-outline: #938e9e;
+  --color-outline-variant: #484553;
+
+  /* Color: primary (Electric Lavender) — used sparingly: active nav state,
+     focus glow, one "spark of an idea" moment per screen. Not decorative. */
+  --color-primary: #cbbeff;
+  --color-on-primary: #330b91;
+  --color-primary-container: #9d85ff;
+  --color-on-primary-container: #330a90;
+  --color-primary-fixed: #e7deff;
+  --color-primary-fixed-dim: #cbbeff;
+  --color-on-primary-fixed: #1e0061;
+  --color-on-primary-fixed-variant: #4a2ea7;
+  --color-inverse-primary: #6349c0;
+
+  /* Color: secondary / tertiary — reserved, not yet in active use */
+  --color-secondary: #c8c6c7;
+  --color-on-secondary: #303031;
+  --color-secondary-container: #49494a;
+  --color-on-secondary-container: #bab8b9;
+  --color-secondary-fixed: #e5e2e3;
+  --color-secondary-fixed-dim: #c8c6c7;
+  --color-on-secondary-fixed: #1b1b1c;
+  --color-on-secondary-fixed-variant: #474647;
+  --color-tertiary: #c8c6c8;
+  --color-on-tertiary: #303032;
+  --color-tertiary-container: #989799;
+  --color-on-tertiary-container: #303032;
+  --color-tertiary-fixed: #e4e2e4;
+  --color-tertiary-fixed-dim: #c8c6c8;
+  --color-on-tertiary-fixed: #1b1b1d;
+  --color-on-tertiary-fixed-variant: #474649;
+
+  /* Color: error (desaturated dusty-rose, not alarm-red) */
+  --color-error: #ffb4ab;
+  --color-on-error: #690005;
+  --color-error-container: #93000a;
+  --color-on-error-container: #ffdad6;
+
+  /* Typography: font families (wired via next/font/google in fonts.ts) */
+  --font-hanken-grotesk: var(--font-hanken-grotesk-var), sans-serif;
+  --font-inter: var(--font-inter-var), sans-serif;
+  --font-geist-mono: var(--font-geist-mono-var), monospace;
+
+  /* Spacing: 4px baseline */
+  --space-unit: 4px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 40px;
+  --space-xxl: 80px;
+  --space-gutter: 24px;
+  --container-max: 1100px;
+
+  /* Radius: soft-industrial. sm/lg/xl for structural elements (buttons,
+     inputs, cards, chips) — no pill buttons. `full` is reserved EXCLUSIVELY
+     for the floating nav (Story 3.5, not built here), avatar, and status
+     dots — do not use it elsewhere. Must stay 9999px, not a small rem value
+     (the source Stitch export had a bug that mis-set this to 12px). */
+  --radius-sm: 0.125rem;
+  --radius-lg: 0.25rem;
+  --radius-xl: 0.5rem;
+  --radius-full: 9999px;
+}
