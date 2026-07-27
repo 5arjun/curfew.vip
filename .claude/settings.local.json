@@ -44,7 +44,8 @@
       "Bash(git commit *)",
       "Bash(git push*)",
       "Skill(artifact-design)",
-      "Artifact"
+      "Artifact",
+      "Skill(claude-in-chrome)"
     ],
     "additionalDirectories": [
       "/Users/arjun/Documents/name-pending/_bmad-output/planning-artifacts/architecture"

@@ -1,0 +1,220 @@
+"use client";
+
+import Link from "next/link";
+import { useActionState, useEffect, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { AUTH_FAILURE_COPY } from "./auth-copy";
+import { INITIAL_AUTH_STATE } from "./auth-state";
+import { signIn, signUp } from "./actions";
+
+// Functional, token-consuming, unpolished forms (this story's explicit scope —
+// the Ghost-input/Biometric-Anchor visual spec is Story 2.4's job).
+
+type Mode = "login" | "signup";
+
+const fieldStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "var(--space-xs)",
+  marginBottom: "var(--space-md)",
+};
+
+const inputStyle: React.CSSProperties = {
+  padding: "var(--space-sm)",
+  borderRadius: "var(--radius-sm)",
+  border: "1px solid var(--color-outline)",
+  background: "var(--color-surface-container)",
+  color: "var(--color-on-surface)",
+  fontSize: "16px",
+};
+
+const errorStyle: React.CSSProperties = {
+  color: "var(--color-error)",
+};
+
+const buttonStyle: React.CSSProperties = {
+  padding: "var(--space-sm) var(--space-md)",
+  borderRadius: "var(--radius-sm)",
+  border: "1px solid var(--color-outline)",
+  background: "var(--color-surface-container-high)",
+  color: "var(--color-on-surface)",
+  cursor: "pointer",
+};
+
+export default function LoginPage() {
+  const [mode, setMode] = useState<Mode>("login");
+  const [signInState, signInAction, signInPending] = useActionState(signIn, INITIAL_AUTH_STATE);
+  const [signUpState, signUpAction, signUpPending] = useActionState(signUp, INITIAL_AUTH_STATE);
+  const [passkeySignedIn, setPasskeySignedIn] = useState(false);
+  const [passkeyError, setPasskeyError] = useState<string | null>(null);
+  const [passkeyPending, setPasskeyPending] = useState(false);
+
+  const state = mode === "login" ? signInState : signUpState;
+  const pending = mode === "login" ? signInPending : signUpPending;
+
+  async function handlePasskeySignIn() {
+    setPasskeyError(null);
+    setPasskeyPending(true);
+    const supabase = createClient();
+    const { error } = await supabase.auth.signInWithPasskey();
+    setPasskeyPending(false);
+    if (error) {
+      setPasskeyError(AUTH_FAILURE_COPY.wrongPassword);
+      return;
+    }
+    setPasskeySignedIn(true);
+  }
+
+  if (state.status === "signed-in" || passkeySignedIn) {
+    return <EnablePasskeyPrompt />;
+  }
+
+  if (state.status === "check-email") {
+    return (
+      <main style={{ maxWidth: "var(--container-max)", margin: "var(--space-xxl) auto", padding: "0 var(--space-lg)" }}>
+        <p className="text-body-lg">Check your email to confirm your account.</p>
+      </main>
+    );
+  }
+
+  return (
+    <main style={{ maxWidth: "var(--container-max)", margin: "var(--space-xxl) auto", padding: "0 var(--space-lg)" }}>
+      <h1 className="text-headline-md" style={{ marginBottom: "var(--space-lg)" }}>
+        {mode === "login" ? "Log in" : "Sign up"}
+      </h1>
+
+      <form action={mode === "login" ? signInAction : signUpAction}>
+        <div style={fieldStyle}>
+          <label className="text-label-sm" htmlFor="email">
+            Email
+          </label>
+          <input id="email" name="email" type="email" autoComplete="email" required style={inputStyle} />
+          {state.fieldErrors?.email && (
+            <p className="text-body-md" style={errorStyle} role="alert">
+              {state.fieldErrors.email}
+            </p>
+          )}
+        </div>
+
+        <div style={fieldStyle}>
+          <label className="text-label-sm" htmlFor="password">
+            Password
+          </label>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            autoComplete={mode === "login" ? "current-password" : "new-password"}
+            minLength={6}
+            required
+            style={inputStyle}
+          />
+          {state.fieldErrors?.password && (
+            <p className="text-body-md" style={errorStyle} role="alert">
+              {state.fieldErrors.password}
+            </p>
+          )}
+        </div>
+
+        {state.fieldErrors?.form && (
+          <p className="text-body-md" style={{ ...errorStyle, marginBottom: "var(--space-md)" }} role="alert">
+            {state.fieldErrors.form}
+          </p>
+        )}
+
+        <button type="submit" disabled={pending} style={buttonStyle}>
+          {mode === "login" ? "Log in" : "Sign up"}
+        </button>
+      </form>
+
+      <div style={{ marginTop: "var(--space-lg)" }}>
+        <button type="button" onClick={handlePasskeySignIn} disabled={passkeyPending} style={buttonStyle}>
+          Sign in with Passkey
+        </button>
+        {passkeyError && (
+          <p className="text-body-md" style={{ ...errorStyle, marginTop: "var(--space-sm)" }} role="alert">
+            {passkeyError}
+          </p>
+        )}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setMode(mode === "login" ? "signup" : "login")}
+        style={{ ...buttonStyle, marginTop: "var(--space-lg)", background: "none" }}
+      >
+        {mode === "login" ? "Need an account? Sign up" : "Have an account? Log in"}
+      </button>
+    </main>
+  );
+}
+
+function EnablePasskeyPrompt() {
+  const [checking, setChecking] = useState(true);
+  const [hasPasskey, setHasPasskey] = useState(false);
+  const [registering, setRegistering] = useState(false);
+  const [registered, setRegistered] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+    supabase.auth.passkey.list().then(({ data }) => {
+      if (cancelled) return;
+      setHasPasskey((data?.length ?? 0) > 0);
+      setChecking(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function handleRegister() {
+    setError(null);
+    setRegistering(true);
+    const supabase = createClient();
+    // registerPasskey() requires an existing session — it structurally cannot
+    // create a separate identity, only add on to the signed-in account (AC-2).
+    const { error } = await supabase.auth.registerPasskey();
+    setRegistering(false);
+    if (error) {
+      setError(AUTH_FAILURE_COPY.generic);
+      return;
+    }
+    setRegistered(true);
+  }
+
+  return (
+    <main style={{ maxWidth: "var(--container-max)", margin: "var(--space-xxl) auto", padding: "0 var(--space-lg)" }}>
+      <p className="text-body-lg" style={{ marginBottom: "var(--space-md)" }}>
+        You&apos;re signed in.
+      </p>
+
+      {!checking && !hasPasskey && !registered && (
+        <div style={{ marginBottom: "var(--space-md)" }}>
+          <p className="text-body-md" style={{ marginBottom: "var(--space-sm)" }}>
+            Add a passkey for faster sign-in next time — optional.
+          </p>
+          <button type="button" onClick={handleRegister} disabled={registering} style={buttonStyle}>
+            {registering ? "Adding passkey…" : "Enable Passkey"}
+          </button>
+          {error && (
+            <p className="text-body-md" style={{ ...errorStyle, marginTop: "var(--space-sm)" }} role="alert">
+              {error}
+            </p>
+          )}
+        </div>
+      )}
+
+      {registered && (
+        <p className="text-body-md" style={{ marginBottom: "var(--space-md)" }}>
+          Passkey added.
+        </p>
+      )}
+
+      <Link href="/" className="text-body-md">
+        Continue to Curfew
+      </Link>
+    </main>
+  );
+}

@@ -117,7 +117,7 @@ development_status:
   epic-2: in-progress
   2-1-supabase-cloud-foundation-isolation-baseline: done
   2-2-obsidian-design-token-system-web-shell: done
-  2-3a-email-identity-path-email-password-passkey: ready-for-dev
+  2-3a-email-identity-path-email-password-passkey: review
   2-3b-oauth-paths-account-linking-google-apple: backlog
   2-3c-phone-on-file-post-oauth-prompt: backlog
   2-4-auth-ui-components: backlog
