@@ -20,9 +20,10 @@ Open [http://localhost:3000](http://localhost:3000).
 - `pnpm --filter web lint` — ESLint
 - `pnpm --filter web typecheck` — `tsc --noEmit`
 - `pnpm --filter web build` — production build
+- `pnpm --filter web test` — Vitest
 
 ## Notes
 
 - `@curfew/shared` is consumed **from source** via `transpilePackages` — no build of
   `shared/` is required before typechecking or linting `web/`.
-- The contract (`shared/`) is DRAFT and not frozen until Story 1.10 (AR-1).
+- The contract (`shared/`) was frozen in Story 1.10 (AR-1).

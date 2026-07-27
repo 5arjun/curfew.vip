@@ -8,49 +8,52 @@ sources:
   - "imports/stitch_curfew_dj_reflection_platform/ (Google Stitch design handoff, 6 of 8 Phase-1 screens rendered + generated DESIGN.md)"
 updated: 2026-07-20
 colors:
-  background: '#121415'
-  on-background: '#e2e2e3'
-  surface: '#121415'
-  surface-dim: '#121415'
-  surface-bright: '#38393a'
-  surface-container-lowest: '#0c0e0f'
-  surface-container-low: '#1a1c1d'
-  surface-container: '#1e2021'
-  surface-container-high: '#282a2b'
-  surface-container-highest: '#333536'
-  surface-variant: '#333536'
-  surface-tint: '#cbbeff'
-  on-surface: '#e2e2e3'
-  on-surface-variant: '#cac4d5'
-  inverse-surface: '#e2e2e3'
-  inverse-on-surface: '#2f3132'
-  outline: '#938e9e'
-  outline-variant: '#484553'
-  primary: '#cbbeff'
-  on-primary: '#330b91'
-  primary-container: '#9d85ff'
-  on-primary-container: '#330a90'
-  primary-fixed: '#e7deff'
-  primary-fixed-dim: '#cbbeff'
-  on-primary-fixed: '#1e0061'
-  on-primary-fixed-variant: '#4a2ea7'
-  inverse-primary: '#6349c0'
-  secondary: '#c8c6c7'
-  on-secondary: '#303031'
-  secondary-container: '#49494a'
-  on-secondary-container: '#bab8b9'
-  secondary-fixed: '#e5e2e3'
-  secondary-fixed-dim: '#c8c6c7'
-  on-secondary-fixed: '#1b1b1c'
-  on-secondary-fixed-variant: '#474647'
-  tertiary: '#c8c6c8'
-  on-tertiary: '#303032'
-  tertiary-container: '#989799'
-  on-tertiary-container: '#303032'
-  tertiary-fixed: '#e4e2e4'
-  tertiary-fixed-dim: '#c8c6c8'
-  on-tertiary-fixed: '#1b1b1d'
-  on-tertiary-fixed-variant: '#474649'
+  # Palette direction revised 2026-07-26 (design review): "Ice Cyan" accent on a
+  # "blue-black" neutral base. Prior "Electric Lavender" on cool-charcoal retained
+  # as sanctioned alternate — see the commented block in web/app/tokens.css.
+  background: '#101319'
+  on-background: '#e1e3e8'
+  surface: '#101319'
+  surface-dim: '#101319'
+  surface-bright: '#3a4150'
+  surface-container-lowest: '#0a0c11'
+  surface-container-low: '#171b23'
+  surface-container: '#1b1f28'
+  surface-container-high: '#252a35'
+  surface-container-highest: '#2f3542'
+  surface-variant: '#2f3542'
+  surface-tint: '#a5dcea'
+  on-surface: '#e1e3e8'
+  on-surface-variant: '#c4c8d5'
+  inverse-surface: '#e1e3e8'
+  inverse-on-surface: '#2a2f38'
+  outline: '#8b93a6'
+  outline-variant: '#434a5a'
+  primary: '#a5dcea'
+  on-primary: '#00363f'
+  primary-container: '#6ec8e0'
+  on-primary-container: '#06323d'
+  primary-fixed: '#c2ecf6'
+  primary-fixed-dim: '#a5dcea'
+  on-primary-fixed: '#001f27'
+  on-primary-fixed-variant: '#164e5b'
+  inverse-primary: '#1f88a0'
+  secondary: '#c5c8ce'
+  on-secondary: '#2d2f34'
+  secondary-container: '#454851'
+  on-secondary-container: '#c1c4cb'
+  secondary-fixed: '#e2e4ea'
+  secondary-fixed-dim: '#c5c8ce'
+  on-secondary-fixed: '#1a1c21'
+  on-secondary-fixed-variant: '#444751'
+  tertiary: '#bfc9c8'
+  on-tertiary: '#2b302f'
+  tertiary-container: '#929c9b'
+  on-tertiary-container: '#2b302f'
+  tertiary-fixed: '#dde7e6'
+  tertiary-fixed-dim: '#bfc9c8'
+  on-tertiary-fixed: '#171c1b'
+  on-tertiary-fixed-variant: '#414b4a'
   error: '#ffb4ab'
   on-error: '#690005'
   error-container: '#93000a'
@@ -197,11 +200,11 @@ The visual style blends **Technical Minimalism** with **Editorial Craft**, drawi
 
 ## Colors
 
-The palette is a dark **"Obsidian"** ecosystem, structured as a Material Design 3 tonal system (hence the `surface`/`on-surface`/`-container` naming — inherited convention, not a UI-library dependency). Background is deep charcoal (`{colors.background}`, `#121415`) rather than true black, retaining depth and reducing eye strain during late-night use — this was an explicit, non-negotiable starting constraint (never white/bright as the base surface).
+The palette is a dark **"Obsidian"** ecosystem, structured as a Material Design 3 tonal system (hence the `surface`/`on-surface`/`-container` naming — inherited convention, not a UI-library dependency). Background is a deep **blue-black** (`{colors.background}`, `#101319`) rather than true black, retaining depth and reducing eye strain during late-night use — this was an explicit, non-negotiable starting constraint (never white/bright as the base surface). *(Revised 2026-07-26: the base was originally a cool charcoal `#121415`; shifted to blue-black to sit cohesively under the Ice Cyan accent. The Electric Lavender / cool-charcoal pairing is retained as the sanctioned alternate — see `web/app/tokens.css`.)*
 
-- **Primary — Electric Lavender** (`{colors.primary}`, `#cbbeff`, with `{colors.primary-container}` `#9d85ff` for stronger fills): used sparingly, for active nav states, focus glows, and the one or two "spark of an idea" moments per screen. It is not a decorative color — restraint is the point.
+- **Primary — Ice Cyan** (`{colors.primary}`, `#a5dcea`, with `{colors.primary-container}` `#6ec8e0` for stronger fills): used sparingly, for active nav states, focus glows, and the one or two "spark of an idea" moments per screen. It is not a decorative color — restraint is the point. A cold, console/oscilloscope signal chosen for its clean separation from the warm dusty-rose error color and its fit with the technical, after-hours mood.
 - **Surface tiers** (`surface-container-lowest` → `surface-container-highest`): five steps of tonal elevation used to denote hierarchy through subtle value shifts rather than shadow.
-- **Typography colors**: `{colors.on-surface}` (near-white, `#e2e2e3`) for primary text, `{colors.on-surface-variant}` and `{colors.outline}` for secondary/receding text.
+- **Typography colors**: `{colors.on-surface}` (near-white, `#e1e3e8`) for primary text, `{colors.on-surface-variant}` and `{colors.outline}` for secondary/receding text.
 - **Functional accents**: `{colors.error}` / `{colors.error-container}` are desaturated dusty-rose tones, not alarm-red — errors stay in register with the restrained palette rather than breaking it.
 - **Inherited, not yet in active use**: the `secondary`/`tertiary` families, most `*-fixed`/`*-fixed-dim` variants, `inverse-*`, `surface-dim`/`surface-bright`/`surface-variant`, and `background`/`on-background` are carried over wholesale from the Stitch M3 export scaffolding — not referenced in this prose or any Components row today. Left in frontmatter as available scaffolding rather than pruned; treat as reserved-for-later, not dead weight.
 
@@ -288,7 +291,7 @@ The Pricing page's single vessel — one card, not a multi-tier comparison grid,
 
 - **Do** reserve `{rounded.full}` for the floating nav and circular elements only. **Don't** apply full/pill rounding to buttons or cards — that's the one shape rule the whole system hangs on.
 - **Do** keep the archive/console voice in UI copy (Initialize, Archive, Session). **Don't** let it drift into anything that reads as competitive, graded, or ranked — "compared to your own baseline" only, never "best" or "winner" (PRD §6.2, non-negotiable across both phases).
-- **Do** use tonal surface shifts and hairline borders for hierarchy. **Don't** introduce drop shadows or bright/saturated colors outside the single lavender accent.
+- **Do** use tonal surface shifts and hairline borders for hierarchy. **Don't** introduce drop shadows or bright/saturated colors outside the single primary accent (Ice Cyan).
 - **Do** keep data (BPM, timestamps, session IDs, stat codes) in `{typography.mono-data}`. **Don't** set prose or headlines in the mono face — it's a data signal, and loses meaning if overused.
 - **Do** treat `{colors.primary}` as scarce — active states, focus glow, key data highlights. **Don't** use it as a general decorative or brand-wash color.
 - **Do** let the Google and Apple sign-in buttons use their own mandated colors/logo lockups — the one deliberate exception to Curfew's palette, required for platform compliance, not a design lapse. **Don't** reskin them in `{colors.primary}` or any Curfew brand color, and don't touch the logo lockup.

@@ -95,7 +95,7 @@ This document provides the complete epic and story breakdown for Curfew, decompo
 
 **Design system & foundations**
 
-- **UX-DR1 — "Obsidian" design-token system**: Implement the dark M3-tonal-named token set — background `#121415` (deep charcoal, never true black/white), five surface-container elevation tiers, Electric Lavender primary (`#cbbeff` / container `#9d85ff`, used scarcely), desaturated dusty-rose error family. Typography scale: Hanken Grotesk (headlines), Inter (body), Geist mono (`mono-data`/`label-sm` for timestamps, BPM, session IDs, stat codes). 4px spacing baseline; soft-industrial radius where `rounded.full` (9999px) is reserved **exclusively** for floating nav, avatar, status dots.
+- **UX-DR1 — "Obsidian" design-token system**: Implement the dark M3-tonal-named token set — background `#101319` (blue-black, revised 2026-07-26 from the original `#121415`; never true black/white), five surface-container elevation tiers, Ice Cyan primary (`#a5dcea` / container `#6ec8e0`, used scarcely; revised 2026-07-26 from the original Electric Lavender `#cbbeff` / container `#9d85ff`, retained as a sanctioned alternate in `web/app/tokens.css`), desaturated dusty-rose error family. Typography scale: Hanken Grotesk (headlines), Inter (body), Geist mono (`mono-data`/`label-sm` for timestamps, BPM, session IDs, stat codes). 4px spacing baseline; soft-industrial radius where `rounded.full` (9999px) is reserved **exclusively** for floating nav, avatar, status dots.
 
 **Components (from DESIGN.md.Components + EXPERIENCE.md.Component Patterns)**
 
@@ -389,7 +389,7 @@ So that every later screen — starting with auth — is styled against real tok
 
 **Acceptance Criteria:**
 
-1. **Given** the token set, **Then** background `#121415`, five surface-container elevation tiers, Electric Lavender primary, and the dusty-rose error family are defined as reusable tokens. *(UX-DR1)*
+1. **Given** the token set, **Then** background `#101319` (blue-black, revised 2026-07-26 from the original `#121415`), five surface-container elevation tiers, Ice Cyan primary (revised 2026-07-26 from the original Electric Lavender — retained as a sanctioned alternate), and the dusty-rose error family are defined as reusable tokens. *(UX-DR1)*
 2. **Given** typography, **Then** Hanken Grotesk (headlines), Inter (body), and Geist mono (`mono-data`/`label-sm`) are wired to the type scale. *(UX-DR1)*
 3. **Given** spacing/radius, **Then** a 4px baseline is used **And** `rounded.full` (9999px) is reserved exclusively for floating nav, avatar, and status dots. *(UX-DR1)*
 4. **Given** the web shell, **When** rendered, **Then** it consumes only tokens (no hard-coded colors) and core text passes WCAG 2.2 AA. *(UX-DR21)*
