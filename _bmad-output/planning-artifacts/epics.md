@@ -122,7 +122,7 @@ This document provides the complete epic and story breakdown for Curfew, decompo
 **Behavior, states, motion, accessibility**
 
 - **UX-DR18 — Console voice + Failure Register microcopy**: "After-Hours Archive" console voice ("Initialize Session," "Archive Insight," "Session: Syncing…"); calm/technical failure copy with no exclamations (specified strings for sync-failed, drive-disconnected, format-drift-paused, login-failed, email-already-registered, chart-failed). **Banned**: streak counters, celebratory badges, "you're crushing it" (SM-C2, non-negotiable).
-- **UX-DR19 — State patterns (17)**: Implement each specified state — cold dashboard (no sets), new-set-detected banner, unknown track data, sync offline/queued (+ tray glyph), drive-not-connected, first-run path confirmation, aging-shelf empty (positive-framed), insufficient history (<1 month), settings-saved inline confirm, auth-failed inline, phone-required post-OAuth (one-field), recently-downloaded-not-yet-played nudge (30-day threshold — *[ASSUMPTION], PRD-sync owed*), sync-failed/retrying, format-drift paused, chart-failed-to-render fallback.
+- **UX-DR19 — State patterns (17)**: Implement each specified state — cold dashboard (no sets), new-set-detected banner, unknown track data, sync offline/queued (+ tray glyph), drive-not-connected, first-run path confirmation, aging-shelf empty (positive-framed), insufficient history (<1 month), settings-saved inline confirm, auth-failed inline, phone-required post-signup (one-field, any path — revised 2026-07-27 from OAuth-only, see Story 2.3c), recently-downloaded-not-yet-played nudge (30-day threshold — *[ASSUMPTION], PRD-sync owed*), sync-failed/retrying, format-drift paused, chart-failed-to-render fallback.
 - **UX-DR20 — Interaction primitives**: Floating-nav popover; scroll-driven motion **Landing only** (logged-in surfaces stay still); drag-to-adjust segment boundaries with keyboard equivalent; confirm-or-edit-never-silent-autofill (governs venue suggestion + first-run path). **Banned**: gating any core stat behind an enrichment prompt, infinite scroll on track lists (paginate/"load more"), celebratory micro-interactions on stat milestones.
 - **UX-DR21 — Accessibility floor**: WCAG 2.2 AA across the website; every chart ships a text-equivalent via Chart Summary; segment dragging has a full keyboard path; tray icon states carry text label/tooltip (not color/glyph alone); focus rings use the lavender glow — verify AA contrast against both `surface` and `surface-container` (glow specified at ~20% opacity).
 - **UX-DR22 — Responsive & platform**: Desktop/laptop-first fixed centered 1100px grid; fluid tablet/phone (nav stays bottom-anchored, segment dragging → touch-drag, energy arc drops hover for tap); native agent tray is icon + one settings panel only, never a full window, never mirrors website UI.
@@ -420,16 +420,16 @@ So that my provider choice never forks me into duplicate identities.
 2. **Given** Google or Apple sign-in with a new verified email, **When** it completes, **Then** a `dj` account is created idempotently. *(AR-10)*
 3. **Given** distinct verified emails across providers, **Then** they are **not** auto-merged in v1. *(AR-10)*
 
-### Story 2.3c: Phone-on-file (post-OAuth prompt)
+### Story 2.3c: Phone-on-file (post-signup prompt)
 
 As a DJ,
-I want a phone number captured after OAuth signup,
+I want a phone number captured after signup, regardless of which path I used,
 So that every account has a phone on file as required.
 
 **Acceptance Criteria:**
 
-1. **Given** Google or Apple signup, **When** it completes without a phone on file, **Then** I am prompted once for a phone number (single-field, required). *(FR-29, UX-DR19 phone-required)*
-2. **Given** the phone-required state, **Then** it renders as the specified one-field post-OAuth screen, not a blocking modal wall. *(UX-DR19)*
+1. **Given** any signup path — email+password (after confirmation) or Google/Apple OAuth — **When** it completes without a phone on file, **Then** I am prompted once for a phone number (single-field, required). *(FR-29, AR-10, UX-DR19 phone-required — revised 2026-07-27 from OAuth-only scope: AR-10/FR-29 require phone "regardless of signup path," and the original 2.3a/2.3c split had left the email+password path with no story ever collecting it. Arjun ruling, 2026-07-27: every account needs a phone number, close the gap rather than carry it further.)*
+2. **Given** the phone-required state, **Then** it renders as the specified one-field post-signup screen, not a blocking modal wall. *(UX-DR19)*
 
 ### Story 2.3d: Production email delivery (SMTP provider wiring)
 
