@@ -204,7 +204,7 @@ The palette is a dark **"Obsidian"** ecosystem, structured as a Material Design 
 
 - **Primary — Ice Cyan** (`{colors.primary}`, `#a5dcea`, with `{colors.primary-container}` `#6ec8e0` for stronger fills): used sparingly, for active nav states, focus glows, and the one or two "spark of an idea" moments per screen. It is not a decorative color — restraint is the point. A cold, console/oscilloscope signal chosen for its clean separation from the warm dusty-rose error color and its fit with the technical, after-hours mood.
 - **Surface tiers** (`surface-container-lowest` → `surface-container-highest`): five steps of tonal elevation used to denote hierarchy through subtle value shifts rather than shadow.
-- **Typography colors**: `{colors.on-surface}` (near-white, `#e2e2e3`) for primary text, `{colors.on-surface-variant}` and `{colors.outline}` for secondary/receding text.
+- **Typography colors**: `{colors.on-surface}` (near-white, `#e1e3e8`) for primary text, `{colors.on-surface-variant}` and `{colors.outline}` for secondary/receding text.
 - **Functional accents**: `{colors.error}` / `{colors.error-container}` are desaturated dusty-rose tones, not alarm-red — errors stay in register with the restrained palette rather than breaking it.
 - **Inherited, not yet in active use**: the `secondary`/`tertiary` families, most `*-fixed`/`*-fixed-dim` variants, `inverse-*`, `surface-dim`/`surface-bright`/`surface-variant`, and `background`/`on-background` are carried over wholesale from the Stitch M3 export scaffolding — not referenced in this prose or any Components row today. Left in frontmatter as available scaffolding rather than pruned; treat as reserved-for-later, not dead weight.
 
@@ -291,7 +291,7 @@ The Pricing page's single vessel — one card, not a multi-tier comparison grid,
 
 - **Do** reserve `{rounded.full}` for the floating nav and circular elements only. **Don't** apply full/pill rounding to buttons or cards — that's the one shape rule the whole system hangs on.
 - **Do** keep the archive/console voice in UI copy (Initialize, Archive, Session). **Don't** let it drift into anything that reads as competitive, graded, or ranked — "compared to your own baseline" only, never "best" or "winner" (PRD §6.2, non-negotiable across both phases).
-- **Do** use tonal surface shifts and hairline borders for hierarchy. **Don't** introduce drop shadows or bright/saturated colors outside the single lavender accent.
+- **Do** use tonal surface shifts and hairline borders for hierarchy. **Don't** introduce drop shadows or bright/saturated colors outside the single primary accent (Ice Cyan).
 - **Do** keep data (BPM, timestamps, session IDs, stat codes) in `{typography.mono-data}`. **Don't** set prose or headlines in the mono face — it's a data signal, and loses meaning if overused.
 - **Do** treat `{colors.primary}` as scarce — active states, focus glow, key data highlights. **Don't** use it as a general decorative or brand-wash color.
 - **Do** let the Google and Apple sign-in buttons use their own mandated colors/logo lockups — the one deliberate exception to Curfew's palette, required for platform compliance, not a design lapse. **Don't** reskin them in `{colors.primary}` or any Curfew brand color, and don't touch the logo lockup.

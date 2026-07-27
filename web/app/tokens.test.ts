@@ -6,8 +6,24 @@ function srgbToLinear(channel: number): number {
   return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
 }
 
-function relativeLuminance(hex: string): number {
+// Normalizes 3-digit shorthand and 8-digit alpha hex to a plain 6-digit RGB
+// string; throws on anything else rather than silently computing on garbage.
+function normalizeHex(hex: string): string {
   const clean = hex.replace("#", "");
+  if (clean.length === 3) {
+    return clean
+      .split("")
+      .map((c) => c + c)
+      .join("");
+  }
+  if (clean.length === 6 || clean.length === 8) {
+    return clean.slice(0, 6);
+  }
+  throw new Error(`Unsupported hex color length: "${hex}"`);
+}
+
+function relativeLuminance(hex: string): number {
+  const clean = normalizeHex(hex);
   const r = parseInt(clean.slice(0, 2), 16);
   const g = parseInt(clean.slice(2, 4), 16);
   const b = parseInt(clean.slice(4, 6), 16);

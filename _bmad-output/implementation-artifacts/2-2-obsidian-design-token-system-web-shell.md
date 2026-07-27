@@ -4,7 +4,7 @@ baseline_commit: 5e708e3446d8c4f45270e5e0b463b2bceebf072e
 
 # Story 2.2: Obsidian design-token system + web shell
 
-Status: review
+Status: done
 
 ## Story
 
@@ -14,7 +14,7 @@ so that every later screen — starting with auth — is styled against real tok
 
 ## Acceptance Criteria
 
-1. **Given** the token set, **Then** background `#121415`, five surface-container elevation tiers, Electric Lavender primary, and the dusty-rose error family are defined as reusable tokens. *(UX-DR1)*
+1. **Given** the token set, **Then** background `#101319` (blue-black, revised 2026-07-26 from the original `#121415`), five surface-container elevation tiers, Ice Cyan primary (revised 2026-07-26 from the original Electric Lavender — retained as a sanctioned alternate in `tokens.css`), and the dusty-rose error family are defined as reusable tokens. *(UX-DR1)*
 2. **Given** typography, **Then** Hanken Grotesk (headlines), Inter (body), and Geist mono (`mono-data`/`label-sm`) are wired to the type scale. *(UX-DR1)*
 3. **Given** spacing/radius, **Then** a 4px baseline is used **And** `rounded.full` (9999px) is reserved exclusively for floating nav, avatar, and status dots. *(UX-DR1)*
 4. **Given** the web shell, **When** rendered, **Then** it consumes only tokens (no hard-coded colors) and core text passes WCAG 2.2 AA. *(UX-DR21)*
@@ -31,7 +31,7 @@ so that every later screen — starting with auth — is styled against real tok
 - [x] Task 2: Typography (AC: 2)
   - [x] 2.1 Create `web/app/fonts.ts` using `next/font/google`: load `Hanken_Grotesk` (weights `["500","600"]`, subsets `["latin"]`), `Inter` (weight `["400"]`, subsets `["latin"]`), `Geist_Mono` (weights `["400","500"]`, subsets `["latin"]`). Export each as a CSS-variable-producing font object (`variable: "--font-hanken-grotesk"` etc.) — confirmed available in the installed `next@16.2.10` Google Fonts metadata with all required weights, so no new dependency is needed.
   - [x] 2.2 Apply all three font variable classNames to `<body>` (or `<html>`) in `web/app/layout.tsx`.
-  - [x] 2.3 Define the 7 type-scale steps as utility classes in `globals.css` (`.text-display-lg`, `.text-display-lg-mobile`, `.text-headline-md`, `.text-body-lg`, `.text-body-md`, `.text-label-sm`, `.text-mono-data`), each setting `font-family: var(--font-*)`, `font-size`, `font-weight`, `line-height`, `letter-spacing` per the exact table in Dev Notes.
+  - [x] 2.3 Define the 7 type-scale steps in `globals.css` as 6 utility classes (`.text-display-lg`, `.text-headline-md`, `.text-body-lg`, `.text-body-md`, `.text-label-sm`, `.text-mono-data`) plus a `@media (max-width: 640px)` override of `.text-display-lg` for the `display-lg-mobile` step — **corrected 2026-07-26 (code review):** this task originally named `.text-display-lg-mobile` as a separate class, but the shipped implementation folds the mobile size into an auto-switching media-query override instead (functionally equivalent, arguably better — no second class to remember to apply). Each rule sets `font-family: var(--font-*)`, `font-size`, `font-weight`, `line-height`, `letter-spacing` per the exact table in Dev Notes.
   - [x] 2.4 Note in a code comment: DESIGN.md's typography table lists `label-sm`/`mono-data` as plain "Geist," but Story 2.2's own AC-2 says "Geist **mono**" for both — treat both as Geist Mono (the AC is the binding acceptance criterion here; there's no separate non-mono "Geist" family needed).
 
 - [x] Task 3: Spacing & radius tokens (AC: 3)
@@ -53,6 +53,20 @@ so that every later screen — starting with auth — is styled against real tok
   - [x] 6.1 Run `pnpm --filter web lint`, `pnpm --filter web typecheck`, `pnpm --filter web build`, `pnpm --filter web test` — all green.
   - [x] 6.2 Run the repo-root gate: `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm test` — confirm no regressions in `shared/` (13 tests) or elsewhere. Per the standing Epic-2+ rule, this must be actually run on this machine, not deferred to CI.
 
+### Review Findings
+
+- [x] [Review][Decision] Palette revision (Ice Cyan / blue-black) was not reflected across the spec chain — **RESOLVED 2026-07-26**: Arjun confirmed Ice Cyan/blue-black is the intended direction. Swept to match: AC-1 (this file), the Dev Notes color token table, the Dev Notes WCAG contrast-verification section, `epics.md` (lines 98, 392 — UX-DR1 canonical definition + AC-1 verbatim), and DESIGN.md's two stale lines (207 `on-surface` hex, 294 "lavender accent" reference). Dev Agent Record entries (Debug Log References, Completion Notes, Change Log) and `sprint-status.yaml`'s dated log comment were deliberately left untouched — they're a historical record of what was verified at implementation time under the original palette, not living spec, consistent with this project's append-only log convention.
+
+- [x] [Review][Patch] Deleted `color-scheme: dark` breaks native dark chrome (scrollbars, form controls) [web/app/globals.css] — fixed, unconditional `color-scheme: dark` restored on `html`
+- [x] [Review][Patch] `tokens.css` header comment wrongly claims `background`/`on-background` are unconsumed — `globals.css`'s `body` rule consumes both [web/app/tokens.css:11-14] — fixed, comment corrected
+- [x] [Review][Patch] `no-hardcoded-colors.test.ts` guard regex misses CSS named colors (white/black/transparent) and modern color functions (oklch/color-mix) — DESIGN.md's own OAuth-button spec uses named colors, so Story 2.4 will likely trip this silently [web/app/no-hardcoded-colors.test.ts:17] — fixed, pattern extended
+- [x] [Review][Patch] `no-hardcoded-colors.test.ts` excludes files by basename, not relative path — a future nested file also named `tokens.css`/`fonts.ts` would be wrongly exempted [web/app/no-hardcoded-colors.test.ts:37-38] — fixed, matches relative path now
+- [x] [Review][Patch] `no-hardcoded-colors.test.ts` regex isn't comment-aware — a hex-looking token inside a future `//`/`/* */` comment would false-positive-fail the guard [web/app/no-hardcoded-colors.test.ts:17] — fixed, comments stripped before matching
+- [x] [Review][Patch] `contrastRatio`/`relativeLuminance` in `tokens.test.ts` assume exactly 6-hex-digit input and silently produce wrong values (no error) for 3-digit shorthand or 8-digit alpha hex — risky since `contrastRatio` is exported for reuse [web/app/tokens.test.ts:5-14] — fixed, normalizes 3/8-digit hex and throws on unsupported lengths
+- [x] [Review][Patch] `web/README.md`'s Scripts list is missing the new `pnpm --filter web test` script — this same story's Task 4.3 touched this same README without updating it [web/README.md:18-22] — fixed, line added
+- [x] [Review][Patch] Task 2.3 claims a distinct `.text-display-lg-mobile` utility class that was never built — the mobile size is instead folded into a `@media (max-width: 640px)` override of `.text-display-lg`, functionally fine but the checked-off task claims an artifact that doesn't exist [web/app/globals.css:50-56] — fixed, task text corrected to describe the media-query approach
+- [x] [Review][Defer] `no-hardcoded-colors.test.ts` guard can't catch dynamically-constructed color strings (template-literal/concat) — would require AST-based detection, no current instance in the codebase [web/app/no-hardcoded-colors.test.ts] — deferred, pre-existing architectural limit of the regex approach, revisit only if a real instance appears
+
 ## Dev Notes
 
 **This story is a project-wide "hub artifact."** Per epics.md's cross-cutting dependency-graph note (line 174), the Obsidian token system is one of only two hub artifacts in the entire project's dependency graph (the other is the `shared/` sync contract from Epic 1) — it's produced here and consumed by **every** web surface in Epics 3 through 7. Its most immediate consumer is **Story 2.4 (Auth UI components)**, sequenced directly after this one for that reason. The **one exemption**: Story 2.5 (agent tray UI) is deliberately native OS chrome and does NOT consume these tokens (UX-DR22/UX-DR23). Get the token surface right — downstream stories will build directly on whatever shape is chosen here.
@@ -61,32 +75,34 @@ so that every later screen — starting with auth — is styled against real tok
 
 ### Full color token table (source: DESIGN.md frontmatter `colors:` block — this file is the spine/source of truth; if any Stitch import prose diverges, DESIGN.md wins)
 
+**Revised 2026-07-26 (post-implementation design review, resolved during code review):** accent shifted from Electric Lavender to Ice Cyan, neutral base shifted from cool-charcoal to blue-black. The table below reflects the values actually shipped in `web/app/tokens.css`. The original Electric Lavender/cool-charcoal direction is retained as a sanctioned alternate — see the commented block in `tokens.css`'s primary section.
+
 | Token | Hex | Token | Hex |
 |---|---|---|---|
-| background | `#121415` | tertiary | `#c8c6c8` |
-| on-background | `#e2e2e3` | on-tertiary | `#303032` |
-| surface | `#121415` | tertiary-container | `#989799` |
-| surface-dim | `#121415` | on-tertiary-container | `#303032` |
-| surface-bright | `#38393a` | tertiary-fixed | `#e4e2e4` |
-| surface-container-lowest | `#0c0e0f` | tertiary-fixed-dim | `#c8c6c8` |
-| surface-container-low | `#1a1c1d` | on-tertiary-fixed | `#1b1b1d` |
-| surface-container | `#1e2021` | on-tertiary-fixed-variant | `#474649` |
-| surface-container-high | `#282a2b` | error | `#ffb4ab` |
-| surface-container-highest | `#333536` | on-error | `#690005` |
-| surface-variant | `#333536` | error-container | `#93000a` |
-| surface-tint | `#cbbeff` | on-error-container | `#ffdad6` |
-| on-surface | `#e2e2e3` | outline | `#938e9e` |
-| on-surface-variant | `#cac4d5` | outline-variant | `#484553` |
-| inverse-surface | `#e2e2e3` | primary | `#cbbeff` |
-| inverse-on-surface | `#2f3132` | on-primary | `#330b91` |
-| secondary | `#c8c6c7` | primary-container | `#9d85ff` |
-| on-secondary | `#303031` | on-primary-container | `#330a90` |
-| secondary-container | `#49494a` | primary-fixed | `#e7deff` |
-| on-secondary-container | `#bab8b9` | primary-fixed-dim | `#cbbeff` |
-| secondary-fixed | `#e5e2e3` | on-primary-fixed | `#1e0061` |
-| secondary-fixed-dim | `#c8c6c7` | on-primary-fixed-variant | `#4a2ea7` |
-| on-secondary-fixed | `#1b1b1c` | inverse-primary | `#6349c0` |
-| on-secondary-fixed-variant | `#474647` | | |
+| background | `#101319` | tertiary | `#bfc9c8` |
+| on-background | `#e1e3e8` | on-tertiary | `#2b302f` |
+| surface | `#101319` | tertiary-container | `#929c9b` |
+| surface-dim | `#101319` | on-tertiary-container | `#2b302f` |
+| surface-bright | `#3a4150` | tertiary-fixed | `#dde7e6` |
+| surface-container-lowest | `#0a0c11` | tertiary-fixed-dim | `#bfc9c8` |
+| surface-container-low | `#171b23` | on-tertiary-fixed | `#171c1b` |
+| surface-container | `#1b1f28` | on-tertiary-fixed-variant | `#414b4a` |
+| surface-container-high | `#252a35` | error | `#ffb4ab` |
+| surface-container-highest | `#2f3542` | on-error | `#690005` |
+| surface-variant | `#2f3542` | error-container | `#93000a` |
+| surface-tint | `#a5dcea` | on-error-container | `#ffdad6` |
+| on-surface | `#e1e3e8` | outline | `#8b93a6` |
+| on-surface-variant | `#c4c8d5` | outline-variant | `#434a5a` |
+| inverse-surface | `#e1e3e8` | primary | `#a5dcea` |
+| inverse-on-surface | `#2a2f38` | on-primary | `#00363f` |
+| secondary | `#c5c8ce` | primary-container | `#6ec8e0` |
+| on-secondary | `#2d2f34` | on-primary-container | `#06323d` |
+| secondary-container | `#454851` | primary-fixed | `#c2ecf6` |
+| on-secondary-container | `#c1c4cb` | primary-fixed-dim | `#a5dcea` |
+| secondary-fixed | `#e2e4ea` | on-primary-fixed | `#001f27` |
+| secondary-fixed-dim | `#c5c8ce` | on-primary-fixed-variant | `#164e5b` |
+| on-secondary-fixed | `#1a1c21` | inverse-primary | `#1f88a0` |
+| on-secondary-fixed-variant | `#444751` | | |
 
 The 5 surface-container elevation tiers (AC-1) are: `surface-container-lowest` → `surface-container-low` → `surface-container` → `surface-container-high` → `surface-container-highest`. No drop shadows anywhere in this design — depth comes from tonal layering plus hairline borders in `outline-variant` at ~30% opacity.
 
@@ -111,10 +127,12 @@ Radius: `sm 0.125rem (2px), lg 0.25rem (4px), xl 0.5rem (8px), full 9999px`. Str
 
 ### WCAG contrast verification (computed directly, WCAG relative-luminance formula — not sourced from a doc, since EXPERIENCE.md itself flags this as "not yet verified")
 
-- `on-surface` (`#e2e2e3`) vs `surface` (`#121415`): **14.27:1** — passes AA (4.5:1) and AAA (7:1).
-- `on-surface-variant` (`#cac4d5`) vs `surface` (`#121415`): **10.88:1** — passes AA.
-- `outline` (`#938e9e`) vs `surface` (`#121415`): **5.81:1**.
-- **Not required by this story's AC-4, flagged for awareness only:** the lavender focus-ring glow at ~20% opacity is explicitly called out in EXPERIENCE.md as "worth a dedicated check" and is NOT yet verified — that's a focus-state concern for whichever story first builds interactive/focusable components (likely Story 2.4), not this story's shell/text scope.
+**Revised 2026-07-26** for the Ice Cyan/blue-black palette (see Full color token table above); ratios recomputed against the shipped hex values and match `web/app/tokens.test.ts`'s assertions exactly.
+
+- `on-surface` (`#e1e3e8`) vs `surface` (`#101319`): **14.48:1** — passes AA (4.5:1) and AAA (7:1).
+- `on-surface-variant` (`#c4c8d5`) vs `surface` (`#101319`): **11.13:1** — passes AA.
+- `outline` (`#8b93a6`) vs `surface` (`#101319`): **6.04:1**.
+- **Not required by this story's AC-4, flagged for awareness only:** the primary-color focus-ring glow at ~20% opacity (originally specified as lavender, now Ice Cyan per the 2026-07-26 revision) is explicitly called out in EXPERIENCE.md as "worth a dedicated check" and is NOT yet verified — that's a focus-state concern for whichever story first builds interactive/focusable components (likely Story 2.4), not this story's shell/text scope.
 
 ### Project Structure Notes
 

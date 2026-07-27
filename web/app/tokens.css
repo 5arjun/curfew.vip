@@ -9,9 +9,10 @@
  *
  * Source of truth: _bmad-output/planning-artifacts/ux-designs/ux-name-pending-2026-07-19/DESIGN.md
  * Some tokens below (secondary/tertiary families, *-fixed variants, inverse-*,
- * surface-dim/bright/variant, background/on-background) are not yet consumed by
- * any component. DESIGN.md treats them as reserved scaffolding, not dead weight —
- * keep them defined even though unused today.
+ * surface-dim/bright/variant) are not yet consumed by any component. DESIGN.md
+ * treats them as reserved scaffolding, not dead weight — keep them defined even
+ * though unused today. (background/on-background ARE consumed — see globals.css's
+ * body rule.)
  */
 
 :root {

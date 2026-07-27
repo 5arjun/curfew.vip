@@ -20,6 +20,7 @@ Open [http://localhost:3000](http://localhost:3000).
 - `pnpm --filter web lint` — ESLint
 - `pnpm --filter web typecheck` — `tsc --noEmit`
 - `pnpm --filter web build` — production build
+- `pnpm --filter web test` — Vitest
 
 ## Notes
 
