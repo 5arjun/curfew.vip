@@ -25,15 +25,15 @@ export function contrastRatio(hexA: string, hexB: string): number {
 const AA_NORMAL_TEXT_MIN = 4.5;
 
 describe("Obsidian core-text tokens meet WCAG 2.2 AA (Story 2.2 AC-4)", () => {
-  it("on-surface (#e2e2e3) vs surface (#121415) passes AA", () => {
-    const ratio = contrastRatio("#e2e2e3", "#121415");
+  it("on-surface (#e1e3e8) vs surface (#101319) passes AA", () => {
+    const ratio = contrastRatio("#e1e3e8", "#101319");
     expect(ratio).toBeGreaterThanOrEqual(AA_NORMAL_TEXT_MIN);
-    expect(ratio).toBeCloseTo(14.27, 1);
+    expect(ratio).toBeCloseTo(14.48, 1);
   });
 
-  it("on-surface-variant (#cac4d5) vs surface (#121415) passes AA", () => {
-    const ratio = contrastRatio("#cac4d5", "#121415");
+  it("on-surface-variant (#c4c8d5) vs surface (#101319) passes AA", () => {
+    const ratio = contrastRatio("#c4c8d5", "#101319");
     expect(ratio).toBeGreaterThanOrEqual(AA_NORMAL_TEXT_MIN);
-    expect(ratio).toBeCloseTo(10.88, 1);
+    expect(ratio).toBeCloseTo(11.13, 1);
   });
 });

@@ -42,7 +42,9 @@
       "Read(//Volumes/**)",
       "Bash(git add *)",
       "Bash(git commit *)",
-      "Bash(git push*)"
+      "Bash(git push*)",
+      "Skill(artifact-design)",
+      "Artifact"
     ],
     "additionalDirectories": [
       "/Users/arjun/Documents/name-pending/_bmad-output/planning-artifacts/architecture"
