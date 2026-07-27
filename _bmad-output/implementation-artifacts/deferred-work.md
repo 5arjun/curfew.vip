@@ -1,5 +1,10 @@
 # Deferred Work
 
+## Deferred from: code review of 2-3c-phone-on-file-post-signup-prompt (2026-07-27)
+
+- **`web/app/login/actions.ts`'s `signIn()` always returns `"signed-in"` with no phone check.** This is the story's own documented "accepted residual limitation" for a returning DJ (its Scope resolution section explicitly waives re-gating on plain `signIn`). Separately, `signUp()`'s `data.session === null ? "check-email" : "signed-in"` branch would also skip the phone gate entirely if `enable_confirmations` were ever turned off in `supabase/config.toml` — dead under today's config (confirmations are on), not an active bug, but the same class of gap and wasn't explicitly named in the story's Scope boundaries. Not actionable within this story per its own "do not add a third enforcement layer speculatively" ruling. [web/app/login/actions.ts:49-53,69]
+- **AD-19's column-scoped-grant requirement is enforced only by a comment in the new migration file, not structurally.** This story's migration correctly satisfies it today (`grant update (phone)`, not a blanket grant), but nothing in the schema or CI stops a future Epic 7 migration from re-introducing a blanket `grant update on public.djs`. Worth a schema-level guard (or a CI check alongside the existing additive-only migration check) whenever Epic 7's billing columns actually land — not this story's to fix. [supabase/migrations/20260727192439_add_djs_phone_column.sql]
+
 ## Deferred from: code review of 2-3b-oauth-paths-account-linking-google-apple (2026-07-27)
 
 - **Callback route's `createClient()` call sits outside its own try/catch.** If required Supabase env vars are ever unset at runtime, this throws an unhandled exception instead of degrading to the calm failure redirect. Pre-existing: `confirm/route.ts` (2.3a, done) has the exact same gap, and this diff faithfully mirrors that established pattern per the story's own instruction to match `confirm/route.ts`'s exact shape. Not introduced by this diff; the fix belongs to both routes at once. [web/app/auth/callback/route.ts:21, web/app/auth/confirm/route.ts:21]

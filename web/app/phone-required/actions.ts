@@ -3,14 +3,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { AUTH_FAILURE_COPY } from "@/app/login/auth-copy";
-
-// Local to this file, not auth-state.ts's AuthActionState — that type's
-// fieldErrors shape (email/password/form) belongs to the login/signup form,
-// not this one-field page (Story 2.3c Task 4.1).
-type PhoneActionState = {
-  status: "idle" | "error";
-  error?: string;
-};
+import type { PhoneActionState } from "./phone-state";
 
 export async function setPhone(
   _prevState: PhoneActionState,
@@ -33,8 +26,15 @@ export async function setPhone(
   try {
     const { data, error: userError } = await supabase.auth.getUser();
     if (!userError && data.user) {
-      const { error } = await supabase.from("djs").update({ phone }).eq("id", data.user.id);
-      succeeded = !error;
+      // .select("id") makes a zero-row update (e.g. no matching djs row)
+      // distinguishable from a real success — a bare .update() with no
+      // .select() reports no error either way.
+      const { data: updated, error } = await supabase
+        .from("djs")
+        .update({ phone })
+        .eq("id", data.user.id)
+        .select("id");
+      succeeded = !error && (updated?.length ?? 0) > 0;
     }
   } catch {
     succeeded = false;

@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(16);
+select plan(17);
 
 -- Seed two auth users; the AFTER INSERT trigger (handle_new_dj) should create
 -- exactly one matching public.djs row for each.
@@ -110,8 +110,13 @@ select is(
 -- Case 3e: as authenticated DJ A, attempting to update DJ B's `phone` is an
 -- RLS USING-clause row-scoping failure -- the UPDATE silently affects zero
 -- rows rather than throwing 42501 (unlike a missing table/column grant).
--- Assert via the row's value staying unchanged, not throws_ok.
-update public.djs set phone = '+15555550199' where id = '22222222-2222-2222-2222-222222222222';
+-- Wrapped in lives_ok (not a bare statement) so a future regression that
+-- turns this into a genuine permission error fails this one assertion
+-- cleanly instead of aborting the whole file's transaction.
+select lives_ok(
+  $$ update public.djs set phone = '+15555550199' where id = '22222222-2222-2222-2222-222222222222' $$,
+  'authenticated DJ A''s update of DJ B''s phone does not throw (RLS filters the row silently)'
+);
 
 reset role;
 reset request.jwt.claims;
