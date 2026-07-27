@@ -1,0 +1,155 @@
+---
+baseline_commit: a12d0f658c581e2fdeb6ebb158a3110911f4d1ae
+---
+
+# Story 2.3a: Email-identity path (email+password + passkey)
+
+Status: ready-for-dev
+
+<!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
+
+## Story
+
+As a DJ,
+I want to sign up / log in with email+password and optionally enable a passkey,
+so that I have a base Curfew identity anchored to my verified email.
+
+## Acceptance Criteria
+
+1. **Given** email+password signup, **When** I verify my email, **Then** one `dj` account exists anchored to that verified email. *(FR-29, AR-10)*
+2. **Given** the email path, **When** I add a passkey (WebAuthn), **Then** it attaches as an add-on to that same account — not a separate identity. *(FR-29, AR-10)*
+3. **Given** an auth failure, **Then** the calm inline auth-failed copy shows (no modal, no alarm color). *(UX-DR18, UX-DR19)*
+
+[Source: _bmad-output/planning-artifacts/epics.md#Story 2.3a, lines 399-409]
+
+### Scope boundaries (binding — read before writing code)
+
+- **This is the first story to introduce a `supabase-js`/`@supabase/ssr` client anywhere in the monorepo.** `supabase/PROVISIONING.md` (written during Story 2.1) says the first web consumer "arrives around Story 2.10 or Story 3.2" — that line is now stale; this story is earlier. It does **not** need the real cloud project from `PROVISIONING.md` to exist — everything in this story targets the **local** Supabase stack (`supabase start`), exactly like Story 2.1's pgTAP tests did. Whether Arjun has run the cloud runbook is orthogonal to this story.
+- **In scope:** email+password signup/login, the email-confirmation flow, passkey (WebAuthn) as an add-on to an existing signed-in account, passkey-based sign-in for returning users, and the calm inline auth-failed copy. **Out of scope:** Google/Apple OAuth and cross-provider account linking (Story 2.3b), the post-OAuth phone-required prompt (Story 2.3c), any visual polish — Ghost-style inputs, the Biometric Anchor's fingerprint badge/radio-indicator chrome, official Google/Apple button lockups (Story 2.4, sequenced directly after this one) — this story ships **functional, token-consuming, unpolished** forms, not the final pixel spec. Also out of scope: any real Dashboard to redirect into (Epic 3) — redirect target is the existing scaffold root page (`/`), explicitly a placeholder.
+- **⚠️ Flagged gap — phone/name collection on the email path is not assigned to any story as currently scoped, including this one.** AR-10/FR-29 state "every account has a phone number on file **regardless of signup path**," but Story 2.3c's title, both its ACs, and its EXPERIENCE.md state-pattern entry all scope phone collection strictly to **post-OAuth**. EXPERIENCE.md's Component-Patterns row for the auth form ("manual name, email, phone, and password fields") reads as the pre-split description of the original unified Story 2.3 (see epics.md's sizing note, same 2026-07-20 date) and was not updated after the 2.3a/b/c split. Story 2.1's own scope notes are explicit that **no story before 2.3c adds a DJ-writable column to `djs`** — meaning the `phone` column + its write policy do not exist yet and are not this story's to create. **Net effect: as scoped, an email-only DJ who never touches Google/Apple will never be prompted for a phone number anywhere in 2.3a or 2.3c.** This story does **not** silently expand its own scope to close that gap (that would contradict Story 2.1's explicit column-sequencing note). Flag for Arjun: either broaden 2.3c to "phone required if missing, on any path" or add a phone field here. Do not add a `name` field either, for the same reason — not in this story's ACs, not backed by a writable column.
+- **Email confirmation is currently disabled in `supabase/config.toml`** (`[auth.email] enable_confirmations = false`, the Story 1.1 scaffold default). AC-1's "when I verify my email" is meaningless without it — Task 1 flips this to `true`. This is a **local dev config change**, not a cloud one; it takes effect the next `supabase start`/`supabase stop --no-backup && supabase start`.
+- **The `djs` row already exists before email confirmation**, structurally. Story 2.1's `handle_new_dj()` trigger fires `AFTER INSERT ON auth.users`, and Supabase creates the `auth.users` row at `signUp()` time — before confirmation, not after. So AC-1's "one dj account exists anchored to that verified email" is already true the instant `signUp()` is called; this story's actual job on AC-1 is making the **confirmation gate real** (no usable session until confirmed) and giving the DJ a working confirm-link flow, not creating new account-provisioning logic. Do not add a second/duplicate account-creation path — the Story 2.1 trigger is the only writer of new `djs` rows.
+
+## Tasks / Subtasks
+
+- [ ] **Task 1 — Supabase Auth config for this story (AC: 1, 2)**
+  - [ ] 1.1 In `supabase/config.toml`, flip `[auth.email] enable_confirmations` from `false` to `true`.
+  - [ ] 1.2 Uncomment and enable `[auth.passkey]`: `enabled = true`.
+  - [ ] 1.3 Uncomment and configure `[auth.webauthn]`: `rp_display_name = "Curfew"`, `rp_id = "localhost"`, `rp_origins = ["http://localhost:3000"]`. **Use `localhost`, not `127.0.0.1`** — WebAuthn's spec requires the RP ID to be a registrable domain or the literal string `localhost`, IP literals are rejected (browsers vary, don't rely on them).
+  - [ ] 1.4 **Reconcile `[auth] site_url`/`additional_redirect_urls` with the `localhost` decision above.** They currently read `site_url = "http://127.0.0.1:3000"` / `additional_redirect_urls = ["https://127.0.0.1:3000"]` (Story 1.1 scaffold default, and already internally inconsistent — http vs. https). Supabase's email-confirmation flow silently falls back to `site_url` (dropping your `/auth/confirm` `emailRedirectTo`) if the redirect target isn't on the allow-list — so testing the confirm-link flow via `http://localhost:3000` (as Task 1.3's WebAuthn origin requires) while `site_url`/`additional_redirect_urls` still only allow `127.0.0.1` will silently misroute the confirmation link. Update `site_url` to `http://localhost:3000` and ensure `additional_redirect_urls` includes `http://localhost:3000` (adjust the scheme too — don't leave the http/https mismatch in place), so both the WebAuthn origin and the auth-confirm redirect agree on one host.
+  - [ ] 1.5 Restart the local stack (`supabase stop && supabase start`, or equivalent) so config changes take effect before manual testing.
+
+- [ ] **Task 2 — Supabase client + SSR session wiring (AC: 1)**
+  - [ ] 2.1 Add `@supabase/supabase-js` (>= `2.105.0` — the minimum version exposing `registerPasskey`/`signInWithPasskey`) and `@supabase/ssr` (latest) to `web/package.json` dependencies. First `supabase-js`/`@supabase/ssr` usage anywhere in the monorepo — no existing pattern to match, but do match the repo's existing devDependency-pinning style (see `shared/`'s `vitest` version pin, Story 2.2 precedent).
+  - [ ] 2.2 `web/lib/supabase/client.ts` — `createBrowserClient(url, key, { auth: { experimental: { passkey: true } } })`. The `experimental.passkey` opt-in is **required** by Supabase for `registerPasskey()`/`signInWithPasskey()` to exist on the client at all (feature is in beta as of 2026-05-28); omitting it will make Task 5's calls fail or be undefined.
+  - [ ] 2.3 `web/lib/supabase/server.ts` — `createServerClient` using `next/headers` `cookies()` for `getAll`/`setAll`, same `experimental.passkey` flag for consistency (passkey ceremonies are client-only in practice, but keep both clients configured identically to avoid a future "why does this only work in the browser" bug).
+  - [ ] 2.4 `web/lib/supabase/middleware.ts` — an `updateSession(request)` helper that refreshes the auth token and re-issues cookies on both the request and response. **Verify the exact current method name against the live docs before implementing** (`https://supabase.com/docs/guides/auth/server-side/nextjs`) — Supabase's own recommended call here has moved from `getSession()`/`getUser()` to `getClaims()` (JWT-signature-verified, no round-trip) within the last cycle; do not copy stale blog-post code that still calls `getUser()` for this refresh step.
+  - [ ] 2.5 `web/middleware.ts` (repo root of `web/`) — Next.js middleware invoking `updateSession`, with a `matcher` excluding `_next/static`, `_next/image`, `favicon.ico`, and other static assets (standard Supabase-documented matcher pattern).
+  - [ ] 2.6 `web/.env.local` (gitignored — `web/.gitignore`'s existing `.env*` rule already covers it, verified) populated from `supabase status` output: `NEXT_PUBLIC_SUPABASE_URL` (local API URL, `http://127.0.0.1:54321` per `supabase/config.toml`'s `[api] port = 54321`) and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (current Supabase-docs env var name; `supabase status` may still label the value "anon key" locally — same value, just verify which label your installed CLI version prints). **Do not try to add a tracked `web/.env.example`** — `web/.gitignore`'s `.env*` pattern would silently swallow it too (needs a `!web/.env.example` negation to work, which is out of scope for this story); document the two required var names in `web/README.md` instead (Task 6).
+
+- [ ] **Task 3 — Email-confirmation callback route (AC: 1)**
+  - [ ] 3.1 `web/app/auth/confirm/route.ts` — `GET` handler reading `token_hash`/`type` query params, calling `supabase.auth.verifyOtp({ type, token_hash })` (server client), redirecting to `/` on success (placeholder — real Dashboard is Epic 3) or to an error state on failure. Pattern per Supabase's current docs (`https://supabase.com/docs/guides/auth/passwords`); use the server client from Task 2.3, not a fresh ad hoc client.
+  - [ ] 3.2 In the signup Server Action (Task 4), pass `options: { emailRedirectTo: <origin>/auth/confirm }` to `signUp()` so the confirmation email links back here.
+  - [ ] 3.3 Local dev note for manual verification: confirmation emails are captured by the local stack's Inbucket mailer (`supabase/config.toml`'s `[inbucket] port = 54324` — already configured, not touched by this story), viewable at `http://127.0.0.1:54324`, not actually delivered to a real inbox.
+
+- [ ] **Task 4 — Email+password signup/login form (AC: 1, 3)**
+  - [ ] 4.1 `web/app/login/page.tsx` — one route hosting both modes (Log in / Sign up) per EXPERIENCE.md's IA table, which lists "Login / Signup" as a single surface, not two. Client Component (needs form interactivity + passkey's browser-only `navigator.credentials` ceremony in Task 5). Plain inputs styled from `tokens.css` custom properties only — **the `no-hardcoded-colors.test.ts` guard from Story 2.2 already runs over all of `web/app/**/*.{ts,tsx,css}`, including new files this story adds; a stray hex literal will fail CI, not just look wrong.** Do not attempt the Ghost-style/Biometric-Anchor visual spec (DESIGN.md) — that's Story 2.4.
+  - [ ] 4.2 `web/app/login/actions.ts` — Server Actions `signUp(formData)` and `signIn(formData)`, calling the Task 2.3 server client's `auth.signUp({ email, password, options: { emailRedirectTo } })` / `auth.signInWithPassword({ email, password })`.
+  - [ ] 4.3 On `signUp()` success with `data.session === null` (expected once Task 1.1's confirmation gate is on — Supabase withholds a session until confirmed), render an inline "check your email to confirm your account" state, console-voice register (no exclamation points, matches DESIGN.md's Failure-Register-adjacent tone even though this isn't a failure).
+  - [ ] 4.4 Map Supabase auth errors to the **exact** Failure Register strings (EXPERIENCE.md, no paraphrasing):
+    - Wrong password → `"Credentials not recognized — try again."`
+    - Signup with an already-registered email → `"Account already archived — log in instead."`
+    - Render inline under the relevant field, never a modal or a red/alarm-colored banner (AC-3, UX-DR18/19).
+    - **Verify the exact current error signal for "email already registered" against the installed `@supabase/supabase-js` version at implementation time** — Supabase's identity-exists signaling (error code vs. a fake-success-with-empty-identities response, to avoid email enumeration) has changed across major versions; do not assume a specific `error.message` string without checking the version actually installed.
+
+- [ ] **Task 5 — Passkey add-on (AC: 2)**
+  - [ ] 5.1 After a successful `signUp` or `signIn` where the session's user has no registered passkey, render an "Enable Passkey" row (functional only — DESIGN.md's fingerprint-badge/radio-indicator visual spec is Story 2.4's job) that calls `supabase.auth.registerPasskey()` on the **browser** client (Task 2.2) on click. Skippable — never blocking, matching UX-DR20's confirm-or-edit/never-forced pattern used elsewhere in this UX system.
+  - [ ] 5.2 On `web/app/login/page.tsx`'s login side, add a "Sign in with Passkey" action calling `supabase.auth.signInWithPasskey()` directly on the browser client — no email field needed first (discoverable credential, per Supabase's docs). This is FR-29/DESIGN.md's "Biometric bypass" for a returning DJ.
+  - [ ] 5.3 `registerPasskey()` requires an existing session (Supabase's own documented constraint) — this structurally enforces AC-2's "add-on to that same account, not a separate identity," since there is no code path where a passkey can be registered without first being authenticated some other way.
+  - [ ] 5.4 Note for manual testing: WebAuthn ceremonies need either a real platform authenticator (Touch ID/Windows Hello) or a browser-provided virtual authenticator (e.g. Chrome DevTools → WebAuthn tab) — call this out in the Dev Agent Record rather than assuming a CI-automatable path exists yet.
+
+- [ ] **Task 6 — Docs (AC: 1, 2)**
+  - [ ] 6.1 `web/README.md` — add the two required `.env.local` var names (Task 2.6) under a new "Environment" section; note that local Supabase must be running (`supabase start`, from repo root) for any auth flow to work.
+
+- [ ] **Task 7 — Tests (AC: 1, 2, 3)**
+  - [ ] 7.1 This is the first auth-flow story in the repo; full signup/login/passkey ceremonies are inherently network- and browser-API-dependent (WebAuthn's `navigator.credentials`), not unit-testable in the style of `shared/`'s pure-function tests. Scope automated coverage to what's realistically pure: a small function mapping a Supabase auth error to its Failure Register copy string (Task 4.4), tested directly against the known error shapes. Do not attempt to mock the full WebAuthn ceremony or Supabase Auth server for this story — that's a bigger testing-infrastructure decision (e.g., introducing Playwright) than this story's scope; flag it as a follow-up rather than deciding it unilaterally here.
+  - [ ] 7.2 Confirm the new files under `web/app/login/**` and `web/app/auth/confirm/**` pass the existing `no-hardcoded-colors.test.ts` guard (Story 2.2) without modification to the guard itself.
+
+- [ ] **Task 8 — Full gate**
+  - [ ] 8.1 `pnpm --filter web lint`, `pnpm --filter web typecheck`, `pnpm --filter web build`, `pnpm --filter web test`.
+  - [ ] 8.2 Manual verification against the local Supabase stack (`supabase start` from repo root): (a) sign up with a real address, confirm via the Inbucket-captured email link, verify a `djs` row exists (already true pre-confirmation per the Dev Notes above — confirm the *flow* works end-to-end, not just the trigger); (b) wrong-password login shows the exact Failure Register string inline; (c) signup with an already-registered email shows the exact Failure Register string inline; (d) register a passkey on a signed-in account and sign back out/in using only the passkey, via `http://localhost:3000` (not `127.0.0.1`).
+  - [ ] 8.3 Repo-root gate: `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm test` — confirm no regression in `shared/`'s 13 tests, `web/`'s existing 3 tests (Story 2.2), or `agent/`. Per the standing Epic-2+ rule (sprint-status `action_items` ai-8), this must be actually run on this machine — "looks right, CI will confirm" is not sufficient.
+
+## Dev Notes
+
+### Architecture compliance
+
+- **AD-10** (this story's primary governing decision): Supabase Auth, JWT + refresh; email+password and passkey both link to one `dj` account by verified email; `djs` row 1:1 with `auth.users`, creation idempotent (Story 2.1's trigger, unchanged by this story). This story does not touch cross-provider linking (Story 2.3b) or the "distinct verified emails not auto-merged" edge case — single-provider path only.
+- **AD-7/AR-4** (RLS): no new RLS policy needed — Story 2.1's `djs_select_own` policy already lets an authenticated DJ read their own row; this story adds no new DJ-writable column (see Scope boundaries).
+- **AD-8**: Server Actions calling `supabase-js`/`@supabase/ssr` directly is the sanctioned pattern here — not a bespoke mutation API. Auth itself is a Supabase-managed surface, not something AD-8 governs as a "write path" in the RLS sense, but the *pattern* (thin server glue, no custom backend) is consistent with it.
+- **UX-DR3** (auth components) and **UX-DR21** (accessibility/keyboard/focus-ring) are **Story 2.4's** acceptance criteria, not this story's — this story's forms must be operable and not break keyboard flow, but the polished visual spec (Ghost inputs, Biometric Anchor chrome, focus-ring contrast verification) is explicitly out of scope here per Story 2.4's own ACs.
+- **UX-DR18/19** (Failure Register, calm auth-failed state) **is** this story's AC-3 — the exact copy strings are quoted in Task 4.4, sourced from EXPERIENCE.md's Failure Register table, not paraphrased.
+
+### Previous story intelligence
+
+- **Story 2.2** (done) is the styling hub: this story is its most immediate consumer, exactly as 2.2's Dev Notes predicted. Consume `tokens.css` custom properties only — the `no-hardcoded-colors.test.ts` guard (hardened twice already, in 2.2's own review and per its own doc comment) will fail CI on any hex/`rgb()`/`hsl()` literal in new `web/app/**` files, comment-aware and path-aware. `web/` currently has **zero** existing form/input/button patterns to reuse — this story establishes the first ones (functionally only; Story 2.4 owns the visual spec).
+- **Story 2.1** (done) built the `djs` table, its `handle_new_dj()` trigger, and read-only RLS — all reused as-is by this story, zero migration needed here. Story 2.1's own scope notes explicitly reserved the first DJ-writable `djs` column for Story 2.3c — honor that boundary (see Scope boundaries above); do not add a `phone` or `name` column in this story even though the gap analysis above flags a real product question about where phone-for-email-path gets collected.
+- **`supabase/PROVISIONING.md`** (Story 2.1) states "no `supabase-js` client exists in `agent/` or `web/` — the first consumer... arrives around Story 2.10 or 3.2." This story makes that line stale (it's now the first consumer, earlier than anticipated) — not a blocker, since this story only needs the **local** stack, but worth a mental note if that file is read again later; not in this story's scope to edit that file's now-outdated sentence (it's describing what was true as of Story 2.1, a historical record, matching this project's established append-only-log convention for dated Dev Notes/Change Log content — see Story 2.2's review finding on the same question).
+
+### Latest technical specifics (web research, 2026-07-26)
+
+- **Supabase Passkeys is in Beta**, announced 2026-05-28. Requires `@supabase/supabase-js >= 2.105.0`. The client must opt in via `auth: { experimental: { passkey: true } }` at construction — the feature does not exist on the client otherwise. API: `auth.registerPasskey()` (signed-in user only, returns `{ id, friendly_name?, created_at }`) and `auth.signInWithPasskey()` (discoverable credential, returns `{ session, user }`). Supabase's own docs warn: "the API may change without notice" — do not treat method signatures as frozen; re-check `https://supabase.com/docs/guides/auth/passkeys` if anything here doesn't match at implementation time.
+- **WebAuthn RP ID constraint**: passkeys are cryptographically bound to the RP ID they were registered against — changing it later invalidates every existing passkey. `localhost` is the one special-cased non-domain value browsers accept; IP literals like `127.0.0.1` are not reliably valid. This is why Task 1.3 pins `rp_id`/`rp_origins` to `localhost`, and Task 1.4 moves `site_url`/`additional_redirect_urls` off their pre-existing `127.0.0.1`-based values to match — leaving them split across two hosts would break either the confirm-link redirect or the passkey ceremony, whichever host you happened to test against.
+- **`@supabase/ssr`** (not the older `@supabase/auth-helpers-nextjs`) is the current-recommended package for Next.js App Router SSR auth, with `createBrowserClient`/`createServerClient` and a cookie-refresh middleware. Supabase's own recommended session-refresh call inside that middleware has moved toward `auth.getClaims()` (verifies the JWT signature locally against published keys, no network round-trip) rather than `auth.getUser()`/`auth.getSession()` for that specific refresh step — verify current guidance directly (`https://supabase.com/docs/guides/auth/server-side/nextjs`) before implementing Task 2.4, since this is exactly the kind of detail that shifts between doc revisions.
+- **Email+password**: `auth.signUp({ email, password, options: { emailRedirectTo } })` / `auth.signInWithPassword({ email, password })`. PKCE-flow confirmation (the SSR-appropriate flow, vs. the client-only implicit flow) needs a server route exchanging `token_hash`/`type` via `auth.verifyOtp()` — see Task 3.1's exact pattern, sourced from `https://supabase.com/docs/guides/auth/passwords`.
+
+### Project Structure Notes
+
+**New files:**
+- `web/lib/supabase/client.ts`, `web/lib/supabase/server.ts`, `web/lib/supabase/middleware.ts` — Supabase client setup (first in the monorepo).
+- `web/middleware.ts` — session-refresh middleware.
+- `web/app/auth/confirm/route.ts` — email-confirmation PKCE callback.
+- `web/app/login/page.tsx`, `web/app/login/actions.ts` — the combined Login/Signup surface + its Server Actions.
+- `web/.env.local` (gitignored, not committed).
+
+**Updated files:**
+- `supabase/config.toml` — `[auth.email] enable_confirmations`, `[auth.passkey]`, `[auth.webauthn]` (Task 1). Read the surrounding comments before editing; this file is otherwise untouched scaffold from Story 1.1.
+- `web/package.json` — two new dependencies (`@supabase/supabase-js`, `@supabase/ssr`).
+- `web/README.md` — new Environment section (Task 6).
+- `pnpm-lock.yaml` — new dependency resolutions.
+
+**No consumer conflicts:** nothing in Epic 1 (`agent/`, `shared/`) or Story 2.2's files (`tokens.css`, `fonts.ts`, `globals.css`, etc.) needs to change for this story. `web/app/page.tsx` (the existing `@curfew/shared` contract-consumption proof) is untouched — this story adds new routes alongside it, not a replacement.
+
+**Out of scope (do not build here):** Google/Apple OAuth (2.3b), post-OAuth phone prompt (2.3c), Ghost-style/Biometric-Anchor visual polish and official OAuth button lockups (2.4), any real Dashboard (Epic 3 — `/` stays the Story 2.2 scaffold page as the post-auth redirect target), landing-page overlay integration (Epic 6 — this story's `/login` route is a standalone page for now, to be consumed as Landing's overlay later).
+
+### Testing standards summary
+
+No auth-flow test pattern exists yet in this repo — this is the first story to touch it. Match `shared/`'s and `web/`'s existing convention of co-located `*.test.ts` files and pure-function unit tests where the logic is actually pure (Task 4.4's error→copy mapper); do not attempt to unit-test the WebAuthn ceremony or Supabase's server behavior itself, and do not introduce a new test framework (e.g., Playwright) unilaterally — that's a bigger decision than this story owns. Manual verification against the local Supabase stack is required and must be actually run on this machine (standing Epic-2+ rule, sprint-status `action_items` ai-8), documented in the Dev Agent Record.
+
+### References
+
+- [Source: _bmad-output/planning-artifacts/epics.md, lines 371-397 (Story 2.1/2.2 context), 399-409 (Story 2.3a verbatim), 411-433 (Stories 2.3b/2.3c — scope boundary), 84 (AR-10), 103 (UX-DR3), 124 (UX-DR18), 125 (UX-DR19)]
+- [Source: _bmad-output/planning-artifacts/prds/prd-name-pending-2026-07-19/prd.md#4.10 Account & Authentication (FR-29), lines 367-380]
+- [Source: _bmad-output/planning-artifacts/architecture/architecture-name-pending-2026-07-20/ARCHITECTURE-SPINE.md#AD-10 (line 112), #AD-8 (line 100), source tree (line 278-285), capability map (line 294)]
+- [Source: _bmad-output/planning-artifacts/architecture/architecture-name-pending-2026-07-20/SOLUTION-DESIGN.md, lines 265 (auth tokens), 294 (stack table auth row)]
+- [Source: _bmad-output/planning-artifacts/ux-designs/ux-name-pending-2026-07-19/DESIGN.md#Ghost Input Fields, #Biometric Anchor, #Google/Apple Sign-In Button (lines 255-264)]
+- [Source: _bmad-output/planning-artifacts/ux-designs/ux-name-pending-2026-07-19/EXPERIENCE.md#Failure Register (lines 46-55), #Component Patterns auth-form row (line 63), #State Patterns auth-failed/phone-required rows (lines 92-93)]
+- [Source: _bmad-output/implementation-artifacts/2-1-supabase-cloud-foundation-isolation-baseline.md — `djs` schema/trigger/RLS, scope-boundary note reserving DJ-writable columns for 2.3c]
+- [Source: _bmad-output/implementation-artifacts/2-2-obsidian-design-token-system-web-shell.md — token system, `no-hardcoded-colors.test.ts` guard, hub-artifact/consumer note]
+- [Source: supabase/config.toml — read directly, current `[auth]`/`[auth.email]`/`[auth.passkey]`/`[auth.webauthn]`/`[api]`/`[inbucket]` state as of baseline]
+- [Source: supabase/PROVISIONING.md — "first web consumer" claim, now superseded by this story]
+- [Source: web/app/page.tsx, web/app/layout.tsx, web/package.json, web/README.md, web/.gitignore, web/next.config.ts — read directly, current state as of baseline]
+- [Source: web — Supabase Passkeys Beta changelog & docs (https://supabase.com/changelog/46458-passkeys-for-supabase-auth-beta, https://supabase.com/docs/guides/auth/passkeys) — fetched 2026-07-26]
+- [Source: web — Supabase Auth Next.js SSR guide (https://supabase.com/docs/guides/auth/server-side/nextjs) and email/password guide (https://supabase.com/docs/guides/auth/passwords) — fetched 2026-07-26]
+
+## Dev Agent Record
+
+### Agent Model Used
+
+{{agent_model_name_version}}
+
+### Debug Log References
+
+### Completion Notes List
+
+### File List
