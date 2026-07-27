@@ -207,6 +207,7 @@ graph TD
 | Next.js | 16 |
 | React / TypeScript | current |
 | Supabase | Postgres + Auth + Realtime + Storage |
+| Email delivery | Resend (or equivalent transactional email API) — configured via Supabase Auth's custom SMTP |
 | Stripe | Checkout + Customer Portal + Webhooks (subscriptions API); **pinned API version** (not account-default, AD-18) |
 | Web host | Vercel |
 | CI / release | `tauri-action` (GitHub Actions) |
@@ -267,6 +268,7 @@ erDiagram
 | Agent | DJ's machine (macOS + Windows) | Signed installers (Apple Developer ID + Windows OV/EV) via GitHub Releases/S3; Tauri signed auto-updater; separate mandatory update-signing keypair. Zero server cost. |
 | Web app | Vercel | Next.js SSR/ISR; free/low tier at launch. |
 | Backend | Supabase (managed) | Postgres + Auth + Realtime + Storage; self-hostable later (no lock-in) — not v1. |
+| Email delivery | Resend (managed), via Supabase Auth custom SMTP | Transactional auth email (signup confirmation, password reset); provider API key/SMTP credentials stored as an encrypted secret at the Supabase-project level (dashboard/`supabase config push`), never CI. |
 | CI/CD | GitHub Actions (`tauri-action`) | Cross-platform signed builds + auto-generated updater JSON/`.sig`; signing certs + updater key as encrypted CI secrets. |
 | Billing | Stripe (managed) | Checkout + Customer Portal, hosted by Stripe; webhook lands on `web/`'s own Vercel deployment, Node.js runtime (AD-18) — no separate billing service. Stripe secret API key (Checkout/Portal session creation) + webhook signing secret + the elevated DB key used only by the `SECURITY DEFINER` function, all as encrypted Vercel env vars. |
 

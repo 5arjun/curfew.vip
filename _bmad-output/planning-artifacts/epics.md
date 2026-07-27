@@ -187,7 +187,7 @@ Stand up the monorepo (`agent/` · `web/` · `shared/`) and the `shared/` versio
 
 ### Epic 2: Account & Agent Onboarding
 
-A DJ creates one Curfew account via any of four paths (email+password, Google, Apple, passkey — auto-linked by verified email, phone number on file), downloads and installs the signed local agent, and the agent auto-detects and asks them to confirm their Serato data folder (including on a USB drive), then quietly watches and captures completed sets into local SQLite using the Epic 1 engine. Establishes the cloud foundation (Supabase + null-safe RLS + additive-only migrations + prod/preview environments), the signed-build/auto-updater pipeline, and the agent's tray UI. *(UJ-3)*
+A DJ creates one Curfew account via any of four paths (email+password, Google, Apple, passkey — auto-linked by verified email, phone number on file), downloads and installs the signed local agent, and the agent auto-detects and asks them to confirm their Serato data folder (including on a USB drive), then quietly watches and captures completed sets into local SQLite using the Epic 1 engine. Establishes the cloud foundation (Supabase + null-safe RLS + additive-only migrations + prod/preview environments), production email delivery for auth, the signed-build/auto-updater pipeline, and the agent's tray UI. *(UJ-3)*
 **FRs covered:** FR-1, FR-3, FR-5, FR-29. **ARs:** AR-3, AR-4, AR-10, AR-11, AR-12, AR-14. **UX:** UX-DR1 (Obsidian token system — established here as the first web surface, so auth screens aren't styled against tokens that don't exist yet), UX-DR3 (auth components), UX-DR23 (tray UI), UX-DR19 (first-run path confirm + phone-required states).
 *Design notes:* (a) **code-signing (`SIGN`) blocks release/distribution, not local development** — the agent self-tests unsigned; only shipping an installer to a real DJ needs the certs, so parallel procurement (see cross-cutting notes) keeps it off the critical coding path; **fallback: macOS-first launch** if the Windows EV cert's identity verification drags; (b) the `djs` account schema should **anticipate a `subscription_status` concept** even though Epic 7 implements the billing flow — the E7 access-gate is cross-cutting (additive column later is possible, but knowing it's coming shapes the account model).
 
@@ -366,7 +366,7 @@ So that the one frozen-forever hub artifact reflects parsing reality and its Set
 
 ## Epic 2: Account & Agent Onboarding
 
-A DJ creates one Curfew account via any of four paths, installs the signed local agent, confirms their Serato data folder (including on USB), and the agent quietly captures completed sets into local SQLite. Establishes the cloud foundation (Supabase + null-safe RLS + additive migrations + prod/preview), the Obsidian token system as the first web surface, the signed-build/auto-updater pipeline, and the tray UI. *(UJ-3)*
+A DJ creates one Curfew account via any of four paths, installs the signed local agent, confirms their Serato data folder (including on USB), and the agent quietly captures completed sets into local SQLite. Establishes the cloud foundation (Supabase + null-safe RLS + additive migrations + prod/preview), production email delivery for auth, the Obsidian token system as the first web surface, the signed-build/auto-updater pipeline, and the tray UI. *(UJ-3)*
 
 ### Story 2.1: Supabase cloud foundation + isolation baseline
 
@@ -430,6 +430,19 @@ So that every account has a phone on file as required.
 
 1. **Given** Google or Apple signup, **When** it completes without a phone on file, **Then** I am prompted once for a phone number (single-field, required). *(FR-29, UX-DR19 phone-required)*
 2. **Given** the phone-required state, **Then** it renders as the specified one-field post-OAuth screen, not a blocking modal wall. *(UX-DR19)*
+
+### Story 2.3d: Production email delivery (SMTP provider wiring)
+
+As a DJ,
+I want the confirmation email I receive at signup to actually arrive at my real inbox,
+So that email+password signup (2.3a) and future auth email (password reset, email change) work outside local development.
+
+**Acceptance Criteria:**
+
+1. **Given** a production Supabase project, **When** `[auth.email.smtp]` is configured against a real transactional email provider (e.g. Resend), **Then** signup-confirmation email sends successfully to a real inbox. *(FR-29 production completeness)*
+2. **Given** the provider's sending domain, **When** SPF/DKIM/DMARC records are verified with the provider, **Then** confirmation email delivers without landing in spam.
+3. **Given** local development, **Then** `supabase start`'s `local_smtp` testing inbox is unchanged — this story only adds the production-path configuration, no regression to Story 2.3a's local flow.
+4. **Given** provider credentials, **Then** they are stored as an encrypted secret at the Supabase-project level (dashboard/`supabase config push`), never committed to the repo.
 
 ### Story 2.4: Auth UI components
 
