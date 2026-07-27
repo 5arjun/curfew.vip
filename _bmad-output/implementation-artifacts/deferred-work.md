@@ -1,5 +1,11 @@
 # Deferred Work
 
+## Deferred from: code review of 2-3b-oauth-paths-account-linking-google-apple (2026-07-27)
+
+- **Callback route's `createClient()` call sits outside its own try/catch.** If required Supabase env vars are ever unset at runtime, this throws an unhandled exception instead of degrading to the calm failure redirect. Pre-existing: `confirm/route.ts` (2.3a, done) has the exact same gap, and this diff faithfully mirrors that established pattern per the story's own instruction to match `confirm/route.ts`'s exact shape. Not introduced by this diff; the fix belongs to both routes at once. [web/app/auth/callback/route.ts:21, web/app/auth/confirm/route.ts:21]
+- **A reused/expired OAuth `code` (e.g. browser back-button after a successful sign-in) fails `exchangeCodeForSession` and redirects an already-signed-in user to `/login?error=confirmation-failed`, despite their session cookie from the earlier successful exchange still being valid.** A new trigger path for the existing "visiting `/login` while already signed in re-shows the form instead of redirecting away" entry below — not a new class of bug. [web/app/auth/callback/route.ts:19-28]
+- **`oauthError` isn't cleared when the user toggles Login/Signup mode or submits the email/password form**, so a stale OAuth failure message can persist across unrelated interactions. Same already-accepted-cosmetic class as the existing "toggling Login/Signup mode doesn't reset the other mode's stale `useActionState` error" entry below — extend that entry to cover `oauthError` too. Cosmetic, no data-integrity or security impact; Story 2.4 owns visual/UX polish. [web/app/login/page.tsx:60-61,215-221]
+
 ## Deferred from: code review of 2-3a-email-identity-path-email-password-passkey (2026-07-27)
 
 - **Visiting `/login` while already signed in re-shows the login/signup form instead of redirecting away.** `page.tsx` has no existing-session check on mount — `state.status` starts at `"idle"` regardless of a valid session cookie. Low impact today since the post-auth redirect target (`/`) is still Story 2.2's placeholder scaffold page; a real routing pattern for "already authenticated" belongs with Epic 3's real Dashboard, not this story. [web/app/login/page.tsx:44]

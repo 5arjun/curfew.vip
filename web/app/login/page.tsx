@@ -42,6 +42,14 @@ const buttonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
+// [auth.external.apple] is still disabled server-side (Task 1.2 — pending real
+// Apple Developer credentials). Flip to true once it's enabled; no other code
+// change is needed. Left enabled client-side, clicking redirects straight to
+// GoTrue's /authorize, which rejects the disabled provider before ever
+// reaching this app's /auth/callback — bypassing the calm failure copy below
+// entirely (2026-07-27 review finding).
+const appleSignInAvailable = false;
+
 export default function LoginPage() {
   return (
     <Suspense fallback={null}>
@@ -57,6 +65,8 @@ function LoginPageContent() {
   const [passkeySignedIn, setPasskeySignedIn] = useState(false);
   const [passkeyError, setPasskeyError] = useState<string | null>(null);
   const [passkeyPending, setPasskeyPending] = useState(false);
+  const [oauthPending, setOauthPending] = useState<"google" | "apple" | null>(null);
+  const [oauthError, setOauthError] = useState<string | null>(null);
   const searchParams = useSearchParams();
   const confirmationFailed = searchParams.get("error") === "confirmation-failed";
 
@@ -78,6 +88,28 @@ function LoginPageContent() {
       setPasskeyError(AUTH_FAILURE_COPY.generic);
     } finally {
       setPasskeyPending(false);
+    }
+  }
+
+  // signInWithOAuth triggers a full-page browser redirect to the provider by
+  // default — this only ever returns (without navigating away) on an error
+  // (e.g. provider misconfigured), matching handlePasskeySignIn's shape.
+  async function handleOAuthSignIn(provider: "google" | "apple") {
+    setOauthError(null);
+    setOauthPending(provider);
+    const supabase = createClient();
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo: `${window.location.origin}/auth/callback` },
+      });
+      if (error) {
+        setOauthError(AUTH_FAILURE_COPY.generic);
+      }
+    } catch {
+      setOauthError(AUTH_FAILURE_COPY.generic);
+    } finally {
+      setOauthPending(null);
     }
   }
 
@@ -163,6 +195,31 @@ function LoginPageContent() {
           </p>
         )}
       </div>
+
+      <div style={{ marginTop: "var(--space-lg)", display: "flex", gap: "var(--space-sm)" }}>
+        <button
+          type="button"
+          onClick={() => handleOAuthSignIn("google")}
+          disabled={oauthPending !== null}
+          style={buttonStyle}
+        >
+          Sign in with Google
+        </button>
+        <button
+          type="button"
+          onClick={() => handleOAuthSignIn("apple")}
+          disabled={!appleSignInAvailable || oauthPending !== null}
+          style={buttonStyle}
+          title={appleSignInAvailable ? undefined : "Apple sign-in isn't configured yet"}
+        >
+          Sign in with Apple{!appleSignInAvailable && " (coming soon)"}
+        </button>
+      </div>
+      {oauthError && (
+        <p className="text-body-md" style={{ ...errorStyle, marginTop: "var(--space-sm)" }} role="alert">
+          {oauthError}
+        </p>
+      )}
 
       <button
         type="button"
