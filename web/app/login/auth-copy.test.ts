@@ -24,6 +24,12 @@ describe("mapSignInError (Story 2.3a AC-3, Task 4.4)", () => {
       AUTH_FAILURE_COPY.generic,
     );
   });
+
+  it("maps error.code 'email_not_confirmed' to the check-your-email copy", () => {
+    expect(mapSignInError({ code: "email_not_confirmed", message: "irrelevant" })).toBe(
+      AUTH_FAILURE_COPY.emailNotConfirmed,
+    );
+  });
 });
 
 describe("isAlreadyRegisteredSignUp (Story 2.3a AC-1/AC-3, Task 4.4)", () => {

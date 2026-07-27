@@ -20,16 +20,25 @@ export async function GET(request: NextRequest) {
 
   const supabase = await createClient();
 
-  if (code) {
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) {
-      redirect("/");
+  // Supabase calls are caught (not the redirect()s below — redirect() works
+  // by throwing, so it must stay outside this block or its own throw would
+  // be swallowed here) so a network hiccup falls through to the calm failure
+  // redirect instead of surfacing a raw 500.
+  let confirmed = false;
+  try {
+    if (code) {
+      const { error } = await supabase.auth.exchangeCodeForSession(code);
+      confirmed = !error;
+    } else if (tokenHash && type) {
+      const { error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
+      confirmed = !error;
     }
-  } else if (tokenHash && type) {
-    const { error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
-    if (!error) {
-      redirect("/");
-    }
+  } catch {
+    confirmed = false;
+  }
+
+  if (confirmed) {
+    redirect("/");
   }
 
   redirect("/login?error=confirmation-failed");

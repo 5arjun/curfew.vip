@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useActionState, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { AUTH_FAILURE_COPY } from "./auth-copy";
 import { INITIAL_AUTH_STATE } from "./auth-state";
@@ -42,12 +43,22 @@ const buttonStyle: React.CSSProperties = {
 };
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageContent />
+    </Suspense>
+  );
+}
+
+function LoginPageContent() {
   const [mode, setMode] = useState<Mode>("login");
   const [signInState, signInAction, signInPending] = useActionState(signIn, INITIAL_AUTH_STATE);
   const [signUpState, signUpAction, signUpPending] = useActionState(signUp, INITIAL_AUTH_STATE);
   const [passkeySignedIn, setPasskeySignedIn] = useState(false);
   const [passkeyError, setPasskeyError] = useState<string | null>(null);
   const [passkeyPending, setPasskeyPending] = useState(false);
+  const searchParams = useSearchParams();
+  const confirmationFailed = searchParams.get("error") === "confirmation-failed";
 
   const state = mode === "login" ? signInState : signUpState;
   const pending = mode === "login" ? signInPending : signUpPending;
@@ -56,13 +67,18 @@ export default function LoginPage() {
     setPasskeyError(null);
     setPasskeyPending(true);
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPasskey();
-    setPasskeyPending(false);
-    if (error) {
-      setPasskeyError(AUTH_FAILURE_COPY.wrongPassword);
-      return;
+    try {
+      const { error } = await supabase.auth.signInWithPasskey();
+      if (error) {
+        setPasskeyError(AUTH_FAILURE_COPY.generic);
+        return;
+      }
+      setPasskeySignedIn(true);
+    } catch {
+      setPasskeyError(AUTH_FAILURE_COPY.generic);
+    } finally {
+      setPasskeyPending(false);
     }
-    setPasskeySignedIn(true);
   }
 
   if (state.status === "signed-in" || passkeySignedIn) {
@@ -82,6 +98,16 @@ export default function LoginPage() {
       <h1 className="text-headline-md" style={{ marginBottom: "var(--space-lg)" }}>
         {mode === "login" ? "Log in" : "Sign up"}
       </h1>
+
+      {confirmationFailed && (
+        <p
+          className="text-body-md"
+          style={{ ...errorStyle, marginBottom: "var(--space-md)" }}
+          role="alert"
+        >
+          {AUTH_FAILURE_COPY.generic}
+        </p>
+      )}
 
       <form action={mode === "login" ? signInAction : signUpAction}>
         <div style={fieldStyle}>
@@ -159,11 +185,20 @@ function EnablePasskeyPrompt() {
   useEffect(() => {
     let cancelled = false;
     const supabase = createClient();
-    supabase.auth.passkey.list().then(({ data }) => {
-      if (cancelled) return;
-      setHasPasskey((data?.length ?? 0) > 0);
-      setChecking(false);
-    });
+    supabase.auth.passkey
+      .list()
+      .then(({ data }) => {
+        if (cancelled) return;
+        setHasPasskey((data?.length ?? 0) > 0);
+      })
+      .catch(() => {
+        // Leave hasPasskey at its default (false) — the "Enable Passkey" CTA
+        // still renders, which is the safe direction to fail in (skippable,
+        // never blocking per UX-DR20).
+      })
+      .finally(() => {
+        if (!cancelled) setChecking(false);
+      });
     return () => {
       cancelled = true;
     };
@@ -173,15 +208,21 @@ function EnablePasskeyPrompt() {
     setError(null);
     setRegistering(true);
     const supabase = createClient();
-    // registerPasskey() requires an existing session — it structurally cannot
-    // create a separate identity, only add on to the signed-in account (AC-2).
-    const { error } = await supabase.auth.registerPasskey();
-    setRegistering(false);
-    if (error) {
+    try {
+      // registerPasskey() requires an existing session — it structurally
+      // cannot create a separate identity, only add on to the signed-in
+      // account (AC-2).
+      const { error } = await supabase.auth.registerPasskey();
+      if (error) {
+        setError(AUTH_FAILURE_COPY.generic);
+        return;
+      }
+      setRegistered(true);
+    } catch {
       setError(AUTH_FAILURE_COPY.generic);
-      return;
+    } finally {
+      setRegistering(false);
     }
-    setRegistered(true);
   }
 
   return (

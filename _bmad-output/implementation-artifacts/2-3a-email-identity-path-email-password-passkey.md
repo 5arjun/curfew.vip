@@ -4,7 +4,7 @@ baseline_commit: a12d0f658c581e2fdeb6ebb158a3110911f4d1ae
 
 # Story 2.3a: Email-identity path (email+password + passkey)
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -79,6 +79,24 @@ so that I have a base Curfew identity anchored to my verified email.
   - [x] 8.1 `pnpm --filter web lint`, `pnpm --filter web typecheck`, `pnpm --filter web build`, `pnpm --filter web test`. All pass (12 tests, up from 3).
   - [x] 8.2 Manual verification against the local Supabase stack (`supabase start` from repo root), driven end-to-end through the real browser UI (Chrome, via claude-in-chrome browser automation) plus direct Supabase Auth API/Postgres checks: (a) signed up with a real address, confirmed via the Mailpit-captured email link, verified `auth.users.email_confirmed_at` flipped true and a `djs` row exists — full flow works end-to-end, not just the trigger; (b) wrong-password login shows "Credentials not recognized — try again." inline, no modal/alarm color; (c) signup with an already-registered (confirmed) email shows "Account already archived — log in instead." inline; (d) clicking "Sign in with Passkey" correctly invokes the real WebAuthn API and opens a native OS credential picker — completing the full register/sign-in ceremony end-to-end was not possible in this environment (no real platform authenticator, no CDP WebAuthn-domain control exposed to the browser-automation tool used), consistent with Task 5.4's own anticipation of this limit.
   - [x] 8.3 Repo-root gate: `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm test` — all pass. No regression in `shared/`'s 13 tests or `agent/`; `web/` grew from 3 to 12 tests (9 new, all passing). Actually run on this machine per the standing Epic-2+ rule (sprint-status `action_items` ai-8).
+
+### Review Findings
+
+- [x] [Review][Patch] Unconfirmed-email login shows generic failure copy, not a "confirm your email" message — `mapSignInError` (`web/app/login/auth-copy.ts:18-23`) doesn't recognize Supabase's `email_not_confirmed` error code. Resolved by Arjun (2026-07-27): added a dedicated `emailNotConfirmed` copy string ("Check your email to confirm your account first.", matching the existing check-email state's tone) and mapped `error.code === "email_not_confirmed"` to it, plus a new test. [web/app/login/auth-copy.ts]
+- [x] [Review][Patch] Confirmation-link failure produces a bare login form with no visible error — fixed: `page.tsx` now reads the `error` search param (via `useSearchParams`, wrapped in `<Suspense>`) and shows the calm generic Failure Register copy inline when `error=confirmation-failed`. [web/app/auth/confirm/route.ts:35, web/app/login/page.tsx]
+- [x] [Review][Patch] Passkey sign-in failure misapplied the wrong-password Failure Register string — fixed: now uses `AUTH_FAILURE_COPY.generic`. [web/app/login/page.tsx:61-63]
+- [x] [Review][Patch] Confirm route's exchangeCodeForSession/verifyOtp calls were unguarded — fixed: wrapped in try/catch (redirect() calls kept outside the try block, since redirect() itself throws). [web/app/auth/confirm/route.ts:15-36]
+- [x] [Review][Patch] Middleware's getClaims() call and non-null-asserted env vars were unguarded — fixed: middleware now returns the unrefreshed response gracefully on missing env vars and wraps getClaims() in try/catch; client.ts/server.ts now throw a clear, actionable error instead of a bare non-null assertion. [web/lib/supabase/middleware.ts, client.ts, server.ts]
+- [x] [Review][Patch] EnablePasskeyPrompt's passkey.list() call had no .catch() — fixed: added .catch()/.finally() so "checking" always resolves regardless of outcome. [web/app/login/page.tsx:159-170]
+- [x] [Review][Patch] registerPasskey()/signInWithPasskey() calls weren't wrapped in try/catch — fixed: both now use try/catch/finally so the pending-state flag always resets. [web/app/login/page.tsx:55-66,172-185]
+
+All patches verified: full gate green (`web` lint/typecheck/build/test — 13 tests, up from 12; repo-root `pnpm lint`/`typecheck`/`build`/`test` via turbo — `shared`'s 13 tests and `agent`'s checks unaffected).
+- [x] [Review][Defer] Visiting /login while already signed in re-shows the form instead of redirecting away — no session check on mount [web/app/login/page.tsx:44] — deferred, real redirect-target routing pattern belongs with Epic 3's real Dashboard, not this story's placeholder `/`.
+- [x] [Review][Defer] Toggling Login/Signup mode doesn't reset the other mode's stale useActionState error [web/app/login/page.tsx:141-147] — deferred, cosmetic, no data-integrity or security impact.
+- [x] [Review][Defer] inputStyle hardcodes fontSize: "16px" instead of a tokens.css reference [web/app/login/page.tsx:28] — deferred, Story 2.4 owns this story's explicit visual-polish boundary.
+- [x] [Review][Defer] experimental.passkey opt-in duplicated verbatim across three client constructors instead of centralized [web/lib/supabase/client.ts, server.ts, middleware.ts] — deferred, maintainability nit, no functional impact today.
+- [x] [Review][Defer] No application-level rate limiting on signIn/signUp Server Actions, relies entirely on Supabase's own untouched [auth.rate_limit] config [web/app/login/actions.ts] — deferred, a larger decision than this story owns.
+- [x] [Review][Defer] Task 5.1's "prompt after successful signUp" trigger never fires as written — Task 1.1's confirmation gate means signUp() always returns a null session, so the passkey prompt only appears after a later signIn, not immediately post-signup [web/app/login/actions.ts:49-53, web/app/login/page.tsx:68-69] — deferred, AC-2 still holds (prompt remains session-gated), internal Task-level contradiction only.
 
 ## Dev Notes
 
