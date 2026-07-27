@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(13);
+select plan(16);
 
 -- Seed two auth users; the AFTER INSERT trigger (handle_new_dj) should create
 -- exactly one matching public.djs row for each.
@@ -93,6 +93,35 @@ select throws_ok(
 reset role;
 reset request.jwt.claims;
 
+-- Case 3d: Story 2.3c's new column-scoped grant + RLS policy -- as
+-- authenticated DJ A, updating their own `phone` succeeds and the stored
+-- value actually changes (not just "the UPDATE didn't throw").
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
+
+update public.djs set phone = '+15555550100' where id = '11111111-1111-1111-1111-111111111111';
+
+select is(
+  (select phone from public.djs where id = '11111111-1111-1111-1111-111111111111'),
+  '+15555550100',
+  'authenticated DJ A can update their own phone'
+);
+
+-- Case 3e: as authenticated DJ A, attempting to update DJ B's `phone` is an
+-- RLS USING-clause row-scoping failure -- the UPDATE silently affects zero
+-- rows rather than throwing 42501 (unlike a missing table/column grant).
+-- Assert via the row's value staying unchanged, not throws_ok.
+update public.djs set phone = '+15555550199' where id = '22222222-2222-2222-2222-222222222222';
+
+reset role;
+reset request.jwt.claims;
+
+select is(
+  (select phone from public.djs where id = '22222222-2222-2222-2222-222222222222'),
+  null::text,
+  'authenticated DJ A cannot change DJ B''s phone (RLS blocks the row, not the grant)'
+);
+
 -- Case 4: as anon with no JWT (auth.uid() is null), a select on djs returns
 -- zero rows -- not a permission error.
 set local role anon;
@@ -131,6 +160,15 @@ select throws_ok(
   '42501'::char(5),
   NULL,
   'anon cannot delete from djs (no delete grant)'
+);
+
+-- Case 4c: Story 2.3c's phone grant is scoped to `authenticated` only -- anon
+-- has no update grant on `phone` (or any column) at all.
+select throws_ok(
+  $$ update public.djs set phone = '+15555550100' where id = '11111111-1111-1111-1111-111111111111' $$,
+  '42501'::char(5),
+  NULL,
+  'anon cannot update phone (no grant exists for anon)'
 );
 
 reset role;

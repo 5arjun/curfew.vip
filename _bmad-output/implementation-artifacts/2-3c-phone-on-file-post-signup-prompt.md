@@ -4,7 +4,7 @@ baseline_commit: 930732336e8f549580d3020200e0bf6d9c132621
 
 # Story 2.3c: Phone-on-file (post-signup prompt)
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -32,51 +32,51 @@ so that every account has a phone on file as required.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Additive migration: the first DJ-writable `djs` column (AC: 1)**
-  - [ ] 1.1 Generate via `supabase migration new add_djs_phone_column` (auto-timestamped, matches the project's existing two migrations' naming convention — do not hand-pick a timestamp).
-  - [ ] 1.2 `alter table public.djs add column phone text;` — nullable (existing rows, including every email-path account created by 2.3a/2.3b testing, must not break), additive-only per AR-12/AD-15. Do not touch `id`/`created_at`, do not add a `NOT NULL` constraint (that would require a default for existing rows and contradicts "prompted after signup," not "required at the DB level for every row").
-  - [ ] 1.3 `grant update (phone) on public.djs to authenticated;` — **column-scoped, not a blanket `update` grant** (see AD-19 note in Scope boundaries above — this is the one line in this story most likely to be gotten wrong).
-  - [ ] 1.4 New policy: `create policy "djs_update_own_phone" on public.djs for update using (auth.uid() is not null and auth.uid() = id) with check (auth.uid() is not null and auth.uid() = id);` — same null-safe `auth.uid() is not null and auth.uid() = id` form as the existing `djs_select_own` policy (house style, not optional — see Story 2.1's migration comment on why null-safety matters here).
-  - [ ] 1.5 Do not add `INSERT`/`DELETE` grants or policies on `djs` — out of scope, `handle_new_dj()`'s `SECURITY DEFINER` trigger remains the only row creator.
+- [x] **Task 1 — Additive migration: the first DJ-writable `djs` column (AC: 1)**
+  - [x] 1.1 Generate via `supabase migration new add_djs_phone_column` (auto-timestamped, matches the project's existing two migrations' naming convention — do not hand-pick a timestamp).
+  - [x] 1.2 `alter table public.djs add column phone text;` — nullable (existing rows, including every email-path account created by 2.3a/2.3b testing, must not break), additive-only per AR-12/AD-15. Do not touch `id`/`created_at`, do not add a `NOT NULL` constraint (that would require a default for existing rows and contradicts "prompted after signup," not "required at the DB level for every row").
+  - [x] 1.3 `grant update (phone) on public.djs to authenticated;` — **column-scoped, not a blanket `update` grant** (see AD-19 note in Scope boundaries above — this is the one line in this story most likely to be gotten wrong).
+  - [x] 1.4 New policy: `create policy "djs_update_own_phone" on public.djs for update using (auth.uid() is not null and auth.uid() = id) with check (auth.uid() is not null and auth.uid() = id);` — same null-safe `auth.uid() is not null and auth.uid() = id` form as the existing `djs_select_own` policy (house style, not optional — see Story 2.1's migration comment on why null-safety matters here).
+  - [x] 1.5 Do not add `INSERT`/`DELETE` grants or policies on `djs` — out of scope, `handle_new_dj()`'s `SECURITY DEFINER` trigger remains the only row creator.
 
-- [ ] **Task 2 — pgTAP coverage for the new write path (AC: 1)**
-  - [ ] 2.1 In `supabase/tests/djs_isolation_test.sql`, bump `select plan(13)` to the new total. Keep the existing Case 3c assertion (`update public.djs set created_at = now() ... throws_ok 42501`) — it must still pass unmodified, since the new grant is scoped to `phone` only, not `created_at`.
-  - [ ] 2.2 Add: authenticated DJ A can update their own `phone` — perform the update, then `select`/`is()` to confirm the stored value actually changed (don't just assert the `UPDATE` didn't throw).
-  - [ ] 2.3 Add: authenticated DJ A **cannot** change DJ B's `phone`. This is an RLS `USING`-clause row-scoping failure, **not** a grant-level failure — in Postgres, an `UPDATE` whose `USING` clause matches zero rows silently affects 0 rows, it does **not** raise `42501` the way a missing table/column grant does. Assert via row-count/`results_eq` (e.g. confirm DJ B's `phone` is unchanged after DJ A's attempted update), not `throws_ok`.
-  - [ ] 2.4 Add: `anon` cannot update `phone` at all — `throws_ok`, `42501` (no grant exists for `anon`, mirrors the existing Case 4b pattern for `created_at`).
-  - [ ] 2.5 Run for real: `supabase db reset && supabase test db supabase/tests` (per `supabase/README.md`) — must actually execute on this machine, not be assumed green.
+- [x] **Task 2 — pgTAP coverage for the new write path (AC: 1)**
+  - [x] 2.1 In `supabase/tests/djs_isolation_test.sql`, bump `select plan(13)` to the new total. Keep the existing Case 3c assertion (`update public.djs set created_at = now() ... throws_ok 42501`) — it must still pass unmodified, since the new grant is scoped to `phone` only, not `created_at`.
+  - [x] 2.2 Add: authenticated DJ A can update their own `phone` — perform the update, then `select`/`is()` to confirm the stored value actually changed (don't just assert the `UPDATE` didn't throw).
+  - [x] 2.3 Add: authenticated DJ A **cannot** change DJ B's `phone`. This is an RLS `USING`-clause row-scoping failure, **not** a grant-level failure — in Postgres, an `UPDATE` whose `USING` clause matches zero rows silently affects 0 rows, it does **not** raise `42501` the way a missing table/column grant does. Assert via row-count/`results_eq` (e.g. confirm DJ B's `phone` is unchanged after DJ A's attempted update), not `throws_ok`.
+  - [x] 2.4 Add: `anon` cannot update `phone` at all — `throws_ok`, `42501` (no grant exists for `anon`, mirrors the existing Case 4b pattern for `created_at`).
+  - [x] 2.5 Run for real: `supabase db reset && supabase test db supabase/tests` (per `supabase/README.md`) — must actually execute on this machine, not be assumed green.
 
-- [ ] **Task 3 — `/phone-required` screen (AC: 1, 2)**
-  - [ ] 3.1 New file `web/app/phone-required/page.tsx` — client component, its own page (not a modal/dialog — satisfies AC-2 by construction, nothing to build there). Heading copy verbatim from EXPERIENCE.md's State Patterns row: **"Add a phone number."** Reuse the existing `fieldStyle`/`inputStyle`/`buttonStyle` object-literal constants pattern from `web/app/login/page.tsx` (copy them locally or factor out — your call, but match their values) — functional/unpolished like every prior auth screen; Story 2.4 owns the Ghost-input visual spec.
-  - [ ] 3.2 On mount (or server-side in the page itself, your call), require an authenticated session — if none, redirect to `/login`. This page has nothing to do for a signed-out visitor.
-  - [ ] 3.3 Single field: `<input type="tel" name="phone" required>`. No format library, no masking, no E.164 enforcement — AC-1 says "captured (single-field, required)," not "verified" or "formatted." Do not add `libphonenumber`/`libphonenumber-js` or any new dependency.
-  - [ ] 3.4 No skip/cancel control anywhere on this page — EXPERIENCE.md's State Patterns row is explicit: "Not skippable."
+- [x] **Task 3 — `/phone-required` screen (AC: 1, 2)**
+  - [x] 3.1 New file `web/app/phone-required/page.tsx` — client component, its own page (not a modal/dialog — satisfies AC-2 by construction, nothing to build there). Heading copy verbatim from EXPERIENCE.md's State Patterns row: **"Add a phone number."** Reuse the existing `fieldStyle`/`inputStyle`/`buttonStyle` object-literal constants pattern from `web/app/login/page.tsx` (copy them locally or factor out — your call, but match their values) — functional/unpolished like every prior auth screen; Story 2.4 owns the Ghost-input visual spec.
+  - [x] 3.2 On mount (or server-side in the page itself, your call), require an authenticated session — if none, redirect to `/login`. This page has nothing to do for a signed-out visitor.
+  - [x] 3.3 Single field: `<input type="tel" name="phone" required>`. No format library, no masking, no E.164 enforcement — AC-1 says "captured (single-field, required)," not "verified" or "formatted." Do not add `libphonenumber`/`libphonenumber-js` or any new dependency.
+  - [x] 3.4 No skip/cancel control anywhere on this page — EXPERIENCE.md's State Patterns row is explicit: "Not skippable."
 
-- [ ] **Task 4 — Server Action to persist the phone number (AC: 1)**
-  - [ ] 4.1 New file `web/app/phone-required/actions.ts` (`"use server"`) — `setPhone(prevState, formData)`. Define its own small state type locally (don't force-fit `web/app/login/auth-state.ts`'s `AuthActionState` — its `fieldErrors: { email?, password?, form? }` shape doesn't have a `phone` key and is conceptually the login/signup form's type, not this one's).
-  - [ ] 4.2 Read `phone` from `formData`, trim it, reject empty with a field error (don't rely on the HTML `required` attribute alone — Server Actions can be invoked with JS disabled/bypassed).
-  - [ ] 4.3 Get the **server** Supabase client (`web/lib/supabase/server.ts`), call `auth.getUser()` — if no user, return a form error (do not silently `redirect()` from inside the action; let the page-level guard in Task 3.2 own navigation).
-  - [ ] 4.4 `await supabase.from("djs").update({ phone }).eq("id", user.id)` — this is what Task 1's column-scoped grant + RLS policy exist to allow. On a Supabase/PostgREST error, return `AUTH_FAILURE_COPY.generic` ("Something went sideways — try again.") imported from `web/app/login/auth-copy.ts` — reuse verbatim, don't invent a new copy string (same reuse-generic-for-unregistered-failures precedent 2.3b already established for OAuth errors).
-  - [ ] 4.5 On success, `redirect("/")` — same placeholder-scaffold-root convention every prior auth story used (Epic 3 owns the real Dashboard).
+- [x] **Task 4 — Server Action to persist the phone number (AC: 1)**
+  - [x] 4.1 New file `web/app/phone-required/actions.ts` (`"use server"`) — `setPhone(prevState, formData)`. Define its own small state type locally (don't force-fit `web/app/login/auth-state.ts`'s `AuthActionState` — its `fieldErrors: { email?, password?, form? }` shape doesn't have a `phone` key and is conceptually the login/signup form's type, not this one's).
+  - [x] 4.2 Read `phone` from `formData`, trim it, reject empty with a field error (don't rely on the HTML `required` attribute alone — Server Actions can be invoked with JS disabled/bypassed).
+  - [x] 4.3 Get the **server** Supabase client (`web/lib/supabase/server.ts`), call `auth.getUser()` — if no user, return a form error (do not silently `redirect()` from inside the action; let the page-level guard in Task 3.2 own navigation).
+  - [x] 4.4 `await supabase.from("djs").update({ phone }).eq("id", user.id)` — this is what Task 1's column-scoped grant + RLS policy exist to allow. On a Supabase/PostgREST error, return `AUTH_FAILURE_COPY.generic` ("Something went sideways — try again.") imported from `web/app/login/auth-copy.ts` — reuse verbatim, don't invent a new copy string (same reuse-generic-for-unregistered-failures precedent 2.3b already established for OAuth errors).
+  - [x] 4.5 On success, `redirect("/")` — same placeholder-scaffold-root convention every prior auth story used (Epic 3 owns the real Dashboard).
 
-- [ ] **Task 5 — Gate both "account becomes usable" routes on phone-on-file (AC: 1)**
-  - [ ] 5.1 New small helper — e.g. `web/lib/supabase/phone-gate.ts` exporting `async function needsPhone(supabase, userId: string): Promise<boolean>` — wraps `.from("djs").select("phone").eq("id", userId).single()` and returns `true` when `phone` is null/empty. Catch errors internally and return `false` (fail toward the least-blocking path — see 5.4). Both routes below import this one helper; do not duplicate the query.
-  - [ ] 5.2 In `web/app/auth/callback/route.ts`, after a successful `exchangeCodeForSession` and **before** the existing `redirect("/")`, call `needsPhone(supabase, data.user.id)` (`data.user` comes directly from `exchangeCodeForSession`'s own return value — no extra `getUser()` round trip needed). If `true`, `redirect("/phone-required")` instead of `/`.
-  - [ ] 5.3 In `web/app/auth/confirm/route.ts`, apply the identical pattern: after `confirmed` is established (either the `code` or `token_hash` branch succeeded) and **before** the existing `redirect("/")`, get the user via `supabase.auth.getUser()` (this route doesn't already have a `user` object in scope like the callback route does) and call `needsPhone(supabase, user.id)`. If `true`, `redirect("/phone-required")` instead of `/`. This is the email+password path's equivalent of Task 5.2 — the point Story 2.3a's Task 1.1 made "no usable session until confirmed," i.e. the first moment an email-path account is usable.
-  - [ ] 5.4 Wrap each lookup in the same try/catch discipline already used by both routes (network hiccup → fail toward `redirect("/")`, the least-blocking path, not a raw 500 — same "calm degrade" convention). A DJ who lands on `/` once due to a transient lookup failure gets re-gated next time they hit either route with `phone` still null (OAuth re-checks on every sign-in; email re-checks only don't apply since confirmation is one-time — see Scope resolution's accepted residual limitation above).
-  - [ ] 5.5 Do **not** add a global/middleware-level gate (`proxy.ts`/`middleware.ts`) — two explicit route-level checks, sharing one helper, is the whole mechanism.
+- [x] **Task 5 — Gate both "account becomes usable" routes on phone-on-file (AC: 1)**
+  - [x] 5.1 New small helper — e.g. `web/lib/supabase/phone-gate.ts` exporting `async function needsPhone(supabase, userId: string): Promise<boolean>` — wraps `.from("djs").select("phone").eq("id", userId).single()` and returns `true` when `phone` is null/empty. Catch errors internally and return `false` (fail toward the least-blocking path — see 5.4). Both routes below import this one helper; do not duplicate the query.
+  - [x] 5.2 In `web/app/auth/callback/route.ts`, after a successful `exchangeCodeForSession` and **before** the existing `redirect("/")`, call `needsPhone(supabase, data.user.id)` (`data.user` comes directly from `exchangeCodeForSession`'s own return value — no extra `getUser()` round trip needed). If `true`, `redirect("/phone-required")` instead of `/`.
+  - [x] 5.3 In `web/app/auth/confirm/route.ts`, apply the identical pattern: after `confirmed` is established (either the `code` or `token_hash` branch succeeded) and **before** the existing `redirect("/")`, get the user via `supabase.auth.getUser()` (this route doesn't already have a `user` object in scope like the callback route does) and call `needsPhone(supabase, user.id)`. If `true`, `redirect("/phone-required")` instead of `/`. This is the email+password path's equivalent of Task 5.2 — the point Story 2.3a's Task 1.1 made "no usable session until confirmed," i.e. the first moment an email-path account is usable.
+  - [x] 5.4 Wrap each lookup in the same try/catch discipline already used by both routes (network hiccup → fail toward `redirect("/")`, the least-blocking path, not a raw 500 — same "calm degrade" convention). A DJ who lands on `/` once due to a transient lookup failure gets re-gated next time they hit either route with `phone` still null (OAuth re-checks on every sign-in; email re-checks only don't apply since confirmation is one-time — see Scope resolution's accepted residual limitation above).
+  - [x] 5.5 Do **not** add a global/middleware-level gate (`proxy.ts`/`middleware.ts`) — two explicit route-level checks, sharing one helper, is the whole mechanism.
 
-- [ ] **Task 6 — Tests (AC: 1, 2)**
-  - [ ] 6.1 If `setPhone`'s validation stays a bare trim/non-empty check (Task 4.2), there is no new pure logic worth isolating in a `*.test.ts` file — do not force one into existence (same testing philosophy 2.3a/2.3b already established: "do not force a test into existence where there's nothing pure to test"). If you do factor out a pure helper (e.g. a phone-normalizer), unit-test it alongside `web/app/login/auth-copy.test.ts`'s existing convention.
-  - [ ] 6.2 Confirm `web/app/phone-required/**` passes the existing `no-hardcoded-colors.test.ts` guard unmodified — tokens only, same as every other new page in this repo.
+- [x] **Task 6 — Tests (AC: 1, 2)**
+  - [x] 6.1 If `setPhone`'s validation stays a bare trim/non-empty check (Task 4.2), there is no new pure logic worth isolating in a `*.test.ts` file — do not force one into existence (same testing philosophy 2.3a/2.3b already established: "do not force a test into existence where there's nothing pure to test"). If you do factor out a pure helper (e.g. a phone-normalizer), unit-test it alongside `web/app/login/auth-copy.test.ts`'s existing convention.
+  - [x] 6.2 Confirm `web/app/phone-required/**` passes the existing `no-hardcoded-colors.test.ts` guard unmodified — tokens only, same as every other new page in this repo.
 
-- [ ] **Task 7 — Full gate**
-  - [ ] 7.1 `pnpm --filter web lint`, `pnpm --filter web typecheck`, `pnpm --filter web build`, `pnpm --filter web test` — all green.
-  - [ ] 7.2 `supabase db reset && supabase test db supabase/tests` — all pgTAP cases green, including Task 2's three new cases.
-  - [ ] 7.3 Manual verification, both paths:
+- [x] **Task 7 — Full gate**
+  - [x] 7.1 `pnpm --filter web lint`, `pnpm --filter web typecheck`, `pnpm --filter web build`, `pnpm --filter web test` — all green.
+  - [x] 7.2 `supabase db reset && supabase test db supabase/tests` — all pgTAP cases green, including Task 2's three new cases.
+  - [x] 7.3 Manual verification, both paths:
     - **OAuth:** Google credentials are already live in this environment (Story 2.3b's `supabase/.env`, real Client ID/Secret) — sign in via Google with an account whose `djs.phone` is null, confirm the redirect lands on `/phone-required`, not `/`. Submit a phone number, confirm redirect to `/` and the DB row updated. Sign in again via Google with the same account, confirm it now lands directly on `/` (not re-prompted — phone already on file). Apple stays untestable pending Story 2.3b's Task 1.2 (real Apple credentials still not acquired as of this story's creation) — say so explicitly in the Dev Agent Record if still blocked; do not claim it verified.
     - **Email+password:** sign up fresh via the local Supabase stack (Story 2.3a's flow), confirm via the Mailpit-captured link, confirm the confirmation redirect lands on `/phone-required` (not `/`). Submit a phone number, confirm redirect to `/` and the DB row updated.
-  - [ ] 7.4 Repo-root gate: `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm test` via turbo — must be actually run on this machine (standing Epic-2+ rule, sprint-status `action_items` ai-8). Confirm no regression in `shared/`'s test count (currently 13).
+  - [x] 7.4 Repo-root gate: `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm test` via turbo — must be actually run on this machine (standing Epic-2+ rule, sprint-status `action_items` ai-8). Confirm no regression in `shared/`'s test count (currently 13).
 
 ## Dev Notes
 
@@ -139,8 +139,44 @@ Same convention as 2.3a/2.3b: co-located `*.test.ts` files, pure-function unit t
 
 ### Agent Model Used
 
+claude-sonnet-5 (Claude Code)
+
 ### Debug Log References
+
+- Additive-only guard (`supabase/scripts/check-additive-only-migrations.sh`) re-run directly against the new migration: `All migrations under supabase/migrations are additive-only.`
+- `supabase db reset` applied `20260727192439_add_djs_phone_column.sql` cleanly on top of the two existing migrations.
+- `supabase test db supabase/tests`: `Files=1, Tests=16, ... Result: PASS` (bumped from 13; the three new Task 2 cases plus the ten pre-existing ones plus Case 3/3b/4).
+- `pnpm --filter web {lint,typecheck,build,test}`: all green; build shows `/phone-required` as a new static route; test count unchanged at 13 (no new pure logic to isolate per Task 6.1).
+- Repo-root `pnpm {lint,typecheck,build,test}` via turbo: all green, 3/3 tasks successful across `@curfew/shared`, `agent`, `web`; `shared`'s test count confirmed unchanged at 13 (no regression).
+- Manual verification (Task 7.3), both paths, actually run against the local stack:
+  - **Email+password:** signed up fresh (`phone-gate-test@example.com`) via the local stack, captured the confirmation link in Mailpit, confirmed the redirect landed on `/phone-required` (not `/`). Submitted a phone number; redirected to `/`; verified via `docker exec supabase_db_name-pending psql` that `public.djs.phone` was actually persisted (`+15555550123`).
+  - **Google OAuth:** confirmed the "Sign in with Google" redirect reaches `accounts.google.com` with the correct live `client_id`/`redirect_uri`/`response_type`/`scope` (same class of verification Story 2.3b's Debug Log already established). Completing the actual sign-in requires selecting/authenticating a real Google account — outside what this agent can do (both a standing policy restriction on entering account credentials, and the browser-automation extension itself has no permission to act on `accounts.google.com`). Arjun completed both sign-ins manually at the agent's request, using the account carried over from Story 2.3b's own live test (`arjunpat107@gmail.com`, `djs.phone` null going in): first sign-in landed on `/phone-required` (confirmed via direct DB query afterward — `phone` changed from null to `29374572920`, single row, no duplicate); second sign-in (same account, phone now on file) landed directly on `/`, not re-prompted. Both outcomes verified by this agent via `docker exec ... psql` against `public.djs`, not just observed in the browser.
+  - Apple was not tested — Story 2.3b's Task 1.2 (real Apple Developer credentials) is still unresolved as of this story, `[auth.external.apple]` remains disabled, matching the story's own instruction to say so explicitly rather than claim it verified.
 
 ### Completion Notes List
 
+- Implemented Story 2.3c exactly per its own pre-resolved scope (Arjun's 2026-07-27 ruling: phone-on-file gate applies to every signup path, not just OAuth). No new scope decisions were needed during implementation — the story file's own Scope boundaries/Scope resolution section already answered every ambiguity a fresh read would normally raise.
+- Task 1: first DJ-writable `djs` column, added via `supabase migration new add_djs_phone_column` → `20260727192439_add_djs_phone_column.sql`. Column-scoped `grant update (phone)` (not a blanket grant) + a new null-safe `djs_update_own_phone` RLS policy matching `djs_select_own`'s existing form, per AD-19. Additive-only guard re-verified green against the new migration.
+- Task 2: pgTAP suite bumped from 13 to 16 assertions (Case 3d: DJ A updates own phone, value verified; Case 3e: DJ A's attempt to update DJ B's phone is silently blocked by RLS row-scoping — asserted via unchanged value, not `throws_ok`, per the story's own correction that this is a `USING`-clause failure, not a grant failure; Case 4c: `anon` has no update grant on `phone`). All 16 pass against the real local Postgres instance.
+- Task 3/4: new `/phone-required` page (client component, heading "Add a phone number.", no skip control) + co-located `actions.ts` Server Action (`setPhone`), reusing `login/page.tsx`'s style-constant pattern and `AUTH_FAILURE_COPY.generic` for any Supabase/PostgREST failure. `setPhone`'s state type is defined locally in each of `actions.ts`/`page.tsx` (structurally identical, not cross-imported) rather than exported from the `"use server"` file, avoiding any ambiguity around what a Server Actions file may export.
+- Task 5: new `web/lib/supabase/phone-gate.ts` exporting `needsPhone()`, imported by both `auth/callback/route.ts` (OAuth) and `auth/confirm/route.ts` (email) ahead of their existing success redirect. `needsPhone()` catches its own errors and returns `false` (the least-blocking path), so a transient lookup failure can never demote an already-successful sign-in/confirmation to the `/login?error=confirmation-failed` failure page — it only ever affects whether the redirect target is `/` or `/phone-required`.
+- Task 6: no new pure logic was factored out (`setPhone`'s validation stayed a bare trim/non-empty check per Task 6.1's own guidance), so no new `*.test.ts` file was added; confirmed the existing `no-hardcoded-colors.test.ts` guard still passes unmodified against the new `phone-required/**` files.
+- Task 7: full local gate (web + repo-root) green, pgTAP green, and both the email+password and Google OAuth paths manually verified end-to-end against real state (Mailpit-captured email link; real Google sign-in performed by Arjun at this agent's request, DB state verified by this agent afterward via direct `psql` queries). Apple remains untestable, unchanged from Story 2.3b's own open blocker (Task 1.2, real Apple Developer credentials not yet acquired).
+
 ### File List
+
+**New:**
+- `supabase/migrations/20260727192439_add_djs_phone_column.sql`
+- `web/app/phone-required/page.tsx`
+- `web/app/phone-required/actions.ts`
+- `web/lib/supabase/phone-gate.ts`
+
+**Modified:**
+- `supabase/tests/djs_isolation_test.sql`
+- `web/app/auth/callback/route.ts`
+- `web/app/auth/confirm/route.ts`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
+
+## Change Log
+
+- 2026-07-27: Implemented Story 2.3c end-to-end (phone-on-file, both the email+password and OAuth signup paths per the story's own pre-resolved scope broadening). First DJ-writable `djs` column (`phone`, nullable, column-scoped `grant update` + new RLS policy per AD-19); pgTAP suite 13 → 16 assertions; new `/phone-required` screen + Server Action; new shared `needsPhone()` gate wired into both `auth/callback/route.ts` and `auth/confirm/route.ts` ahead of their existing success redirects. Full local + repo-root gate green (web: 13/13 tests unchanged, no new pure logic to test; shared: 13/13 unchanged; pgTAP: 16/16). Both email+password and Google OAuth paths manually verified end-to-end against the real local stack, including a second Google sign-in confirming a DJ with phone already on file is not re-prompted. Apple leg not tested — still blocked on Story 2.3b's Task 1.2 (real Apple Developer credentials), unchanged from that story's own open item.

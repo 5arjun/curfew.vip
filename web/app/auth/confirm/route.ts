@@ -2,6 +2,7 @@ import { type EmailOtpType } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import { type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { needsPhone } from "@/lib/supabase/phone-gate";
 
 // Email-confirmation callback. Supabase's default local email template links
 // to GoTrue's own hosted /auth/v1/verify endpoint, which — for a PKCE-flow
@@ -25,6 +26,7 @@ export async function GET(request: NextRequest) {
   // be swallowed here) so a network hiccup falls through to the calm failure
   // redirect instead of surfacing a raw 500.
   let confirmed = false;
+  let phoneRequired = false;
   try {
     if (code) {
       const { error } = await supabase.auth.exchangeCodeForSession(code);
@@ -33,12 +35,24 @@ export async function GET(request: NextRequest) {
       const { error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
       confirmed = !error;
     }
+
+    // needsPhone() catches its own errors and returns false (the
+    // least-blocking path — Story 2.3c Task 5.4), so it never flips
+    // `confirmed` back to false via this shared catch. This route doesn't
+    // already have a `user` object in scope like callback/route.ts does, so
+    // getUser() is required here first.
+    if (confirmed) {
+      const { data } = await supabase.auth.getUser();
+      if (data.user) {
+        phoneRequired = await needsPhone(supabase, data.user.id);
+      }
+    }
   } catch {
     confirmed = false;
   }
 
   if (confirmed) {
-    redirect("/");
+    redirect(phoneRequired ? "/phone-required" : "/");
   }
 
   redirect("/login?error=confirmation-failed");
