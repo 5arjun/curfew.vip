@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { AUTH_FAILURE_COPY } from "@/app/login/auth-copy";
+import { isValidPhone } from "./phone-validation";
 import type { PhoneActionState } from "./phone-state";
 
 export async function setPhone(
@@ -13,6 +14,10 @@ export async function setPhone(
 
   if (!phone) {
     return { status: "error", error: "Enter a phone number." };
+  }
+
+  if (!isValidPhone(phone)) {
+    return { status: "error", error: "Enter a valid phone number." };
   }
 
   const supabase = await createClient();

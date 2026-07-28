@@ -45,7 +45,16 @@ export function PhoneForm() {
         <label className="text-label-sm" htmlFor="phone">
           Phone number
         </label>
-        <input id="phone" name="phone" type="tel" autoComplete="tel" required style={inputStyle} />
+        <input
+          id="phone"
+          name="phone"
+          type="tel"
+          autoComplete="tel"
+          required
+          pattern="^\+?[0-9()\-.\s]{7,20}$"
+          maxLength={20}
+          style={inputStyle}
+        />
       </div>
 
       {state.status === "error" && state.error && (
