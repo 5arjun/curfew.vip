@@ -3,7 +3,15 @@
 // Apple caps the lifetime at ~183 days — regenerate before it expires (no auto-refresh).
 //
 // Usage:
-//   node supabase/generate-apple-client-secret.mjs <path-to-AuthKey.p8> <team-id> <key-id> <services-id>
+//   node supabase/generate-apple-client-secret.mjs --key <path-to-AuthKey.p8> --team-id <team-id> --key-id <key-id> --client-id <services-id>
+//
+// Named flags are deliberate, not cosmetic: --team-id and --key-id are both
+// opaque 10-char alphanumeric strings, so positional args made a transposed
+// pair (e.g. swapping Team ID and Key ID) indistinguishable by format alone —
+// it would pass silently and only fail once tested against Apple's live
+// servers. Named flags turn that into a much rarer, more visible mistake
+// (typing the wrong flag name), and this script still cross-checks the
+// resolved values against Apple's format below as a second line of defense.
 //
 // Never commit the .p8 file or the generated JWT. Paste the JWT straight into the
 // Supabase Dashboard (prod project → Authentication → Providers → Apple → Secret Key).
@@ -21,29 +29,46 @@ import { readFileSync } from "node:fs";
 import { createPrivateKey, createSign } from "node:crypto";
 
 const APPLE_ID_FORMAT = /^[A-Za-z0-9]{10}$/;
+const USAGE =
+  "Usage: node supabase/generate-apple-client-secret.mjs --key <path-to-.p8> --team-id <team-id> --key-id <key-id> --client-id <services-id>";
 
 function base64url(input) {
   return Buffer.from(input).toString("base64url");
 }
 
-function main() {
-  const [, , keyPath, teamId, keyId, clientId] = process.argv;
-  if (!keyPath || !teamId || !keyId || !clientId) {
-    console.error(
-      "Usage: node supabase/generate-apple-client-secret.mjs <path-to-.p8> <team-id> <key-id> <services-id>",
-    );
+function parseArgs(argv) {
+  const flags = { key: null, "team-id": null, "key-id": null, "client-id": null };
+  for (let i = 0; i < argv.length; i += 2) {
+    const flag = argv[i]?.replace(/^--/, "");
+    const value = argv[i + 1];
+    if (!(flag in flags) || value === undefined) {
+      console.error(`Error: unrecognized or incomplete flag "${argv[i] ?? ""}".\n\n${USAGE}`);
+      process.exit(1);
+    }
+    flags[flag] = value;
+  }
+  const missing = Object.entries(flags).filter(([, v]) => !v).map(([k]) => `--${k}`);
+  if (missing.length > 0) {
+    console.error(`Error: missing required flag(s): ${missing.join(", ")}.\n\n${USAGE}`);
     process.exit(1);
   }
+  return flags;
+}
+
+function main() {
+  const { key: keyPath, "team-id": teamId, "key-id": keyId, "client-id": clientId } = parseArgs(
+    process.argv.slice(2),
+  );
 
   if (!APPLE_ID_FORMAT.test(teamId)) {
     console.error(
-      `Error: <team-id> ("${teamId}") doesn't look like an Apple Team ID (expected 10 alphanumeric characters). Check you haven't swapped it with <key-id>.`,
+      `Error: --team-id ("${teamId}") doesn't look like an Apple Team ID (expected 10 alphanumeric characters).`,
     );
     process.exit(1);
   }
   if (!APPLE_ID_FORMAT.test(keyId)) {
     console.error(
-      `Error: <key-id> ("${keyId}") doesn't look like an Apple Key ID (expected 10 alphanumeric characters). Check you haven't swapped it with <team-id>.`,
+      `Error: --key-id ("${keyId}") doesn't look like an Apple Key ID (expected 10 alphanumeric characters).`,
     );
     process.exit(1);
   }
@@ -64,6 +89,12 @@ function main() {
     );
     process.exit(1);
   }
+  if (privateKey.asymmetricKeyDetails?.namedCurve !== "prime256v1") {
+    console.error(
+      `Error: the key at "${keyPath}" is on curve "${privateKey.asymmetricKeyDetails?.namedCurve ?? "unknown"}", not P-256 (prime256v1). ES256 requires P-256 — Apple's servers will reject a JWT signed with any other curve.`,
+    );
+    process.exit(1);
+  }
 
   const now = Math.floor(Date.now() / 1000);
   const maxLifetimeSeconds = 60 * 60 * 24 * 180; // stay under Apple's ~183-day hard cap
@@ -79,10 +110,16 @@ function main() {
 
   const signingInput = `${base64url(JSON.stringify(header))}.${base64url(JSON.stringify(payload))}`;
 
-  const signature = createSign("SHA256")
-    .update(signingInput)
-    .end()
-    .sign({ key: privateKey, dsaEncoding: "ieee-p1363" });
+  let signature;
+  try {
+    signature = createSign("SHA256")
+      .update(signingInput)
+      .end()
+      .sign({ key: privateKey, dsaEncoding: "ieee-p1363" });
+  } catch (err) {
+    console.error(`Error: failed to sign the JWT with the provided key: ${err.message}`);
+    process.exit(1);
+  }
 
   const jwt = `${signingInput}.${base64url(signature)}`;
 

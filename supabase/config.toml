@@ -330,6 +330,11 @@ max_frequency = "5s"
 enabled = false
 client_id = ""
 # DO NOT commit your OAuth provider secret to git. Use environment variable substitution instead:
+# Apple is permanently disabled here and configured instead per-environment via each Supabase
+# project's Dashboard (Sign In with Apple requires an HTTPS Return URL the local stack can't
+# provide — see web/README.md). SUPABASE_AUTH_EXTERNAL_APPLE_SECRET is intentionally never set
+# locally, so `supabase start`/`supabase status` will always warn that it's unset — expected,
+# safe to ignore (Story 2.3b, 3rd code review).
 secret = "env(SUPABASE_AUTH_EXTERNAL_APPLE_SECRET)"
 # Overrides the default auth callback URL derived from auth.external_url.
 redirect_uri = ""
