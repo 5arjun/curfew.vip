@@ -42,13 +42,17 @@ const buttonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-// [auth.external.apple] is still disabled server-side (Task 1.2 — pending real
-// Apple Developer credentials). Flip to true once it's enabled; no other code
-// change is needed. Left enabled client-side, clicking redirects straight to
-// GoTrue's /authorize, which rejects the disabled provider before ever
-// reaching this app's /auth/callback — bypassing the calm failure copy below
-// entirely (2026-07-27 review finding).
-const appleSignInAvailable = false;
+// Apple can never be enabled in local supabase/config.toml — Sign In with
+// Apple hard-requires an HTTPS Return URL, which the local Auth server
+// (http://127.0.0.1:54321) can't provide. Apple is configured per-environment
+// via the Supabase Dashboard instead (prod: enabled 2026-07-28), so this flag
+// reads an env var rather than being a single hardcoded constant. Left
+// enabled while the backend provider is actually disabled, clicking redirects
+// straight to GoTrue's /authorize, which rejects the disabled provider before
+// ever reaching this app's /auth/callback — bypassing the calm failure copy
+// below entirely (2026-07-27 review finding) — hence gating per-environment
+// rather than always-on.
+const appleSignInAvailable = process.env.NEXT_PUBLIC_APPLE_SIGNIN_AVAILABLE === "true";
 
 export default function LoginPage() {
   return (
