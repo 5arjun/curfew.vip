@@ -46,6 +46,10 @@ process environment, so that's where it looks:
 See [Supabase's Google guide](https://supabase.com/docs/guides/auth/social-login/auth-google)
 and [Apple guide](https://supabase.com/docs/guides/auth/social-login/auth-apple).
 
+Production email delivery (signup confirmation outside local dev) is wired
+per-project via the Supabase dashboard, not an env var here — see
+`supabase/EMAIL-PROVISIONING.md`.
+
 ## Notes
 
 - `@curfew/shared` is consumed **from source** via `transpilePackages` — no build of

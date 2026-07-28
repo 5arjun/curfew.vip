@@ -15,7 +15,7 @@ arrives around Story 2.10 (agent token storage) or Story 3.2 (sync). Running
 this runbook before then is optional; it does not block any code in this
 story.
 
-## 1. Create the Supabase organization + prod project
+## 1. Create the Supabase organization + prod project — done 2026-07-27
 
 1. Sign in at [supabase.com](https://supabase.com) (or create an account).
 2. Create an organization if one doesn't already exist. **Start on the free
@@ -33,7 +33,11 @@ story.
 4. Record the project's reference id (visible in the project's Settings →
    General, and in its dashboard URL) — this is `<prod-ref>` below.
 
-## 2. Connect GitHub (branching deferred — needs the Pro tier)
+**Status: done.** The prod project (named `prod`) exists on the free tier;
+`<prod-ref>` is `jmitbnrofacxwsbwuxzs`, already wired into this repo's
+`.mcp.json` (`supabase` MCP server URL's `project_ref` query param).
+
+## 2. Connect GitHub (branching deferred — needs the Pro tier) — done 2026-07-27
 
 1. In the project's dashboard, go to **Project Settings → Integrations →
    GitHub** and connect this repository through Supabase's GitHub App —
@@ -53,7 +57,7 @@ story.
    values (Supabase posts these as a PR comment/check) — no secret handling
    needed on our side for preview branches.
 
-## 3. Push the committed migrations to prod for the first time
+## 3. Push the committed migrations to prod for the first time — done 2026-07-27
 
 Run locally, from the repo root:
 
@@ -69,6 +73,11 @@ including this story's `create_djs_table` migration — to the real prod
 database for the first time. This is the same additive-only migration set
 CI already verifies applies cleanly against an ephemeral Postgres; pushing
 to prod does not run anything CI hasn't already exercised.
+
+**Status: done.** Steps 1–3 have all been run against the real `prod`
+project (`jmitbnrofacxwsbwuxzs`) — this unblocks
+`supabase/EMAIL-PROVISIONING.md` §3, which needed a real production project
+to wire SMTP settings onto.
 
 ## 4. CI secrets this unlocks (do not wire up yet)
 
@@ -93,3 +102,8 @@ live project exists. Whether Arjun has already run steps 1-3, wants to run
 them now, or defers them is his call — tracked as Story 2.1's Open Question
 #1. Whoever builds the first thing that actually needs the live connection
 is the natural forcing function if this hasn't been run by then.
+
+**As of 2026-07-27, steps 1-3 have been run for real** — see the per-step
+status notes above. Branching (step 2.2/2.3) remains deferred until the
+project upgrades off the free tier. CI secrets (§4) remain intentionally
+unwired.
