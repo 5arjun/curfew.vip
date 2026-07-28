@@ -15,35 +15,49 @@ arrives around Story 2.10 (agent token storage) or Story 3.2 (sync). Running
 this runbook before then is optional; it does not block any code in this
 story.
 
-## 1. Create the Supabase organization + prod project
+## 1. Create the Supabase organization + prod project — done 2026-07-27
 
 1. Sign in at [supabase.com](https://supabase.com) (or create an account).
-2. Create an organization if one doesn't already exist, and attach a billing
-   plan. The **paid tier is required**: it's what the Architecture Spine's
-   deployment table assumes for point-in-time-recovery (PITR) backups, and
-   the free tier does not support preview branching (step 2). **Pricing and
-   plan features change over time — verify current tier gating at
-   [supabase.com/pricing](https://supabase.com/pricing) before relying on
-   this claim; it reflects what was true as of 2026-07-25.**
+2. Create an organization if one doesn't already exist. **Start on the free
+   tier** — no billing plan needed yet. The free tier has no PITR backups
+   and no preview branching (confirmed against
+   [supabase.com/pricing](https://supabase.com/pricing), 2026-07-27);
+   upgrade to the Pro tier later to add both, once budget allows (tracked in
+   `pre-launch-services-checklist.md`). One free-tier caveat to know going
+   in: a free project **pauses after 7 days of inactivity** and needs a
+   manual unpause from the dashboard. **Pricing and plan features change
+   over time — re-verify at [supabase.com/pricing](https://supabase.com/pricing)
+   before relying on this claim.**
 3. Create a new project inside that organization. This is the **prod**
    project — a single dedicated project, not shared with any preview branch.
 4. Record the project's reference id (visible in the project's Settings →
    General, and in its dashboard URL) — this is `<prod-ref>` below.
 
-## 2. Connect GitHub + enable preview branching
+**Status: done.** The prod project (named `prod`) exists on the free tier;
+`<prod-ref>` is `jmitbnrofacxwsbwuxzs`, already wired into this repo's
+`.mcp.json` (`supabase` MCP server URL's `project_ref` query param).
+
+## 2. Connect GitHub (branching deferred — needs the Pro tier) — done 2026-07-27
 
 1. In the project's dashboard, go to **Project Settings → Integrations →
-   GitHub** and connect this repository through Supabase's GitHub App.
-2. Enable **branching** for the project. Once enabled, every pull request
-   against `main` gets its own ephemeral preview database, automatically
-   seeded by replaying every migration under `supabase/migrations/` — the
-   same additive-only tree this repo already commits to.
-3. Confirm the integration is scoped to this repo only, and that the branch
-   database's connection details surface as PR-scoped values (Supabase
-   posts these as a PR comment/check) — no secret handling needed on our
-   side for preview branches.
+   GitHub** and connect this repository through Supabase's GitHub App —
+   this step itself is free and worth doing now.
+2. **Do not enable branching yet** — it's a Pro-tier feature, not available
+   on the free tier this project starts on. Until the tier upgrades, CI's
+   existing `supabase start` job (ephemeral local Postgres per PR run,
+   `.github/workflows/ci.yml`) remains the only per-PR verification — no
+   interim substitute is needed, since no story before 2.10/3.2 touches the
+   live cloud connection.
+3. When the project upgrades to Pro, come back and enable **branching**:
+   every pull request against `main` will then get its own ephemeral
+   preview database, automatically seeded by replaying every migration
+   under `supabase/migrations/` — the same additive-only tree this repo
+   already commits to. Confirm the integration is scoped to this repo only,
+   and that the branch database's connection details surface as PR-scoped
+   values (Supabase posts these as a PR comment/check) — no secret handling
+   needed on our side for preview branches.
 
-## 3. Push the committed migrations to prod for the first time
+## 3. Push the committed migrations to prod for the first time — done 2026-07-27
 
 Run locally, from the repo root:
 
@@ -59,6 +73,11 @@ including this story's `create_djs_table` migration — to the real prod
 database for the first time. This is the same additive-only migration set
 CI already verifies applies cleanly against an ephemeral Postgres; pushing
 to prod does not run anything CI hasn't already exercised.
+
+**Status: done.** Steps 1–3 have all been run against the real `prod`
+project (`jmitbnrofacxwsbwuxzs`) — this unblocks
+`supabase/EMAIL-PROVISIONING.md` §3, which needed a real production project
+to wire SMTP settings onto.
 
 ## 4. CI secrets this unlocks (do not wire up yet)
 
@@ -76,6 +95,16 @@ needs a live cloud connection (Story 2.10 or 3.2, whichever lands first)
 should introduce that dependency. Add these secrets and any deploy step in
 that later story, not here.
 
+**One deliberate exception, 2026-07-28:** `.github/workflows/supabase-keepalive.yml`
+does touch the real prod project already — a scheduled health-check ping
+mitigating the free tier's 7-day auto-pause (see
+`pre-launch-services-checklist.md` §3, `deferred-work.md`'s 2-3d entry). It
+needs its own `SUPABASE_PROD_PUBLISHABLE_KEY` secret, distinct from
+`SUPABASE_ACCESS_TOKEN`/`SUPABASE_PROJECT_REF` above — a read-only anon key,
+not a CLI credential, and not sufficient on its own to push migrations or
+otherwise deploy. The "don't wire up yet" guidance above still holds for the
+two CLI-auth secrets; this is a narrower, already-justified exception.
+
 ## Completion bar for this runbook
 
 Task 6 of Story 2.1 is done when this document is accurate, not when the
@@ -83,3 +112,8 @@ live project exists. Whether Arjun has already run steps 1-3, wants to run
 them now, or defers them is his call — tracked as Story 2.1's Open Question
 #1. Whoever builds the first thing that actually needs the live connection
 is the natural forcing function if this hasn't been run by then.
+
+**As of 2026-07-27, steps 1-3 have been run for real** — see the per-step
+status notes above. Branching (step 2.2/2.3) remains deferred until the
+project upgrades off the free tier. CI secrets (§4) remain intentionally
+unwired.

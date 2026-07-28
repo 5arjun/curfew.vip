@@ -44,10 +44,21 @@
       "Bash(git commit *)",
       "Bash(git push*)",
       "Skill(artifact-design)",
-      "Artifact"
+      "Artifact",
+      "Skill(claude-in-chrome)",
+      "mcp__plugin_resend_resend__list-domains",
+      "mcp__supabase__list_migrations",
+      "mcp__supabase__get_project_url",
+      "mcp__plugin_resend_resend__get-domain",
+      "mcp__supabase__get_advisors",
+      "mcp__plugin_resend_resend__list-api-keys"
     ],
     "additionalDirectories": [
       "/Users/arjun/Documents/name-pending/_bmad-output/planning-artifacts/architecture"
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "supabase"
+  ]
 }
