@@ -18,30 +18,40 @@ story.
 ## 1. Create the Supabase organization + prod project
 
 1. Sign in at [supabase.com](https://supabase.com) (or create an account).
-2. Create an organization if one doesn't already exist, and attach a billing
-   plan. The **paid tier is required**: it's what the Architecture Spine's
-   deployment table assumes for point-in-time-recovery (PITR) backups, and
-   the free tier does not support preview branching (step 2). **Pricing and
-   plan features change over time — verify current tier gating at
-   [supabase.com/pricing](https://supabase.com/pricing) before relying on
-   this claim; it reflects what was true as of 2026-07-25.**
+2. Create an organization if one doesn't already exist. **Start on the free
+   tier** — no billing plan needed yet. The free tier has no PITR backups
+   and no preview branching (confirmed against
+   [supabase.com/pricing](https://supabase.com/pricing), 2026-07-27);
+   upgrade to the Pro tier later to add both, once budget allows (tracked in
+   `pre-launch-services-checklist.md`). One free-tier caveat to know going
+   in: a free project **pauses after 7 days of inactivity** and needs a
+   manual unpause from the dashboard. **Pricing and plan features change
+   over time — re-verify at [supabase.com/pricing](https://supabase.com/pricing)
+   before relying on this claim.**
 3. Create a new project inside that organization. This is the **prod**
    project — a single dedicated project, not shared with any preview branch.
 4. Record the project's reference id (visible in the project's Settings →
    General, and in its dashboard URL) — this is `<prod-ref>` below.
 
-## 2. Connect GitHub + enable preview branching
+## 2. Connect GitHub (branching deferred — needs the Pro tier)
 
 1. In the project's dashboard, go to **Project Settings → Integrations →
-   GitHub** and connect this repository through Supabase's GitHub App.
-2. Enable **branching** for the project. Once enabled, every pull request
-   against `main` gets its own ephemeral preview database, automatically
-   seeded by replaying every migration under `supabase/migrations/` — the
-   same additive-only tree this repo already commits to.
-3. Confirm the integration is scoped to this repo only, and that the branch
-   database's connection details surface as PR-scoped values (Supabase
-   posts these as a PR comment/check) — no secret handling needed on our
-   side for preview branches.
+   GitHub** and connect this repository through Supabase's GitHub App —
+   this step itself is free and worth doing now.
+2. **Do not enable branching yet** — it's a Pro-tier feature, not available
+   on the free tier this project starts on. Until the tier upgrades, CI's
+   existing `supabase start` job (ephemeral local Postgres per PR run,
+   `.github/workflows/ci.yml`) remains the only per-PR verification — no
+   interim substitute is needed, since no story before 2.10/3.2 touches the
+   live cloud connection.
+3. When the project upgrades to Pro, come back and enable **branching**:
+   every pull request against `main` will then get its own ephemeral
+   preview database, automatically seeded by replaying every migration
+   under `supabase/migrations/` — the same additive-only tree this repo
+   already commits to. Confirm the integration is scoped to this repo only,
+   and that the branch database's connection details surface as PR-scoped
+   values (Supabase posts these as a PR comment/check) — no secret handling
+   needed on our side for preview branches.
 
 ## 3. Push the committed migrations to prod for the first time
 
