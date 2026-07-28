@@ -2,10 +2,14 @@
  * Obsidian design-token system (UX-DR1). Dark-only by explicit, non-negotiable
  * design constraint — there is no light theme and no prefers-color-scheme toggle.
  *
- * Palette direction (revised 2026-07-26, design review): accent is "Ice Cyan"
- * on a "blue-black" neutral base. The prior "Electric Lavender" on cool-charcoal
- * is retained as the sanctioned alternate — see the commented block in the
- * primary section below to swap back.
+ * Palette direction (revised 2026-07-28, design review with Arjun): accent is
+ * "Ember" — a warm rose (#e98aa2) on the unchanged "blue-black" neutral base, a
+ * complementary pairing that makes the accent read hotter. Warming the accent
+ * freed the error color to move to a clear red (#ff5449) — previously it was a
+ * dusty-rose deliberately kept clear of the (then cool) accent. The prior "Ice
+ * Cyan" and original "Electric Lavender" directions are retained as sanctioned
+ * alternates — see the commented block in the primary section below to swap back.
+ * See ux-designs/.../inspiration/ for the references that drove this revision.
  *
  * Source of truth: _bmad-output/planning-artifacts/ux-designs/ux-name-pending-2026-07-19/DESIGN.md
  * Some tokens below (secondary/tertiary families, *-fixed variants, inverse-*,
@@ -28,7 +32,7 @@
   --color-surface-container-high: #252a35;
   --color-surface-container-highest: #2f3542;
   --color-surface-variant: #2f3542;
-  --color-surface-tint: #a5dcea;
+  --color-surface-tint: #e98aa2;
   --color-on-surface: #e1e3e8;
   --color-on-surface-variant: #c4c8d5;
   --color-inverse-surface: #e1e3e8;
@@ -36,24 +40,40 @@
   --color-outline: #8b93a6;
   --color-outline-variant: #434a5a;
 
-  /* Color: primary (Ice Cyan) — used sparingly: active nav state, focus glow,
-     one "spark of an idea" moment per screen. Not decorative.
+  /* Color: primary (Ember — warm rose) — used sparingly: active nav state, focus
+     glow, the energy-arc line, the one "spark of an idea" moment per screen. Not
+     decorative. Structurally identical to the prior Ice Cyan family (a light
+     accent paired with dark on-* text), retinted warm. The rose gradient the
+     buttons use is defined separately below (--btn-gradient-*).
 
+     Sanctioned alternate — "Ice Cyan" (direction 2026-07-26 → 2026-07-28):
+       --color-primary: #a5dcea;              --color-on-primary: #00363f;
+       --color-primary-container: #6ec8e0;    --color-on-primary-container: #06323d;
+       --color-primary-fixed: #c2ecf6;        --color-primary-fixed-dim: #a5dcea;
+       --color-on-primary-fixed: #001f27;     --color-on-primary-fixed-variant: #164e5b;
+       --color-inverse-primary: #1f88a0;      --color-surface-tint: #a5dcea;
      Sanctioned alternate — "Electric Lavender" (the original direction):
        --color-primary: #cbbeff;              --color-on-primary: #330b91;
        --color-primary-container: #9d85ff;    --color-on-primary-container: #330a90;
        --color-primary-fixed: #e7deff;        --color-primary-fixed-dim: #cbbeff;
        --color-on-primary-fixed: #1e0061;     --color-on-primary-fixed-variant: #4a2ea7;
        --color-inverse-primary: #6349c0;      --color-surface-tint: #cbbeff;   */
-  --color-primary: #a5dcea;
-  --color-on-primary: #00363f;
-  --color-primary-container: #6ec8e0;
-  --color-on-primary-container: #06323d;
-  --color-primary-fixed: #c2ecf6;
-  --color-primary-fixed-dim: #a5dcea;
-  --color-on-primary-fixed: #001f27;
-  --color-on-primary-fixed-variant: #164e5b;
-  --color-inverse-primary: #1f88a0;
+  --color-primary: #e98aa2;
+  --color-on-primary: #3d0f20;
+  --color-primary-container: #c96287;
+  --color-on-primary-container: #ffd9e1;
+  --color-primary-fixed: #ffd9e1;
+  --color-primary-fixed-dim: #e98aa2;
+  --color-on-primary-fixed: #2b0715;
+  --color-on-primary-fixed-variant: #7a2740;
+  --color-inverse-primary: #b04568;
+
+  /* Color: spark (Ember's warm-amber second pole) — the rare highlight that
+     partners the rose: a standout data value (e.g. harmonic-alignment), the
+     amber terminus of the button gradient. Even scarcer than primary; never a
+     fill or brand-wash. New in the 2026-07-28 Ember revision. */
+  --color-spark: #e0a44a;
+  --color-on-spark: #2e1804;
 
   /* Color: secondary / tertiary — reserved, not yet in active use.
      Cool blue-neutral, retinted to sit on the blue-black base. */
@@ -74,12 +94,28 @@
   --color-on-tertiary-fixed: #171c1b;
   --color-on-tertiary-fixed-variant: #414b4a;
 
-  /* Color: error (desaturated dusty-rose, not alarm-red) — deliberately kept
-     constant across palette revisions; a warm signal distinct from the accent. */
-  --color-error: #ffb4ab;
+  /* Color: error — a clear red (2026-07-28 Ember revision). Moved off the prior
+     dusty-rose (#ffb4ab) because the Ember accent now owns the rose register;
+     error must stay unmistakably distinct from the accent. #ff5449 passes AA on
+     the surface as text/icon (see tokens.test.ts). */
+  --color-error: #ff5449;
   --color-on-error: #690005;
   --color-error-container: #93000a;
   --color-on-error-container: #ffdad6;
+
+  /* Button gradient (Ember) — the animated radial gradient used on ALL primary
+     buttons (per Arjun 2026-07-28, promoted from a landing-only CTA). Wine →
+     rose → amber; the hover set intensifies it. Tokenized so the whole button
+     treatment retunes from here — the hover currently reads soft and is flagged
+     to strengthen later, which is a change to these stops, not the component.
+     Button label sits in --color-on-background (near-white) over the gradient. */
+  --btn-gradient-1: #88394c;
+  --btn-gradient-2: #c96287;
+  --btn-gradient-3: #cc7d23;
+  --btn-gradient-hover-1: #c96287;
+  --btn-gradient-hover-2: #cc7d23;
+  --btn-gradient-hover-3: #e0a44a;
+  --btn-gradient-border: rgba(255, 210, 220, 0.35);
 
   /* Typography: font families (wired via next/font/google in fonts.ts) */
   --font-hanken-grotesk: var(--font-hanken-grotesk-var), sans-serif;
@@ -106,4 +142,19 @@
   --radius-lg: 0.25rem;
   --radius-xl: 0.5rem;
   --radius-full: 9999px;
+
+  /* Motion (new 2026-07-28). The layer DESIGN.md was missing: every animation in
+     the app reads its timing/easing from here, so the "feel" retunes in one
+     place. Durations climb by role, not arbitrarily; easings are intent-named.
+     Honor prefers-reduced-motion at the component level, not by editing these. */
+  --motion-duration-instant: 80ms;   /* state flips: press, focus ring */
+  --motion-duration-fast: 160ms;     /* hover, small enter/exit */
+  --motion-duration-base: 240ms;     /* default UI transition */
+  --motion-duration-slow: 400ms;     /* sheets, larger reveals */
+  --motion-duration-gradient: 500ms; /* the button gradient sweep */
+
+  --motion-ease-standard: cubic-bezier(0.2, 0, 0, 1);    /* general UI, decelerate */
+  --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);      /* confident settle (enter) */
+  --motion-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);  /* symmetric move */
+  --motion-ease-spark: cubic-bezier(0.34, 1.56, 0.64, 1);/* slight overshoot: the "pop" */
 }
