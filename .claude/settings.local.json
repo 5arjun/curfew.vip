@@ -51,7 +51,8 @@
       "mcp__supabase__get_project_url",
       "mcp__plugin_resend_resend__get-domain",
       "mcp__supabase__get_advisors",
-      "mcp__plugin_resend_resend__list-api-keys"
+      "mcp__plugin_resend_resend__list-api-keys",
+      "mcp__supabase__execute_sql"
     ],
     "additionalDirectories": [
       "/Users/arjun/Documents/name-pending/_bmad-output/planning-artifacts/architecture"
