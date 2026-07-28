@@ -1,0 +1,40 @@
+name: Supabase prod keep-alive
+
+# The prod Supabase project (jmitbnrofacxwsbwuxzs) is on the free tier, which
+# auto-pauses after 7 days with no API traffic — and it now hosts live
+# production auth/email (Story 2.3d), so a pause would silently break
+# login/signup for every user. This ping is a deliberate, cheap mitigation
+# (Arjun's call, 2026-07-28) chosen over upgrading to Pro pre-launch.
+# See deferred-work.md's 2-3d entry and pre-launch-services-checklist.md §3.
+#
+# Runs well inside the 7-day window so a missed/failed run or two doesn't
+# risk a pause. Requires the SUPABASE_PROD_PUBLISHABLE_KEY repo secret (the
+# prod project's anon/publishable key from Settings -> API Keys — not
+# sensitive in the way a service_role key is, but not committed to the repo
+# either, consistent with this project's "prod credentials never in-repo"
+# convention).
+#
+# Known limitation: GitHub disables scheduled workflows after 60 days of
+# zero repo activity. Not a concern while the repo has ongoing commits, but
+# worth remembering if this repo ever goes quiet for an extended stretch.
+
+on:
+  schedule:
+    - cron: "0 12 */3 * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    name: Ping prod project
+    runs-on: ubuntu-latest
+    steps:
+      - name: Health check
+        run: |
+          status=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "apikey: ${{ secrets.SUPABASE_PROD_PUBLISHABLE_KEY }}" \
+            "https://jmitbnrofacxwsbwuxzs.supabase.co/auth/v1/health")
+          echo "Response status: $status"
+          if [ "$status" -lt 200 ] || [ "$status" -ge 500 ]; then
+            echo "::error::Supabase prod health check returned $status"
+            exit 1
+          fi

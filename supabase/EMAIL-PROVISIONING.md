@@ -36,6 +36,11 @@ wired — see [Sequencing / blockers](#4-sequencing--blockers) and the
    - **A domain can only have one DMARC record.** If the DNS host already
      has one (e.g. from an existing mail setup), add to / merge with the
      existing record — do not create a second one.
+   - **The same rule applies to SPF: a domain can only have one SPF TXT
+     record.** If one already exists, merge Resend's `include:` mechanism
+     into it rather than adding a second `v=spf1` record — two competing
+     SPF records cause a permanent SPF failure (`permerror`), breaking
+     alignment and delivery.
 4. Return to Resend and verify the domain once DNS has propagated.
 
 ## 2. Credential retrieval
@@ -81,6 +86,16 @@ picked project is the real `prod` project (`jmitbnrofacxwsbwuxzs`,
 `supabase/PROVISIONING.md`) before finishing the flow — it will happily
 wire any project you have access to, prod or not.
 
+**Verifying the correct project was actually wired:** after the flow
+completes, check the target project's Supabase Dashboard under
+**Authentication → Emails → SMTP Settings** — it should show custom SMTP
+enabled with a Resend host. If it wasn't the intended project, or the
+integration needs to be pulled for any reason, revoke it from
+**Resend → Integrations → Supabase** (disconnects the OAuth grant and
+removes the auto-created "Supabase Integration" API key); this also
+reverts the affected project's SMTP settings to Supabase's own default
+mailer, so re-run this section against the correct project afterward.
+
 ### Why not `config.toml` + `supabase config push`
 
 `supabase start` (local development) reads the **same top-level
@@ -109,6 +124,10 @@ the shared config is worse than not touching the file.
 ## 4. Sequencing / blockers
 
 **All resolved as of 2026-07-27** — nothing below still blocks this runbook.
+
+**Confirmed 2026-07-28: a real production send was verified end-to-end.** A real signup was issued directly against the `prod` project's `/auth/v1/signup` API using a real external Gmail inbox (not Arjun's own, not previously used for local/dev testing). The confirmation email arrived (not spam), from `team@updates.curfew.vip`, and the raw headers showed **all three of SPF, DKIM, and DMARC passing individually** — not just Resend's bundled "verified" domain badge. AC-1 and AC-2 are now proven, not just configured.
+
+One expected, separate gap surfaced by this same test: clicking the confirmation link failed (`localhost refused to connect`) because the `prod` project's Auth "Site URL" isn't configured yet — there is nothing to configure it *to*, since `web/` has no public deployment (`pre-launch-services-checklist.md` §1, "Vercel deploy: Not started"). This is not an email-delivery defect and not this runbook's scope — `web/app/auth/confirm/route.ts` (Story 2.3a) is already correct and needs zero changes; it just isn't reachable at a real URL yet. Revisit Auth → URL Configuration in the `prod` dashboard once Vercel deployment happens.
 
 - **Production domain — resolved 2026-07-27.** `curfew.vip` is registered;
   sending happens from the `updates.curfew.vip` subdomain (step 1).

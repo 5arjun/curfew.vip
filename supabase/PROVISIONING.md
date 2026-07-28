@@ -95,6 +95,16 @@ needs a live cloud connection (Story 2.10 or 3.2, whichever lands first)
 should introduce that dependency. Add these secrets and any deploy step in
 that later story, not here.
 
+**One deliberate exception, 2026-07-28:** `.github/workflows/supabase-keepalive.yml`
+does touch the real prod project already — a scheduled health-check ping
+mitigating the free tier's 7-day auto-pause (see
+`pre-launch-services-checklist.md` §3, `deferred-work.md`'s 2-3d entry). It
+needs its own `SUPABASE_PROD_PUBLISHABLE_KEY` secret, distinct from
+`SUPABASE_ACCESS_TOKEN`/`SUPABASE_PROJECT_REF` above — a read-only anon key,
+not a CLI credential, and not sufficient on its own to push migrations or
+otherwise deploy. The "don't wire up yet" guidance above still holds for the
+two CLI-auth secrets; this is a narrower, already-justified exception.
+
 ## Completion bar for this runbook
 
 Task 6 of Story 2.1 is done when this document is accurate, not when the

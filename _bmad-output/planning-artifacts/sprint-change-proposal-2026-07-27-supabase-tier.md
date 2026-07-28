@@ -48,6 +48,7 @@ Arjun wants to start the Supabase prod project on the **free tier** instead, def
 4. **pre-launch-services-checklist.md** — update the Supabase row to state free-tier-first with the confirmed current Pro-tier costs (PITR $100/mo add-on, metered branching) and the inactivity-pause caveat.
 5. **2-1-supabase-cloud-foundation-isolation-baseline.md** — add a 2026-07-27 Change Log entry recording the AC-1 wording revision; story `Status` remains `done` (not reopened).
 6. **supabase/EMAIL-PROVISIONING.md** — no change (confirmed tier-independent).
+7. **SOLUTION-DESIGN.md** — reword §7's "Environments" bullet to match ARCHITECTURE-SPINE.md's free-tier-first wording (preview branches + PITR deferred to a future Pro-tier upgrade).
 
 ## 5. Implementation Handoff
 
