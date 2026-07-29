@@ -62,7 +62,17 @@
       <p class="hint" id="hint">Set the folder where Serato stores your library.</p>
       <label for="serato-path">Serato folder path override</label>
       <div class="row">
-        <input type="text" id="serato-path" placeholder="/path/to/_Serato_" />
+        <!--
+          Read-only (code review, story 2.6): the only way to populate this
+          field is auto-detection or the native folder picker below — never a
+          hand-typed string. This is what lets `set_serato_path_override`'s
+          classify()-based validation stay strict (it always sees a real,
+          OS-resolved path) without also blocking a DJ from re-saving a path
+          whose drive happens to be unplugged right now, since re-saving isn't
+          how that case is handled at all (the watch loop's own reconnect
+          polling recovers it independently, no Save needed).
+        -->
+        <input type="text" id="serato-path" placeholder="No folder selected — click Browse" readonly />
         <button id="browse">Browse…</button>
         <button id="save">Save</button>
       </div>
@@ -82,14 +92,18 @@
       // detection, since an override existing at all means confirmation already
       // happened on a previous launch.
       async function loadCurrentOverride() {
+        let current = null;
+        let overrideLoadError = null;
         try {
-          const current = await invoke("get_serato_path_override");
-          if (current) {
-            pathInput.value = current;
-            return;
-          }
+          current = await invoke("get_serato_path_override");
         } catch (err) {
-          status.textContent = `Could not load saved path: ${err}`;
+          overrideLoadError = err;
+          // Fall through and still try the pending-detection fetch below —
+          // this call failing must not silently drop the first-run confirm
+          // surface, which is already force-opened by the time this runs.
+        }
+        if (current) {
+          pathInput.value = current;
           return;
         }
 
@@ -97,10 +111,18 @@
           const pending = await invoke("get_pending_detected_path");
           if (pending) {
             pathInput.value = pending;
-            hint.textContent = "Auto-detected — confirm or edit, then Save.";
+            hint.textContent = "Auto-detected — confirm with Save, or Browse to pick a different folder.";
+          }
+          if (overrideLoadError) {
+            status.textContent = `Could not load saved path: ${overrideLoadError}`;
           }
         } catch (err) {
-          status.textContent = `Could not load detected path: ${err}`;
+          // Report both failures rather than letting the second overwrite the
+          // first — a DJ debugging a blank path field needs to see whichever
+          // (or both) calls actually failed.
+          status.textContent = overrideLoadError
+            ? `Could not load saved path: ${overrideLoadError}; could not load detected path: ${err}`
+            : `Could not load detected path: ${err}`;
         }
       }
 
@@ -122,6 +144,9 @@
           hint.textContent = "Set the folder where Serato stores your library.";
         } catch (err) {
           status.textContent = `${err}`;
+          // A failed Save must not leave stale "Auto-detected..." guidance
+          // sitting next to the error — reset it the same as a successful Save.
+          hint.textContent = "Set the folder where Serato stores your library.";
         }
       });
 

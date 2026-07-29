@@ -27,11 +27,12 @@ use crate::parser::Play;
 /// Serato's library directory name, and the catalogue file inside it. Mirrors
 /// `triseratops`' own path convention so this loader looks where the crate would.
 ///
-/// `pub` (not module-private): Story 2.6's `watcher::detect` install-generation
-/// classifier reuses these exact names rather than redeclaring them, per that
-/// story's own Task 1.
-pub const SERATO_DIR: &str = "_Serato_";
-pub const DATABASE_FILENAME: &str = "database V2";
+/// `pub(crate)` (not module-private): Story 2.6's `watcher::detect`
+/// install-generation classifier reuses these exact names rather than
+/// redeclaring them, per that story's own Task 1 — but that consumer is
+/// same-crate, so there's no reason to widen the crate's public API surface.
+pub(crate) const SERATO_DIR: &str = "_Serato_";
+pub(crate) const DATABASE_FILENAME: &str = "database V2";
 
 /// Everything that can go wrong loading a `database V2` catalogue: the file could not
 /// be read, or its bytes did not decode. Mirrors the `Display`/`std::error::Error`
@@ -50,6 +51,11 @@ pub enum JoinError {
     Io(std::io::Error),
     /// The catalogue file's bytes did not decode as `database V2`.
     Parse(triseratops::error::Error),
+    /// The catalogue path resolved outside the configured Serato root (Story
+    /// 2.7, AC-1) — a symlink or similar redirected a "scoped" read elsewhere.
+    /// A missing/unreadable root or catalogue is [`Io`](Self::Io), not this
+    /// variant; this is only reached once both paths exist and disagree.
+    Scope(crate::fs_scope::ScopeError),
 }
 
 impl std::fmt::Display for JoinError {
@@ -57,6 +63,7 @@ impl std::fmt::Display for JoinError {
         match self {
             JoinError::Io(e) => write!(f, "failed to read Serato library database: {e}"),
             JoinError::Parse(e) => write!(f, "malformed Serato library database: {e}"),
+            JoinError::Scope(e) => write!(f, "refusing to read Serato library database: {e}"),
         }
     }
 }
@@ -66,6 +73,7 @@ impl std::error::Error for JoinError {
         match self {
             JoinError::Io(e) => Some(e),
             JoinError::Parse(e) => Some(e),
+            JoinError::Scope(e) => Some(e),
         }
     }
 }
@@ -95,8 +103,21 @@ impl LegacyLibrary {
     ///
     /// **Read-only:** the file is opened via [`std::fs::read`] and never written,
     /// moved, or truncated — Serato itself may have it open.
+    ///
+    /// **Scoped to `library_root` (Story 2.7, AC-1):** the derived catalogue
+    /// path is confirmed, after canonicalization, to still resolve under
+    /// `library_root` before it is read — defense-in-depth against a symlink
+    /// planted under the configured root redirecting the read elsewhere. A
+    /// missing root or catalogue surfaces as [`JoinError::Io`], matching prior
+    /// behavior; only a path that exists but resolves outside the root is
+    /// [`JoinError::Scope`].
     pub fn load(library_root: &Path) -> Result<Self, JoinError> {
         let path = library_root.join(SERATO_DIR).join(DATABASE_FILENAME);
+        let path =
+            crate::fs_scope::ensure_within_root(library_root, &path).map_err(|e| match e {
+                crate::fs_scope::ScopeError::Io(io) => JoinError::Io(io),
+                scope @ crate::fs_scope::ScopeError::OutsideRoot { .. } => JoinError::Scope(scope),
+            })?;
         let bytes = std::fs::read(&path).map_err(JoinError::Io)?;
         Self::from_database_bytes(&bytes)
     }
@@ -543,6 +564,44 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
 
         assert!(matches!(LegacyLibrary::load(&root), Err(JoinError::Io(_))));
+    }
+
+    /// Story 2.7 AC-1: a `_Serato_` folder replaced with a symlink pointing
+    /// outside `library_root` must not be followed — `load` refuses it as a
+    /// scope violation rather than silently reading whatever the symlink
+    /// points to.
+    #[cfg(unix)]
+    #[test]
+    fn load_refuses_a_serato_dir_symlinked_outside_the_root() {
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!(
+            "curfew_joiner_scope_root_{}_{}",
+            std::process::id(),
+            n
+        ));
+        let outside = std::env::temp_dir().join(format!(
+            "curfew_joiner_scope_outside_{}_{}",
+            std::process::id(),
+            n
+        ));
+        let outside_serato = outside.join(SERATO_DIR);
+        std::fs::create_dir_all(&outside_serato).expect("outside dir creates");
+        std::fs::write(outside_serato.join(DATABASE_FILENAME), version_header())
+            .expect("outside catalogue writes");
+
+        std::fs::create_dir_all(&root).expect("root dir creates");
+        std::os::unix::fs::symlink(&outside_serato, root.join(SERATO_DIR))
+            .expect("symlink creates");
+
+        let result = LegacyLibrary::load(&root);
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&outside);
+
+        assert!(
+            matches!(result, Err(JoinError::Scope(_))),
+            "a symlinked-outside Serato dir must be refused, got {result:?}"
+        );
     }
 
     /// A corrupt catalogue is a reported error, not a panic and not a silently empty

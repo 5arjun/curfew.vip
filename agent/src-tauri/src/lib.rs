@@ -16,6 +16,13 @@
 /// classifying the session those plays came from in parallel with (not instead of)
 /// Story 1.7's per-set stats. See [`confidence`].
 pub mod confidence;
+/// Filesystem-scope guard (Story 2.7, AC-1): confines the two Serato catalogue
+/// reads (`joiner::legacy::LegacyLibrary::load`, `joiner::serato4::open_read_only`)
+/// to the DJ's configured Serato root, canonicalizing before comparing so a
+/// symlink or `..` cannot redirect a "scoped" read outside it. See [`fs_scope`]
+/// for the deliberate exception (embedded-tag track reads, which legitimately
+/// point anywhere on disk).
+pub mod fs_scope;
 /// The `genre` pipeline filter (Story 1.6): normalizes a raw genre string to the
 /// fixed Curfew taxonomy, producing a raw + normalized + `taxonomy_version` triple
 /// (AD-12). Sits after the `joiner` (which supplies the raw genre) and before the
@@ -202,10 +209,21 @@ pub fn run() {
             // OS defaults + removable volumes are scanned (Tasks 1-2) and, if
             // something is found, the DJ must confirm it before it is used
             // (Task 4, UX-DR20 — never silent).
-            let home = app
-                .path()
-                .home_dir()
-                .map_err(|_| "agent: could not resolve home directory for Serato detection")?;
+            //
+            // A home-directory resolution failure must not take down the whole
+            // tray-only agent (this used to `?`-propagate out of `.setup()`,
+            // aborting tray/window creation entirely) — fall back to a path that
+            // deliberately resolves nothing so OS-default detection degrades to
+            // `NothingFound` instead, while a manual override (which doesn't
+            // depend on `home` at all) still works via the tray settings panel.
+            let home = app.path().home_dir().unwrap_or_else(|_| {
+                #[cfg(debug_assertions)]
+                eprintln!(
+                    "curfew-agent: could not resolve home directory, Serato OS-default \
+                     auto-detection will find nothing (manual override via tray still works)"
+                );
+                PathBuf::from("/curfew-agent-home-dir-unresolved")
+            });
             let settings = settings::load(app.handle()).unwrap_or_default();
             let resolution =
                 watcher::resolve_startup(&settings, &home, &watcher::detect::SystemDisks);

@@ -40,8 +40,8 @@ pub enum SeratoInstall {
 /// so a migrated install (both generations on disk) always routes to the one that
 /// still receives new plays.
 ///
-/// `root` is accepted at two levels, because this same function serves three
-/// different callers that hand it different things:
+/// `root` is accepted at three shapes, because this same function serves callers
+/// that each hand it something different:
 /// - a **container** directory one level above Serato's own layout — a home
 ///   directory (for `Library/Application Support/Serato/Library/master.sqlite`),
 ///   `~/Music` (for `_Serato_/database V2`), or a USB mount point ([`scan_removable_volumes`]);
@@ -49,13 +49,26 @@ pub enum SeratoInstall {
 ///   2.5's settings panel has always prompted for as "`/path/to/_Serato_`" (the
 ///   `_Serato_` folder directly, not its parent), so treating a container-only
 ///   root as the sole valid shape would reject every override that already
-///   matches that placeholder's convention.
+///   matches that placeholder's convention;
+/// - the `master.sqlite` **file itself** — [`install_path`](super::install_path)
+///   renders a Serato4 detection as `db_path`, the literal file path, which is
+///   exactly what gets round-tripped back through this function from the confirm
+///   UI and from `settings::validate_override`. Without this branch, `classify()`
+///   would reject the very path it produced (root.join(...) against an
+///   already-file-shaped root never resolves), breaking Save for every Serato 4+
+///   install — caught in this story's own review round.
 ///
-/// Neither shape is preferred over the other; both are simply checked, since a
-/// direct filesystem stat is cheap and a false-positive here would require an
-/// actual `master.sqlite`/`database V2` file to exist at a coincidental nested
-/// path (vanishingly unlikely in practice).
+/// None of the three shapes is preferred over the others; all are simply
+/// checked, since a direct filesystem stat is cheap and a false-positive here
+/// would require an actual `master.sqlite`/`database V2` file to exist at a
+/// coincidental nested path (vanishingly unlikely in practice).
 pub fn classify(root: &Path) -> Option<SeratoInstall> {
+    if root.is_file() && root.file_name() == Some(std::ffi::OsStr::new(SERATO4_DB_FILENAME)) {
+        return Some(SeratoInstall::Serato4 {
+            db_path: root.to_path_buf(),
+        });
+    }
+
     let via_container = root.join(SERATO4_HOME_RELPATH);
     if via_container.is_file() {
         return Some(SeratoInstall::Serato4 {
@@ -235,6 +248,25 @@ mod tests {
             classify(&root.0),
             Some(SeratoInstall::Serato4 {
                 db_path: root.0.join(SERATO4_DB_FILENAME)
+            })
+        );
+    }
+
+    /// Regression test (code review, story 2.6): `install_path()` renders a
+    /// Serato4 detection as the literal `master.sqlite` file path, which is
+    /// exactly what round-trips back through `classify()` from the confirm UI
+    /// and `settings::validate_override`. Feeding that file path back in as
+    /// `root` must resolve, not reject the exact path this function produced.
+    #[test]
+    fn classify_accepts_the_master_sqlite_file_path_fed_back_as_root() {
+        let root = TempDir::new("serato4-file-as-root");
+        let db_path = root.0.join(SERATO4_DB_FILENAME);
+        touch(&db_path);
+
+        assert_eq!(
+            classify(&db_path),
+            Some(SeratoInstall::Serato4 {
+                db_path: db_path.clone()
             })
         );
     }

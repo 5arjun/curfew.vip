@@ -153,7 +153,11 @@ pub fn start_watching(app: AppHandle) {
 #[allow(unused_assignments)] // `_fs_watcher` is a lifetime guard: dropping it stops the watch.
 fn watch_loop(app: AppHandle) {
     let mut current_path: Option<PathBuf> = None;
-    let mut connected = false;
+    // `None` = not yet evaluated against the current `current_path` (true both
+    // at boot and right after a path change) — distinct from `Some(false)`
+    // (evaluated and found disconnected), so the very first classification for
+    // a path always announces its result instead of only a transition edge.
+    let mut connected: Option<bool> = None;
     let mut watermark: i64 = 0;
     let mut _fs_watcher: Option<RecommendedWatcher> = None;
     let (tx, rx) = mpsc::channel::<notify::Result<notify::Event>>();
@@ -166,29 +170,38 @@ fn watch_loop(app: AppHandle) {
 
         // The override changed (first ever Save, or a DJ pointing it somewhere
         // new) — drop whatever was being watched and re-evaluate from scratch
-        // against the new path, exactly like a disconnect/reconnect cycle.
+        // against the new path. A genuine path change resets the high-water
+        // mark (a different database has no meaningful prior watermark); a
+        // mere disconnect/reconnect of the *same* path does not (see below) —
+        // otherwise every USB unplug/replug would re-report all previously-seen
+        // sessions as new.
         if override_path != current_path {
             current_path = override_path.clone();
-            connected = false;
+            connected = None;
+            watermark = 0;
             _fs_watcher = None;
         }
 
         if let Some(path) = &current_path {
             match detect::classify(path) {
                 Some(install) => {
-                    if !connected {
-                        connected = true;
-                        watermark = 0;
+                    // Covers both the first-ever classification for this path
+                    // (`None`, including at boot) and a genuine reconnect
+                    // (`Some(false)`) — either way the tray/watcher need to
+                    // (re)announce, but the watermark is deliberately left
+                    // untouched here (only a path change resets it, above).
+                    if connected != Some(true) {
+                        connected = Some(true);
                         let _ = crate::tray::set_tray_state(&app, crate::tray::TrayState::Idle);
                         _fs_watcher = start_fs_watch(&install, tx.clone());
                         if let SeratoInstall::Serato4 { db_path } = &install {
-                            check_for_new_sessions(db_path, &mut watermark);
+                            check_for_new_sessions(path, db_path, &mut watermark);
                         }
                     }
                 }
                 None => {
-                    if connected {
-                        connected = false;
+                    if connected != Some(false) {
+                        connected = Some(false);
                         _fs_watcher = None;
                         let _ = crate::tray::set_tray_state(
                             &app,
@@ -210,7 +223,7 @@ fn watch_loop(app: AppHandle) {
                 // spurious extra event just re-runs a query that finds nothing new.
                 if let Some(path) = &current_path {
                     if let Some(SeratoInstall::Serato4 { db_path }) = detect::classify(path) {
-                        check_for_new_sessions(&db_path, &mut watermark);
+                        check_for_new_sessions(path, &db_path, &mut watermark);
                     }
                 }
                 // Legacy `.session` file events: detection only (this story does
@@ -252,8 +265,13 @@ fn start_fs_watch(
 /// Queries for sessions past `watermark`, advances it to the highest `id` seen,
 /// and hands each newly-discovered session to [`log_new_session`] — this story's
 /// entire responsibility for a "new session" event (Story 2.8 owns capture).
-fn check_for_new_sessions(db_path: &Path, watermark: &mut i64) {
-    let Ok(conn) = crate::joiner::serato4::open_read_only(db_path) else {
+///
+/// `root` is the DJ's confirmed configured path (Story 2.7, AC-1) — the same
+/// value `db_path` was classified from — passed through to
+/// `joiner::serato4::open_read_only` so it can refuse to open a `db_path` that
+/// resolves outside it.
+fn check_for_new_sessions(root: &Path, db_path: &Path, watermark: &mut i64) {
+    let Ok(conn) = crate::joiner::serato4::open_read_only(root, db_path) else {
         return;
     };
     if let Ok(sessions) = crate::parser::list_sessions_after(&conn, *watermark) {
