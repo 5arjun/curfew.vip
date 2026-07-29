@@ -157,4 +157,35 @@
   --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);      /* confident settle (enter) */
   --motion-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);  /* symmetric move */
   --motion-ease-spark: cubic-bezier(0.34, 1.56, 0.64, 1);/* slight overshoot: the "pop" */
+
+  /* OAuth-brand colors (Story 2.4) — Google's and Apple's own mandated
+     button colors, the one sanctioned exception to Curfew's palette
+     (DESIGN.md Do's/Don'ts). Values below are verified 2026-07-28 against
+     each platform's own current published guidelines, not carried over from
+     DESIGN.md's own [ASSUMPTION]-flagged guesses:
+     - Google (developers.google.com/identity/branding-guidelines, dark
+       theme): fill #131314, border #8E918F, label #E3E3E3 — all three
+       diverge from DESIGN.md's guess (fill = surface-container-high, label =
+       literal white), so none of DESIGN.md's "reuse an existing token"
+       guidance holds; all three are new, real, verified values.
+     - Apple (developer.apple.com HIG, black button variant): true black
+       fill + white label/logo — DESIGN.md's guess held up here (its own
+       branding-guidelines page didn't return fetchable spec text this
+       session; true black is well-established public spec, used as-is).
+     Apple's white label token is intentionally distinct from Google's
+     #E3E3E3 — the two platforms specify different label colors, not a
+     shared "white-ish OAuth label" concept. */
+  --color-oauth-google-fill: #131314;
+  --color-oauth-google-border: #8e918f;
+  --color-oauth-google-label: #e3e3e3;
+  --color-oauth-apple-fill: #000000;
+  --color-oauth-apple-label: #ffffff;
+
+  /* Focus-ring glow (Story 2.4, AC-4 / UX-DR21) — --color-primary at ~20%
+     alpha (8-digit hex; see tokens.test.ts's normalizeHex, extended for this
+     exact use). Decorative soft-blur companion to the focus ring itself —
+     the ring's own solid-opacity outline (not this glow) is what carries the
+     AA-contrast requirement; see the focus-ring contrast test in
+     tokens.test.ts for the reasoning. */
+  --color-primary-glow: #e98aa233;
 }

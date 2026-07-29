@@ -1,0 +1,13 @@
+# Minimal Vercel deploy (Story 2.4, Task 3.1) — only web/ needs to build;
+# these are large local artifacts the CLI upload would otherwise include
+# since (unlike git) it doesn't skip gitignored files by default.
+node_modules
+.next
+out
+dist
+.turbo
+.pnpm-store
+target
+.git
+supabase/.branches
+supabase/.temp
