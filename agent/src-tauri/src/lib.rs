@@ -29,12 +29,19 @@ pub mod joiner;
 /// or reads Serato 4+'s `master.sqlite` play log directly (Story 1.3b) into an ordered
 /// list of plays. See [`parser`] for the formats and invariants.
 pub mod parser;
+/// Local settings persistence (Story 2.5): the Serato folder path override, the
+/// only setting this agent currently exposes. See [`settings`].
+pub mod settings;
 /// The `stat-engine` pipeline filter (Story 1.7): assembles a `parser::Play` and its
 /// `joiner::JoinedMetadata` into one `EnrichedPlay` record, then computes per-set
 /// summary stats, Camelot-wheel mixing stats, and the energy-arc series — all
 /// arithmetic-only (NFR-1, NFR-3). See [`stats`] for the assembly step and stat
 /// functions.
 pub mod stats;
+/// Tray state machine (Story 2.5): the four idle/syncing/failed/drive-not-connected
+/// states and the tooltip/icon update this agent's sole UI surface uses. See
+/// [`tray`].
+pub mod tray;
 
 use std::path::PathBuf;
 
@@ -82,15 +89,21 @@ pub fn load_sync_payload_schema() -> Result<serde_json::Value, SchemaLoadError> 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![
+            settings::get_serato_path_override,
+            settings::set_serato_path_override,
+        ])
         .setup(|app| {
             // Tray-only surface (UX-DR23): the agent lives in the system tray, not
-            // in a window. The `main` window is defined but starts hidden; clicking
-            // the tray icon toggles it, and closing it just hides it again rather
-            // than tearing it down (otherwise the tray click handler could never
-            // reopen it). A full settings UI is a later story.
+            // in a window. The `main` window is the settings panel — defined but
+            // starts hidden; clicking the tray icon toggles it, and closing it just
+            // hides it again rather than tearing it down (otherwise the tray click
+            // handler could never reopen it).
             use tauri::menu::{Menu, MenuItem};
             use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
             use tauri::{Manager, WindowEvent};
+            use tray::{set_tray_state, TrayState, TRAY_ID};
 
             // Don't show a Dock icon / Cmd+Tab entry for a tray-only app.
             #[cfg(target_os = "macos")]
@@ -108,24 +121,49 @@ pub fn run() {
                 }
             });
 
-            let icon = app
+            let default_icon = app
                 .default_window_icon()
                 .cloned()
                 .ok_or("agent: missing bundled default icon; tray cannot start")?;
 
+            // Debug-only: cycles the tray through all four states so AC-1 can be
+            // manually verified without real sync/watcher logic (that's 2.6/2.8/3.x).
+            // Not present in release builds.
+            #[cfg(debug_assertions)]
+            let cycle_item = MenuItem::with_id(
+                app,
+                "debug-cycle-state",
+                "Cycle tray state (debug)",
+                true,
+                None::<&str>,
+            )?;
+
             let quit_item =
                 MenuItem::with_id(app, "quit", "Quit Curfew Agent", true, None::<&str>)?;
+
+            #[cfg(debug_assertions)]
+            let menu = Menu::with_items(app, &[&cycle_item, &quit_item])?;
+            #[cfg(not(debug_assertions))]
             let menu = Menu::with_items(app, &[&quit_item])?;
 
-            let _tray = TrayIconBuilder::new()
-                .icon(icon)
+            #[cfg(debug_assertions)]
+            let debug_state = std::sync::Mutex::new(TrayState::Idle);
+
+            let _tray = TrayIconBuilder::with_id(TRAY_ID)
+                .icon(default_icon)
                 .tooltip("Curfew Agent")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
-                .on_menu_event(|app, event| {
-                    if event.id().as_ref() == "quit" {
-                        app.exit(0);
+                .on_menu_event(move |app, event| match event.id().as_ref() {
+                    "quit" => app.exit(0),
+                    #[cfg(debug_assertions)]
+                    "debug-cycle-state" => {
+                        let mut state =
+                            debug_state.lock().expect("debug tray state mutex poisoned");
+                        *state = state.next();
+                        let _ = set_tray_state(app, *state);
                     }
+                    _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
@@ -145,6 +183,11 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            // Apply the real per-state icon/tooltip now that the tray exists —
+            // defaults to Idle (no watcher/sync logic exists yet to drive the
+            // other three; that's 2.6/2.8/3.x).
+            set_tray_state(app.handle(), TrayState::Idle)?;
 
             Ok(())
         })

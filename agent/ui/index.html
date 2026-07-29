@@ -3,35 +3,104 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Curfew Agent</title>
+    <title>Curfew Agent Settings</title>
     <style>
+      /*
+        Native OS chrome only (Story 2.5, AC-2/UX-DR23): system font stack,
+        default form controls, no imported design tokens. Do not import
+        web/app/tokens.css, globals.css, or any Obsidian/Ember class here —
+        this panel is deliberately exempt (see Story 2.2's Dev Notes).
+      */
       :root { color-scheme: light dark; }
       html, body {
         margin: 0;
         height: 100%;
-        font: 14px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif;
+        font: 13px/1.4 -apple-system, "Segoe UI", system-ui, sans-serif;
       }
       body {
-        display: grid;
-        place-items: center;
-        padding: 24px;
+        padding: 16px;
         background: Canvas;
         color: CanvasText;
+        box-sizing: border-box;
       }
-      main { text-align: center; max-width: 22rem; }
-      h1 { font-size: 1.1rem; margin: 0 0 0.25rem; }
-      p { margin: 0.25rem 0; opacity: 0.75; }
-      code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      h1 {
+        font-size: 1rem;
+        margin: 0 0 4px;
+      }
+      p.hint {
+        margin: 0 0 12px;
+        opacity: 0.7;
+      }
+      label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+      .row {
+        display: flex;
+        gap: 6px;
+      }
+      input[type="text"] {
+        flex: 1;
+        font: inherit;
+        padding: 4px 6px;
+      }
+      button {
+        font: inherit;
+        padding: 4px 10px;
+      }
+      p.status {
+        margin: 10px 0 0;
+        min-height: 1.2em;
+        opacity: 0.75;
+      }
     </style>
   </head>
   <body>
     <main>
       <h1>Curfew Agent</h1>
-      <p>Local capture service.</p>
-      <p>
-        This minimal surface is a placeholder for the native tray + settings panel
-        (UX-DR23). The real work runs in the Rust core (<code>src-tauri/</code>).
-      </p>
+      <p class="hint">Manual override only — automatic detection is not part of this build.</p>
+      <label for="serato-path">Serato folder path override</label>
+      <div class="row">
+        <input type="text" id="serato-path" placeholder="/path/to/_Serato_" />
+        <button id="browse">Browse…</button>
+        <button id="save">Save</button>
+      </div>
+      <p class="status" id="status" role="status" aria-live="polite"></p>
     </main>
+    <script>
+      const { invoke } = window.__TAURI__.core;
+      const { open } = window.__TAURI__.dialog;
+
+      const pathInput = document.getElementById("serato-path");
+      const status = document.getElementById("status");
+
+      async function loadCurrentOverride() {
+        try {
+          const current = await invoke("get_serato_path_override");
+          if (current) pathInput.value = current;
+        } catch (err) {
+          status.textContent = `Could not load saved path: ${err}`;
+        }
+      }
+
+      document.getElementById("browse").addEventListener("click", async () => {
+        const picked = await open({ directory: true, multiple: false });
+        if (typeof picked === "string") {
+          pathInput.value = picked;
+        }
+      });
+
+      document.getElementById("save").addEventListener("click", async () => {
+        try {
+          await invoke("set_serato_path_override", { path: pathInput.value });
+          status.textContent = "Saved.";
+        } catch (err) {
+          status.textContent = `${err}`;
+        }
+      });
+
+      loadCurrentOverride();
+    </script>
   </body>
 </html>

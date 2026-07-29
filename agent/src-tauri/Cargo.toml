@@ -21,6 +21,10 @@ tauri = { version = "2", features = ["tray-icon"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+# Native folder picker for the Serato path override field (Story 2.5, AC-2) — the
+# settings panel is plain HTML/CSS, not a custom dropzone widget.
+tauri-plugin-dialog = "2"
+
 # Serato parsing / enrichment crates (AR-5). Pinned to an exact triseratops commit
 # — the crates.io release (0.0.3) is stale, and `main` must not be floated so the
 # build is reproducible. Story 1.3's own from-scratch `.session` parser does not
