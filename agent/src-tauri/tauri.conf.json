@@ -15,6 +15,7 @@
         "width": 360,
         "height": 220,
         "resizable": false,
+        "minimizable": false,
         "visible": false
       }
     ],
@@ -22,9 +23,11 @@
       "csp": {
         "default-src": "'self' asset: http://asset.localhost",
         "script-src": "'self'",
-        "style-src": "'self' 'unsafe-inline'",
+        "style-src": "'self'",
         "img-src": "'self' asset: http://asset.localhost data:",
-        "connect-src": "ipc: http://ipc.localhost"
+        "connect-src": "ipc: http://ipc.localhost",
+        "base-uri": "'self'",
+        "form-action": "'none'"
       }
     }
   },

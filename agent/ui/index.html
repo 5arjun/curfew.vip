@@ -85,9 +85,13 @@
       }
 
       document.getElementById("browse").addEventListener("click", async () => {
-        const picked = await open({ directory: true, multiple: false });
-        if (typeof picked === "string") {
-          pathInput.value = picked;
+        try {
+          const picked = await open({ directory: true, multiple: false });
+          if (typeof picked === "string") {
+            pathInput.value = picked;
+          }
+        } catch (err) {
+          status.textContent = `Could not open folder picker: ${err}`;
         }
       });
 

@@ -69,12 +69,17 @@ impl TrayState {
 
 /// Push a new state to the running tray (icon + tooltip together). Any later
 /// story drives real transitions by calling this — no plumbing changes needed.
+///
+/// The tooltip — the authoritative, text-carrying signal per UX-DR21 — is set
+/// first. If it fails, the icon is left untouched rather than risking an
+/// icon/tooltip mismatch where the icon shows a new state but the tooltip
+/// still describes the old one.
 pub fn set_tray_state(app: &AppHandle, state: TrayState) -> tauri::Result<()> {
     let tray = app.tray_by_id(TRAY_ID).ok_or_else(|| {
         tauri::Error::AssetNotFound(format!("agent: tray icon '{TRAY_ID}' not found"))
     })?;
-    tray.set_icon(Some(state.icon()))?;
     tray.set_tooltip(Some(state.tooltip()))?;
+    tray.set_icon(Some(state.icon()))?;
     Ok(())
 }
 

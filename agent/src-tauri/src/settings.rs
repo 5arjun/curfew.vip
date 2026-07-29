@@ -47,12 +47,21 @@ pub fn load_from(path: &Path) -> Result<AgentSettings, SettingsError> {
 }
 
 /// Write settings to an exact file path, creating parent directories as needed.
+/// Writes to a sibling temp file and renames it into place so a crash or a
+/// racing concurrent write can never leave `path` truncated/corrupted —
+/// readers always see either the old contents or the new ones, never a
+/// partial write.
 pub fn save_to(path: &Path, settings: &AgentSettings) -> Result<(), SettingsError> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(SettingsError::Io)?;
-    }
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(parent).map_err(SettingsError::Io)?;
     let raw = serde_json::to_string_pretty(settings).map_err(SettingsError::Json)?;
-    std::fs::write(path, raw).map_err(SettingsError::Io)
+    let tmp_path = parent.join(format!(
+        ".{}.tmp-{}",
+        SETTINGS_FILE_NAME,
+        std::process::id()
+    ));
+    std::fs::write(&tmp_path, raw).map_err(SettingsError::Io)?;
+    std::fs::rename(&tmp_path, path).map_err(SettingsError::Io)
 }
 
 fn settings_file_path(app: &AppHandle) -> Result<PathBuf, SettingsError> {
@@ -83,13 +92,17 @@ pub fn get_serato_path_override(app: AppHandle) -> Result<Option<String>, String
 /// Persist a new Serato path override. Accepts any non-empty path string —
 /// validation beyond "not empty" (e.g. that the folder actually exists/contains
 /// a Serato library) is Story 2.6's concern, not this one.
+///
+/// A malformed/corrupt existing settings file must never block saving a new
+/// override — falls back to defaults rather than propagating the load error,
+/// since this call is about to overwrite the file anyway.
 #[tauri::command]
 pub fn set_serato_path_override(app: AppHandle, path: String) -> Result<(), String> {
     let trimmed = path.trim();
     if trimmed.is_empty() {
         return Err("path override cannot be empty".into());
     }
-    let mut settings = load(&app).map_err(|e| e.to_string())?;
+    let mut settings = load(&app).unwrap_or_default();
     settings.serato_path_override = Some(trimmed.to_string());
     save(&app, &settings).map_err(|e| e.to_string())
 }
@@ -140,6 +153,45 @@ mod tests {
         save_to(&file.0, &settings).expect("save must succeed, creating parent dirs");
         let loaded = load_from(&file.0).expect("load must succeed after save");
         assert_eq!(loaded, settings);
+    }
+
+    #[test]
+    fn save_leaves_no_leftover_temp_file() {
+        let file = TempSettingsFile::new("no-leftover-tmp");
+        save_to(
+            &file.0,
+            &AgentSettings {
+                serato_path_override: Some("/some/path".to_string()),
+            },
+        )
+        .expect("save must succeed");
+        let siblings: Vec<_> = std::fs::read_dir(file.0.parent().unwrap())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(
+            siblings,
+            vec![std::ffi::OsString::from(SETTINGS_FILE_NAME)],
+            "atomic rename must not leave the temp file behind"
+        );
+    }
+
+    #[test]
+    fn save_succeeds_even_when_existing_file_is_corrupt_json() {
+        let file = TempSettingsFile::new("recover-from-corrupt");
+        std::fs::create_dir_all(file.0.parent().unwrap()).unwrap();
+        std::fs::write(&file.0, "{ not valid json").unwrap();
+        assert!(load_from(&file.0).is_err(), "sanity: file starts corrupt");
+
+        save_to(
+            &file.0,
+            &AgentSettings {
+                serato_path_override: Some("/new/path".to_string()),
+            },
+        )
+        .expect("save must overwrite a corrupt file, not be blocked by it");
+        let loaded = load_from(&file.0).expect("file must be valid JSON after save");
+        assert_eq!(loaded.serato_path_override.as_deref(), Some("/new/path"));
     }
 
     #[test]

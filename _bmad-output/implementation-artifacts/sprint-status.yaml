@@ -146,7 +146,7 @@ development_status:
   2-3c-phone-on-file-post-signup-prompt: done
   2-3d-production-email-delivery: done
   2-4-auth-ui-components: done
-  2-5-agent-shell-tray-ui: review
+  2-5-agent-shell-tray-ui: done
   2-6-serato-folder-auto-detection-first-run-confirm: backlog
   2-7-local-only-raw-data-boundary: backlog
   2-8-set-capture-into-local-sqlite: backlog

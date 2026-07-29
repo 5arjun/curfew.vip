@@ -4,7 +4,7 @@ baseline_commit: 81ff66f3de1c1173809ac52f6e878b51e397d648
 
 # Story 2.5: Agent shell + tray UI
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -45,6 +45,18 @@ so that it stays out of my way while showing sync state.
 - [x] Task 5: Tests + gate
   - [x] `cargo test` covering the state enum → icon/tooltip mapping (pure logic, no real tray needed) and the path-persist round-trip (write override, read it back).
   - [x] Manually verify on the actual dev machine (macOS, per this repo's current CI/dev environment): all four tray tooltip states render correct text, settings panel opens as a small native (non-resizable) window, path override persists across an agent restart. Document this manual walkthrough in Dev Agent Record — per the standing Epic 2 rule (retro decision D2 / ai-8), "gate green" requires the four-command gate (`cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo test`) to have **actually been run** on this machine, not assumed.
+
+### Review Findings
+
+- [x] [Review][Patch] Settings save is not crash-safe and self-locks on corruption — `save_to` writes via plain `fs::write` (no atomic temp+rename), and `set_serato_path_override` calls `load()` before writing, so a corrupted `settings.json` permanently blocks Save from ever overwriting it via the UI [settings.rs:50-56,87-95] — fixed: `save_to` now writes to a sibling temp file and renames it into place; `set_serato_path_override` falls back to defaults on a load error instead of propagating it. Two new tests added.
+- [x] [Review][Patch] CSP hardening incomplete — `style-src` keeps `'unsafe-inline'` though Tauri auto-injects a nonce into inline `<style>` at build time (verified in `tauri-utils`'s `inject_nonce_token`); `base-uri`/`form-action` are also omitted and don't fall back to `default-src` [tauri.conf.json:21-29] — fixed: dropped `'unsafe-inline'` from `style-src`, added `base-uri: 'self'` and `form-action: 'none'`.
+- [x] [Review][Patch] Settings window can be minimized and stranded — `minimizable` defaults `true` (not overridden), and the tray-click toggle only checks `is_visible()`; with no Dock icon (`ActivationPolicy::Accessory`), a minimized panel can become unreachable [tauri.conf.json:11-19, lib.rs:168-184] — fixed: added `"minimizable": false` to the window config.
+- [x] [Review][Patch] Browse button has no error handling, unlike Save — a dialog-plugin rejection fails silently with no status message [index.html:87-92] — fixed: wrapped in try/catch matching Save's pattern.
+- [x] [Review][Patch] `set_tray_state` sets icon then tooltip as two separate fallible steps with no rollback — a mid-sequence failure leaves icon/tooltip mismatched [tray.rs:72-79] — fixed: tooltip (the authoritative UX-DR21 signal) is now set first, so a failure leaves both icon and tooltip in the prior consistent state instead of showing a stale tooltip against a new icon.
+- [x] [Review][Patch] Remove unused `@2x` tray icon assets — added to the repo but never referenced by `TrayState::icon()` (no HiDPI lookup exists); resolved via user decision to strip now and defer proper HiDPI support [tray.rs:58-67, agent/src-tauri/icons/tray/*@2x.png] — fixed: the four unused `@2x` PNGs were deleted; HiDPI lookup logged in deferred-work.md.
+- [x] [Review][Defer] `is_visible().unwrap_or(false)` foot-gun left untouched despite this diff heavily editing the surrounding code [lib.rs:176] — deferred, pre-existing (carried over from Story 1.1, explicitly out of this story's scope)
+- [x] [Review][Defer] Concurrent Save-click race — unsynchronized read-modify-write on the settings file, no in-flight guard [settings.rs:87-95] — deferred, low priority (residual risk after the atomic-write patch is just benign last-write-wins)
+- [x] [Review][Defer] HiDPI-aware tray icon lookup — `@2x` assets removed this round; proper scale-factor-aware icon selection needs its own investigation [tray.rs] — deferred, follow-up story per user decision
 
 ## Dev Notes
 
