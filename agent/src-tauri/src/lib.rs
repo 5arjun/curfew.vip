@@ -219,19 +219,19 @@ pub fn run() {
                 pending_detected_path,
             )));
 
-            match resolution {
-                watcher::StartupResolution::Confirmed(path) => {
-                    watcher::start_watching(app.handle().clone(), path);
-                }
-                watcher::StartupResolution::PendingConfirmation(_) => {
-                    // AC-3: the confirm gate must not depend on the DJ thinking to
-                    // click the tray icon — this window starts `visible: false`
-                    // (Story 2.5) and only reveals on tray click otherwise.
-                    window.show()?;
-                    window.set_focus()?;
-                }
-                watcher::StartupResolution::NothingFound => {}
+            if let watcher::StartupResolution::PendingConfirmation(_) = resolution {
+                // AC-3: the confirm gate must not depend on the DJ thinking to
+                // click the tray icon — this window starts `visible: false`
+                // (Story 2.5) and only reveals on tray click otherwise.
+                window.show()?;
+                window.set_focus()?;
             }
+
+            // Always started, regardless of resolution: the loop itself tracks
+            // the live override on disk (see `watch_loop`'s doc comment), so it
+            // picks up a path saved via the confirm UI just now, or edited later
+            // from the tray settings panel, without needing a relaunch.
+            watcher::start_watching(app.handle().clone());
 
             Ok(())
         })

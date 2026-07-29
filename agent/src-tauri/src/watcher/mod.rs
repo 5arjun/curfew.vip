@@ -123,51 +123,84 @@ pub fn get_pending_detected_path(
     ))
 }
 
-/// Starts the background watch loop for a confirmed path (Task 5/6): reconnect
-/// polling plus live session-log watching. Runs for the lifetime of the agent
-/// process — this tray-only app has no graceful-shutdown path for any background
-/// component yet (mirrors the rest of this crate).
-pub fn start_watching(app: AppHandle, raw_path: String) {
-    std::thread::spawn(move || watch_loop(app, PathBuf::from(raw_path)));
+/// Starts the background watch loop (Task 5/6): reconnect polling plus live
+/// session-log watching. Started unconditionally at app launch, regardless of
+/// [`StartupResolution`] — it tracks the *live* override on disk on every poll
+/// tick (see [`watch_loop`]'s doc comment for why), so it picks up a path saved
+/// via the confirm UI mid-session, not only one that already existed at boot.
+/// Runs for the lifetime of the agent process — this tray-only app has no
+/// graceful-shutdown path for any background component yet (mirrors the rest of
+/// this crate).
+pub fn start_watching(app: AppHandle) {
+    std::thread::spawn(move || watch_loop(app));
 }
 
 /// One connected/disconnected cycle plus live session discovery, looped forever.
 ///
-/// Two concerns share one loop rather than two threads because they are not
-/// actually independent: a disconnect must tear down the live fs-watcher (it is
-/// watching a path that just vanished), and a reconnect must stand a fresh one
-/// back up against the same, possibly-relaunched, volume.
+/// **Re-reads `settings::load` every cycle rather than taking a fixed path.**
+/// The confirm action (`set_serato_path_override`, Task 3/4) only ever writes to
+/// disk — it has no reference to a possibly-already-running watch loop to signal,
+/// and starting a second loop per Save would race two threads over the same tray
+/// state. Polling the live override instead means Save doesn't need to know this
+/// loop exists at all: whatever is on disk right now is what gets watched, and a
+/// changed override (first Save, or editing an existing one) is picked up on the
+/// next [`RECONNECT_POLL_INTERVAL`] tick, same as a reconnect.
+///
+/// Two other concerns share this one loop rather than running as two: a
+/// disconnect must tear down the live fs-watcher (it is watching a path that
+/// just vanished), and a reconnect must stand a fresh one back up against the
+/// same, possibly-relaunched, volume.
 #[allow(unused_assignments)] // `_fs_watcher` is a lifetime guard: dropping it stops the watch.
-fn watch_loop(app: AppHandle, path: PathBuf) {
+fn watch_loop(app: AppHandle) {
+    let mut current_path: Option<PathBuf> = None;
     let mut connected = false;
     let mut watermark: i64 = 0;
     let mut _fs_watcher: Option<RecommendedWatcher> = None;
     let (tx, rx) = mpsc::channel::<notify::Result<notify::Event>>();
 
     loop {
-        match detect::classify(&path) {
-            Some(install) => {
-                if !connected {
-                    connected = true;
-                    watermark = 0;
-                    let _ = crate::tray::set_tray_state(&app, crate::tray::TrayState::Idle);
-                    _fs_watcher = start_fs_watch(&install, tx.clone());
-                    if let SeratoInstall::Serato4 { db_path } = &install {
-                        check_for_new_sessions(db_path, &mut watermark);
+        let override_path = crate::settings::load(&app)
+            .ok()
+            .and_then(|s| s.serato_path_override)
+            .map(PathBuf::from);
+
+        // The override changed (first ever Save, or a DJ pointing it somewhere
+        // new) — drop whatever was being watched and re-evaluate from scratch
+        // against the new path, exactly like a disconnect/reconnect cycle.
+        if override_path != current_path {
+            current_path = override_path.clone();
+            connected = false;
+            _fs_watcher = None;
+        }
+
+        if let Some(path) = &current_path {
+            match detect::classify(path) {
+                Some(install) => {
+                    if !connected {
+                        connected = true;
+                        watermark = 0;
+                        let _ = crate::tray::set_tray_state(&app, crate::tray::TrayState::Idle);
+                        _fs_watcher = start_fs_watch(&install, tx.clone());
+                        if let SeratoInstall::Serato4 { db_path } = &install {
+                            check_for_new_sessions(db_path, &mut watermark);
+                        }
+                    }
+                }
+                None => {
+                    if connected {
+                        connected = false;
+                        _fs_watcher = None;
+                        let _ = crate::tray::set_tray_state(
+                            &app,
+                            crate::tray::TrayState::DriveNotConnected,
+                        );
                     }
                 }
             }
-            None => {
-                if connected {
-                    connected = false;
-                    _fs_watcher = None;
-                    let _ = crate::tray::set_tray_state(
-                        &app,
-                        crate::tray::TrayState::DriveNotConnected,
-                    );
-                }
-            }
         }
+        // No override at all yet: nothing to watch. Tray/window state for that
+        // case belongs to the first-run confirm flow (`resolve_startup`), not
+        // this loop.
 
         match rx.recv_timeout(RECONNECT_POLL_INTERVAL) {
             Ok(Ok(_event)) => {
@@ -175,8 +208,10 @@ fn watch_loop(app: AppHandle, path: PathBuf) {
                 // logical write (temp-file churn) — harmless here because
                 // `check_for_new_sessions` is idempotent against `watermark`, so a
                 // spurious extra event just re-runs a query that finds nothing new.
-                if let Some(SeratoInstall::Serato4 { db_path }) = detect::classify(&path) {
-                    check_for_new_sessions(&db_path, &mut watermark);
+                if let Some(path) = &current_path {
+                    if let Some(SeratoInstall::Serato4 { db_path }) = detect::classify(path) {
+                        check_for_new_sessions(&db_path, &mut watermark);
+                    }
                 }
                 // Legacy `.session` file events: detection only (this story does
                 // not parse them — Story 2.8's job). Nothing to do here beyond
