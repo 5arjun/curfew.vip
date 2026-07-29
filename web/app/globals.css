@@ -268,7 +268,8 @@ a {
   width: 20px;
 }
 
-.auth-biometric-anchor:hover:not(:disabled) .auth-biometric-radio {
+.auth-biometric-anchor:hover:not(:disabled) .auth-biometric-radio,
+.auth-biometric-anchor:focus-visible:not(:disabled) .auth-biometric-radio {
   background: var(--color-primary);
   border-color: var(--color-primary);
 }
@@ -315,4 +316,17 @@ a {
   background: var(--color-oauth-apple-fill);
   border: none;
   color: var(--color-oauth-apple-label);
+}
+
+/* Windows forced-colors/high-contrast mode strips box-shadow entirely, and
+   every focus-visible rule above sets outline: none — without this fallback
+   there is no visible focus indicator at all in that mode. */
+@media (forced-colors: active) {
+  .auth-ghost-field-input:focus-visible,
+  .auth-button:focus-visible,
+  .auth-biometric-anchor:focus-visible,
+  .auth-oauth-button:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
 }

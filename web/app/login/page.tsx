@@ -63,6 +63,11 @@ function LoginPageContent() {
   const [passkeyPending, setPasskeyPending] = useState(false);
   const [oauthPending, setOauthPending] = useState<"google" | "apple" | null>(null);
   const [oauthError, setOauthError] = useState<string | null>(null);
+  // OAuth (full-page redirect) and passkey (WebAuthn ceremony) are mutually
+  // exclusive in-flight — without this, the OAuth buttons and the passkey
+  // BiometricAnchor only checked their own pending flag, so a user could
+  // trigger both in the window before the OAuth redirect navigates away.
+  const authMethodPending = passkeyPending || oauthPending !== null;
   const searchParams = useSearchParams();
   const confirmationFailed = searchParams.get("error") === "confirmation-failed";
 
@@ -148,17 +153,17 @@ function LoginPageContent() {
       )}
 
       <div style={oauthGroupStyle}>
-        <GoogleSignInButton onClick={() => handleOAuthSignIn("google")} disabled={oauthPending !== null} />
+        <GoogleSignInButton onClick={() => handleOAuthSignIn("google")} disabled={authMethodPending} />
         <AppleSignInButton
           onClick={() => handleOAuthSignIn("apple")}
-          disabled={!appleSignInAvailable || oauthPending !== null}
+          disabled={!appleSignInAvailable || authMethodPending}
           unavailableReason={appleSignInAvailable ? undefined : "coming soon"}
         />
         <BiometricAnchor
           primaryLabel="Sign in with Passkey"
           secondaryLabel="use an existing passkey"
           onClick={handlePasskeySignIn}
-          disabled={passkeyPending}
+          disabled={authMethodPending}
         />
       </div>
 
@@ -173,23 +178,27 @@ function LoginPageContent() {
         variant="secondary"
         onClick={() => setShowEmailForm((shown) => !shown)}
         aria-expanded={showEmailForm}
+        aria-controls="auth-email-form-panel"
       >
         {showEmailForm ? "Hide email sign-in" : "Use email instead"}
       </Button>
 
-      {showEmailForm && (
-        <div style={{ marginTop: "var(--space-lg)" }}>
-          <AuthForm
-            key={mode}
-            mode={mode}
-            onStatusChange={setAuthStatus}
-            onSubmitStart={clearCrossMethodErrors}
-          />
-          <Button type="button" variant="secondary" onClick={() => switchMode(mode === "login" ? "signup" : "login")}>
-            {mode === "login" ? "Need an account? Sign up" : "Have an account? Log in"}
-          </Button>
-        </div>
-      )}
+      {/* `hidden` (not a conditional unmount) keeps AuthForm's useActionState
+          instance alive while the panel is collapsed, so closing this panel —
+          whether idle or mid-submit — can never silently discard typed input
+          or an in-flight sign-in/sign-up result. Also gives the toggle button
+          above a persistent id to point aria-controls at. */}
+      <div id="auth-email-form-panel" hidden={!showEmailForm} style={{ marginTop: "var(--space-lg)" }}>
+        <AuthForm
+          key={mode}
+          mode={mode}
+          onStatusChange={setAuthStatus}
+          onSubmitStart={clearCrossMethodErrors}
+        />
+        <Button type="button" variant="secondary" onClick={() => switchMode(mode === "login" ? "signup" : "login")}>
+          {mode === "login" ? "Need an account? Sign up" : "Have an account? Log in"}
+        </Button>
+      </div>
     </main>
   );
 }
