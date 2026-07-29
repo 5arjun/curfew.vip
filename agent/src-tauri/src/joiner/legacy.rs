@@ -26,8 +26,12 @@ use crate::parser::Play;
 
 /// Serato's library directory name, and the catalogue file inside it. Mirrors
 /// `triseratops`' own path convention so this loader looks where the crate would.
-const SERATO_DIR: &str = "_Serato_";
-const DATABASE_FILENAME: &str = "database V2";
+///
+/// `pub` (not module-private): Story 2.6's `watcher::detect` install-generation
+/// classifier reuses these exact names rather than redeclaring them, per that
+/// story's own Task 1.
+pub const SERATO_DIR: &str = "_Serato_";
+pub const DATABASE_FILENAME: &str = "database V2";
 
 /// Everything that can go wrong loading a `database V2` catalogue: the file could not
 /// be read, or its bytes did not decode. Mirrors the `Display`/`std::error::Error`

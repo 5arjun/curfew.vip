@@ -42,6 +42,11 @@ pub mod stats;
 /// states and the tooltip/icon update this agent's sole UI surface uses. See
 /// [`tray`].
 pub mod tray;
+/// The `watcher` pipeline stage (Story 2.6): Serato install auto-detection
+/// (OS defaults + removable volumes), the manual-override/first-run-confirm
+/// precedence, and the live watch loop (new-session detection + drive
+/// reconnect). See [`watcher`].
+pub mod watcher;
 
 use std::path::PathBuf;
 
@@ -93,6 +98,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             settings::get_serato_path_override,
             settings::set_serato_path_override,
+            watcher::get_pending_detected_path,
         ])
         .setup(|app| {
             // Tray-only surface (UX-DR23): the agent lives in the system tray, not
@@ -185,9 +191,47 @@ pub fn run() {
                 .build(app)?;
 
             // Apply the real per-state icon/tooltip now that the tray exists —
-            // defaults to Idle (no watcher/sync logic exists yet to drive the
-            // other three; that's 2.6/2.8/3.x).
+            // defaults to Idle; Story 2.6's detection below may immediately
+            // override this to DriveNotConnected if a confirmed override no
+            // longer resolves at launch.
             set_tray_state(app.handle(), TrayState::Idle)?;
+
+            // Story 2.6: find (or confirm, or start watching) the DJ's Serato
+            // install. An existing manual override (Story 2.5) is the single
+            // source of truth and skips detection entirely (Task 3); otherwise
+            // OS defaults + removable volumes are scanned (Tasks 1-2) and, if
+            // something is found, the DJ must confirm it before it is used
+            // (Task 4, UX-DR20 — never silent).
+            let home = app
+                .path()
+                .home_dir()
+                .map_err(|_| "agent: could not resolve home directory for Serato detection")?;
+            let settings = settings::load(app.handle()).unwrap_or_default();
+            let resolution =
+                watcher::resolve_startup(&settings, &home, &watcher::detect::SystemDisks);
+
+            let pending_detected_path = match &resolution {
+                watcher::StartupResolution::PendingConfirmation(path) => Some(path.clone()),
+                watcher::StartupResolution::Confirmed(_)
+                | watcher::StartupResolution::NothingFound => None,
+            };
+            app.manage(watcher::PendingDetectionState(std::sync::Mutex::new(
+                pending_detected_path,
+            )));
+
+            match resolution {
+                watcher::StartupResolution::Confirmed(path) => {
+                    watcher::start_watching(app.handle().clone(), path);
+                }
+                watcher::StartupResolution::PendingConfirmation(_) => {
+                    // AC-3: the confirm gate must not depend on the DJ thinking to
+                    // click the tray icon — this window starts `visible: false`
+                    // (Story 2.5) and only reveals on tray click otherwise.
+                    window.show()?;
+                    window.set_focus()?;
+                }
+                watcher::StartupResolution::NothingFound => {}
+            }
 
             Ok(())
         })

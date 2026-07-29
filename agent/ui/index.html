@@ -59,7 +59,7 @@
   <body>
     <main>
       <h1>Curfew Agent</h1>
-      <p class="hint">Manual override only — automatic detection is not part of this build.</p>
+      <p class="hint" id="hint">Set the folder where Serato stores your library.</p>
       <label for="serato-path">Serato folder path override</label>
       <div class="row">
         <input type="text" id="serato-path" placeholder="/path/to/_Serato_" />
@@ -74,13 +74,33 @@
 
       const pathInput = document.getElementById("serato-path");
       const status = document.getElementById("status");
+      const hint = document.getElementById("hint");
 
+      // Story 2.6, AC-3/UX-DR20: a detected-but-unconfirmed path is pre-filled but
+      // never treated as saved — only the DJ's own Save click (the confirm action)
+      // persists it. Loading a real saved override always wins over a pending
+      // detection, since an override existing at all means confirmation already
+      // happened on a previous launch.
       async function loadCurrentOverride() {
         try {
           const current = await invoke("get_serato_path_override");
-          if (current) pathInput.value = current;
+          if (current) {
+            pathInput.value = current;
+            return;
+          }
         } catch (err) {
           status.textContent = `Could not load saved path: ${err}`;
+          return;
+        }
+
+        try {
+          const pending = await invoke("get_pending_detected_path");
+          if (pending) {
+            pathInput.value = pending;
+            hint.textContent = "Auto-detected — confirm or edit, then Save.";
+          }
+        } catch (err) {
+          status.textContent = `Could not load detected path: ${err}`;
         }
       }
 
@@ -99,6 +119,7 @@
         try {
           await invoke("set_serato_path_override", { path: pathInput.value });
           status.textContent = "Saved.";
+          hint.textContent = "Set the folder where Serato stores your library.";
         } catch (err) {
           status.textContent = `${err}`;
         }

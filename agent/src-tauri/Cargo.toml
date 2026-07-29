@@ -49,3 +49,15 @@ lofty = { version = "0.24.0", default-features = false }
 # vendored C source needs only a C toolchain, which CI's Tauri Linux prereqs
 # (`build-essential`) already install.
 rusqlite = { version = "0.40.1", features = ["bundled"] }
+
+# Cross-platform removable/USB volume enumeration (Story 2.6 Task 2) — no
+# per-OS hand-rolling (`/Volumes` scanning, drive-letter enumeration); `Disks`
+# + `Disk::is_removable()`/`Disk::mount_point()` cover both macOS and Windows.
+sysinfo = "0.39.6"
+
+# Cross-platform filesystem watcher (Story 2.6 Task 6) — the API the
+# architecture spine's pipeline diagram already names for the `watcher` stage.
+# `recommended_watcher` picks the OS-native backend (FSEvents on macOS,
+# ReadDirectoryChangesW on Windows) so this crate never touches a raw platform
+# API directly.
+notify = "8.2.0"

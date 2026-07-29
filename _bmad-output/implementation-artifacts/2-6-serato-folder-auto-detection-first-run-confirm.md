@@ -1,0 +1,190 @@
+---
+baseline_commit: 45c345c318eda673e6c06d785a03e216e096f26c
+---
+
+# Story 2.6: Serato folder auto-detection + first-run confirm
+
+Status: in-progress
+
+<!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
+
+## Story
+
+As a DJ,
+I want the agent to auto-find my Serato data folder (including on USB), let me confirm/override it, and resume when a drive reconnects,
+so that setup is one confirmation and keeps working across removable media.
+
+## Acceptance Criteria
+
+1. **Given** OS defaults (`~/Music/_Serato_/` on macOS, Windows equivalent), **When** the agent starts, **Then** it auto-discovers the Serato data directory **And** scans connected removable/USB volumes. *(FR-1)*
+2. **Given** nothing is found, **Then** I can set a manual path override via the tray. *(FR-1)*
+3. **Given** first run, **When** a path is detected, **Then** I confirm or edit it before it is used — never silent auto-selection. *(UX-DR19 first-run, UX-DR20 confirm-never-silent)*
+4. **Given** a removable drive is reconnected, **Then** the agent auto-detects it and resumes watching. *(FR-1)*
+5. **Given** the detected install is Serato 4+ (`master.sqlite` present), **Then** the agent watches `master.sqlite` for new `history_session` rows as the play-log source (Story 1.3b), not the legacy `.session` folder, which may no longer change on that install. *(FR-1; closes the scope gap flagged in Story 1.3's Review Findings)*
+
+## Tasks / Subtasks
+
+- [x] Task 1: Install-generation detection + OS-default path discovery (AC: #1, #5)
+  - [x] Add a new `watcher` pipeline stage (see Dev Notes → module layout): `agent/src-tauri/src/watcher/mod.rs` (or `watcher/detect.rs`), registered as `pub mod watcher;` in `lib.rs` following the existing doc-comment-above-`pub mod` convention.
+  - [x] Write a pure function that, given a candidate root directory, classifies it: **Serato 4+** if `master.sqlite` exists at its dedicated path (macOS: `~/Library/Application Support/Serato/Library/master.sqlite` — confirmed real path, Story 1.3b Dev Agent Record); else **legacy** if `<root>/_Serato_/database V2` exists (same constants as `joiner::legacy::{SERATO_DIR, DATABASE_FILENAME}` — reuse them, do not redeclare). Neither present → not a Serato install.
+  - [x] **Critical nuance:** legacy and Serato 4+ defaults are two *structurally different* locations, not one folder with a version-sniff inside it — `~/Music/_Serato_/` (legacy) and `~/Library/Application Support/Serato/Library/master.sqlite` (Serato 4+) must both be checked at startup, independently. A DJ can have both present (migrated install) — Serato 4+ wins per AC-5 ("watches `master.sqlite`... not the legacy `.session` folder, which may no longer change").
+  - [x] Windows equivalents are **unverified** — no research doc or prior story pins an exact Windows path (`epics.md`/PRD only say "Windows equivalent"). Best-effort per Serato's documented Windows convention is `%USERPROFILE%\Music\_Serato_\` (legacy) — write the check, but flag in Completion Notes as unverified (no Windows dev/CI environment, same gap Story 2.5 flagged for tray parity).
+  - [x] Unit test both generations and the neither-found case using `tempfile`-style fixture directories (create the marker files/folders, no real Serato data) — mirror the in-memory/temp-dir fixture pattern already used in `settings.rs` tests and `parser::serato4`'s `in_memory_history()`.
+
+- [x] Task 2: Removable/USB volume scan (AC: #1)
+  - [x] Add the `sysinfo` crate to `Cargo.toml` (no removable-volume-detection crate exists in this repo today). Use `sysinfo::Disks::new_with_refreshed_list()`, iterate disks, filter `Disk::is_removable() == true`, and run Task 1's classification against each disk's `mount_point()`.
+  - [x] Order of precedence: OS default location(s) first, then removable volumes, first match wins — do not silently pick a "best" match if multiple are found; surface the first hit to the confirm flow (Task 4) and let the DJ edit if it's wrong (AC-3 exists precisely for this).
+  - [x] A real test device is available for manual verification: `/Volumes/ARJUN SSD` (a real `database V2` library, 4,972 tracks, per `deferred-work.md`) — use it for the manual walkthrough (Task 7) if mounted; not committed as a fixture, unit tests must use synthetic temp-dir disks only (inject the disk list via a small trait/parameter so `sysinfo`'s real system call isn't needed in `cargo test`).
+  - [x] Note for Dev Agent Record: `deferred-work.md` already flags that volume-hosted `database V2` path resolution (whether stored paths are relative-to-volume-root) is **unproven** — that's a Story 1.9 concern for the *join*, not this story's scan/detection logic; don't attempt to fix it here, just don't make it worse.
+
+- [x] Task 3: Manual override integration + "nothing found" path (AC: #2)
+  - [x] `settings.rs`'s `serato_path_override` (Story 2.5) already exists and its own doc comment names this story as the consumer — **reuse it as the single source of truth, do not add a parallel "confirmed path" field.** On startup: if `settings::load(app).serato_path_override` is `Some`, skip Tasks 1/2/4 entirely and go straight to watching that path (this is also what makes first-run confirm a true one-time gate, UX EXPERIENCE.md's "one-time gate" language).
+  - [x] Only when the override is `None` does auto-detection (Tasks 1/2) run. If detection finds nothing, the existing settings panel (native, one field, already reachable from the tray in one click per Story 2.5) is the manual-entry surface for AC-2 — confirm this path still works unmodified; add a lightweight validation to `set_serato_path_override` (does the path resolve to a legacy or Serato-4+ root per Task 1's classifier?) without breaking its existing "any non-empty string" test contract — return a clear `Err` string for an unrecognized path rather than silently accepting it.
+
+- [x] Task 4: First-run confirm UI — never silent (AC: #3)
+  - [x] **Reuse the existing settings window/panel (Story 2.5) as the confirm surface — do not build a second window** (UX-DR22: "never a full window... only one settings panel"). Add a new Tauri command (e.g. `get_pending_detected_path() -> Option<String>`) the frontend calls once on load, alongside the existing `get_serato_path_override` call in `agent/ui/index.html`.
+  - [x] When a pending detected path exists (Task 1/2 found something and no override is yet persisted), pre-fill the existing path field with it and show copy that makes clear this is a *detection awaiting confirmation*, not a saved value yet — e.g. "Auto-detected — confirm or edit, then Save." Update `index.html`'s current hint text (`"Manual override only — automatic detection is not part of this build."` — literally the line to change, it's stale as of this story).
+  - [x] The act of clicking the existing **Save** button (`set_serato_path_override`) *is* the confirm action — this reuses 100% of the existing persist path with zero schema change. Do not auto-save a detected default before the DJ acts; nothing commits without the explicit Save click (UX-DR20).
+  - [x] Because this window currently starts `visible: false` and only reveals on tray click (Story 2.5), first-run detection must explicitly call `window.show()` + `window.set_focus()` when a pending detection exists at startup, instead of waiting for the DJ to think to click the tray icon — otherwise AC-3's confirm gate could go unnoticed indefinitely.
+
+- [x] Task 5: Drive reconnect handling + tray wiring (AC: #4)
+  - [x] Once a path is confirmed (Task 3/4) and it lives on a removable volume (Task 2 detected it there), the agent must detect disconnect/reconnect of that volume and resume watching automatically — no re-detection, no re-confirm, per UJ-3's "keeps working across removable media."
+  - [x] `tray::set_tray_state`/`TrayState::DriveNotConnected` (Story 2.5) already exists and is fully built for this — call `set_tray_state(&app, TrayState::DriveNotConnected)` when the configured path's volume becomes unreachable, and back to an appropriate active state when it reappears. No new tray plumbing needed, just wiring real detection into the existing state machine.
+  - [x] `notify` (the crate the architecture spine's pipeline diagram already names for this stage — not yet added to `Cargo.toml`) does not reliably emit volume-mount/unmount events cross-platform; a periodic poll of `sysinfo::Disks` (Task 2's same enumeration) checking whether the configured path's volume is still present is the simpler, more portable approach here — pick one and document the choice + poll interval in Dev Agent Record rather than silently assuming.
+
+- [x] Task 6: Play-log source selection for the watcher stage (AC: #5)
+  - [x] This story answers *which* source to watch and detects *new* sessions on it — it does **not** parse plays, run the stat engine, or write to local SQLite (that's Story 2.8, which explicitly depends on "Story 2.6's source selection"). Expose a small result type from the `watcher` module, e.g. an enum with a `Legacy(PathBuf)` variant (the `.session` folder path) and a `Serato4 { db_path: PathBuf }` variant, so 2.8 has one thing to match on.
+  - [x] For Serato 4+: **no production code queries `history_session` today** — only `parser::serato4::read_session(conn, session_id)` (which reads `history_entry` given an already-known `session_id`) exists. Port the query pattern from `agent/spike-1-2-parser-validation/src/serato4.rs`'s `list_sessions`/`get_session` (schema: `history_session(id, name, start_time, end_time)`) into production code — that spike file is reference-only, not itself part of the shipped crate. "New" session detection = query `history_session` for rows past a last-seen high-water mark (max `id` or `start_time` observed so far); do not attempt to infer session "completeness" here — that's explicitly Story 2.8 AC-4's job ("completed" defined by an explicit completion signal).
+  - [x] Live watching mechanism: for legacy installs, watch the `History/Sessions/` folder for new/modified `.session` files with `notify`'s `RecommendedWatcher` (`notify::recommended_watcher`, v6+ API — add as a new `Cargo.toml` dependency, nothing pins a version yet). For Serato 4+, `master.sqlite` is a single file that changes on every play — either watch it with `notify` for modify events and re-query `history_session` on each event, or poll on an interval; pick one and document the tradeoff (event-driven is more responsive but `notify` on SQLite files can fire multiple times per logical write due to WAL-mode temp files — coalesce/debounce if so).
+  - [x] Reuse `joiner::serato4::open_read_only(path)` to open `master.sqlite` — do not open a second raw connection with different flags.
+
+- [ ] Task 7: Tests + gate
+  - [x] `cargo test` covering: install-generation classification (both generations + neither, temp-dir fixtures), removable-volume scan (injectable/mocked disk list, not real `sysinfo` calls), manual-override precedence (override set → detection skipped), first-run confirm gating (pending-detection command returns `None` once an override exists), and the ported `history_session` query (in-memory SQLite fixture, same pattern as `parser::serato4`'s and `joiner::serato4`'s existing tests).
+  - [ ] Manually verify on the real dev machine (macOS): first launch with no override sees a real `_Serato_` or `master.sqlite` install (if present) auto-detected and the settings window auto-opens pre-filled, confirm via Save persists it and suppresses future auto-open; if `/Volumes/ARJUN SSD` (or another USB drive) is mounted, unplug/replug it and confirm the tray cycles to "Drive not connected" and back without re-prompting. Document this walkthrough in Dev Agent Record per the standing Epic 2 rule (retro decision D2 / ai-8) — the four-command gate (`cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo build`, `cargo test`) must actually be run on this machine, not assumed.
+
+## Dev Notes
+
+- **Scope boundaries — do not build these here (they belong to other stories):**
+  - Parsing plays, running the stat engine, writing captured sets to local SQLite → **Story 2.8** ("Set capture into local SQLite"), which explicitly consumes "Story 2.6's source selection." This story only detects/selects/watches; it does not capture.
+  - "Completed session" semantics (explicit completion signal vs. partial/interrupted capture) → **Story 2.8 AC-4**. This story's "new session detected" signal is not the same thing as "session complete."
+  - Filesystem capability *scoping* to the configured path only (NFR-2/FR-3, "raw data never leaves the machine") → **Story 2.7**. This story's Rust backend code (not JS/webview) does `std::fs`/`rusqlite`/`sysinfo` reads directly, which is unrestricted by Tauri capabilities regardless — capabilities in `capabilities/default.json` only gate what the *webview* can call via IPC, not what Rust itself can read. **No `capabilities/default.json` changes are expected for this story** (no new frontend-callable plugin permissions are introduced — `get_pending_detected_path` is a plain `#[tauri::command]`, automatically covered by the existing `core:default`, exactly like `settings::get_serato_path_override` today). Do not pre-emptively lock down fs scope here — the scan step in Tasks 1/2 *must* read outside the eventual configured path to find it in the first place; that tension is exactly why Story 2.7 exists as its own story, not a reason to skip scanning.
+  - Signed/notarized cross-platform builds → **Stories 2.9a/b/c**. Not this story's concern.
+
+- **Current repo state this story extends (not greenfield):**
+  - No `watcher` module exists yet — `lib.rs`'s own module doc comment already names the pipeline (`watcher -> parser -> joiner -> stat-engine -> local store -> sync-queue`) but nothing implements the first stage. This story is that stage's first real code.
+  - `settings.rs` (217 lines, Story 2.5) already has `AgentSettings { serato_path_override: Option<String> }`, atomic `save_to`/`load_from`, and two Tauri commands. Its own top-of-file doc comment states verbatim: *"It does **not** wire the override into real Serato folder detection/watching; that consumption is Story 2.6's job."* Read it before writing any new settings-adjacent code — do not duplicate its persistence logic.
+  - `tray.rs` (143 lines, Story 2.5) has a complete `TrayState` enum (`Idle | Syncing | Failed | DriveNotConnected`) and `set_tray_state(&AppHandle, TrayState) -> tauri::Result<()>`, plus a debug-only manual-cycle menu item. This story is the first to drive `DriveNotConnected` from a real signal instead of the debug cycle button.
+  - `lib.rs`'s `.setup()` closure (line ~97-193) builds the tray and calls `set_tray_state(app.handle(), TrayState::Idle)` unconditionally at the end, with a comment noting "no watcher/sync logic exists yet... that's 2.6/2.8/3.x." This is where Task 1-5's startup detection/confirm/watch-start logic gets triggered from.
+  - `agent/ui/index.html` (110 lines) is the real settings panel shipped in 2.5 — one field, Browse/Save buttons, `get_serato_path_override`/`set_serato_path_override` invokes. Its hint text explicitly disclaims auto-detection ("not part of this build") — Task 4 updates this file, it does not replace it.
+  - `Cargo.toml` currently has **no filesystem-watcher crate and no removable-volume-detection crate** — `notify` and `sysinfo` are both new additions this story introduces (see Tasks 2, 5, 6 and Latest Tech Information below).
+
+- **Serato format facts (confirmed across Stories 1.2/1.3/1.3b, not assumptions):**
+  - Legacy: `~/Music/_Serato_/database V2` (binary catalogue) + `~/Music/_Serato_/History/Sessions/*.session` (play-log files). Constants already defined in `joiner::legacy` — `SERATO_DIR = "_Serato_"`, `DATABASE_FILENAME = "database V2"` — reuse, don't redeclare.
+  - Serato 4+: `~/Library/Application Support/Serato/Library/master.sqlite` on macOS — a **different, non-`_Serato_`** path (confirmed real path, Story 1.3b Dev Agent Record: a real file was inspected read-only at this exact location). `history_session(id, name, start_time, end_time)` and `history_entry(id, session_id, name, artist, genre, "key", start_time, deck, bpm, ...)` are both real, confirmed tables (Story 1.2 spike, `1-2-parser-validation-spike-findings.md`). Production code today only ever queries `history_entry` given an already-known `session_id` (`parser::serato4::read_session`, `joiner::serato4::join_session`) — querying `history_session` itself to *discover* session ids is new work this story adds (Task 6), with a reference implementation already sitting in `agent/spike-1-2-parser-validation/src/serato4.rs` (`list_sessions`, `get_session` — spike-only, not compiled into the shipped crate).
+  - A real DJ install (Arjun's own machine) has its legacy `~/Music/_Serato_/History/Sessions/` folder **frozen since 2025-12-11** after migrating to Serato 4+ — this is exactly the real-world scenario AC-5 exists to handle, not a hypothetical.
+
+- **Error-handling idiom (repo-wide convention, mirror it):** a small enum with `Io`/format-specific variants, `Display` + `std::error::Error` impls — see `SettingsError` (`settings.rs`), `ParseError` (`parser`), `JoinError` (`joiner/legacy.rs`). No `anyhow`/`thiserror` anywhere in this crate; don't introduce them here.
+
+- **UX rules governing this story (canonical numbered text lives in `epics.md` lines ~125-129, not the `ux-designs/` directory):**
+  - **UX-DR19 (state patterns):** "first-run path confirmation" and "drive-not-connected" are both named states this story implements the triggers for (tray states already built in 2.5; this story wires real signals to them).
+  - **UX-DR20 (confirm-or-edit-never-silent-autofill):** "governs venue suggestion + first-run path" — system proposes, DJ confirms or edits, nothing commits without an explicit action. This is the direct spec for Task 4.
+  - **EXPERIENCE.md, "First-run path confirmation" row:** "Agent surfaces auto-detected path; DJ confirms or corrects (UJ-3) — one-time gate." Confirms the "skip if override already set" precedence in Task 3.
+  - **EXPERIENCE.md Failure Register, "Drive/USB disconnected":** copy is **"Archive unreachable — reconnect drive to resume."** — calm/technical register (UX-DR18), no exclamations. If any new tooltip/status text is added beyond the existing tray states, match this register.
+  - **UJ-3 journey (Devon, first-time setup), steps 4-6:** "Agent auto-launches into the tray (idle icon). Agent scans default paths + connected drives, finds a Serato folder, surfaces a one-time confirmation. Devon confirms (or corrects the path via the same prompt / tray settings)." Edge case explicitly named: "wrong/no path auto-detected — Devon corrects manually via tray Settings; the manual-path field needs to be one click from the tray icon" — already true today (Story 2.5), don't regress it.
+
+## Project Structure Notes
+
+- Stays entirely inside `agent/` (`src-tauri/src/watcher/` new, `src-tauri/src/lib.rs`, `src-tauri/src/settings.rs`, `src-tauri/Cargo.toml`, `agent/ui/index.html`). No new top-level workspace folders.
+- Dependency direction (AD-3) still applies: `agent` depends on `shared`, never `web`. This story has no reason to touch either.
+- Suggested (not mandatory) module split, matching the existing flat-module convention in `parser/`/`joiner/`: `watcher/mod.rs` (orchestration — startup entry point called from `lib.rs`'s `.setup()`), `watcher/detect.rs` (OS-default + install-generation classification, Tasks 1/2), a place for the ported `history_session` query (either a new file under `watcher/` or as an addition to `parser::serato4`/`joiner::serato4` — either is defensible, pick one and be consistent). Existing modules are flat single files (`genre.rs`, `confidence.rs`) — a `watcher/` directory is warranted here given the number of concerns (detection, USB scan, reconnect, source selection), unlike a single-purpose module.
+
+### References
+
+- [Source: _bmad-output/planning-artifacts/epics.md#Story 2.6, lines 474-486] — story ACs, FR-1, UX-DR19/20 canonical text.
+- [Source: _bmad-output/planning-artifacts/prds/prd-name-pending-2026-07-19/prd.md#FR-1] — "Agent auto-discovers... on first launch, no DJ input required"; "scans connected removable/USB volumes"; "manual path override via the tray settings panel"; "detects reconnection automatically on drive plug-in and resumes watching without requiring re-configuration."
+- [Source: _bmad-output/planning-artifacts/architecture/architecture-name-pending-2026-07-20/ARCHITECTURE-SPINE.md] — pipeline naming (`watcher -> parser -> joiner -> stat-engine -> local store -> sync-queue`), AD-11 (two-path parser), AD-3 (dependency direction).
+- [Source: agent/src-tauri/src/settings.rs] — existing override persistence this story consumes; doc comment names this story as the consumer.
+- [Source: agent/src-tauri/src/tray.rs] — existing `TrayState`/`set_tray_state` this story drives with real signals.
+- [Source: agent/src-tauri/src/lib.rs] — `.setup()` closure, current startup sequence, where detection is triggered from.
+- [Source: agent/src-tauri/src/joiner/legacy.rs] — `SERATO_DIR`/`DATABASE_FILENAME` constants to reuse.
+- [Source: agent/src-tauri/src/joiner/serato4.rs] — `open_read_only`, existing `history_entry` join, connection-flags convention.
+- [Source: agent/src-tauri/src/parser/serato4.rs] — `read_session(conn, session_id)`, the `Play` contract both formats must produce.
+- [Source: agent/spike-1-2-parser-validation/src/serato4.rs] — reference-only `list_sessions`/`get_session` querying `history_session`; port the pattern, this file itself is not part of the shipped crate.
+- [Source: _bmad-output/implementation-artifacts/1-3b-master-sqlite-play-log-reader.md] — real `master.sqlite` path confirmed in Dev Agent Record; explicit hand-off note naming Story 2.6 as the wiring owner; "resist the urge to add a `list_sessions`/session-discovery helper [to 1.3b] — that belongs to Story 2.6."
+- [Source: _bmad-output/implementation-artifacts/1-3-clean-room-session-parser.md] — Open Question #1, the original scope-gap this story's AC-5 closes.
+- [Source: _bmad-output/implementation-artifacts/1-2-parser-validation-spike-findings.md] — `history_session`/`history_entry` schema and reliability findings.
+- [Source: _bmad-output/implementation-artifacts/2-5-agent-shell-tray-ui.md] — tray/settings groundwork this story builds on; explicit "2.6 is what actually searches and confirms" carve-out.
+- [Source: _bmad-output/implementation-artifacts/deferred-work.md] — volume-hosted `database V2` path resolution unproven (Story 1.9 concern, not this story's to fix); real USB test device (`/Volumes/ARJUN SSD`) location.
+- [Source: _bmad-output/planning-artifacts/ux-designs/ux-name-pending-2026-07-19/EXPERIENCE.md] — first-run/drive-not-connected state rows, Failure Register copy, UJ-3 journey text.
+- [sysinfo docs — `Disks`, `Disk::is_removable()`, `Disk::mount_point()`](https://docs.rs/sysinfo/latest/sysinfo/) — cross-platform removable-volume enumeration, no existing crate in this repo covers it.
+- [notify docs — `recommended_watcher`, `RecommendedWatcher`](https://docs.rs/notify) — cross-platform filesystem watcher named (but not yet added) in the architecture spine's pipeline diagram.
+
+## Previous Story Intelligence
+
+- **Story 2.5** (done, most recent): built `settings.rs` and `tray.rs` exactly as described above and explicitly carved this story out by name three times in its own Dev Notes ("Serato folder auto-detection / USB scanning / first-run confirm dialog → Story 2.6"). Its review round fixed a settings-save atomicity bug (`save_to` now atomic temp+rename) and hardened CSP — both are load-bearing for this story (don't regress the atomic write; don't add a new IPC call the CSP's `connect-src: ipc:` doesn't already cover, which it does). Manual-verification convention established there (real debug binary, walkthrough documented in Dev Agent Record, since this repo's CI is Linux-only) — repeat it for this story's USB/reconnect testing.
+- **Story 1.3b** (done): built `parser::serato4::read_session`, confirmed the real `master.sqlite` path, and explicitly deferred the "watch for new `history_session` rows" work to this story — see its own Dev Notes: "Resist the urge to add scope (e.g. a `list_sessions`/session-discovery helper) — that belongs to Story 2.6." Also fixed an empty-string-vs-NULL normalization bug in the real schema (all six queried `history_entry` columns are `NOT NULL`, empty string is the real "absent" signal) — relevant if this story's ported `history_session` query needs the same `non_empty` treatment for `name`.
+- **Story 1.3** (done): discovered the legacy `.session` folder goes silent after a Serato 4+ migration (Open Question #1) — the real-world trigger for this story's AC-5 install-generation routing.
+- **Story 1.4/1.5** (done): established `joiner::legacy`'s path-resolution convention (strip one leading `/` for root-hosted libraries) and flagged (in `deferred-work.md`) that the volume-hosted case is unproven — informs Task 2's note not to touch that logic.
+
+## Git Intelligence Summary
+
+- Commit convention to match: `Story 2.6: <what changed>` for implementation, `Story 2.6: Code review round — N patches applied, M deferred` for the review-closing commit (see `f8fff15`/`45c345c`, `81ff66f` for the exact pattern from 2.4/2.5).
+- Working tree is clean at story start; `agent/src-tauri/src/` currently has `lib.rs, confidence.rs, tray.rs, genre.rs, main.rs, settings.rs, joiner/{mod,serato4,legacy,embedded_tags}.rs, parser/{mod,session,serato4}.rs, stats/{mod,camelot}.rs` — no `watcher/` module yet, confirming this is genuinely new code, not an extension of an existing stage.
+
+## Latest Tech Information
+
+- **`notify` crate (not yet a dependency):** current major version is 6.x+; use `notify::recommended_watcher(...)` / `RecommendedWatcher` for the portable, OS-best-backend watcher (the API this repo's architecture diagram already assumes for the `watcher` stage). Confirmed still actively maintained/used in 2026 community examples. Pin an exact version in `Cargo.toml` the same way `rusqlite`/`lofty` are pinned — don't float `*`.
+- **`sysinfo` crate (not yet a dependency):** `Disks::new_with_refreshed_list()` + iterating `Disk::is_removable()`/`Disk::mount_point()` is the standard cross-platform way to enumerate removable/USB volumes — this is a real capability of the crate (confirmed via current docs.rs), not something to hand-roll per-OS (`/Volumes` scanning on macOS, drive-letter enumeration on Windows) unless `sysinfo`'s removable-flagging proves unreliable in manual testing, in which case document the fallback decision in Dev Agent Record.
+- Both are new `Cargo.toml` additions for this story — there is no existing filesystem-watcher or volume-detection dependency anywhere in this crate today (confirmed via `Cargo.lock` inspection).
+
+## Story Completion Status
+
+Ultimate context engine analysis completed - comprehensive developer guide created.
+
+## Dev Agent Record
+
+### Agent Model Used
+
+Claude Sonnet 5 (claude-sonnet-5), via Claude Code
+
+### Debug Log References
+
+- rustup toolchain found at `~/.rustup/toolchains/stable-aarch64-apple-darwin/bin`, not on default PATH (same recurring gap as Stories 1.7-1.9, 2.5).
+- `cargo add --dry-run` resolved `sysinfo = "0.39.6"` and `notify = "8.2.0"` as the current versions; both pinned exactly (no `*`), matching the `rusqlite`/`lofty` convention.
+- Full four-command cargo gate run and green on this machine: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo build`, `cargo test` — 168 unit tests passed (up from the pre-story baseline of 136, net +32 new tests), plus all 9 pre-existing golden/integration tests, zero regressions.
+- Real-data spot check (read-only, nothing committed): a throwaway `examples/real_detect_check.rs` calling `watcher::detect::detect_os_default()` against this machine's real `$HOME` was compiled, run once, and deleted. Result: `Some(Serato4 { db_path: "/Users/arjun/Library/Application Support/Serato/Library/master.sqlite" })` — this machine has *both* a real, frozen legacy `~/Music/_Serato_/database V2` (last touched 2025-12-11, matching the exact migrated-install scenario AC-5 describes) and a live `master.sqlite` (last touched 2026-06-26); detection correctly preferred Serato 4+. No real Serato data was read beyond an `is_file()` existence check.
+- Attempted the full interactive manual walkthrough (Task 7's second bullet) by running the real debug binary directly (`./target/debug/agent`, no bundled `.app` exists — this is a dev binary, same as Story 2.5's gate) and requesting computer-use access to observe it. `request_access` returned `not_installed` for every name tried (`agent`, `Curfew Agent`, `Curfew Agent Settings`) — an unbundled dev binary has no Launch Services entry for the tool to attach to, exactly the limitation Story 2.5's own Dev Agent Record already flagged ("no browser or installed `.app` bundle for automated screenshot tooling to attach to"), which is why that story used Arjun's live, in-person confirmation instead of automation. The process was killed immediately after (no window was ever shown on screen, no `settings.json` was created — confirmed by re-checking `~/Library/Application Support/app.curfew.agent/` afterward). **This interactive half of Task 7's manual walkthrough (first-run window auto-opening + pre-filled + Save persisting; USB unplug/replug tray cycling) still needs Arjun directly**, same class of gap as Story 2.3a's passkey ceremony / Story 2.3b's OAuth credentials — flagging rather than fabricating it.
+
+### Completion Notes List
+
+- Built the `watcher` pipeline stage from scratch (no prior code existed): `watcher::detect` (Tasks 1-2, pure classification + removable-volume scan) and `watcher` orchestration (Tasks 3-6, settings precedence, first-run confirm command, and the live watch loop).
+- **Design decision (Task 1):** `classify(root)` accepts `root` at two shapes — a *container* directory one level above Serato's own layout (a home directory, `~/Music`, or a USB mount point) **or** the Serato-owned folder itself (a DJ's manual override, which Story 2.5's settings panel has always prompted for as `/path/to/_Serato_` — the `_Serato_` folder directly, not its parent). Both are checked unconditionally rather than picking one convention, so the existing override placeholder text stays valid and OS-default/USB-scan roots still work with the same function. Documented in `classify`'s own doc comment.
+- **Design decision (Task 1):** the two OS-default locations (`~/Music/_Serato_/database V2` and `~/Library/Application Support/Serato/Library/master.sqlite`) hang off genuinely different base roots (`~/Music` vs `~`), so `detect_os_default` checks `classify(home)` first (Serato 4+ always wins if found there, per AC-5) and falls back to `classify(home/Music)` — not one shared root, per the story's own "critical nuance" callout.
+- **Design decision (Task 5/6):** one background thread/loop handles both reconnect-poll and live session-watching rather than two, because a disconnect must tear down the live fs-watcher and a reconnect must stand a fresh one up — they are not independent. Poll interval for reconnect detection: 5 seconds (documented in code as a `RECONNECT_POLL_INTERVAL` const with rationale).
+- **Design decision (Task 6):** chose `notify` (not polling) for the Serato 4+ `master.sqlite` watch, accepting the story's own flagged risk that WAL-mode temp-file churn can fire more than one event per logical write — safe here because `check_for_new_sessions` is idempotent against a `watermark`, so a spurious extra event just re-runs a query that finds nothing new. Documented inline rather than adding a separate debounce mechanism.
+- The ported `history_session` query (Task 6) landed in `parser::serato4::list_sessions_after` (re-exported as `parser::{list_sessions_after, SessionSummary}`), alongside the existing `read_session` — a parser-layer concern, not joiner, matching "parser must not depend on joiner."
+- `joiner::legacy::{SERATO_DIR, DATABASE_FILENAME}` were changed from module-private to `pub` so `watcher::detect` could reuse them without redeclaring, per Task 1's explicit instruction.
+- `settings::set_serato_path_override` now validates the path via a new `validate_override` helper (calls `watcher::detect::classify`) before persisting — the existing "any non-empty string" test contract is preserved because those tests exercise `save_to`/`load_from` directly, not the command.
+- **Windows paths remain unverified** (Task 1's own flagged gap) — no Windows dev/CI environment exists to confirm `%USERPROFILE%\Music\_Serato_\`; the code path exists (`home.join("Music")` resolves identically in spirit) but is untested against a real Windows machine, same class of gap Story 2.5 flagged for tray parity.
+- The real USB test device (`/Volumes/ARJUN SSD`) was not mounted during this session, so Task 2's manual-walkthrough-with-a-real-drive bullet could not be exercised; the required unit-test coverage (synthetic temp-dir "disks" via the injectable `DiskSource` trait) is complete and does not depend on it.
+- No new `deferred-work.md` entries identified — the one relevant pre-existing entry (volume-hosted `database V2` path resolution being unproven) is a Story 1.9 join-layer concern this story's scan/detection logic does not touch, per Task 2's own note.
+- **Status kept at `in-progress`, not promoted to `review`**, because Task 7's interactive manual-walkthrough bullet is not fully satisfiable by this agent alone (see Debug Log References) — re-run `dev-story` once Arjun can either confirm the first-run window/Save/USB-cycle behavior directly, or once a bundled `.app` exists that computer-use tooling can attach to.
+
+### File List
+
+- `agent/src-tauri/src/watcher/mod.rs` (new)
+- `agent/src-tauri/src/watcher/detect.rs` (new)
+- `agent/src-tauri/src/lib.rs` (modified — `pub mod watcher;`, invoke handler registration, `.setup()` startup detection/confirm/watch wiring)
+- `agent/src-tauri/src/settings.rs` (modified — `validate_override` + validation wired into `set_serato_path_override`, new tests)
+- `agent/src-tauri/src/joiner/legacy.rs` (modified — `SERATO_DIR`/`DATABASE_FILENAME` made `pub`)
+- `agent/src-tauri/src/parser/serato4.rs` (modified — new `SessionSummary` + `list_sessions_after`, new tests)
+- `agent/src-tauri/src/parser/mod.rs` (modified — re-export `list_sessions_after`/`SessionSummary`)
+- `agent/src-tauri/Cargo.toml` / `Cargo.lock` (modified — added `sysinfo = "0.39.6"`, `notify = "8.2.0"`)
+- `agent/ui/index.html` (modified — `get_pending_detected_path` wiring, pre-fill + hint copy update)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (modified — story status `ready-for-dev` → `in-progress`)
+
+## Change Log
+
+| Date | Change |
+| --- | --- |
+| 2026-07-29 | Implemented Tasks 1-6 in full (install-generation detection, removable-volume scan, manual-override precedence, first-run confirm UI, drive reconnect + tray wiring, play-log source selection + live watching) and Task 7's automatable half (full cargo gate green, real-data classify spot check). Task 7's interactive GUI/USB walkthrough flagged as needing Arjun directly — see Debug Log References. Story kept `in-progress`. |

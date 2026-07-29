@@ -89,9 +89,24 @@ pub fn get_serato_path_override(app: AppHandle) -> Result<Option<String>, String
         .map_err(|e| e.to_string())
 }
 
-/// Persist a new Serato path override. Accepts any non-empty path string —
-/// validation beyond "not empty" (e.g. that the folder actually exists/contains
-/// a Serato library) is Story 2.6's concern, not this one.
+/// Checks whether a trimmed, non-empty path string resolves to a Serato install
+/// (Story 2.6 Task 3), via `watcher::detect::classify`. Split out from
+/// [`set_serato_path_override`] so it is unit-testable without an `AppHandle` —
+/// the command itself needs a running Tauri app and has no test coverage today,
+/// same as `get_serato_path_override`.
+fn validate_override(trimmed: &str) -> Result<(), String> {
+    if crate::watcher::detect::classify(Path::new(trimmed)).is_none() {
+        return Err(format!(
+            "\"{trimmed}\" doesn't look like a Serato folder — expected a `_Serato_` folder \
+             (legacy) or a Serato 4+ install containing `master.sqlite`."
+        ));
+    }
+    Ok(())
+}
+
+/// Persist a new Serato path override. Accepts a non-empty path string that
+/// resolves to a real Serato install (Story 2.6 Task 3) — this is the confirm
+/// action itself (UX-DR20): nothing commits without passing this check.
 ///
 /// A malformed/corrupt existing settings file must never block saving a new
 /// override — falls back to defaults rather than propagating the load error,
@@ -102,6 +117,7 @@ pub fn set_serato_path_override(app: AppHandle, path: String) -> Result<(), Stri
     if trimmed.is_empty() {
         return Err("path override cannot be empty".into());
     }
+    validate_override(trimmed)?;
     let mut settings = load(&app).unwrap_or_default();
     settings.serato_path_override = Some(trimmed.to_string());
     save(&app, &settings).map_err(|e| e.to_string())
@@ -111,6 +127,39 @@ pub fn set_serato_path_override(app: AppHandle, path: String) -> Result<(), Stri
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicU64, Ordering};
+
+    /// Story 2.6 Task 3: a folder that resolves to a real Serato install passes
+    /// validation; anything else is a clear `Err`, never a silently accepted
+    /// garbage path.
+    #[test]
+    fn validate_override_accepts_a_real_legacy_folder() {
+        let dir = std::env::temp_dir().join(format!(
+            "curfew-settings-validate-legacy-{}",
+            std::process::id()
+        ));
+        let serato_dir = dir.join("_Serato_");
+        std::fs::create_dir_all(&serato_dir).unwrap();
+        std::fs::write(serato_dir.join("database V2"), b"").unwrap();
+
+        let result = validate_override(serato_dir.to_str().unwrap());
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_override_rejects_a_folder_with_no_serato_install() {
+        let dir = std::env::temp_dir().join(format!(
+            "curfew-settings-validate-empty-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let result = validate_override(dir.to_str().unwrap());
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert!(result.is_err(), "an unrecognized path must be a clear Err");
+    }
 
     /// A scratch file path under the OS temp dir, unique per test so parallel
     /// `cargo test` runs never collide.
