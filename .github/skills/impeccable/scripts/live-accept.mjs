@@ -676,9 +676,15 @@ function stripStyleAndJoin(lines, block) {
     if (!inStyle) {
       // Strip any complete <style> elements on this line (self-closed or
       // same-line-closed), including their body content.
-      line = line
-        .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/g, '')
-        .replace(/<style\b[^>]*\/\s*>/g, '');
+      // Apply repeatedly until stable so newly-adjacent fragments cannot
+      // re-form a <style...> token after a single replacement pass.
+      let prev;
+      do {
+        prev = line;
+        line = line
+          .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/g, '')
+          .replace(/<style\b[^>]*\/\s*>/g, '');
+      } while (line !== prev);
 
       // If a <style> opener remains (multi-line body starts here), strip from
       // the opener to end-of-line and flip into skip mode.
