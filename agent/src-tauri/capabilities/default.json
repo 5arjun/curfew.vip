@@ -6,6 +6,8 @@
   "permissions": [
     "core:default",
     "dialog:allow-open",
-    "updater:default"
+    "updater:default",
+    "deep-link:default",
+    "opener:default"
   ]
 }
