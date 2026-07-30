@@ -25,6 +25,15 @@ name: Release Windows
 #   AZURE_TENANT_ID                              - Azure AD tenant ID
 #   AZURE_ARTIFACT_SIGNING_ACCOUNT               - Artifact Signing account name
 #   AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE   - certificate profile name
+#   TAURI_SIGNING_PRIVATE_KEY                    - Story 2.9c: updater-signing
+#                                                  private key (`tauri signer
+#                                                  generate` output), the same
+#                                                  shared keypair release-macos.yml
+#                                                  uses — distinct from the Azure
+#                                                  code-signing credentials above
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD           - optional; empty/unset if the
+#                                                  keypair was generated without
+#                                                  a password
 #
 # Local dev is unaffected: the signCommand lives only in
 # tauri.windows-release.conf.json, merged in via --config at release time
@@ -57,6 +66,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check updater pubkey is configured
+        shell: bash
+        run: |
+          if grep -q '<TAURI_UPDATER_PUBLIC_KEY_PLACEHOLDER>' agent/src-tauri/tauri.conf.json; then
+            echo "::error::agent/src-tauri/tauri.conf.json still has the <TAURI_UPDATER_PUBLIC_KEY_PLACEHOLDER> placeholder — run 'tauri signer generate' and replace it before releasing (see pre-launch-services-checklist.md's Tauri updater signing keypair row)."
+            exit 1
+          fi
+
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
@@ -86,6 +103,36 @@ jobs:
       - name: Install artifact-signing-cli
         run: cargo install artifact-signing-cli --version 0.11.0 --locked
 
+      # Story 2.9c: same version-sync step as release-macos.yml — derives the
+      # real version from the pushed tag, ephemeral-checkout-only. windows-latest
+      # defaults to PowerShell, so `shell: bash` is explicit here (Git Bash ships
+      # on windows-latest) to keep the bash substitution/sed idiom identical to
+      # the macOS workflow.
+      - name: Sync app version from git tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#agent-v}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Extracted version '$VERSION' from ref '$GITHUB_REF_NAME' is not valid semver"
+            exit 1
+          fi
+          node -e "
+            const fs = require('fs');
+            const confPath = 'agent/src-tauri/tauri.conf.json';
+            const conf = JSON.parse(fs.readFileSync(confPath, 'utf8'));
+            conf.version = process.argv[1];
+            fs.writeFileSync(confPath, JSON.stringify(conf, null, 2) + '\n');
+            const pkgPath = 'agent/package.json';
+            const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+            pkg.version = process.argv[1];
+            fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+          " "$VERSION"
+          if ! grep -q '^version = "0.0.0"$' agent/src-tauri/Cargo.toml; then
+            echo "::error::Cargo.toml's version anchor (0.0.0) was not found — the sync step is stale relative to the committed file"
+            exit 1
+          fi
+          sed -i.bak "s/^version = \"0.0.0\"/version = \"$VERSION\"/" agent/src-tauri/Cargo.toml && rm agent/src-tauri/Cargo.toml.bak
+        shell: bash
+
       # Pinned to the exact commit behind the v1 tag, matching
       # release-macos.yml's pin exactly — same tag, same resolved commit, so
       # the two sibling release workflows never drift onto different
@@ -99,6 +146,8 @@ jobs:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_ARTIFACT_SIGNING_ACCOUNT: ${{ secrets.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
           AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE: ${{ secrets.AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: agent
           args: --config agent/src-tauri/tauri.windows-release.conf.json

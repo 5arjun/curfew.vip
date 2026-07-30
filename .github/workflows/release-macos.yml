@@ -22,6 +22,11 @@ name: Release macOS
 #                                ephemeral, so the .p8 content itself must be a
 #                                secret; the "Write Apple notarization key" step
 #                                below materializes it to a path on the runner)
+#   TAURI_SIGNING_PRIVATE_KEY          - Story 2.9c: updater-signing private key
+#                                        (`tauri signer generate` output), distinct
+#                                        from the platform code-signing certs above
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD - optional; empty/unset if the keypair was
+#                                        generated without a password
 #
 # Local dev is unaffected: with no APPLE_* env vars set, tauri.conf.json has no
 # bundle.macOS.signingIdentity, so a local build falls back to unsigned.
@@ -45,6 +50,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check updater pubkey is configured
+        shell: bash
+        run: |
+          if grep -q '<TAURI_UPDATER_PUBLIC_KEY_PLACEHOLDER>' agent/src-tauri/tauri.conf.json; then
+            echo "::error::agent/src-tauri/tauri.conf.json still has the <TAURI_UPDATER_PUBLIC_KEY_PLACEHOLDER> placeholder — run 'tauri signer generate' and replace it before releasing (see pre-launch-services-checklist.md's Tauri updater signing keypair row)."
+            exit 1
+          fi
+
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
@@ -66,6 +79,37 @@ jobs:
       - name: Write Apple notarization key to disk
         run: echo "${{ secrets.APPLE_API_KEY_CONTENT }}" > "${{ runner.temp }}/AuthKey.p8"
 
+      # Story 2.9c: derives the real version from the pushed tag and writes it
+      # into the ephemeral runner's checkout only — never committed back. An
+      # updater that always reports 0.0.0 can never detect a newer release.
+      # Validates the extracted version and the Cargo.toml substitution actually
+      # landed, so a malformed tag or a future Cargo.toml edit fails loudly here
+      # instead of silently shipping a stale or wrong version.
+      - name: Sync app version from git tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#agent-v}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Extracted version '$VERSION' from ref '$GITHUB_REF_NAME' is not valid semver"
+            exit 1
+          fi
+          node -e "
+            const fs = require('fs');
+            const confPath = 'agent/src-tauri/tauri.conf.json';
+            const conf = JSON.parse(fs.readFileSync(confPath, 'utf8'));
+            conf.version = process.argv[1];
+            fs.writeFileSync(confPath, JSON.stringify(conf, null, 2) + '\n');
+            const pkgPath = 'agent/package.json';
+            const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+            pkg.version = process.argv[1];
+            fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+          " "$VERSION"
+          if ! grep -q '^version = "0.0.0"$' agent/src-tauri/Cargo.toml; then
+            echo "::error::Cargo.toml's version anchor (0.0.0) was not found — the sync step is stale relative to the committed file"
+            exit 1
+          fi
+          sed -i.bak "s/^version = \"0.0.0\"/version = \"$VERSION\"/" agent/src-tauri/Cargo.toml && rm agent/src-tauri/Cargo.toml.bak
+        shell: bash
+
       # Pinned to the exact commit behind the v1 tag (2026-06-29) rather than the
       # floating tag itself — this step receives the Apple signing cert, cert
       # password, and notarization API key directly via env, so it gets the same
@@ -80,8 +124,10 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: agent
-          args: --target universal-apple-darwin
+          args: --target universal-apple-darwin --config agent/src-tauri/tauri.macos-release.conf.json
           tagName: ${{ github.ref_name }}
           releaseName: 'Curfew Agent ${{ github.ref_name }}'

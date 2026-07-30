@@ -111,6 +111,7 @@ pub fn load_sync_payload_schema() -> Result<serde_json::Value, SchemaLoadError> 
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             settings::get_serato_path_override,
             settings::set_serato_path_override,

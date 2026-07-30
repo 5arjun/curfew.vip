@@ -1,5 +1,6 @@
 {
   "bundle": {
+    "createUpdaterArtifacts": true,
     "windows": {
       "signCommand": "artifact-signing-cli -e <AZURE_ARTIFACT_SIGNING_ENDPOINT> %1"
     }

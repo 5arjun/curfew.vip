@@ -54,3 +54,9 @@ workflows publish to the same GitHub Release. Local Windows builds stay
 unsigned too, same as macOS above: the signing config lives only in
 `src-tauri/tauri.windows-release.conf.json`, merged in by the release
 workflow, not the base `tauri.conf.json`.
+
+The same tag push also produces a signed `latest.json` update manifest
+(Story 2.9c, AR-14), via a separate updater-signing keypair — distinct from
+the platform code-signing certs above. See the "Tauri updater signing
+keypair" row in `pre-launch-services-checklist.md` for the one-time
+generation command.

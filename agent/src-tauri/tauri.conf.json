@@ -41,5 +41,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "<TAURI_UPDATER_PUBLIC_KEY_PLACEHOLDER>",
+      "endpoints": [
+        "https://github.com/5arjun/curfew.vip/releases/latest/download/latest.json"
+      ]
+    }
   }
 }
