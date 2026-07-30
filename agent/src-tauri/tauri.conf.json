@@ -44,7 +44,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "<TAURI_UPDATER_PUBLIC_KEY_PLACEHOLDER>",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE4RkE2MzVDMzM3OTExRjgKUldUNEVYa3pYR1A2R0E1bTN4Z29KdHFwbFF4MEVqYzArc2lkWDF1bldGbFNHRG9mNFkyK0d5TGUK",
       "endpoints": [
         "https://github.com/5arjun/curfew.vip/releases/latest/download/latest.json"
       ]

@@ -74,29 +74,27 @@ pub mod watcher;
 
 use std::path::PathBuf;
 
-/// Location of the language-neutral sync-contract schema the agent consumes,
-/// relative to this crate's manifest dir (`agent/src-tauri`). Rust cannot import
-/// the TypeScript type in `@curfew/shared`, so the checked-in JSON-schema file is
-/// the seam. Frozen, additive-only forever as of Story 1.10 (AD-15).
-pub const SYNC_PAYLOAD_SCHEMA_RELPATH: &str = "../../shared/schema/sync-payload.schema.json";
+/// The language-neutral sync-contract schema the agent consumes, embedded at
+/// compile time (not resolved via a runtime filesystem path) so a bundled,
+/// installed agent can load it without the `shared/` source tree existing on
+/// the end-user's machine. Rust cannot import the TypeScript type in
+/// `@curfew/shared`, so this checked-in JSON-schema file is the seam. Frozen,
+/// additive-only forever as of Story 1.10 (AD-15).
+const SYNC_PAYLOAD_SCHEMA_JSON: &str =
+    include_str!("../../../shared/schema/sync-payload.schema.json");
 
-/// Absolute path to the shared sync-contract schema, resolved from this crate.
-pub fn sync_payload_schema_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(SYNC_PAYLOAD_SCHEMA_RELPATH)
-}
-
-/// Error loading the shared sync-contract schema: either the file could not be
-/// read or its contents were not valid JSON.
+/// Error parsing the shared sync-contract schema: its embedded contents were
+/// not valid JSON. The schema is compiled into the binary (see
+/// [`SYNC_PAYLOAD_SCHEMA_JSON`]), so there is no "file missing" case at
+/// runtime — a missing/unreadable file is a build-time failure instead.
 #[derive(Debug)]
 pub enum SchemaLoadError {
-    Read(std::io::Error),
     Parse(serde_json::Error),
 }
 
 impl std::fmt::Display for SchemaLoadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SchemaLoadError::Read(e) => write!(f, "failed to read shared schema: {e}"),
             SchemaLoadError::Parse(e) => write!(f, "shared schema is not valid JSON: {e}"),
         }
     }
@@ -106,13 +104,11 @@ impl std::error::Error for SchemaLoadError {}
 
 /// Load and parse the shared sync-contract schema. Proves Rust-side consumption
 /// of the `@curfew/shared` contract (AC-2). Returns the parsed JSON document, or
-/// a [`SchemaLoadError`] if the seam file is missing or malformed — callers in the
+/// a [`SchemaLoadError`] if the embedded schema is malformed — callers in the
 /// future pipeline decide how to handle a broken contract rather than inheriting a
 /// panic from this public API.
 pub fn load_sync_payload_schema() -> Result<serde_json::Value, SchemaLoadError> {
-    let path = sync_payload_schema_path();
-    let raw = std::fs::read_to_string(&path).map_err(SchemaLoadError::Read)?;
-    serde_json::from_str(&raw).map_err(SchemaLoadError::Parse)
+    serde_json::from_str(SYNC_PAYLOAD_SCHEMA_JSON).map_err(SchemaLoadError::Parse)
 }
 
 /// Tray handles that need updating in response to auth state changes,

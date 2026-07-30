@@ -177,7 +177,7 @@ development_status:
   2-9c-signed-auto-updater-pipeline: done
   2-10-agent-secure-token-storage: done
   2-11-account-deletion-data-export-manual-runbook: done
-  epic-2-retrospective: optional
+  epic-2-retrospective: done
 
   # ---- Epic 3: Post-Set Sync & Personal Dashboard ----
   epic-3: backlog
@@ -234,15 +234,15 @@ development_status:
 # Full rationale + decisions: implementation-artifacts/epic-1-review-decisions-2026-07-25.md
 action_items:
   - id: ai-1
-    status: open
+    status: done
     source: epic-1-review 2026-07-25
     trigger: Story 2.8 (pipeline wiring)
-    item: "Payload glue: correlation-keyed pairing (serato4 history_entry.id / legacy file-index), assert-and-DEGRADE (log+agent_version+positional fallback, raw retained) — not assert-and-die. Reads EnrichedPlay + paired JoinedMetadata.in_library per pair (EnrichedPlay lacks in_library)."
+    item: "Payload glue: correlation-keyed pairing (serato4 history_entry.id / legacy file-index), assert-and-DEGRADE (log+agent_version+positional fallback, raw retained) — not assert-and-die. Reads EnrichedPlay + paired JoinedMetadata.in_library per pair (EnrichedPlay lacks in_library). [CLOSED 2026-07-29 by Story 2.8: capture::build_serato4 is the real caller, closed via an explicit tied-start-time correlation test + CaptureError::Correlation row-count guard.]"
   - id: ai-2
-    status: open
+    status: done
     source: epic-1-review 2026-07-25
     trigger: first build/bundle story (Epic 2, AR-14)
-    item: "BLOCKER: sync_payload_schema_path() uses env!(CARGO_MANIFEST_DIR) — absent on a bundled agent, sync broken on every installed copy. Embed schema as compile-time resource; make it part of DoD for 'bundles correctly'."
+    item: "BLOCKER: sync_payload_schema_path() uses env!(CARGO_MANIFEST_DIR) — absent on a bundled agent, sync broken on every installed copy. Embed schema as compile-time resource; make it part of DoD for 'bundles correctly'. [RETRO 2026-07-25 assigned to 2.9a/2.9b, but those stories were pure CI-signing-pipeline work with an explicit no-src/-touch discipline — the assignment never landed on a story that could close it, so it carried unfixed through all of Epic 2. CLOSED 2026-07-30 at the Epic 2 retrospective, before Story 3.2 became its first real runtime caller: replaced with include_str! compile-time embedding, SchemaLoadError::Read removed as unreachable, full gate re-verified green.]"
   - id: ai-3
     status: done
     source: epic-1-review 2026-07-25
@@ -272,4 +272,27 @@ action_items:
     status: open
     source: epic-1-review 2026-07-25
     trigger: standing rule, every story from Epic 2 on
-    item: "[RETRO 2026-07-25 D2 DECIDED] Local gate is a HARD PRECONDITION. 'Gate green' must mean the four-command gate was ACTUALLY RUN on the machine before the work is called green — no more 'looks right, CI will confirm' (the story-1.6 Windows/no-toolchain drift). Standing team agreement, enforce from Epic 2 onward."
+    item: "[RETRO 2026-07-25 D2 DECIDED] Local gate is a HARD PRECONDITION. 'Gate green' must mean the four-command gate was ACTUALLY RUN on the machine before the work is called green — no more 'looks right, CI will confirm' (the story-1.6 Windows/no-toolchain drift). Standing team agreement, enforce from Epic 2 onward. [RETRO 2026-07-30: confirmed held without exception across all 16 Epic 2 stories — every dev-story log states the full four-command gate was actually run. Standing rule stays open/active, carries into Epic 3.]"
+
+# Action items — carried into the Epic 2 retrospective / Epic 3 story creation.
+# Full rationale + decisions: implementation-artifacts/epic-2-retro-2026-07-30.md
+  - id: ai-9
+    status: open
+    source: epic-2-retro 2026-07-30
+    trigger: next story touching /login's auth flow
+    item: "PASSKEY NUDGE: OAuth sign-ins (/auth/callback, /auth/confirm) never reach the post-signin 'Enable Passkey' nudge — email-path-only since Story 2.3b, now much larger population since 2.4 made OAuth the prominent default path. Arjun's ruling: extend the nudge to OAuth too (route both back through the same post-signin state). Ruled, not implemented — real feature work, not a prep task. No owner/deadline yet."
+  - id: ai-10
+    status: open
+    source: epic-2-retro 2026-07-30
+    trigger: standing rule, whenever a deferred-work item is pinned to a future story
+    item: "PROCESS: verify a carried-forward action item's assigned story actually has the scope to touch the affected code before pinning it there (the ai-2 lesson — pinned to 2.9a/2.9b, which turned out to be pure CI-pipeline stories with a no-src/-touch discipline, so it silently never landed)."
+  - id: ai-11
+    status: open
+    source: epic-2-retro 2026-07-30
+    trigger: standing rule, every story from Epic 3 on
+    item: "PROCESS: before promoting a story to review, re-check its own Dev Notes/File List against the actual diff — 'staleness reconciled' recurred 3 times in Story 2.3b's reviews alone."
+  - id: ai-12
+    status: open
+    source: epic-2-retro 2026-07-30
+    trigger: any story requiring a real 3rd-party OAuth/payment consent flow (Epic 7 Stripe Checkout is the next candidate)
+    item: "PROCESS: budget an extra review round for stories whose AC requires driving a real 3rd-party consent screen end-to-end (2.3b needed 3 rounds vs. the epic's usual 1-2, purely because each verification attempt needs a human at a keyboard, not a code-quality issue)."
