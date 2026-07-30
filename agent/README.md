@@ -50,7 +50,7 @@ when an `agent-v*.*.*` tag is pushed (Story 2.9a, AR-14). The same tag push
 also triggers
 [`.github/workflows/release-windows.yml`](../.github/workflows/release-windows.yml),
 which produces a signed Windows installer (Story 2.9b, AR-14) — both
-workflows publish to the same GitHub Release. On Windows, `cargo tauri build`
-locally stays unsigned too: the signing config lives only in
+workflows publish to the same GitHub Release. Local Windows builds stay
+unsigned too, same as macOS above: the signing config lives only in
 `src-tauri/tauri.windows-release.conf.json`, merged in by the release
 workflow, not the base `tauri.conf.json`.

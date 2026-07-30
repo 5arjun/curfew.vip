@@ -72,8 +72,19 @@ jobs:
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
 
+      - name: Check signing endpoint is provisioned
+        shell: bash
+        run: |
+          if grep -q '<AZURE_ARTIFACT_SIGNING_ENDPOINT>' agent/src-tauri/tauri.windows-release.conf.json; then
+            echo "::error::agent/src-tauri/tauri.windows-release.conf.json still has the <AZURE_ARTIFACT_SIGNING_ENDPOINT> placeholder — replace it with the real regional endpoint once the Azure Artifact Signing account is provisioned (see pre-launch-services-checklist.md row 30)."
+            exit 1
+          fi
+
+      # Pinned to an exact version, matching this file's tauri-action pin
+      # below — a future artifact-signing-cli release could otherwise change
+      # CLI flags/behavior at the next tag push with no warning.
       - name: Install artifact-signing-cli
-        run: cargo install artifact-signing-cli --locked
+        run: cargo install artifact-signing-cli --version 0.11.0 --locked
 
       # Pinned to the exact commit behind the v1 tag, matching
       # release-macos.yml's pin exactly — same tag, same resolved commit, so

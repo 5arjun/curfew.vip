@@ -4,7 +4,7 @@ baseline_commit: 909b152921d4788e57bbea11890b0072d6c83275
 
 # Story 2.9b: Windows signed build
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -115,6 +115,17 @@ so that Windows DJs can install without a SmartScreen block.
 ## Story Completion Status
 
 Ultimate context engine analysis completed - comprehensive developer guide created.
+
+### Review Findings
+
+- [x] [Review][Patch] `agent/README.md`'s new Windows sentence says "On Windows, `cargo tauri build` locally stays unsigned too," reintroducing the exact `cargo tauri build`-as-a-real-local-command inaccuracy that Story 2.9a's own review found and fixed two sentences above it in the same file (no `@tauri-apps/cli`/`tauri` script/`cargo install tauri-cli` exists anywhere in the repo) [agent/README.md:53]
+- [x] [Review][Patch] No fail-fast check for the still-unresolved `<AZURE_ARTIFACT_SIGNING_ENDPOINT>` placeholder before the workflow runs the full `pnpm install` + Windows build — a tag pushed today burns the whole build before failing at the last signing step [.github/workflows/release-windows.yml]
+- [x] [Review][Patch] `cargo install artifact-signing-cli --locked` has no version pin, unlike this same file's exact-commit pin on `tauri-action` — a future crate release could silently change CLI flags/behavior at the next tag push (confirmed current published version is `0.11.0` on both crates.io and GitHub) [.github/workflows/release-windows.yml:76]
+- [x] [Review][Patch] Checklist row 30 leads with "**Recommended concrete path, resolved 2026-07-30**" while eligibility, cost-model confirmation, and provisioning are all still open — risks a skim-reader concluding the gap is closed, inconsistent with the doc's own convention (compare the Supabase row's genuinely closed `**Resolved 2026-07-27**`) [_bmad-output/implementation-artifacts/pre-launch-services-checklist.md row 30]
+- [x] [Review][Defer] `signCommand`'s `%1` substitution is unquoted while `productName` ("Curfew Agent") contains a space — matches Tauri's own documented example verbatim (confirmed via live doc fetch), so likely a non-issue, but unverified until a real signed build actually runs — deferred, needs live verification once Azure is provisioned [agent/src-tauri/tauri.windows-release.conf.json:4]
+- [x] [Review][Defer] `release-windows.yml` and `release-macos.yml` are two fully independent workflows, both triggered by the same `agent-v*.*.*` tag, both targeting the same GitHub Release, with no job ordering between them — relies entirely on `tauri-action`'s documented append-to-existing-release behavior (this story's own Task 1 rationale), never exercised in practice with two sibling workflows before now — deferred, accepted design risk per the story's own stated rationale [.github/workflows/release-windows.yml, .github/workflows/release-macos.yml]
+- [x] [Review][Defer] No step reconciles that both platform assets actually landed in the shared GitHub Release — if one platform's signing step fails after the other already published, the release goes live silently incomplete — deferred, same root cause as the race-condition item above
+- [x] [Review][Defer] The signing endpoint is shipped as a literal `<AZURE_ARTIFACT_SIGNING_ENDPOINT>` placeholder, which technically contradicts this story's own Dev Notes text ("the endpoint must be a literal ... value ... not left as a placeholder") — root cause is that the Azure Artifact Signing account doesn't exist yet, already tracked as this story's own Open Question #2 — deferred, blocked on Arjun's Azure provisioning [agent/src-tauri/tauri.windows-release.conf.json:4]
 
 ## Dev Agent Record
 
