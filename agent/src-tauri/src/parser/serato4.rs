@@ -15,7 +15,7 @@
 //! `bpm`, which has no home on [`crate::parser::Play`] — see that function's field
 //! mapping below for why).
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 
 use super::Play;
 
@@ -118,6 +118,33 @@ pub fn list_sessions_after(
     })?;
 
     rows.collect()
+}
+
+/// Re-reads one `history_session` row by its `id` — the "has this specific
+/// pending session's `end_time` resolved yet" query Story 2.8's
+/// completion-signal polling needs (Task 4), scoped to one known id rather
+/// than [`list_sessions_after`]'s "everything past a watermark" contract.
+///
+/// `Ok(None)` if no row has this `id` — distinct from an `Err`, which is
+/// reserved for a missing `history_session` table entirely, mirroring
+/// [`read_session`]'s/`joiner::serato4::join_session`'s identical contract for
+/// the sibling table.
+pub fn session_by_id(conn: &Connection, id: i64) -> rusqlite::Result<Option<SessionSummary>> {
+    conn.query_row(
+        r#"SELECT id, name, start_time, end_time
+           FROM history_session
+           WHERE id = ?1"#,
+        [id],
+        |row| {
+            Ok(SessionSummary {
+                id: row.get(0)?,
+                name: row.get::<_, Option<String>>(1)?.and_then(non_empty),
+                start_time: row.get(2)?,
+                end_time: row.get(3)?,
+            })
+        },
+    )
+    .optional()
 }
 
 pub fn read_session(conn: &Connection, session_id: i64) -> rusqlite::Result<Vec<Play>> {
@@ -665,5 +692,54 @@ mod tests {
         let conn = Connection::open_in_memory().expect("in-memory database opens");
 
         assert!(list_sessions_after(&conn, 0).is_err());
+    }
+
+    // ---- session_by_id (Story 2.8 Task 4) --------------------------------------
+
+    /// Story 2.8 AC-4: re-reading a specific pending session by id sees a
+    /// resolved `end_time` once Serato has set one.
+    #[test]
+    fn session_by_id_returns_the_matching_row() {
+        let conn = in_memory_sessions();
+        let id = insert_session(&conn, Some("Warmup"), 1_000, Some(-1));
+
+        let session = session_by_id(&conn, id)
+            .expect("query succeeds")
+            .expect("row exists");
+
+        assert_eq!(session.id, id);
+        assert_eq!(session.name, Some("Warmup".to_string()));
+        assert_eq!(session.start_time, 1_000);
+        assert_eq!(session.end_time, Some(-1), "still in progress");
+    }
+
+    #[test]
+    fn session_by_id_reflects_a_resolved_end_time() {
+        let conn = in_memory_sessions();
+        let id = insert_session(&conn, Some("Peak"), 1_000, Some(-1));
+        conn.execute(
+            "UPDATE history_session SET end_time = ?1 WHERE id = ?2",
+            rusqlite::params![2_000, id],
+        )
+        .unwrap();
+
+        let session = session_by_id(&conn, id).unwrap().unwrap();
+
+        assert_eq!(session.end_time, Some(2_000));
+    }
+
+    #[test]
+    fn session_by_id_unknown_id_is_none_not_an_error() {
+        let conn = in_memory_sessions();
+        insert_session(&conn, Some("Solo"), 1_000, Some(-1));
+
+        assert_eq!(session_by_id(&conn, 999).expect("query succeeds"), None);
+    }
+
+    #[test]
+    fn session_by_id_missing_table_is_an_error_not_none() {
+        let conn = Connection::open_in_memory().expect("in-memory database opens");
+
+        assert!(session_by_id(&conn, 1).is_err());
     }
 }

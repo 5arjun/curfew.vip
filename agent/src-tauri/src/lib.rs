@@ -10,6 +10,11 @@
 //! Dependency rule (AD-3): `agent` depends on `shared` (via the JSON-schema
 //! artifact), never on `web`.
 
+/// Pipeline orchestration (Story 2.8, AC-1): the first real caller of Stories
+/// 1.3-1.8's engine, wiring parse -> join -> embedded-tag-fallback -> enrich ->
+/// stat -> confidence into one captured session, plus the session-identity and
+/// completion-signal logic [`watcher`]'s live loop drives. See [`capture`].
+pub mod capture;
 /// The live/practice confidence signal (Story 1.8, FR-27): classifies a whole
 /// session's [`stats::EnrichedPlay`]s into a heuristic [`confidence::SessionConfidence`].
 /// Not a sequential pipeline stage — a sibling consumer of the stat-engine's output,
@@ -45,6 +50,10 @@ pub mod settings;
 /// arithmetic-only (NFR-1, NFR-3). See [`stats`] for the assembly step and stat
 /// functions.
 pub mod stats;
+/// Local SQLite store (Story 2.8, AR-3): durable parse + offline cache + raw
+/// retention for captured sessions, authoritative for a set until it syncs. See
+/// [`store`].
+pub mod store;
 /// Tray state machine (Story 2.5): the four idle/syncing/failed/drive-not-connected
 /// states and the tooltip/icon update this agent's sole UI surface uses. See
 /// [`tray`].

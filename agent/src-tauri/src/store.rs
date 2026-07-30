@@ -1,0 +1,949 @@
+//! Local SQLite store (Story 2.8, AR-3): durable parse + offline cache + raw
+//! retention for captured sessions, authoritative for a set until it syncs
+//! (Story 3.2 owns the sync-queue that eventually reads these rows).
+//!
+//! Owns a single SQLite database file distinct from any Serato-owned database
+//! (`local.sqlite`, under Tauri's per-machine `app_local_data_dir`). This is the
+//! first module in this crate to open a SQLite connection the agent itself
+//! writes to — every other `rusqlite` use ([`crate::joiner::serato4`]) is
+//! read-only against a Serato-owned file.
+//!
+//! **Dedup is the schema's job, not the caller's.** `session_identity` carries a
+//! `UNIQUE` constraint; every write goes through SQLite's native
+//! `INSERT ... ON CONFLICT DO UPDATE` (AC-3) rather than a check-then-insert
+//! race — a re-detected/re-parsed session updates the existing row's content
+//! columns in place, mirroring AD-4's "re-parse updates content, never
+//! re-partitions" philosophy applied locally, ahead of Story 3.2 applying the
+//! same philosophy to the cloud row.
+//!
+//! **DTOs, not the pipeline's own types.** [`CapturedPlay`]/[`CapturedDerived`]
+//! are this store's own `Serialize`/`Deserialize` shapes, built *from*
+//! [`crate::stats::EnrichedPlay`]/[`crate::confidence::SessionConfidence`] by
+//! [`crate::capture`] — never added as derives to those pipeline types, which
+//! belong to Stories 1.6-1.8 and are exercised by their own unit tests in their
+//! own shapes. A local DTO layer keeps the persisted format free to diverge
+//! from in-memory computation types as either evolves.
+
+use rusqlite::{Connection, OptionalExtension};
+use serde::{Deserialize, Serialize};
+use std::path::Path;
+use tauri::{AppHandle, Manager};
+
+const STORE_FILE_NAME: &str = "local.sqlite";
+
+const SCHEMA_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS captured_sessions (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_identity  TEXT NOT NULL UNIQUE,
+  source            TEXT NOT NULL,        -- 'legacy' | 'serato4'
+  status            TEXT NOT NULL,        -- 'watching' | 'captured' | 'incomplete'
+  raw_ref           TEXT NOT NULL,        -- legacy: absolute .session path; serato4: "<db_path>#<serato_session_id>"
+  started_at        INTEGER,              -- unix epoch seconds, first known play start_time
+  ended_at          INTEGER,              -- unix epoch seconds, last known play start_time
+  captured_at       INTEGER,              -- agent wall-clock time this row reached 'captured'
+  plays_json        TEXT,                 -- serialized Vec<CapturedPlay>, NULL until captured
+  derived_json      TEXT,                 -- serialized CapturedDerived (stats + confidence), NULL until captured
+  synced_at         INTEGER               -- NULL forever in this story; Story 3.2 owns setting it
+);
+"#;
+
+/// Everything that can go wrong opening or writing to the local store. Mirrors
+/// the `Display`/`std::error::Error`, small-enum idiom used throughout this
+/// crate (`SettingsError`, `ParseError`, `JoinError`, `ScopeError`, `OpenError`)
+/// — no `anyhow`/`thiserror`.
+#[derive(Debug)]
+pub enum StoreError {
+    Io(std::io::Error),
+    Sqlite(rusqlite::Error),
+    /// Could not resolve Tauri's per-machine app-local-data directory.
+    NoAppDataDir,
+    Json(serde_json::Error),
+    /// A row held a `source`/`status` string this module never wrote — data
+    /// corruption from outside this store, not a reachable outcome of any
+    /// write path this module exposes.
+    Corrupt(String),
+}
+
+impl std::fmt::Display for StoreError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StoreError::Io(e) => write!(f, "local store I/O error: {e}"),
+            StoreError::Sqlite(e) => write!(f, "local store SQLite error: {e}"),
+            StoreError::NoAppDataDir => write!(f, "could not resolve app local data directory"),
+            StoreError::Json(e) => write!(f, "local store JSON error: {e}"),
+            StoreError::Corrupt(s) => write!(f, "local store row is corrupt: {s}"),
+        }
+    }
+}
+
+impl std::error::Error for StoreError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            StoreError::Io(e) => Some(e),
+            StoreError::Sqlite(e) => Some(e),
+            StoreError::Json(e) => Some(e),
+            StoreError::NoAppDataDir | StoreError::Corrupt(_) => None,
+        }
+    }
+}
+
+impl From<rusqlite::Error> for StoreError {
+    fn from(e: rusqlite::Error) -> Self {
+        StoreError::Sqlite(e)
+    }
+}
+
+/// Which play-log format a captured session came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionSource {
+    Legacy,
+    Serato4,
+}
+
+impl SessionSource {
+    fn as_str(self) -> &'static str {
+        match self {
+            SessionSource::Legacy => "legacy",
+            SessionSource::Serato4 => "serato4",
+        }
+    }
+
+    fn parse(s: &str) -> Option<Self> {
+        match s {
+            "legacy" => Some(SessionSource::Legacy),
+            "serato4" => Some(SessionSource::Serato4),
+            _ => None,
+        }
+    }
+}
+
+/// A captured session's lifecycle state (AC-4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionStatus {
+    /// Detected but not yet complete — the pending state a session sits in
+    /// while the completion signal (Serato4 `end_time`, legacy quiet period)
+    /// has not yet resolved.
+    Watching,
+    /// The full pipeline ran and the row carries plays + derived stats.
+    Captured,
+    /// The source disconnected while still `Watching` — resumes to `Captured`
+    /// if the completion signal resolves on reconnect, otherwise stays flagged
+    /// here rather than left ambiguously `Watching` forever.
+    Incomplete,
+}
+
+impl SessionStatus {
+    fn as_str(self) -> &'static str {
+        match self {
+            SessionStatus::Watching => "watching",
+            SessionStatus::Captured => "captured",
+            SessionStatus::Incomplete => "incomplete",
+        }
+    }
+
+    fn parse(s: &str) -> Option<Self> {
+        match s {
+            "watching" => Some(SessionStatus::Watching),
+            "captured" => Some(SessionStatus::Captured),
+            "incomplete" => Some(SessionStatus::Incomplete),
+            _ => None,
+        }
+    }
+}
+
+/// One `captured_sessions` row, read back. `plays_json`/`derived_json` are kept
+/// as their raw serialized text rather than deserialized here — no caller in
+/// this story needs the parsed content back (that is Story 3.2's job), and
+/// keeping this API narrow avoids committing to a read-side shape this story
+/// does not need.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CapturedSessionRow {
+    pub id: i64,
+    pub session_identity: String,
+    pub source: SessionSource,
+    pub status: SessionStatus,
+    pub raw_ref: String,
+    pub started_at: Option<i64>,
+    pub ended_at: Option<i64>,
+    pub captured_at: Option<i64>,
+    pub plays_json: Option<String>,
+    pub derived_json: Option<String>,
+    pub synced_at: Option<i64>,
+}
+
+fn row_from(row: &rusqlite::Row) -> rusqlite::Result<CapturedSessionRow> {
+    let source_raw: String = row.get("source")?;
+    let status_raw: String = row.get("status")?;
+    Ok(CapturedSessionRow {
+        id: row.get("id")?,
+        session_identity: row.get("session_identity")?,
+        source: SessionSource::parse(&source_raw).ok_or_else(|| {
+            rusqlite::Error::FromSqlConversionFailure(
+                0,
+                rusqlite::types::Type::Text,
+                format!("unknown source {source_raw:?}").into(),
+            )
+        })?,
+        status: SessionStatus::parse(&status_raw).ok_or_else(|| {
+            rusqlite::Error::FromSqlConversionFailure(
+                0,
+                rusqlite::types::Type::Text,
+                format!("unknown status {status_raw:?}").into(),
+            )
+        })?,
+        raw_ref: row.get("raw_ref")?,
+        started_at: row.get("started_at")?,
+        ended_at: row.get("ended_at")?,
+        captured_at: row.get("captured_at")?,
+        plays_json: row.get("plays_json")?,
+        derived_json: row.get("derived_json")?,
+        synced_at: row.get("synced_at")?,
+    })
+}
+
+/// Opens the local store at `path`, creating parent directories and the schema
+/// (via `CREATE TABLE IF NOT EXISTS` — no external migration tooling, unlike
+/// Supabase's migration-file convention, since this is a single-owner local
+/// file) if either does not exist yet. Split from [`open`] so it is testable
+/// against a temp file without a running Tauri app, mirroring `settings.rs`'s
+/// `load_from`/`save_to` split.
+pub fn open_at(path: &Path) -> Result<Connection, StoreError> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(parent).map_err(StoreError::Io)?;
+    let conn = Connection::open(path)?;
+    conn.execute_batch(SCHEMA_SQL)?;
+    Ok(conn)
+}
+
+/// Opens the local store at its real, per-machine location
+/// (`app_local_data_dir()/local.sqlite`, Tauri 2's non-roaming per-machine data
+/// dir — mirrors `settings.rs`'s `NoAppConfigDir`-style error variant and
+/// `create_dir_all` idiom).
+pub fn open(app: &AppHandle) -> Result<Connection, StoreError> {
+    let dir = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|_| StoreError::NoAppDataDir)?;
+    open_at(&dir.join(STORE_FILE_NAME))
+}
+
+fn now_unix() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// Registers a session as seen-but-not-yet-complete (Task 4/6). Called once, on
+/// first detection — durable across an agent restart, since the pending
+/// serato4-id/legacy-quiet-period trackers the watch loop keeps in memory are
+/// reloadable from `status = 'watching'` rows via [`rows_with_status`].
+///
+/// Idempotent and non-regressive: re-registering an already-`captured` session
+/// (should not happen in practice, since the watch loop only calls this before
+/// capture) leaves its status untouched rather than downgrading a finished
+/// capture back to pending.
+pub fn upsert_watching(
+    conn: &Connection,
+    session_identity: &str,
+    source: SessionSource,
+    raw_ref: &str,
+    started_at: Option<i64>,
+) -> Result<(), StoreError> {
+    conn.execute(
+        r#"INSERT INTO captured_sessions (session_identity, source, status, raw_ref, started_at)
+           VALUES (?1, ?2, 'watching', ?3, ?4)
+           ON CONFLICT(session_identity) DO UPDATE SET
+             status = 'watching',
+             raw_ref = excluded.raw_ref,
+             started_at = COALESCE(captured_sessions.started_at, excluded.started_at)
+           WHERE captured_sessions.status != 'captured'"#,
+        rusqlite::params![session_identity, source.as_str(), raw_ref, started_at],
+    )?;
+    Ok(())
+}
+
+/// Writes (or updates in place, AC-3) a session's full captured content: the
+/// parsed + enriched plays and derived stats/confidence, plus the session's
+/// time bounds. Marks the row `status = 'captured'` regardless of what it was
+/// before — this is the terminal state for this story (a re-parse of an
+/// already-captured session, or the promotion of a resumed `incomplete` one,
+/// both land here the same way).
+#[allow(clippy::too_many_arguments)]
+pub fn upsert_captured(
+    conn: &Connection,
+    session_identity: &str,
+    source: SessionSource,
+    raw_ref: &str,
+    started_at: Option<i64>,
+    ended_at: Option<i64>,
+    plays: &[CapturedPlay],
+    derived: &CapturedDerived,
+) -> Result<(), StoreError> {
+    let plays_json = serde_json::to_string(plays).map_err(StoreError::Json)?;
+    let derived_json = serde_json::to_string(derived).map_err(StoreError::Json)?;
+    let captured_at = now_unix();
+
+    conn.execute(
+        r#"INSERT INTO captured_sessions
+             (session_identity, source, status, raw_ref, started_at, ended_at, captured_at, plays_json, derived_json)
+           VALUES (?1, ?2, 'captured', ?3, ?4, ?5, ?6, ?7, ?8)
+           ON CONFLICT(session_identity) DO UPDATE SET
+             source = excluded.source,
+             status = 'captured',
+             raw_ref = excluded.raw_ref,
+             started_at = excluded.started_at,
+             ended_at = excluded.ended_at,
+             captured_at = excluded.captured_at,
+             plays_json = excluded.plays_json,
+             derived_json = excluded.derived_json"#,
+        rusqlite::params![
+            session_identity,
+            source.as_str(),
+            raw_ref,
+            started_at,
+            ended_at,
+            captured_at,
+            plays_json,
+            derived_json,
+        ],
+    )?;
+    Ok(())
+}
+
+/// Flags a `watching` session `incomplete` (AC-4): the source disconnected
+/// before the completion signal resolved. A no-op (not an error) for a session
+/// that is not currently `watching` — e.g. already `captured`, or already
+/// `incomplete` — so callers can call this unconditionally on a disconnect
+/// transition without first checking status themselves.
+pub fn mark_incomplete(conn: &Connection, session_identity: &str) -> Result<(), StoreError> {
+    conn.execute(
+        "UPDATE captured_sessions SET status = 'incomplete' WHERE session_identity = ?1 AND status = 'watching'",
+        [session_identity],
+    )?;
+    Ok(())
+}
+
+/// Reads one row by its dedup key, if it exists.
+pub fn get_by_identity(
+    conn: &Connection,
+    session_identity: &str,
+) -> Result<Option<CapturedSessionRow>, StoreError> {
+    conn.query_row(
+        "SELECT * FROM captured_sessions WHERE session_identity = ?1",
+        [session_identity],
+        row_from,
+    )
+    .optional()
+    .map_err(StoreError::from)
+}
+
+/// The status of one session, if a row exists for it — the narrow read Task
+/// 4/6's pending-session bookkeeping needs without pulling a whole row.
+pub fn status_of(
+    conn: &Connection,
+    session_identity: &str,
+) -> Result<Option<SessionStatus>, StoreError> {
+    let raw: Option<String> = conn
+        .query_row(
+            "SELECT status FROM captured_sessions WHERE session_identity = ?1",
+            [session_identity],
+            |row| row.get(0),
+        )
+        .optional()?;
+    raw.map(|s| SessionStatus::parse(&s).ok_or(StoreError::Corrupt(s)))
+        .transpose()
+}
+
+/// Every row currently in `status` — the durable-across-restart reload Task 4
+/// depends on: the watch loop's in-memory pending-serato4-id set and
+/// last-seen-mtime map are both reloadable from `'watching'` rows on
+/// [`open`]/[`open_at`], and its incomplete/resume logic re-attempts the
+/// completion check for every `'incomplete'` row on a reconnect.
+pub fn rows_with_status(
+    conn: &Connection,
+    status: SessionStatus,
+) -> Result<Vec<CapturedSessionRow>, StoreError> {
+    let mut stmt = conn.prepare("SELECT * FROM captured_sessions WHERE status = ?1")?;
+    let rows = stmt.query_map([status.as_str()], row_from)?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(StoreError::from)
+}
+
+// ---- Local capture DTOs (Task 3) -------------------------------------------
+//
+// Store-owned, `Serialize`/`Deserialize` shapes built *from* the pipeline's
+// output types (`stats::EnrichedPlay`, `joiner::JoinedMetadata.in_library`,
+// `confidence::SessionConfidence`) by `crate::capture` — never added as
+// derives to those types themselves. Field groupings mirror
+// `shared/src/index.ts`'s `SyncPlay`/`SyncSetDerived` closely (Story 3.2 will
+// eventually read these local rows to build the real wire payload, so keeping
+// the shapes close now saves that story a translation step later) without
+// importing anything from `shared/` — this is a parallel, independently
+// defined Rust DTO, not a shared type.
+
+/// One captured play: the `EnrichedPlay` fields plus `in_library` (from the
+/// paired `JoinedMetadata`, which `EnrichedPlay` itself does not carry — the
+/// gap `deferred-work.md` flagged from Story 1.10).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CapturedPlay {
+    /// 1-based ordinal position within the set — mirrors `SyncPlay.position`.
+    pub position: usize,
+    pub title: Option<String>,
+    pub artist: Option<String>,
+    /// Unix epoch seconds, from `EnrichedPlay.start_time`.
+    pub started_at: Option<u32>,
+    pub bpm: Option<f64>,
+    pub genre: Option<CapturedGenre>,
+    /// Camelot notation string (e.g. `"8A"`), rendered from
+    /// `EnrichedPlay.camelot: Option<CamelotKey>` — a string on the wire/store
+    /// boundary, not the two-field Rust struct.
+    pub camelot_key: Option<String>,
+    pub in_library: bool,
+}
+
+/// Mirrors `EnrichedPlay.genre: Option<NormalizedGenre>` — raw + normalized +
+/// taxonomy version, carried verbatim (AD-12), never collapsed to just
+/// `normalized`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CapturedGenre {
+    pub raw: String,
+    pub normalized: String,
+    pub taxonomy_version: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CapturedTrackCount {
+    pub title: Option<String>,
+    pub artist: Option<String>,
+    pub play_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CapturedArtistCount {
+    pub artist: String,
+    pub play_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CapturedGenreBucket {
+    pub genre: String,
+    pub play_count: usize,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct CapturedGenreBreakdown {
+    pub buckets: Vec<CapturedGenreBucket>,
+    pub no_genre_count: usize,
+}
+
+/// Mirrors `stats::BpmDistribution` — an empty distribution is `count: 0` with
+/// all other fields `0.0`, never a missing/`NaN` value.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct CapturedBpmDistribution {
+    pub count: usize,
+    pub min: f64,
+    pub max: f64,
+    pub mean: f64,
+    pub median: f64,
+}
+
+/// Mirrors `stats::camelot::CamelotMixingStats` — three raw counts, not a
+/// pre-divided rate.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct CapturedCamelotMixingStats {
+    pub compatible_transitions: usize,
+    pub incompatible_transitions: usize,
+    pub excluded_no_key: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CapturedEnergyPoint {
+    pub started_at: u32,
+    pub bpm: f64,
+}
+
+/// Mirrors `confidence::SessionConfidence`. Field names mirror it exactly,
+/// except `confidence` -> `value` (same rename `shared/src/index.ts`'s
+/// `SyncSetDerived.confidence` already applies, avoiding a `derived.confidence
+/// .confidence` stutter).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CapturedConfidence {
+    pub value: f64,
+    pub track_count: usize,
+    pub long_gap_count: usize,
+}
+
+/// Mirrors `SyncSetDerived`'s shape — same field groupings (most-played
+/// tracks/artists, genre breakdown, BPM distribution, Camelot mixing stats,
+/// set length, track count, energy arc, confidence) sourced from
+/// `stats::mod.rs`/`confidence.rs`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CapturedDerived {
+    pub most_played_tracks: Vec<CapturedTrackCount>,
+    pub most_played_artists: Vec<CapturedArtistCount>,
+    pub genre_breakdown: CapturedGenreBreakdown,
+    pub bpm_distribution: CapturedBpmDistribution,
+    pub camelot_mixing_stats: CapturedCamelotMixingStats,
+    pub set_length_sec: Option<u32>,
+    pub track_count: usize,
+    pub energy_arc: Vec<CapturedEnergyPoint>,
+    pub confidence: CapturedConfidence,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct TempStoreFile(std::path::PathBuf);
+
+    impl TempStoreFile {
+        fn new(tag: &str) -> Self {
+            static COUNTER: AtomicUsize = AtomicUsize::new(0);
+            let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!(
+                "curfew_store_test_{tag}_{}_{n}.sqlite",
+                std::process::id()
+            ));
+            Self(path)
+        }
+    }
+
+    impl Drop for TempStoreFile {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+
+    fn sample_derived() -> CapturedDerived {
+        CapturedDerived {
+            most_played_tracks: vec![CapturedTrackCount {
+                title: Some("Track A".into()),
+                artist: Some("Artist A".into()),
+                play_count: 2,
+            }],
+            most_played_artists: vec![CapturedArtistCount {
+                artist: "Artist A".into(),
+                play_count: 2,
+            }],
+            genre_breakdown: CapturedGenreBreakdown {
+                buckets: vec![CapturedGenreBucket {
+                    genre: "House".into(),
+                    play_count: 2,
+                }],
+                no_genre_count: 0,
+            },
+            bpm_distribution: CapturedBpmDistribution {
+                count: 2,
+                min: 120.0,
+                max: 128.0,
+                mean: 124.0,
+                median: 124.0,
+            },
+            camelot_mixing_stats: CapturedCamelotMixingStats {
+                compatible_transitions: 1,
+                incompatible_transitions: 0,
+                excluded_no_key: 0,
+            },
+            set_length_sec: Some(600),
+            track_count: 2,
+            energy_arc: vec![CapturedEnergyPoint {
+                started_at: 1_000,
+                bpm: 120.0,
+            }],
+            confidence: CapturedConfidence {
+                value: 1.0,
+                track_count: 2,
+                long_gap_count: 0,
+            },
+        }
+    }
+
+    fn sample_plays() -> Vec<CapturedPlay> {
+        vec![CapturedPlay {
+            position: 1,
+            title: Some("Track A".into()),
+            artist: Some("Artist A".into()),
+            started_at: Some(1_000),
+            bpm: Some(120.0),
+            genre: Some(CapturedGenre {
+                raw: "Deep House".into(),
+                normalized: "House".into(),
+                taxonomy_version: 1,
+            }),
+            camelot_key: Some("8A".into()),
+            in_library: true,
+        }]
+    }
+
+    /// Task 7: upsert-then-get round-trip — a captured row's content columns
+    /// are readable back exactly as written.
+    #[test]
+    fn upsert_captured_then_get_round_trips() {
+        let file = TempStoreFile::new("roundtrip");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_captured(
+            &conn,
+            "serato4:7",
+            SessionSource::Serato4,
+            "/path/to/master.sqlite#7",
+            Some(1_000),
+            Some(1_600),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .expect("upsert succeeds");
+
+        let row = get_by_identity(&conn, "serato4:7")
+            .expect("query succeeds")
+            .expect("row exists");
+
+        assert_eq!(row.session_identity, "serato4:7");
+        assert_eq!(row.source, SessionSource::Serato4);
+        assert_eq!(row.status, SessionStatus::Captured);
+        assert_eq!(row.raw_ref, "/path/to/master.sqlite#7");
+        assert_eq!(row.started_at, Some(1_000));
+        assert_eq!(row.ended_at, Some(1_600));
+        assert!(row.captured_at.is_some());
+        assert!(
+            row.synced_at.is_none(),
+            "synced_at is never set by this story"
+        );
+
+        let plays: Vec<CapturedPlay> =
+            serde_json::from_str(&row.plays_json.expect("plays_json present")).unwrap();
+        assert_eq!(plays, sample_plays());
+        let derived: CapturedDerived =
+            serde_json::from_str(&row.derived_json.expect("derived_json present")).unwrap();
+        assert_eq!(derived, sample_derived());
+    }
+
+    /// AC-3, directly: a repeated `session_identity` updates the existing row
+    /// in place rather than duplicating it — the `UNIQUE`-constraint-driven
+    /// upsert is the dedup mechanism.
+    #[test]
+    fn repeated_session_identity_updates_not_duplicates() {
+        let file = TempStoreFile::new("dedup");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_captured(
+            &conn,
+            "legacy:abc",
+            SessionSource::Legacy,
+            "/sessions/one.session",
+            Some(1_000),
+            Some(1_500),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .expect("first upsert succeeds");
+
+        let mut second_plays = sample_plays();
+        second_plays.push(CapturedPlay {
+            position: 2,
+            title: Some("Track B".into()),
+            artist: None,
+            started_at: Some(1_500),
+            bpm: Some(128.0),
+            genre: None,
+            camelot_key: None,
+            in_library: false,
+        });
+        upsert_captured(
+            &conn,
+            "legacy:abc",
+            SessionSource::Legacy,
+            "/sessions/one.session",
+            Some(1_000),
+            Some(2_000),
+            &second_plays,
+            &sample_derived(),
+        )
+        .expect("second upsert succeeds");
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM captured_sessions WHERE session_identity = 'legacy:abc'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            count, 1,
+            "re-detecting the same session must not duplicate it"
+        );
+
+        let row = get_by_identity(&conn, "legacy:abc").unwrap().unwrap();
+        assert_eq!(row.ended_at, Some(2_000), "content updated in place");
+        let plays: Vec<CapturedPlay> = serde_json::from_str(&row.plays_json.unwrap()).unwrap();
+        assert_eq!(plays.len(), 2, "updated play list persisted");
+    }
+
+    /// AC-4: status transitions `watching` -> `captured`.
+    #[test]
+    fn watching_transitions_to_captured() {
+        let file = TempStoreFile::new("watching-to-captured");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_watching(
+            &conn,
+            "serato4:9",
+            SessionSource::Serato4,
+            "/path/master.sqlite#9",
+            Some(1_000),
+        )
+        .expect("upsert_watching succeeds");
+        assert_eq!(
+            status_of(&conn, "serato4:9").unwrap(),
+            Some(SessionStatus::Watching)
+        );
+
+        upsert_captured(
+            &conn,
+            "serato4:9",
+            SessionSource::Serato4,
+            "/path/master.sqlite#9",
+            Some(1_000),
+            Some(1_500),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .expect("upsert_captured succeeds");
+
+        assert_eq!(
+            status_of(&conn, "serato4:9").unwrap(),
+            Some(SessionStatus::Captured)
+        );
+    }
+
+    /// AC-4: status transitions `watching` -> `incomplete` -> `captured`
+    /// (the resume path).
+    #[test]
+    fn watching_to_incomplete_to_captured() {
+        let file = TempStoreFile::new("incomplete-resume");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_watching(
+            &conn,
+            "legacy:xyz",
+            SessionSource::Legacy,
+            "/sessions/xyz.session",
+            Some(1_000),
+        )
+        .unwrap();
+
+        mark_incomplete(&conn, "legacy:xyz").unwrap();
+        assert_eq!(
+            status_of(&conn, "legacy:xyz").unwrap(),
+            Some(SessionStatus::Incomplete)
+        );
+
+        // Resume: the completion signal resolves, promote straight to captured.
+        upsert_captured(
+            &conn,
+            "legacy:xyz",
+            SessionSource::Legacy,
+            "/sessions/xyz.session",
+            Some(1_000),
+            Some(1_800),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            status_of(&conn, "legacy:xyz").unwrap(),
+            Some(SessionStatus::Captured)
+        );
+    }
+
+    /// AC-4: the real reconnect step — `upsert_watching` called against an
+    /// `incomplete` row (mirroring `reregister_pending_as_watching`) must flip
+    /// it back to `watching`, not leave it stuck. Regression test for a bug
+    /// where the `ON CONFLICT` clause updated `raw_ref`/`started_at` but never
+    /// `status`.
+    #[test]
+    fn upsert_watching_resumes_an_incomplete_row_to_watching() {
+        let file = TempStoreFile::new("incomplete-resumes-to-watching");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_watching(
+            &conn,
+            "legacy:resume",
+            SessionSource::Legacy,
+            "/sessions/resume.session",
+            Some(1_000),
+        )
+        .unwrap();
+        mark_incomplete(&conn, "legacy:resume").unwrap();
+        assert_eq!(
+            status_of(&conn, "legacy:resume").unwrap(),
+            Some(SessionStatus::Incomplete)
+        );
+
+        upsert_watching(
+            &conn,
+            "legacy:resume",
+            SessionSource::Legacy,
+            "/sessions/resume.session",
+            Some(1_000),
+        )
+        .unwrap();
+
+        assert_eq!(
+            status_of(&conn, "legacy:resume").unwrap(),
+            Some(SessionStatus::Watching),
+            "reconnecting must resume an incomplete row back to watching"
+        );
+    }
+
+    /// `mark_incomplete` only ever affects a `watching` row — calling it
+    /// against an already-`captured` session is a no-op, never a regression.
+    #[test]
+    fn mark_incomplete_does_not_regress_a_captured_session() {
+        let file = TempStoreFile::new("no-regress");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_captured(
+            &conn,
+            "serato4:1",
+            SessionSource::Serato4,
+            "/path/master.sqlite#1",
+            Some(1_000),
+            Some(1_500),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+
+        mark_incomplete(&conn, "serato4:1").unwrap();
+
+        assert_eq!(
+            status_of(&conn, "serato4:1").unwrap(),
+            Some(SessionStatus::Captured),
+            "a captured session must never be downgraded by a stray incomplete call"
+        );
+    }
+
+    /// `upsert_watching` called again for an already-captured session must not
+    /// downgrade it back to `watching`.
+    #[test]
+    fn upsert_watching_does_not_regress_a_captured_session() {
+        let file = TempStoreFile::new("watching-no-regress");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_captured(
+            &conn,
+            "serato4:2",
+            SessionSource::Serato4,
+            "/path/master.sqlite#2",
+            Some(1_000),
+            Some(1_500),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+
+        upsert_watching(
+            &conn,
+            "serato4:2",
+            SessionSource::Serato4,
+            "/path/master.sqlite#2",
+            Some(1_000),
+        )
+        .unwrap();
+
+        assert_eq!(
+            status_of(&conn, "serato4:2").unwrap(),
+            Some(SessionStatus::Captured)
+        );
+    }
+
+    #[test]
+    fn status_of_unknown_identity_is_none() {
+        let file = TempStoreFile::new("status-unknown");
+        let conn = open_at(&file.0).expect("store opens");
+        assert_eq!(status_of(&conn, "serato4:999").unwrap(), None);
+    }
+
+    #[test]
+    fn get_by_identity_unknown_identity_is_none() {
+        let file = TempStoreFile::new("get-unknown");
+        let conn = open_at(&file.0).expect("store opens");
+        assert_eq!(get_by_identity(&conn, "serato4:999").unwrap(), None);
+    }
+
+    /// `rows_with_status` is the durable-restart reload path (Task 4): every
+    /// `watching` row is returned, and no `captured`/`incomplete` row leaks in.
+    #[test]
+    fn rows_with_status_filters_correctly() {
+        let file = TempStoreFile::new("rows-with-status");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_watching(
+            &conn,
+            "serato4:10",
+            SessionSource::Serato4,
+            "/path/master.sqlite#10",
+            Some(1_000),
+        )
+        .unwrap();
+        upsert_watching(
+            &conn,
+            "legacy:aaa",
+            SessionSource::Legacy,
+            "/sessions/aaa.session",
+            Some(2_000),
+        )
+        .unwrap();
+        mark_incomplete(&conn, "legacy:aaa").unwrap();
+        upsert_captured(
+            &conn,
+            "serato4:11",
+            SessionSource::Serato4,
+            "/path/master.sqlite#11",
+            Some(3_000),
+            Some(3_500),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+
+        let watching = rows_with_status(&conn, SessionStatus::Watching).unwrap();
+        assert_eq!(watching.len(), 1);
+        assert_eq!(watching[0].session_identity, "serato4:10");
+
+        let incomplete = rows_with_status(&conn, SessionStatus::Incomplete).unwrap();
+        assert_eq!(incomplete.len(), 1);
+        assert_eq!(incomplete[0].session_identity, "legacy:aaa");
+
+        let captured = rows_with_status(&conn, SessionStatus::Captured).unwrap();
+        assert_eq!(captured.len(), 1);
+        assert_eq!(captured[0].session_identity, "serato4:11");
+    }
+
+    /// Opening the same file twice (mirrors a process restart) does not lose
+    /// existing rows and does not error on the `CREATE TABLE IF NOT EXISTS`.
+    #[test]
+    fn reopening_the_same_store_file_preserves_rows() {
+        let file = TempStoreFile::new("reopen");
+        {
+            let conn = open_at(&file.0).expect("first open succeeds");
+            upsert_watching(
+                &conn,
+                "serato4:20",
+                SessionSource::Serato4,
+                "/path/master.sqlite#20",
+                Some(1_000),
+            )
+            .unwrap();
+        }
+        let conn = open_at(&file.0).expect("second open succeeds");
+        assert_eq!(
+            status_of(&conn, "serato4:20").unwrap(),
+            Some(SessionStatus::Watching)
+        );
+    }
+}
