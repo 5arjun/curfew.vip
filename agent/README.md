@@ -40,5 +40,10 @@ cargo clippy  --manifest-path src-tauri/Cargo.toml -- -D warnings
 cargo test    --manifest-path src-tauri/Cargo.toml   # incl. the shared-schema test
 ```
 
-Signed bundles / notarization / installers are **out of scope** here — that is
-Epic 2 (AR-14). This story compiles the core; it does not produce installers.
+## Release builds
+
+Local development uses the plain `cargo build` loop above — unsigned, and it
+does not produce an installable bundle (`tauri-cli` isn't installed locally).
+A signed, notarized `.dmg` is produced by
+[`.github/workflows/release-macos.yml`](../.github/workflows/release-macos.yml)
+when an `agent-v*.*.*` tag is pushed (Story 2.9a, AR-14).

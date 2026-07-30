@@ -1,0 +1,87 @@
+name: Release macOS
+
+# Signed, notarized macOS release build (Story 2.9a, AR-14). Separate from
+# ci.yml on purpose: ci.yml's agent job is Linux-only and explicitly out of
+# scope for signed bundling (see its header). This workflow only runs on a
+# release tag, not on every push/PR, so a macOS runner never slows down the
+# regular CI gate.
+#
+# Notarization method: API key (APPLE_API_ISSUER/APPLE_API_KEY/APPLE_API_KEY_PATH)
+# — chosen over the Apple-ID + app-specific-password method because it has no
+# 2FA/password rotation to babysit in unattended CI.
+#
+# Required GitHub Actions secrets (not yet provisioned — see
+# pre-launch-services-checklist.md row 32):
+#   APPLE_CERTIFICATE          - base64-encoded .p12 Developer ID Application cert
+#   APPLE_CERTIFICATE_PASSWORD - the .p12 export password
+#   APPLE_SIGNING_IDENTITY     - e.g. "Developer ID Application: <Name> (<TEAMID>)"
+#   APPLE_API_ISSUER           - notarization API key issuer ID
+#   APPLE_API_KEY              - notarization API key ID
+#   APPLE_API_KEY_CONTENT      - full contents of the downloaded API key .p8 file
+#                                (APPLE_API_KEY_PATH is NOT a secret — runners are
+#                                ephemeral, so the .p8 content itself must be a
+#                                secret; the "Write Apple notarization key" step
+#                                below materializes it to a path on the runner)
+#
+# Local dev is unaffected: with no APPLE_* env vars set, tauri.conf.json has no
+# bundle.macOS.signingIdentity, so a local build falls back to unsigned.
+
+on:
+  push:
+    tags:
+      - 'agent-v*.*.*'
+
+concurrency:
+  group: release-macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    name: Build, sign, and notarize (universal macOS)
+    runs-on: macos-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add Apple Silicon + Intel targets
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Write Apple notarization key to disk
+        run: echo "${{ secrets.APPLE_API_KEY_CONTENT }}" > "${{ runner.temp }}/AuthKey.p8"
+
+      # Pinned to the exact commit behind the v1 tag (2026-06-29) rather than the
+      # floating tag itself — this step receives the Apple signing cert, cert
+      # password, and notarization API key directly via env, so it gets the same
+      # exact-commit reproducibility bar this repo already applies to triseratops.
+      - name: Build, sign, and notarize
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+        with:
+          projectPath: agent
+          args: --target universal-apple-darwin
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Curfew Agent ${{ github.ref_name }}'

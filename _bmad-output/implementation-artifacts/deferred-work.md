@@ -1,5 +1,10 @@
 # Deferred Work
 
+## Deferred from: code review of 2-9a-macos-signed-build-notarization (2026-07-29)
+
+- **App version stays hardcoded `0.0.0` across `tauri.conf.json`/`Cargo.toml`/`package.json` with no workflow step syncing it to the pushed `agent-v*.*.*` tag.** Every signed release will embed the same internal version regardless of the git tag used to trigger it. Out of this story's AC scope (no AC mentions version stamping); will matter once Story 2.9c's auto-updater needs a real version to compare against. [agent/src-tauri/tauri.conf.json, agent/src-tauri/Cargo.toml, agent/package.json]
+- **No Rust build caching (`Swatinem/rust-cache`) in the new `release-macos.yml` workflow**, unlike `ci.yml` which already uses it. Cost/speed nit only — this workflow runs rarely (tag-triggered releases, not every push), so the from-scratch two-architecture compile cost is tolerable for now. [.github/workflows/release-macos.yml]
+
 ## Deferred from: code review of story-2-8-set-capture-into-local-sqlite (2026-07-29)
 
 - **`recheck_pending_serato4` opens a fresh read-only connection to the live `master.sqlite` every ~5s poll tick regardless of whether `pending` is empty** (the emptiness check happens only inside the filter, after the connection is already opened) — compounds the "new connection per tick" item already deferred from Story 2.6's review below (`check_for_new_sessions`'s own per-call connection). Inefficiency, not a correctness issue. [agent/src-tauri/src/watcher/mod.rs:440-448]
