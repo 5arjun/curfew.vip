@@ -4,54 +4,46 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useActionState, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { AppleSignInButton } from "../components/auth/AppleSignInButton";
+import { BiometricAnchor } from "../components/auth/BiometricAnchor";
+import { Button } from "../components/auth/Button";
+import { GhostInput } from "../components/auth/GhostInput";
+import { GoogleSignInButton } from "../components/auth/GoogleSignInButton";
 import { AUTH_FAILURE_COPY } from "./auth-copy";
-import { INITIAL_AUTH_STATE } from "./auth-state";
+import { INITIAL_AUTH_STATE, type AuthActionState } from "./auth-state";
 import { signIn, signUp } from "./actions";
 
-// Functional, token-consuming, unpolished forms (this story's explicit scope —
-// the Ghost-input/Biometric-Anchor visual spec is Story 2.4's job).
+// Story 2.4: OAuth/passkey render as the prominent top-of-form content
+// (AC-5); email+password is collapsed by default behind a disclosure toggle,
+// fully functional when expanded. Story 2.3a/b/c's server actions, copy, and
+// state shapes are unchanged — this file only changes how they're triggered
+// from markup/style.
 
 type Mode = "login" | "signup";
 
-const fieldStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "var(--space-xs)",
-  marginBottom: "var(--space-md)",
-};
-
-const inputStyle: React.CSSProperties = {
-  padding: "var(--space-sm)",
-  borderRadius: "var(--radius-sm)",
-  border: "1px solid var(--color-outline)",
-  background: "var(--color-surface-container)",
-  color: "var(--color-on-surface)",
-  fontSize: "16px",
+const mainStyle: React.CSSProperties = {
+  maxWidth: "var(--container-max)",
+  margin: "var(--space-xxl) auto",
+  padding: "0 var(--space-lg)",
 };
 
 const errorStyle: React.CSSProperties = {
   color: "var(--color-error)",
 };
 
-const buttonStyle: React.CSSProperties = {
-  padding: "var(--space-sm) var(--space-md)",
-  borderRadius: "var(--radius-sm)",
-  border: "1px solid var(--color-outline)",
-  background: "var(--color-surface-container-high)",
-  color: "var(--color-on-surface)",
-  cursor: "pointer",
+const oauthGroupStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "var(--space-sm)",
+  marginBottom: "var(--space-lg)",
 };
 
+// See web/app/login/page.tsx's own prior comment (kept below on the const):
 // Apple can never be enabled in local supabase/config.toml — Sign In with
 // Apple hard-requires an HTTPS Return URL, which the local Auth server
 // (http://127.0.0.1:54321) can't provide. Apple is configured per-environment
-// via the Supabase Dashboard instead (prod: enabled 2026-07-28), so this flag
-// reads an env var rather than being a single hardcoded constant. Left
-// enabled while the backend provider is actually disabled, clicking redirects
-// straight to GoTrue's /authorize, which rejects the disabled provider before
-// ever reaching this app's /auth/callback — bypassing the calm failure copy
-// below entirely (2026-07-27 review finding) — hence gating per-environment
-// rather than always-on.
+// via the Supabase Dashboard instead, so this flag reads an env var rather
+// than being a single hardcoded constant.
 const appleSignInAvailable = process.env.NEXT_PUBLIC_APPLE_SIGNIN_AVAILABLE === "true";
 
 export default function LoginPage() {
@@ -64,21 +56,40 @@ export default function LoginPage() {
 
 function LoginPageContent() {
   const [mode, setMode] = useState<Mode>("login");
-  const [signInState, signInAction, signInPending] = useActionState(signIn, INITIAL_AUTH_STATE);
-  const [signUpState, signUpAction, signUpPending] = useActionState(signUp, INITIAL_AUTH_STATE);
+  const [authStatus, setAuthStatus] = useState<AuthActionState["status"]>("idle");
+  const [showEmailForm, setShowEmailForm] = useState(false);
   const [passkeySignedIn, setPasskeySignedIn] = useState(false);
   const [passkeyError, setPasskeyError] = useState<string | null>(null);
   const [passkeyPending, setPasskeyPending] = useState(false);
   const [oauthPending, setOauthPending] = useState<"google" | "apple" | null>(null);
   const [oauthError, setOauthError] = useState<string | null>(null);
+  // OAuth (full-page redirect) and passkey (WebAuthn ceremony) are mutually
+  // exclusive in-flight — without this, the OAuth buttons and the passkey
+  // BiometricAnchor only checked their own pending flag, so a user could
+  // trigger both in the window before the OAuth redirect navigates away.
+  const authMethodPending = passkeyPending || oauthPending !== null;
   const searchParams = useSearchParams();
   const confirmationFailed = searchParams.get("error") === "confirmation-failed";
 
-  const state = mode === "login" ? signInState : signUpState;
-  const pending = mode === "login" ? signInPending : signUpPending;
+  // Task 5.2 (deferred-work.md, 2.3a/2.3b reviews): a stale failure message
+  // from one mode/method must not persist across an unrelated interaction.
+  // Clearing oauthError/passkeyError happens at the start of every handler
+  // below and on mode switch; AuthForm's own useActionState error resets via
+  // key={mode} remounting a fresh hook instance on mode change (see AuthForm).
+  function switchMode(nextMode: Mode) {
+    setMode(nextMode);
+    setAuthStatus("idle");
+    setOauthError(null);
+    setPasskeyError(null);
+  }
+
+  function clearCrossMethodErrors() {
+    setOauthError(null);
+    setPasskeyError(null);
+  }
 
   async function handlePasskeySignIn() {
-    setPasskeyError(null);
+    clearCrossMethodErrors();
     setPasskeyPending(true);
     const supabase = createClient();
     try {
@@ -99,7 +110,7 @@ function LoginPageContent() {
   // default — this only ever returns (without navigating away) on an error
   // (e.g. provider misconfigured), matching handlePasskeySignIn's shape.
   async function handleOAuthSignIn(provider: "google" | "apple") {
-    setOauthError(null);
+    clearCrossMethodErrors();
     setOauthPending(provider);
     const supabase = createClient();
     try {
@@ -117,122 +128,126 @@ function LoginPageContent() {
     }
   }
 
-  if (state.status === "signed-in" || passkeySignedIn) {
+  if (authStatus === "signed-in" || passkeySignedIn) {
     return <EnablePasskeyPrompt />;
   }
 
-  if (state.status === "check-email") {
+  if (authStatus === "check-email") {
     return (
-      <main style={{ maxWidth: "var(--container-max)", margin: "var(--space-xxl) auto", padding: "0 var(--space-lg)" }}>
+      <main style={mainStyle}>
         <p className="text-body-lg">Check your email to confirm your account.</p>
       </main>
     );
   }
 
   return (
-    <main style={{ maxWidth: "var(--container-max)", margin: "var(--space-xxl) auto", padding: "0 var(--space-lg)" }}>
+    <main style={mainStyle}>
       <h1 className="text-headline-md" style={{ marginBottom: "var(--space-lg)" }}>
-        {mode === "login" ? "Log in" : "Sign up"}
+        Sign in to Curfew
       </h1>
 
       {confirmationFailed && (
-        <p
-          className="text-body-md"
-          style={{ ...errorStyle, marginBottom: "var(--space-md)" }}
-          role="alert"
-        >
+        <p className="text-body-md" style={{ ...errorStyle, marginBottom: "var(--space-md)" }} role="alert">
           {AUTH_FAILURE_COPY.generic}
         </p>
       )}
 
-      <form action={mode === "login" ? signInAction : signUpAction}>
-        <div style={fieldStyle}>
-          <label className="text-label-sm" htmlFor="email">
-            Email
-          </label>
-          <input id="email" name="email" type="email" autoComplete="email" required style={inputStyle} />
-          {state.fieldErrors?.email && (
-            <p className="text-body-md" style={errorStyle} role="alert">
-              {state.fieldErrors.email}
-            </p>
-          )}
-        </div>
-
-        <div style={fieldStyle}>
-          <label className="text-label-sm" htmlFor="password">
-            Password
-          </label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            autoComplete={mode === "login" ? "current-password" : "new-password"}
-            minLength={6}
-            required
-            style={inputStyle}
-          />
-          {state.fieldErrors?.password && (
-            <p className="text-body-md" style={errorStyle} role="alert">
-              {state.fieldErrors.password}
-            </p>
-          )}
-        </div>
-
-        {state.fieldErrors?.form && (
-          <p className="text-body-md" style={{ ...errorStyle, marginBottom: "var(--space-md)" }} role="alert">
-            {state.fieldErrors.form}
-          </p>
-        )}
-
-        <button type="submit" disabled={pending} style={buttonStyle}>
-          {mode === "login" ? "Log in" : "Sign up"}
-        </button>
-      </form>
-
-      <div style={{ marginTop: "var(--space-lg)" }}>
-        <button type="button" onClick={handlePasskeySignIn} disabled={passkeyPending} style={buttonStyle}>
-          Sign in with Passkey
-        </button>
-        {passkeyError && (
-          <p className="text-body-md" style={{ ...errorStyle, marginTop: "var(--space-sm)" }} role="alert">
-            {passkeyError}
-          </p>
-        )}
-      </div>
-
-      <div style={{ marginTop: "var(--space-lg)", display: "flex", gap: "var(--space-sm)" }}>
-        <button
-          type="button"
-          onClick={() => handleOAuthSignIn("google")}
-          disabled={oauthPending !== null}
-          style={buttonStyle}
-        >
-          Sign in with Google
-        </button>
-        <button
-          type="button"
+      <div style={oauthGroupStyle}>
+        <GoogleSignInButton onClick={() => handleOAuthSignIn("google")} disabled={authMethodPending} />
+        <AppleSignInButton
           onClick={() => handleOAuthSignIn("apple")}
-          disabled={!appleSignInAvailable || oauthPending !== null}
-          style={buttonStyle}
-          title={appleSignInAvailable ? undefined : "Apple sign-in isn't configured yet"}
-        >
-          Sign in with Apple{!appleSignInAvailable && " (coming soon)"}
-        </button>
+          disabled={!appleSignInAvailable || authMethodPending}
+          unavailableReason={appleSignInAvailable ? undefined : "coming soon"}
+        />
+        <BiometricAnchor
+          primaryLabel="Sign in with Passkey"
+          secondaryLabel="use an existing passkey"
+          onClick={handlePasskeySignIn}
+          disabled={authMethodPending}
+        />
       </div>
-      {oauthError && (
-        <p className="text-body-md" style={{ ...errorStyle, marginTop: "var(--space-sm)" }} role="alert">
-          {oauthError}
+
+      {(oauthError || passkeyError) && (
+        <p className="text-body-md" style={{ ...errorStyle, marginBottom: "var(--space-md)" }} role="alert">
+          {oauthError ?? passkeyError}
         </p>
       )}
 
-      <button
+      <Button
         type="button"
-        onClick={() => setMode(mode === "login" ? "signup" : "login")}
-        style={{ ...buttonStyle, marginTop: "var(--space-lg)", background: "none" }}
+        variant="secondary"
+        onClick={() => setShowEmailForm((shown) => !shown)}
+        aria-expanded={showEmailForm}
+        aria-controls="auth-email-form-panel"
       >
-        {mode === "login" ? "Need an account? Sign up" : "Have an account? Log in"}
-      </button>
+        {showEmailForm ? "Hide email sign-in" : "Use email instead"}
+      </Button>
+
+      {/* `hidden` (not a conditional unmount) keeps AuthForm's useActionState
+          instance alive while the panel is collapsed, so closing this panel —
+          whether idle or mid-submit — can never silently discard typed input
+          or an in-flight sign-in/sign-up result. Also gives the toggle button
+          above a persistent id to point aria-controls at. */}
+      <div id="auth-email-form-panel" hidden={!showEmailForm} style={{ marginTop: "var(--space-lg)" }}>
+        <AuthForm
+          key={mode}
+          mode={mode}
+          onStatusChange={setAuthStatus}
+          onSubmitStart={clearCrossMethodErrors}
+        />
+        <Button type="button" variant="secondary" onClick={() => switchMode(mode === "login" ? "signup" : "login")}>
+          {mode === "login" ? "Need an account? Sign up" : "Have an account? Log in"}
+        </Button>
+      </div>
     </main>
+  );
+}
+
+function AuthForm({
+  mode,
+  onStatusChange,
+  onSubmitStart,
+}: {
+  mode: Mode;
+  onStatusChange: (status: AuthActionState["status"]) => void;
+  onSubmitStart: () => void;
+}) {
+  const [state, formAction, pending] = useActionState(mode === "login" ? signIn : signUp, INITIAL_AUTH_STATE);
+
+  useEffect(() => {
+    onStatusChange(state.status);
+  }, [state.status, onStatusChange]);
+
+  return (
+    <form action={formAction} onSubmit={onSubmitStart}>
+      <GhostInput
+        label="Email"
+        name="email"
+        type="email"
+        autoComplete="email"
+        required
+        error={state.fieldErrors?.email}
+      />
+      <GhostInput
+        label="Password"
+        name="password"
+        type="password"
+        autoComplete={mode === "login" ? "current-password" : "new-password"}
+        minLength={6}
+        required
+        error={state.fieldErrors?.password}
+      />
+
+      {state.fieldErrors?.form && (
+        <p className="text-body-md" style={{ ...errorStyle, marginBottom: "var(--space-md)" }} role="alert">
+          {state.fieldErrors.form}
+        </p>
+      )}
+
+      <Button type="submit" disabled={pending}>
+        {mode === "login" ? "Log in" : "Sign up"}
+      </Button>
+    </form>
   );
 }
 
@@ -287,7 +302,7 @@ function EnablePasskeyPrompt() {
   }
 
   return (
-    <main style={{ maxWidth: "var(--container-max)", margin: "var(--space-xxl) auto", padding: "0 var(--space-lg)" }}>
+    <main style={mainStyle}>
       <p className="text-body-lg" style={{ marginBottom: "var(--space-md)" }}>
         You&apos;re signed in.
       </p>
@@ -297,9 +312,12 @@ function EnablePasskeyPrompt() {
           <p className="text-body-md" style={{ marginBottom: "var(--space-sm)" }}>
             Add a passkey for faster sign-in next time — optional.
           </p>
-          <button type="button" onClick={handleRegister} disabled={registering} style={buttonStyle}>
-            {registering ? "Adding passkey…" : "Enable Passkey"}
-          </button>
+          <BiometricAnchor
+            primaryLabel={registering ? "Adding passkey…" : "Enable Passkey"}
+            secondaryLabel="Biometric bypass"
+            onClick={handleRegister}
+            disabled={registering}
+          />
           {error && (
             <p className="text-body-md" style={{ ...errorStyle, marginTop: "var(--space-sm)" }} role="alert">
               {error}

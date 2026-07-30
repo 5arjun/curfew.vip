@@ -3,35 +3,154 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Curfew Agent</title>
+    <title>Curfew Agent Settings</title>
     <style>
+      /*
+        Native OS chrome only (Story 2.5, AC-2/UX-DR23): system font stack,
+        default form controls, no imported design tokens. Do not import
+        web/app/tokens.css, globals.css, or any Obsidian/Ember class here —
+        this panel is deliberately exempt (see Story 2.2's Dev Notes).
+      */
       :root { color-scheme: light dark; }
       html, body {
         margin: 0;
         height: 100%;
-        font: 14px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif;
+        font: 13px/1.4 -apple-system, "Segoe UI", system-ui, sans-serif;
       }
       body {
-        display: grid;
-        place-items: center;
-        padding: 24px;
+        padding: 16px;
         background: Canvas;
         color: CanvasText;
+        box-sizing: border-box;
       }
-      main { text-align: center; max-width: 22rem; }
-      h1 { font-size: 1.1rem; margin: 0 0 0.25rem; }
-      p { margin: 0.25rem 0; opacity: 0.75; }
-      code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      h1 {
+        font-size: 1rem;
+        margin: 0 0 4px;
+      }
+      p.hint {
+        margin: 0 0 12px;
+        opacity: 0.7;
+      }
+      label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+      .row {
+        display: flex;
+        gap: 6px;
+      }
+      input[type="text"] {
+        flex: 1;
+        font: inherit;
+        padding: 4px 6px;
+      }
+      button {
+        font: inherit;
+        padding: 4px 10px;
+      }
+      p.status {
+        margin: 10px 0 0;
+        min-height: 1.2em;
+        opacity: 0.75;
+      }
     </style>
   </head>
   <body>
     <main>
       <h1>Curfew Agent</h1>
-      <p>Local capture service.</p>
-      <p>
-        This minimal surface is a placeholder for the native tray + settings panel
-        (UX-DR23). The real work runs in the Rust core (<code>src-tauri/</code>).
-      </p>
+      <p class="hint" id="hint">Set the folder where Serato stores your library.</p>
+      <label for="serato-path">Serato folder path override</label>
+      <div class="row">
+        <!--
+          Read-only (code review, story 2.6): the only way to populate this
+          field is auto-detection or the native folder picker below — never a
+          hand-typed string. This is what lets `set_serato_path_override`'s
+          classify()-based validation stay strict (it always sees a real,
+          OS-resolved path) without also blocking a DJ from re-saving a path
+          whose drive happens to be unplugged right now, since re-saving isn't
+          how that case is handled at all (the watch loop's own reconnect
+          polling recovers it independently, no Save needed).
+        -->
+        <input type="text" id="serato-path" placeholder="No folder selected — click Browse" readonly />
+        <button id="browse">Browse…</button>
+        <button id="save">Save</button>
+      </div>
+      <p class="status" id="status" role="status" aria-live="polite"></p>
     </main>
+    <script>
+      const { invoke } = window.__TAURI__.core;
+      const { open } = window.__TAURI__.dialog;
+
+      const pathInput = document.getElementById("serato-path");
+      const status = document.getElementById("status");
+      const hint = document.getElementById("hint");
+
+      // Story 2.6, AC-3/UX-DR20: a detected-but-unconfirmed path is pre-filled but
+      // never treated as saved — only the DJ's own Save click (the confirm action)
+      // persists it. Loading a real saved override always wins over a pending
+      // detection, since an override existing at all means confirmation already
+      // happened on a previous launch.
+      async function loadCurrentOverride() {
+        let current = null;
+        let overrideLoadError = null;
+        try {
+          current = await invoke("get_serato_path_override");
+        } catch (err) {
+          overrideLoadError = err;
+          // Fall through and still try the pending-detection fetch below —
+          // this call failing must not silently drop the first-run confirm
+          // surface, which is already force-opened by the time this runs.
+        }
+        if (current) {
+          pathInput.value = current;
+          return;
+        }
+
+        try {
+          const pending = await invoke("get_pending_detected_path");
+          if (pending) {
+            pathInput.value = pending;
+            hint.textContent = "Auto-detected — confirm with Save, or Browse to pick a different folder.";
+          }
+          if (overrideLoadError) {
+            status.textContent = `Could not load saved path: ${overrideLoadError}`;
+          }
+        } catch (err) {
+          // Report both failures rather than letting the second overwrite the
+          // first — a DJ debugging a blank path field needs to see whichever
+          // (or both) calls actually failed.
+          status.textContent = overrideLoadError
+            ? `Could not load saved path: ${overrideLoadError}; could not load detected path: ${err}`
+            : `Could not load detected path: ${err}`;
+        }
+      }
+
+      document.getElementById("browse").addEventListener("click", async () => {
+        try {
+          const picked = await open({ directory: true, multiple: false });
+          if (typeof picked === "string") {
+            pathInput.value = picked;
+          }
+        } catch (err) {
+          status.textContent = `Could not open folder picker: ${err}`;
+        }
+      });
+
+      document.getElementById("save").addEventListener("click", async () => {
+        try {
+          await invoke("set_serato_path_override", { path: pathInput.value });
+          status.textContent = "Saved.";
+          hint.textContent = "Set the folder where Serato stores your library.";
+        } catch (err) {
+          status.textContent = `${err}`;
+          // A failed Save must not leave stale "Auto-detected..." guidance
+          // sitting next to the error — reset it the same as a successful Save.
+          hint.textContent = "Set the folder where Serato stores your library.";
+        }
+      });
+
+      loadCurrentOverride();
+    </script>
   </body>
 </html>

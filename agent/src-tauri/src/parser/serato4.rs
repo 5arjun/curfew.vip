@@ -15,7 +15,7 @@
 //! `bpm`, which has no home on [`crate::parser::Play`] — see that function's field
 //! mapping below for why).
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 
 use super::Play;
 
@@ -59,6 +59,94 @@ use super::Play;
 /// `session_id` matching no rows is `Ok(vec![])` — a quiet session is valid data, not
 /// corruption. A missing `history_entry` table is `Err`, never a panic and never a
 /// silently empty `Vec` that would look like "the DJ played nothing".
+/// One row of `history_session` — a play session's own record, distinct from its
+/// [`Play`]s (`history_entry`). Used only to discover *which* sessions exist and
+/// when; per-play data still comes from [`read_session`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct SessionSummary {
+    pub id: i64,
+    pub name: Option<String>,
+    pub start_time: i64,
+    pub end_time: Option<i64>,
+}
+
+/// Lists every `history_session` row with `id` greater than `after_id`, ordered by
+/// `id` ascending — the "new since I last looked" query Story 2.6's watcher stage
+/// needs to discover freshly-logged sessions (AC-5).
+///
+/// **Ported from `agent/spike-1-2-parser-validation/src/serato4.rs`'s
+/// `list_sessions`/`get_session`** (that file is reference-only, never compiled
+/// into this crate) — this is the first production code to query `history_session`
+/// itself; every existing caller of this module only ever reads `history_entry`
+/// given an already-known `session_id` ([`read_session`]).
+///
+/// `id` is the high-water mark, not `start_time`: an auto-increment primary key is
+/// monotonic by insertion order regardless of any clock skew a `start_time` column
+/// could carry, so "new since the last-seen id" can never re-report or skip a
+/// session because of a clock issue. Callers persist the returned rows' `id`s and
+/// pass the maximum back in as `after_id` on the next call — this function is
+/// stateless and holds no watermark itself.
+///
+/// **This is discovery only, not completeness.** A session's `end_time` may still
+/// be unset (`-1`, Story 1.3b's confirmed sentinel) if the DJ's Serato is mid-gig
+/// on it — inferring "completed" from that is explicitly Story 2.8 AC-4's job, not
+/// this function's; a caller must not assume every returned row represents a
+/// finished set.
+///
+/// A missing `history_session` table is `Err`, never a panic and never a silently
+/// empty `Vec` that would look like "nothing has ever been played" — mirrors
+/// [`read_session`]'s and `joiner::serato4::join_session`'s identical contract for
+/// the sibling table.
+pub fn list_sessions_after(
+    conn: &Connection,
+    after_id: i64,
+) -> rusqlite::Result<Vec<SessionSummary>> {
+    let mut stmt = conn.prepare(
+        r#"SELECT id, name, start_time, end_time
+           FROM history_session
+           WHERE id > ?1
+           ORDER BY id ASC"#,
+    )?;
+
+    let rows = stmt.query_map([after_id], |row| {
+        Ok(SessionSummary {
+            id: row.get(0)?,
+            name: row.get::<_, Option<String>>(1)?.and_then(non_empty),
+            start_time: row.get(2)?,
+            end_time: row.get(3)?,
+        })
+    })?;
+
+    rows.collect()
+}
+
+/// Re-reads one `history_session` row by its `id` — the "has this specific
+/// pending session's `end_time` resolved yet" query Story 2.8's
+/// completion-signal polling needs (Task 4), scoped to one known id rather
+/// than [`list_sessions_after`]'s "everything past a watermark" contract.
+///
+/// `Ok(None)` if no row has this `id` — distinct from an `Err`, which is
+/// reserved for a missing `history_session` table entirely, mirroring
+/// [`read_session`]'s/`joiner::serato4::join_session`'s identical contract for
+/// the sibling table.
+pub fn session_by_id(conn: &Connection, id: i64) -> rusqlite::Result<Option<SessionSummary>> {
+    conn.query_row(
+        r#"SELECT id, name, start_time, end_time
+           FROM history_session
+           WHERE id = ?1"#,
+        [id],
+        |row| {
+            Ok(SessionSummary {
+                id: row.get(0)?,
+                name: row.get::<_, Option<String>>(1)?.and_then(non_empty),
+                start_time: row.get(2)?,
+                end_time: row.get(3)?,
+            })
+        },
+    )
+    .optional()
+}
+
 pub fn read_session(conn: &Connection, session_id: i64) -> rusqlite::Result<Vec<Play>> {
     let mut stmt = conn.prepare(
         r#"SELECT name, artist, genre, "key", start_time, deck
@@ -125,6 +213,36 @@ mod tests {
         )
         .expect("fixture schema creates");
         conn
+    }
+
+    /// The `history_session` table [`list_sessions_after`] queries, created in
+    /// memory (Story 2.6).
+    fn in_memory_sessions() -> Connection {
+        let conn = Connection::open_in_memory().expect("in-memory database opens");
+        conn.execute_batch(
+            r#"CREATE TABLE history_session (
+                   id         INTEGER PRIMARY KEY,
+                   name       TEXT,
+                   start_time INTEGER NOT NULL,
+                   end_time   INTEGER
+               );"#,
+        )
+        .expect("fixture schema creates");
+        conn
+    }
+
+    fn insert_session(
+        conn: &Connection,
+        name: Option<&str>,
+        start_time: i64,
+        end_time: Option<i64>,
+    ) -> i64 {
+        conn.execute(
+            "INSERT INTO history_session (name, start_time, end_time) VALUES (?1, ?2, ?3)",
+            rusqlite::params![name, start_time, end_time],
+        )
+        .expect("fixture row inserts");
+        conn.last_insert_rowid()
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -466,5 +584,162 @@ mod tests {
             plays[0].start_time, None,
             "negative start_time is not a valid u32"
         );
+    }
+
+    // ---- list_sessions_after (Story 2.6 Task 6) --------------------------------
+
+    /// AC-5: sessions with `id` past the high-water mark are "new"; everything at
+    /// or below it is not returned again.
+    #[test]
+    fn returns_only_sessions_after_the_high_water_mark() {
+        let conn = in_memory_sessions();
+        let first = insert_session(&conn, Some("Warmup"), 1_000, Some(2_000));
+        let second = insert_session(&conn, Some("Peak"), 2_000, Some(3_000));
+
+        let sessions = list_sessions_after(&conn, first).expect("query succeeds");
+
+        assert_eq!(
+            sessions,
+            vec![SessionSummary {
+                id: second,
+                name: Some("Peak".to_string()),
+                start_time: 2_000,
+                end_time: Some(3_000),
+            }]
+        );
+    }
+
+    #[test]
+    fn no_sessions_past_the_mark_is_an_empty_vec_not_an_error() {
+        let conn = in_memory_sessions();
+        let only = insert_session(&conn, Some("Solo"), 1_000, Some(2_000));
+
+        assert_eq!(
+            list_sessions_after(&conn, only).expect("query succeeds"),
+            vec![]
+        );
+    }
+
+    /// `after_id = 0` (a caller's first-ever call, no prior watermark) returns
+    /// every session that exists.
+    #[test]
+    fn zero_watermark_returns_every_session() {
+        let conn = in_memory_sessions();
+        insert_session(&conn, Some("A"), 1_000, Some(2_000));
+        insert_session(&conn, Some("B"), 2_000, Some(3_000));
+
+        assert_eq!(
+            list_sessions_after(&conn, 0).expect("query succeeds").len(),
+            2
+        );
+    }
+
+    /// Results come back in `id` order, ascending — the watermark advances
+    /// monotonically regardless of `start_time`, so callers never need to
+    /// re-sort before taking the max `id`.
+    #[test]
+    fn results_are_ordered_by_id_ascending() {
+        let conn = in_memory_sessions();
+        let a = insert_session(&conn, Some("A"), 5_000, None);
+        let b = insert_session(&conn, Some("B"), 1_000, None);
+
+        let ids: Vec<i64> = list_sessions_after(&conn, 0)
+            .expect("query succeeds")
+            .iter()
+            .map(|s| s.id)
+            .collect();
+
+        assert_eq!(ids, vec![a, b], "id order, not start_time order");
+    }
+
+    /// An in-progress session (`end_time` unset, Story 1.3b's `-1` sentinel) is
+    /// still discovered — completeness is explicitly Story 2.8's concern, not this
+    /// function's.
+    #[test]
+    fn an_in_progress_session_with_no_end_time_is_still_discovered() {
+        let conn = in_memory_sessions();
+        let live = insert_session(&conn, Some("Still playing"), 1_000, Some(-1));
+
+        let sessions = list_sessions_after(&conn, 0).expect("query succeeds");
+
+        assert_eq!(
+            sessions,
+            vec![SessionSummary {
+                id: live,
+                name: Some("Still playing".to_string()),
+                start_time: 1_000,
+                end_time: Some(-1),
+            }]
+        );
+    }
+
+    /// An empty-string session name is absent, matching the same-table treatment
+    /// `non_empty` already gives `history_entry`'s text columns.
+    #[test]
+    fn empty_string_name_is_absent() {
+        let conn = in_memory_sessions();
+        insert_session(&conn, Some(""), 1_000, None);
+
+        let sessions = list_sessions_after(&conn, 0).expect("query succeeds");
+
+        assert_eq!(sessions[0].name, None);
+    }
+
+    /// A missing `history_session` table is an error, never a panic and never a
+    /// silently empty `Vec` that would look like "nothing has ever been played".
+    #[test]
+    fn missing_table_is_an_error_not_an_empty_vec() {
+        let conn = Connection::open_in_memory().expect("in-memory database opens");
+
+        assert!(list_sessions_after(&conn, 0).is_err());
+    }
+
+    // ---- session_by_id (Story 2.8 Task 4) --------------------------------------
+
+    /// Story 2.8 AC-4: re-reading a specific pending session by id sees a
+    /// resolved `end_time` once Serato has set one.
+    #[test]
+    fn session_by_id_returns_the_matching_row() {
+        let conn = in_memory_sessions();
+        let id = insert_session(&conn, Some("Warmup"), 1_000, Some(-1));
+
+        let session = session_by_id(&conn, id)
+            .expect("query succeeds")
+            .expect("row exists");
+
+        assert_eq!(session.id, id);
+        assert_eq!(session.name, Some("Warmup".to_string()));
+        assert_eq!(session.start_time, 1_000);
+        assert_eq!(session.end_time, Some(-1), "still in progress");
+    }
+
+    #[test]
+    fn session_by_id_reflects_a_resolved_end_time() {
+        let conn = in_memory_sessions();
+        let id = insert_session(&conn, Some("Peak"), 1_000, Some(-1));
+        conn.execute(
+            "UPDATE history_session SET end_time = ?1 WHERE id = ?2",
+            rusqlite::params![2_000, id],
+        )
+        .unwrap();
+
+        let session = session_by_id(&conn, id).unwrap().unwrap();
+
+        assert_eq!(session.end_time, Some(2_000));
+    }
+
+    #[test]
+    fn session_by_id_unknown_id_is_none_not_an_error() {
+        let conn = in_memory_sessions();
+        insert_session(&conn, Some("Solo"), 1_000, Some(-1));
+
+        assert_eq!(session_by_id(&conn, 999).expect("query succeeds"), None);
+    }
+
+    #[test]
+    fn session_by_id_missing_table_is_an_error_not_none() {
+        let conn = Connection::open_in_memory().expect("in-memory database opens");
+
+        assert!(session_by_id(&conn, 1).is_err());
     }
 }

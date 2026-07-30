@@ -16,10 +16,26 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+# Loads `.env.local` inside `build.rs` only (Story 2.10 Task 2) so the agent's
+# build-time Supabase/web-URL config mirrors `web/`'s env convention without a
+# runtime dependency — never shipped in the compiled binary.
+dotenvy = "0.15"
+
 [dependencies]
 tauri = { version = "2", features = ["tray-icon"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# Native folder picker for the Serato path override field (Story 2.5, AC-2) — the
+# settings panel is plain HTML/CSS, not a custom dropzone widget.
+tauri-plugin-dialog = "2"
+
+# Signed auto-updater (Story 2.9c, AR-14) — consumes the `latest.json` +
+# `.sig` artifacts the release workflows produce via `tauri-action`'s
+# `uploadUpdaterJson`/`uploadUpdaterSignatures`. No JS/frontend consumer calls
+# check()/downloadAndInstall() yet (see Task 1's scope note in the story) —
+# this wires the plugin so it's functional once something does.
+tauri-plugin-updater = "2"
 
 # Serato parsing / enrichment crates (AR-5). Pinned to an exact triseratops commit
 # — the crates.io release (0.0.3) is stale, and `main` must not be floated so the
@@ -45,3 +61,85 @@ lofty = { version = "0.24.0", default-features = false }
 # vendored C source needs only a C toolchain, which CI's Tauri Linux prereqs
 # (`build-essential`) already install.
 rusqlite = { version = "0.40.1", features = ["bundled"] }
+
+# Cross-platform removable/USB volume enumeration (Story 2.6 Task 2) — no
+# per-OS hand-rolling (`/Volumes` scanning, drive-letter enumeration); `Disks`
+# + `Disk::is_removable()`/`Disk::mount_point()` cover both macOS and Windows.
+sysinfo = "0.39.6"
+
+# Cross-platform filesystem watcher (Story 2.6 Task 6) — the API the
+# architecture spine's pipeline diagram already names for the `watcher` stage.
+# `recommended_watcher` picks the OS-native backend (FSEvents on macOS,
+# ReadDirectoryChangesW on Windows) so this crate never touches a raw platform
+# API directly.
+notify = "8.2.0"
+
+# Account-linking deep-link handoff (Story 2.10, Task 3, AD-10): captures the
+# `curfew-agent://link?...` redirect `web/`'s `/link-agent` page sends. Must be
+# paired with `tauri-plugin-single-instance` (below) — desktop deep-links
+# otherwise launch a second agent process instead of notifying the one
+# already running in the tray.
+tauri-plugin-deep-link = "2"
+
+# See `tauri-plugin-deep-link` above — registered *first* in the plugin chain
+# (`lib.rs`'s `.setup()`), per this plugin's own requirement, so a second
+# launch via the `curfew-agent://` scheme forwards its URL into the already-
+# running instance instead of opening a duplicate tray icon.
+tauri-plugin-single-instance = "2"
+
+# Opens the DJ's default system browser to `web/`'s `/link-agent` page (Story
+# 2.10, Task 6) — Tauri v2's dedicated, current-recommended plugin for this,
+# not `tauri-plugin-shell`'s older `open()`, which the ecosystem has moved off
+# of for this exact use case.
+tauri-plugin-opener = "2"
+
+# Parses the `curfew-agent://link?access_token=...&refresh_token=...` query
+# string (Task 3) — already transitively resolved via Tauri itself per
+# `Cargo.lock`, but a transitive resolution isn't importable without its own
+# `[dependencies]` entry.
+url = "2"
+
+# Cross-platform OS-native secure storage (Story 2.10, Task 4, AD-10) — macOS
+# Keychain / Windows Credential Manager behind one API. The only thing that
+# makes the refresh token *securely* stored rather than a plain JSON file
+# (which `tauri-plugin-store` would be, no better than this crate's own
+# `settings.rs`/`store.rs`). `keyring` 3.x ships **no default features** —
+# with none enabled it silently falls back to a no-op mock backend that
+# reports every `save()`/`load()` as successful without ever touching a real
+# credential store (caught during this story's own Task 8 manual walkthrough:
+# `save()` returned `Ok(())` but the token was never retrievable, by this
+# crate's own `load()` or by `security find-generic-password`, until this
+# feature was added). `apple-native`/`windows-native` cover this project's two
+# actual release targets (Stories 2.9a/2.9b); no Linux release workflow
+# exists yet, so a Linux Secret Service backend isn't wired.
+keyring = { version = "3", features = ["apple-native", "windows-native"] }
+
+# Supabase Auth REST calls (Story 2.10, Task 5) — token refresh. Already
+# transitively resolved (Tauri's own updater plugin pulls it in with a full
+# rustls stack per `Cargo.lock`), but a transitive resolution isn't importable
+# without its own `[dependencies]` entry. `rustls` (not the default
+# `native-tls`) avoids a second, OS-native TLS stack on top of whatever
+# Tauri's own webview/updater machinery already uses, and cross-compiles more
+# predictably for the signed macOS+Windows release pipeline (Stories 2.9a/b).
+# Reqwest 0.13 renamed the old `rustls-tls` feature to plain `rustls`, which
+# already pulls in `rustls-platform-verifier` for OS-native cert-store
+# verification — there is no separate `rustls-native-certs` feature (Review
+# Findings: requesting that nonexistent-as-of-0.13.4 feature name was what
+# forced Cargo's resolver back onto the older, security-regressed 0.13.1).
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "blocking"] }
+
+# JWT `exp`/`sub` claim extraction (Task 5) — already transitively resolved
+# (it's `reqwest`'s own dependency per `Cargo.lock`), needs its own entry for
+# the same reason as `reqwest`/`url` above. No signature verification is done
+# with it (Supabase's backend verifies server-side on every real request) —
+# deliberately not `jsonwebtoken`, which is full verification machinery this
+# story has no use for.
+base64 = "0.22"
+
+# One-time CSRF nonce for the deep-link handoff (Review Findings, Task 3/6):
+# the agent generates a random value when opening the browser for "Link
+# Account," and rejects a `curfew-agent://link` callback whose nonce doesn't
+# match. Already transitively resolved (same "not importable without its own
+# entry" reasoning as `reqwest`/`url`/`base64` above); `v4` is the only
+# feature needed (random generation, no need for time- or name-based UUIDs).
+uuid = { version = "1", features = ["v4"] }

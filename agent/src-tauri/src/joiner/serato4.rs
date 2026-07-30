@@ -24,17 +24,72 @@ use rusqlite::{Connection, OpenFlags};
 
 use super::{non_empty, sane_bpm, JoinedMetadata};
 
-/// Opens a `master.sqlite` **read-only**.
+/// Everything that can go wrong opening a `master.sqlite` catalogue: the path
+/// resolved outside the configured Serato root (Story 2.7, AC-1), or SQLite
+/// itself refused to open it. Mirrors the `Display`/`std::error::Error` idiom of
+/// `JoinError` in [`super::legacy`] — a small enum in application code, no
+/// `anyhow`/`thiserror`.
+#[derive(Debug)]
+pub enum OpenError {
+    /// `root` or `path` could not be canonicalized (most commonly: one of them
+    /// does not exist), or `path` resolved outside `root` once both did.
+    Scope(crate::fs_scope::ScopeError),
+    /// The path was in scope, but SQLite refused to open it (e.g. it is not a
+    /// valid SQLite database).
+    Sqlite(rusqlite::Error),
+}
+
+impl std::fmt::Display for OpenError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OpenError::Scope(e) => write!(f, "refusing to open Serato database: {e}"),
+            OpenError::Sqlite(e) => write!(f, "failed to open Serato database: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for OpenError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            OpenError::Scope(e) => Some(e),
+            OpenError::Sqlite(e) => Some(e),
+        }
+    }
+}
+
+/// Opens a `master.sqlite` **read-only**, refusing to open anything outside
+/// `root` — the DJ's configured Serato root (Story 2.7, AC-1) — even if `path`
+/// resolves there via a symlink. A missing `path` or `root` (the common "no
+/// Serato 4+ install" case) surfaces as [`OpenError::Scope`] wrapping a
+/// `ScopeError::Io` (canonicalization needs both to already exist); a `path`
+/// that exists but resolves outside `root`, or is not a valid SQLite database,
+/// gets its own distinct variant.
+///
+/// **`root` may be file-shaped** (`watcher::detect::classify`'s confirm-UI
+/// round-trip branch stores the confirmed override as the literal
+/// `master.sqlite` path, so the live watch loop's `root` and `path` are often
+/// the exact same value — Story 2.7 code review). Checking a path against
+/// itself would always trivially pass, defeating the guard entirely, so a
+/// file-shaped `root` is scoped against its own parent directory instead —
+/// still a real boundary a swapped-in symlink can't cross.
 ///
 /// This is the DJ's live database and Serato may have it open mid-gig, so the write
 /// path is closed off at the connection flags rather than by convention.
 /// `SQLITE_OPEN_NO_MUTEX` matches the spike: the connection is not shared across
 /// threads.
-pub fn open_read_only(path: &Path) -> rusqlite::Result<Connection> {
+pub fn open_read_only(root: &Path, path: &Path) -> Result<Connection, OpenError> {
+    let scope_root = if root.is_file() {
+        root.parent().unwrap_or(root)
+    } else {
+        root
+    };
+    let checked =
+        crate::fs_scope::ensure_within_root(scope_root, path).map_err(OpenError::Scope)?;
     Connection::open_with_flags(
-        path,
+        checked,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )
+    .map_err(OpenError::Sqlite)
 }
 
 /// Reads the library metadata for every play in one Serato 4+ session, in play order.
@@ -342,13 +397,104 @@ mod tests {
             .expect("seed data writes");
         }
 
-        let conn = open_read_only(&path).expect("read-only open succeeds");
+        let conn = open_read_only(&std::env::temp_dir(), &path).expect("read-only open succeeds");
         let joined = join_session(&conn, 7).expect("reads work");
         let write = conn.execute("DELETE FROM history_entry", []);
         let _ = std::fs::remove_file(&path);
 
         assert_eq!(joined.len(), 1, "reading the DJ's database still works");
         assert!(write.is_err(), "writing to it must be refused");
+    }
+
+    /// Story 2.7 AC-1: a `master.sqlite` symlinked in from outside the
+    /// configured root must not be followed — `open_read_only` refuses it as a
+    /// scope violation rather than silently opening whatever the symlink
+    /// points to.
+    #[cfg(unix)]
+    #[test]
+    fn open_read_only_refuses_a_symlinked_path_outside_root() {
+        let root =
+            std::env::temp_dir().join(format!("curfew_joiner_scope_root_{}_1", std::process::id()));
+        let outside = std::env::temp_dir().join(format!(
+            "curfew_joiner_scope_outside_{}_1",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).expect("root dir creates");
+        std::fs::create_dir_all(&outside).expect("outside dir creates");
+
+        let real_db = outside.join("master.sqlite");
+        Connection::open(&real_db)
+            .expect("seed database creates")
+            .execute_batch(
+                r#"CREATE TABLE history_entry (
+                       id INTEGER PRIMARY KEY, session_id INTEGER, bpm REAL,
+                       "key" TEXT, genre TEXT, start_time INTEGER
+                   );"#,
+            )
+            .expect("seed schema writes");
+
+        let link = root.join("master.sqlite");
+        std::os::unix::fs::symlink(&real_db, &link).expect("symlink creates");
+
+        let result = open_read_only(&root, &link);
+        let is_scope_error = matches!(result, Err(OpenError::Scope(_)));
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&outside);
+
+        assert!(
+            is_scope_error,
+            "a symlinked-outside master.sqlite must be refused as a scope violation"
+        );
+    }
+
+    /// Story 2.7 code review: `root == path` is the live shape `watch_loop` passes
+    /// whenever the confirmed override round-trips through `classify()`'s
+    /// file-path branch (the common Serato 4+ case — `install_path` renders that
+    /// confirmation as the literal `master.sqlite` path). A naive scope check
+    /// comparing a path to itself would always trivially pass; this proves a
+    /// symlinked-in `master.sqlite` planted at that exact configured path is
+    /// still refused, because the guard scopes against the parent directory
+    /// instead of the file-shaped root.
+    #[cfg(unix)]
+    #[test]
+    fn open_read_only_refuses_a_symlinked_root_equal_to_path() {
+        let root_dir = std::env::temp_dir().join(format!(
+            "curfew_joiner_scope_root_eq_path_{}_1",
+            std::process::id()
+        ));
+        let outside = std::env::temp_dir().join(format!(
+            "curfew_joiner_scope_outside_eq_path_{}_1",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root_dir).expect("root dir creates");
+        std::fs::create_dir_all(&outside).expect("outside dir creates");
+
+        let real_db = outside.join("master.sqlite");
+        Connection::open(&real_db)
+            .expect("seed database creates")
+            .execute_batch(
+                r#"CREATE TABLE history_entry (
+                       id INTEGER PRIMARY KEY, session_id INTEGER, bpm REAL,
+                       "key" TEXT, genre TEXT, start_time INTEGER
+                   );"#,
+            )
+            .expect("seed schema writes");
+
+        // The configured override IS the master.sqlite path itself (file-shaped
+        // root), and that same path is also what gets opened — exactly what
+        // `watch_loop` passes as both `root` and `path`.
+        let link = root_dir.join("master.sqlite");
+        std::os::unix::fs::symlink(&real_db, &link).expect("symlink creates");
+
+        let result = open_read_only(&link, &link);
+        let is_scope_error = matches!(result, Err(OpenError::Scope(_)));
+        let _ = std::fs::remove_dir_all(&root_dir);
+        let _ = std::fs::remove_dir_all(&outside);
+
+        assert!(
+            is_scope_error,
+            "a symlinked master.sqlite passed as both root and path must still be refused, got {result:?}"
+        );
     }
 
     /// A `master.sqlite` that is missing (or is not this schema) surfaces as an error,
@@ -369,7 +515,7 @@ mod tests {
         let path = std::env::temp_dir().join("curfew_joiner_master_definitely_missing_9f2c.sqlite");
         let _ = std::fs::remove_file(&path);
 
-        assert!(open_read_only(&path).is_err());
+        assert!(open_read_only(&std::env::temp_dir(), &path).is_err());
     }
 
     /// A file that exists but is not a SQLite database at all. SQLite's own open is
@@ -386,7 +532,9 @@ mod tests {
         ));
         std::fs::write(&path, b"not a sqlite database").expect("garbage file writes");
 
-        let result = open_read_only(&path).and_then(|conn| join_session(&conn, 7));
+        let result = open_read_only(&std::env::temp_dir(), &path)
+            .map_err(|e| e.to_string())
+            .and_then(|conn| join_session(&conn, 7).map_err(|e| e.to_string()));
         let _ = std::fs::remove_file(&path);
 
         assert!(result.is_err());

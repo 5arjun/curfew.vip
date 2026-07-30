@@ -26,3 +26,5 @@ supabase/.temp/
 # --- OS / editor noise ---
 .DS_Store
 *.log
+.vercel
+.env*

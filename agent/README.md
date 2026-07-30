@@ -40,5 +40,23 @@ cargo clippy  --manifest-path src-tauri/Cargo.toml -- -D warnings
 cargo test    --manifest-path src-tauri/Cargo.toml   # incl. the shared-schema test
 ```
 
-Signed bundles / notarization / installers are **out of scope** here — that is
-Epic 2 (AR-14). This story compiles the core; it does not produce installers.
+## Release builds
+
+Local development uses the plain `cargo build` loop above — unsigned, and it
+does not produce an installable bundle (`tauri-cli` isn't installed locally).
+A signed, notarized `.dmg` is produced by
+[`.github/workflows/release-macos.yml`](../.github/workflows/release-macos.yml)
+when an `agent-v*.*.*` tag is pushed (Story 2.9a, AR-14). The same tag push
+also triggers
+[`.github/workflows/release-windows.yml`](../.github/workflows/release-windows.yml),
+which produces a signed Windows installer (Story 2.9b, AR-14) — both
+workflows publish to the same GitHub Release. Local Windows builds stay
+unsigned too, same as macOS above: the signing config lives only in
+`src-tauri/tauri.windows-release.conf.json`, merged in by the release
+workflow, not the base `tauri.conf.json`.
+
+The same tag push also produces a signed `latest.json` update manifest
+(Story 2.9c, AR-14), via a separate updater-signing keypair — distinct from
+the platform code-signing certs above. See the "Tauri updater signing
+keypair" row in `pre-launch-services-checklist.md` for the one-time
+generation command.

@@ -32,7 +32,7 @@
 mod serato4;
 mod session;
 
-pub use serato4::read_session;
+pub use serato4::{list_sessions_after, read_session, session_by_id, SessionSummary};
 pub use session::{parse, parse_partial};
 
 use std::path::Path;

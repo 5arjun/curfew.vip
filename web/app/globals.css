@@ -91,3 +91,242 @@ a {
   font-weight: 400;
   line-height: 1.4;
 }
+
+/* Auth components (Story 2.4) — Ghost Input, Button, Biometric Anchor,
+   Google/Apple Sign-In Button. No component-scoped stylesheet system exists
+   in this repo yet (web/package.json has no CSS Modules/Tailwind/styled-jsx
+   convention, just globals.css + inline style objects) — these classes live
+   here for that reason, token-only throughout (see no-hardcoded-colors.test.ts). */
+
+.auth-ghost-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-md);
+}
+
+.auth-ghost-field-label {
+  color: var(--color-on-surface-variant);
+}
+
+.auth-ghost-field-input {
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--color-outline);
+  border-radius: 0;
+  color: var(--color-on-surface);
+  padding: var(--space-sm) 0;
+  width: 100%;
+  transition:
+    border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    box-shadow var(--motion-duration-instant) var(--motion-ease-standard);
+}
+
+/* AA-contrast note (AC-4/UX-DR21): the solid border-bottom color change to
+   full-opacity --color-primary is the load-bearing AA-contrast indicator
+   (7.63:1 / 6.77:1 against surface/surface-container — see the focus-ring
+   test appended to tokens.test.ts). The glow box-shadow below is the
+   DESIGN.md-specified ~20%-opacity "soft blur" — decorative, not the
+   contrast-bearing element; a translucent glow alone cannot mathematically
+   clear 4.5:1 against a similarly-toned background at any usable opacity. */
+.auth-ghost-field-input:focus-visible {
+  outline: none;
+  border-bottom-color: var(--color-primary);
+  box-shadow: 0 4px 12px 0 var(--color-primary-glow);
+}
+
+.auth-ghost-field-input[aria-invalid="true"] {
+  border-bottom-color: var(--color-error);
+}
+
+.auth-ghost-field-error {
+  color: var(--color-error);
+}
+
+.auth-button {
+  align-items: center;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  display: inline-flex;
+  font-family: var(--font-geist-mono);
+  gap: var(--space-sm);
+  justify-content: center;
+  padding: var(--space-sm) var(--space-md);
+  transition:
+    background var(--motion-duration-gradient) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    opacity var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.auth-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.auth-button:focus-visible {
+  box-shadow:
+    0 0 0 2px var(--color-primary),
+    0 0 0 6px var(--color-primary-glow);
+  outline: none;
+}
+
+.auth-button-primary {
+  background: radial-gradient(
+    circle at 30% 20%,
+    var(--btn-gradient-1),
+    var(--btn-gradient-2) 55%,
+    var(--btn-gradient-3)
+  );
+  border: 1px solid var(--btn-gradient-border);
+  color: var(--color-on-background);
+}
+
+.auth-button-primary:hover:not(:disabled) {
+  background: radial-gradient(
+    circle at 30% 20%,
+    var(--btn-gradient-hover-1),
+    var(--btn-gradient-hover-2) 55%,
+    var(--btn-gradient-hover-3)
+  );
+}
+
+.auth-button-secondary {
+  background: none;
+  border: none;
+  color: var(--color-on-surface-variant);
+}
+
+.auth-button-secondary:hover:not(:disabled) {
+  color: var(--color-on-surface);
+}
+
+.auth-biometric-anchor {
+  align-items: center;
+  background: var(--color-surface-container-low);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  display: flex;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  text-align: left;
+  transition: background var(--motion-duration-fast) var(--motion-ease-standard);
+  width: 100%;
+}
+
+.auth-biometric-anchor:hover:not(:disabled) {
+  background: var(--color-surface-container-high);
+}
+
+.auth-biometric-anchor:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.auth-biometric-anchor:focus-visible {
+  box-shadow:
+    0 0 0 2px var(--color-primary),
+    0 0 0 6px var(--color-primary-glow);
+  outline: none;
+}
+
+.auth-biometric-badge {
+  align-items: center;
+  border: 2px solid var(--color-primary-glow);
+  border-radius: var(--radius-full);
+  display: flex;
+  flex-shrink: 0;
+  height: 40px;
+  justify-content: center;
+  width: 40px;
+}
+
+.auth-biometric-label {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.auth-biometric-label-primary {
+  color: var(--color-on-surface);
+}
+
+.auth-biometric-label-secondary {
+  color: var(--color-outline);
+  text-transform: uppercase;
+}
+
+.auth-biometric-radio {
+  border: 2px solid var(--color-outline-variant);
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+  height: 20px;
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-standard),
+    border-color var(--motion-duration-fast) var(--motion-ease-standard);
+  width: 20px;
+}
+
+.auth-biometric-anchor:hover:not(:disabled) .auth-biometric-radio,
+.auth-biometric-anchor:focus-visible:not(:disabled) .auth-biometric-radio {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+/* OAuth sign-in buttons render in each platform's own mandated colors and
+   typography (DESIGN.md's one sanctioned palette exception) — deliberately
+   not var(--font-geist-mono)/var(--font-inter); system-ui reads as
+   platform-native rather than Curfew-branded, without adding a new font
+   dependency for a single borrowed label. */
+.auth-oauth-button {
+  align-items: center;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  display: inline-flex;
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  gap: var(--space-sm);
+  justify-content: center;
+  padding: var(--space-sm) var(--space-md);
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-standard);
+  width: 100%;
+}
+
+.auth-oauth-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.auth-oauth-button:focus-visible {
+  box-shadow:
+    0 0 0 2px var(--color-primary),
+    0 0 0 6px var(--color-primary-glow);
+  outline: none;
+}
+
+.auth-oauth-button-google {
+  background: var(--color-oauth-google-fill);
+  border: 1px solid var(--color-oauth-google-border);
+  color: var(--color-oauth-google-label);
+}
+
+.auth-oauth-button-apple {
+  background: var(--color-oauth-apple-fill);
+  border: none;
+  color: var(--color-oauth-apple-label);
+}
+
+/* Windows forced-colors/high-contrast mode strips box-shadow entirely, and
+   every focus-visible rule above sets outline: none — without this fallback
+   there is no visible focus indicator at all in that mode. */
+@media (forced-colors: active) {
+  .auth-ghost-field-input:focus-visible,
+  .auth-button:focus-visible,
+  .auth-biometric-anchor:focus-visible,
+  .auth-oauth-button:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
+}
