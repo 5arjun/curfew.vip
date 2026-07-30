@@ -4,7 +4,7 @@ baseline_commit: 0e7b73f2af59e166254f56615130de0dca9631c9
 
 # Story 2.11: Account deletion + data export (manual runbook)
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -36,10 +36,10 @@ The epic text describes the runbook against the **full, eventual** schema (`sess
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Read "What actually exists today" (Dev Notes) before writing anything — comprehension gate, no subtasks
+- [x] Task 1: Read "What actually exists today" (Dev Notes) before writing anything — comprehension gate, no subtasks
   - Confirm for yourself (repo-wide grep, not assumption) that `sessions`/`sets`/`plays`/`segments` tables and any `stripe_customer_id`/billing column genuinely do not exist yet, and that no agent-side deletion-detection code exists. This story's entire value is being accurate about that boundary — do not let the epic's forward-looking phrasing pull you into documenting tables/columns that aren't real.
 
-- [ ] Task 2: Write `supabase/ACCOUNT-DELETION-EXPORT-RUNBOOK.md` (AC: #1, #2, #3, #4)
+- [x] Task 2: Write `supabase/ACCOUNT-DELETION-EXPORT-RUNBOOK.md` (AC: #1, #2, #3, #4)
   - Mirror `supabase/EMAIL-PROVISIONING.md`'s structure and voice (numbered runbook sections, a "sequencing/blockers" style status callout, plain operator-executable steps — no code to write, just Dashboard/SQL/CLI actions to follow).
   - **Section: Requesting a deletion or export.** Document today's interim request channel (direct contact to Arjun; no support inbox/form exists yet — not required at current scale). Explicitly note: once Story 3.10 (Profile/Settings) ships its "delete my account" support link, that story should point here.
   - **Section: Deletion procedure (today's schema).**
@@ -52,16 +52,31 @@ The epic text describes the runbook against the **full, eventual** schema (`sess
   - **Section: Future self-serve trigger (AC-4).** One paragraph: App Store/Play Store listing requires in-app self-serve account deletion per their guidelines; this is the tracked trigger for building that as its own story. No action needed now.
   - State a "status as of 2026-07-30" line at the top (matching `EMAIL-PROVISIONING.md`'s own framing convention) summarizing exactly what's real today vs. forward-hooked.
 
-- [ ] Task 3: Verify the runbook actually works (AC: #1, #2) — do not mark done on documentation alone
+- [x] Task 3: Verify the runbook actually works (AC: #1, #2) — do not mark done on documentation alone
   - Against local Supabase (`supabase start`), create one throwaway test DJ (sign up via the existing local `/login` flow, same pattern Stories 2.3a/2.3c/2.3d used for their own manual verification), optionally set a `phone` value so the export has more than one non-null field to confirm.
   - Run the export query from Task 2 against that test user; confirm it returns the expected row shape.
   - Delete the test user's `auth.users` row via the Dashboard or Admin API; confirm via direct query that the matching `public.djs` row is gone (cascade actually fires, not just documented as if it does).
   - Document exact commands/steps run and their results in Dev Agent Record — this is this story's only "test suite," matching Story 2.3d's own completion bar (doc accuracy + one real local verification, not a unit-test suite, since there's no application code to unit-test).
 
-- [ ] Task 4: Cross-reference housekeeping (no new AC, but prevents future confusion)
+- [x] Task 4: Cross-reference housekeeping (no new AC, but prevents future confusion)
   - Add a row (or extend an existing one) in `pre-launch-services-checklist.md` noting: this runbook exists but its Story-3.1/Epic-7 forward-hooks are unfilled until those land, and the AC-4 App-Store/Play-Store self-serve trigger is tracked, not yet actioned.
   - If `deferred-work.md` doesn't already carry an item for "agent has no way to detect its own account was deleted / auto-purge local SQLite," add one now, owned by whichever future story builds the sync/auth-check path (Story 3.2/3.3 territory) — this is a real, user-facing gap this story surfaces but does not fix.
   - `supabase/README.md`'s file-tree listing should gain the new runbook file, matching how it already lists `PROVISIONING.md`.
+
+### Review Findings
+
+- [x] [Review][Patch] Undefined direct-contact channel for both intake and secure delivery — resolved by Arjun (2026-07-30): document `admin@curfew.vip` as the request/delivery channel for both §1 (requesting) and §3 (receiving the export). [supabase/ACCOUNT-DELETION-EXPORT-RUNBOOK.md:19-22, 82-89]
+- [x] [Review][Patch] No identity-verification step before an irreversible delete — resolved by Arjun (2026-07-30): add a guard requiring the request to be confirmed while the requester can currently log into the account (e.g. ask them to log in and confirm access) before acting — proportionate at current scale, no new infra needed. [supabase/ACCOUNT-DELETION-EXPORT-RUNBOOK.md:33-37]
+- [x] [Review][Patch] No rollback/error-handling guidance for ambiguous match or failed delete — §2 step 1 doesn't say what to do if zero or more than one `auth.users` row matches; step 2 doesn't say what to do if the Dashboard/Admin API delete call errors or fails partway. Add explicit guard steps. [supabase/ACCOUNT-DELETION-EXPORT-RUNBOOK.md:33-47]
+- [x] [Review][Patch] Export section (§3) has no identify-the-DJ step and no zero-row handling — an export-only request has no documented way to find the target `uuid` (unlike §2), and a query returning zero rows (already-deleted or mistyped uuid) has no guard against being reported as a successful empty export. [supabase/ACCOUNT-DELETION-EXPORT-RUNBOOK.md:82-89]
+- [x] [Review][Patch] No documented ordering when both export and deletion are requested together — following the doc's own section order (§2 before §3) would delete the account before exporting its data. Add an explicit "always export before deleting" note. [supabase/ACCOUNT-DELETION-EXPORT-RUNBOOK.md:19-96]
+- [x] [Review][Patch] Local SQLite purge instruction assumes a single machine — a DJ running the agent on more than one machine needs the quit+delete steps repeated on each; the instruction as written only addresses one. [supabase/ACCOUNT-DELETION-EXPORT-RUNBOOK.md:58-62]
+- [x] [Review][Patch] Task 3's Dev Agent Record overstates what was verified — Completion Notes/Debug Log read as if AC-1 and AC-2 were fully verified, but the local-SQLite-purge half of AC-1 was never exercised against a running agent (it's a manual instruction, untested), and only the raw SQL query was run for AC-2 — the Studio export/download button itself was never clicked or confirmed. Reword to scope the claims accurately. [_bmad-output/implementation-artifacts/2-11-account-deletion-data-export-manual-runbook.md:151-156]
+- [x] [Review][Patch] Task 3's cited verification method is inaccurate — the Debug Log says the test DJ was created via a direct `POST /auth/v1/signup` call and claims this is "same pattern Stories 2.3a/2.3c/2.3d used," but 2.3a and 2.3c both drove signup through the real `/login` browser UI end-to-end; only 2.3d used a raw API call. Correct the record (doesn't invalidate the cascade finding itself — that's DB-level and path-independent). [_bmad-output/implementation-artifacts/2-11-account-deletion-data-export-manual-runbook.md:139-149]
+- [x] [Review][Patch] Local-purge path leaves `<bundle-id>` as a literal, unresolved placeholder and omits Windows/Linux paths — the real identifier is `app.curfew.agent` (`agent/src-tauri/tauri.conf.json:5`), trivially available, and Story 2.9b's Windows build has already shipped, so Windows DJs currently have no purge instructions at all. Fill in the real macOS path and add Windows (`%LOCALAPPDATA%\app.curfew.agent\local.sqlite`) and Linux (`~/.local/share/app.curfew.agent/local.sqlite`) per Tauri's documented `app_local_data_dir()` convention. [supabase/ACCOUNT-DELETION-EXPORT-RUNBOOK.md:58-62]
+- [x] [Review][Patch] Admin API delete step gives no guidance on safely obtaining/handling the service-role key — this repo is otherwise careful about this exact class of secret-handling caution (e.g. the `.p8`/`.p12`/shell-history warnings in `pre-launch-services-checklist.md`); add a one-line pointer (Dashboard → Project Settings → API; never paste into chat, commit, or leave in shell history). [supabase/ACCOUNT-DELETION-EXPORT-RUNBOOK.md:39-41]
+- [x] [Review][Defer] `pre-launch-services-checklist.md` §3 row miscategorized [_bmad-output/implementation-artifacts/pre-launch-services-checklist.md:34] — deferred, pre-existing section taxonomy issue, not a defect of this diff
+- [x] [Review][Defer] "Party 2026-07-20" attributions lack a linked source artifact [_bmad-output/implementation-artifacts/2-11-account-deletion-data-export-manual-runbook.md:19-35] — deferred, pre-existing content untouched by this diff
 
 ## Dev Notes
 
@@ -124,12 +139,41 @@ The epic text describes the runbook against the **full, eventual** schema (`sess
 
 Ultimate context engine analysis completed - comprehensive developer guide created.
 
+## Change Log
+
+| Date | Change | Status |
+|------|--------|--------|
+| 2026-07-30 | Story 2.11 dev-story session: wrote `supabase/ACCOUNT-DELETION-EXPORT-RUNBOOK.md` (doc-only, mirrors `EMAIL-PROVISIONING.md`'s structure — request channel, deletion procedure for today's `public.djs`-only schema with forward-hook TODOs for Story 3.1/Epic 7, export procedure, AC-4 future-trigger note). Verified for real against local Supabase: created a throwaway test DJ via the local Auth API, set `phone`, ran the runbook's export query (confirmed expected row shape), deleted the user via the Admin API, confirmed via direct query that both `auth.users` and cascaded `public.djs` rows are gone. Cross-reference housekeeping done: new row in `pre-launch-services-checklist.md` §3, new item in `deferred-work.md` (agent-side deletion-awareness gap, owned by future Story 3.2/3.3), `supabase/README.md` file-tree extended. Zero application code touched. Workspace-wide `pnpm lint`/`typecheck`/`build`/`test` re-run green (web 23/23, shared 16/16, full-turbo cache hits — no code changed). All 4 tasks complete. | ready-for-dev → review |
+
 ## Dev Agent Record
 
 ### Agent Model Used
 
+Claude Sonnet 5 (claude-sonnet-5)
+
 ### Debug Log References
+
+- Repo-wide grep confirmed comprehension gate (Task 1): no `sessions`/`sets`/`plays`/`segments`/`stripe_customer_id` anywhere in `supabase/migrations/`; only `public.djs` (`id`, `created_at`, `phone`) exists, with `id references auth.users (id) on delete cascade` (`20260726012050_create_djs_table.sql`). No agent-side deletion-detection/revocation-check code found in `agent/src-tauri/src/`.
+- Real local verification against `supabase start`'s local stack (Task 3). **Correction (2026-07-30 code review):** the test DJ was created via a direct `POST /auth/v1/signup` API call, not through the actual `/login` browser UI. This does *not* match Stories 2.3a/2.3c's precedent, which both drove signup end-to-end through the real browser UI (via claude-in-chrome automation) — only 2.3d used a direct API call. The `on delete cascade` behavior verified below is DB-level and unaffected by which path created the row, so the cascade finding itself stands, but the "same pattern as 2.3a/2.3c/2.3d" claim in the original record was inaccurate:
+  1. Created throwaway test DJ via `POST /auth/v1/signup` (local Auth API) — `id=14bcce96-f4eb-459e-897e-b61930919e47`.
+  2. Set `phone` via direct SQL (`docker exec supabase_db_name-pending psql`) so the export had a non-null second field.
+  3. Ran the runbook's exact export query (`select * from public.djs where id = '<uuid>'`) — returned the expected `id`/`created_at`/`phone` row. **Not verified:** the Supabase Studio SQL Editor's export/download button itself (only the raw query result was checked).
+  4. Deleted the user via `DELETE /auth/v1/admin/users/<uuid>` (Admin API, service-role key) — HTTP 200.
+  5. Confirmed via direct query: `auth.users` row count 0, `public.djs` row count 0 — cascade fired for real, not just documented as if it does.
+  6. No cleanup needed beyond the delete itself (the delete *is* the cleanup) — confirmed no orphaned rows remain.
+  7. **Not verified:** the local-SQLite-purge instruction (§2.4) — it was never exercised against a running agent installation; it remains a documented manual instruction only.
+- Workspace-wide gate (`pnpm lint`, `typecheck`, `build`, `test`) re-run after all doc edits: full-turbo cache hits across all three packages (no application code touched by this story), web 23/23 and shared 16/16 tests green, zero regressions. No Rust files changed, so the four-command cargo gate was not applicable this session.
 
 ### Completion Notes List
 
+- Wrote `supabase/ACCOUNT-DELETION-EXPORT-RUNBOOK.md`: mirrors `EMAIL-PROVISIONING.md`'s structure/voice (status-as-of-date line, numbered operator-executable sections). Deletion procedure documents today's one-step cascade (`auth.users` delete → `djs` cascade) plus a manual local-SQLite-purge instruction (no automated agent-side mechanism exists); export procedure documents the single-table `djs` query. Both carry explicit, clearly-labeled forward-hook TODOs for Story 3.1 (sessions/sets/plays/segments tables) and Epic 7 (`stripe_customer_id`) rather than fabricating schema that doesn't exist yet. AC-4's App Store/Play Store self-serve trigger is recorded as tracked, not actioned.
+- Verified the runbook for real against local Supabase (see Debug Log) rather than describing it hypothetically — matches this story's own stated completion bar (doc accuracy + one real local verification, no unit-test suite since there's no application code). **Scope of what was actually verified (corrected 2026-07-30 code review):** the DB-level cascade (`auth.users` delete → `djs` row gone) and the export query's row shape were verified end-to-end. The Studio export/download button and the local-SQLite manual-purge instruction were **not** independently exercised — both remain documented instructions, not tested behavior.
+- Cross-reference housekeeping: added a row to `pre-launch-services-checklist.md` §3 flagging the runbook's unfilled Story 3.1/Epic 7 forward-hooks and the AC-4 trigger; added a new `deferred-work.md` item ("agent has no way to learn its account was deleted, no automatic local-SQLite purge") owned by whichever future story builds the sync/auth-check path (Story 3.2/3.3 territory); added the new runbook file to `supabase/README.md`'s file-tree listing.
+- Zero application code touched (`agent/src-tauri/src/`, `web/app/`, `supabase/migrations/` all untouched) — this is a pure documentation/runbook story per the story's own "Resolved before this story was written" scope ruling.
+
 ### File List
+
+- New: `supabase/ACCOUNT-DELETION-EXPORT-RUNBOOK.md`
+- Modified: `_bmad-output/implementation-artifacts/pre-launch-services-checklist.md` (new row, §3)
+- Modified: `_bmad-output/implementation-artifacts/deferred-work.md` (new item, agent-side deletion-awareness gap)
+- Modified: `supabase/README.md` (file-tree listing extended)

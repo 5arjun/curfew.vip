@@ -15,6 +15,7 @@ supabase/
   scripts/
     check-additive-only-migrations.sh    # CI guard, see below
   PROVISIONING.md                    # runbook for the real cloud project
+  ACCOUNT-DELETION-EXPORT-RUNBOOK.md # manual deletion/export runbook (Story 2.11)
 ```
 
 ## `djs` — the per-DJ identity table (Story 2.1)
