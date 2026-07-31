@@ -93,7 +93,13 @@ pub const DEFAULT_BUCKET: &str = "Other";
 /// exactly one subgenre across the *entire* table (not just within one parent) — a
 /// duplicate would make the first-match scan order-dependent, breaking determinism; a
 /// test guards this.
-const TAXONOMY: &[(&str, &[(&str, &[&str])])] = &[
+/// One subgenre within a parent genre: `(subgenre name, its aliases)`.
+type SubgenreEntry = (&'static str, &'static [&'static str]);
+
+/// One parent genre within [`TAXONOMY`]: `(parent genre name, its subgenres)`.
+type GenreEntry = (&'static str, &'static [SubgenreEntry]);
+
+const TAXONOMY: &[GenreEntry] = &[
     (
         "House",
         &[
