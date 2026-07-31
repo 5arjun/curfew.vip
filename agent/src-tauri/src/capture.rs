@@ -457,6 +457,79 @@ mod tests {
         );
     }
 
+    /// Story 3.2 AC-6 contract test: `session_identity` never depends on
+    /// `raw_ref` (the watched `.session` file's own path — a filesystem
+    /// artifact of the *log file*, not the session's content). Two guards,
+    /// together closing the AD-16 boundary:
+    ///
+    /// 1. `legacy_session_identity`'s signature takes only `&Play` — a
+    ///    `raw_ref`/mtime/watched-file-path can never be threaded in at all,
+    ///    since the type system gives the function no parameter to receive
+    ///    it through (see the call site in `watcher/mod.rs`, where `identity`
+    ///    and `raw_ref` are computed as two independent locals from
+    ///    unrelated inputs).
+    /// 2. Within `first_play` itself, only `path`/`start_time` affect the
+    ///    hash — every other field is free to vary and must not. This is
+    ///    the falsifiable half: if a future edit folded some other
+    ///    filesystem-adjacent `Play` field (or a new field entirely) into
+    ///    the hash, this test would catch it.
+    #[test]
+    fn ac6_session_identity_depends_only_on_first_play_path_and_start_time() {
+        let base = Play {
+            path: Some("/music/first-track.mp3".to_string()),
+            start_time: Some(1_000),
+            title: Some("Original Title".to_string()),
+            artist: Some("Original Artist".to_string()),
+            duration_sec: Some(180),
+            ..Play::default()
+        };
+        // Simulates a re-save/rename of the watched log file re-parsing the
+        // identical first play but with every non-hashed field perturbed —
+        // a real re-save can change duration/genre-detection metadata even
+        // when the underlying track/start_time are unchanged.
+        let re_parsed = Play {
+            path: base.path.clone(),
+            start_time: base.start_time,
+            title: Some("Retagged Title".to_string()),
+            artist: Some("Retagged Artist".to_string()),
+            duration_sec: Some(200),
+            ..Play::default()
+        };
+
+        assert_eq!(
+            legacy_session_identity(&base),
+            legacy_session_identity(&re_parsed),
+            "session_identity must be stable across a watched-file rename/re-save: \
+             it is derived only from the played track's own path/start_time, \
+             never from raw_ref/mtime/the log file's own path, nor from any other \
+             Play field"
+        );
+    }
+
+    /// AC-6, the two same-night-sessions half: two distinct sessions
+    /// detected the same night (different first plays) never collide, even
+    /// though both are watched through the same-shaped `raw_ref` naming.
+    #[test]
+    fn ac6_two_distinct_same_night_sessions_never_collide() {
+        let session_one_first_play = Play {
+            path: Some("/music/opening-track.mp3".to_string()),
+            start_time: Some(20_000),
+            ..Play::default()
+        };
+        let session_two_first_play = Play {
+            path: Some("/music/opening-track.mp3".to_string()),
+            start_time: Some(30_000), // same track played again later that night, different session
+            ..Play::default()
+        };
+
+        assert_ne!(
+            legacy_session_identity(&session_one_first_play),
+            legacy_session_identity(&session_two_first_play),
+            "two distinct same-night sessions must never collide, even when \
+             opened with the identical first track"
+        );
+    }
+
     #[test]
     fn legacy_identity_differs_for_a_different_first_play() {
         let a = Play {

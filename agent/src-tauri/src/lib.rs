@@ -62,6 +62,11 @@ pub mod stats;
 /// retention for captured sessions, authoritative for a set until it syncs. See
 /// [`store`].
 pub mod store;
+/// Sync-queue client (Story 3.2, AR-2/AD-4): the synchronous, online-only
+/// half of the pipeline's `sync-queue` stage — computes the deterministic
+/// `set_id = hash(dj_id, session_identity)` and pushes captured sessions to
+/// the cloud via an idempotent PostgREST RPC call. See [`sync`].
+pub mod sync;
 /// Tray state machine (Story 2.5): the four idle/syncing/failed/drive-not-connected
 /// states and the tooltip/icon update this agent's sole UI surface uses. See
 /// [`tray`].

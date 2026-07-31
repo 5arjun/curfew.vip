@@ -370,6 +370,35 @@ pub fn rows_with_status(
         .map_err(StoreError::from)
 }
 
+/// Every `captured_sessions` row eligible for a sync attempt (Story 3.2, Task
+/// 3's read source): `status = 'captured' AND synced_at IS NULL`. A row that
+/// already synced, or is still `watching`/`incomplete`, never appears here.
+pub fn rows_pending_sync(conn: &Connection) -> Result<Vec<CapturedSessionRow>, StoreError> {
+    let mut stmt = conn.prepare(
+        "SELECT * FROM captured_sessions WHERE status = 'captured' AND synced_at IS NULL",
+    )?;
+    let rows = stmt.query_map([], row_from)?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(StoreError::from)
+}
+
+/// Stamps a row's `synced_at` (Story 3.2 Task 3, the column `store.rs`'s own
+/// schema doc comment reserved for this story to set) after a successful
+/// `sync_set` RPC call. A no-op if `session_identity` does not match any row
+/// — callers only ever pass an identity just read from [`rows_pending_sync`],
+/// so this should not be reachable in practice.
+pub fn mark_synced(
+    conn: &Connection,
+    session_identity: &str,
+    synced_at: i64,
+) -> Result<(), StoreError> {
+    conn.execute(
+        "UPDATE captured_sessions SET synced_at = ?1 WHERE session_identity = ?2",
+        rusqlite::params![synced_at, session_identity],
+    )?;
+    Ok(())
+}
+
 // ---- Local capture DTOs (Task 3) -------------------------------------------
 //
 // Store-owned, `Serialize`/`Deserialize` shapes built *from* the pipeline's
@@ -922,6 +951,99 @@ mod tests {
         let captured = rows_with_status(&conn, SessionStatus::Captured).unwrap();
         assert_eq!(captured.len(), 1);
         assert_eq!(captured[0].session_identity, "serato4:11");
+    }
+
+    /// Story 3.2 Task 3: `rows_pending_sync` returns only rows that are both
+    /// `status = 'captured'` and still `synced_at IS NULL` — a `watching` row
+    /// and an already-synced row both never leak in.
+    #[test]
+    fn rows_pending_sync_filters_to_captured_and_unsynced_only() {
+        let file = TempStoreFile::new("pending-sync");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_watching(
+            &conn,
+            "serato4:30",
+            SessionSource::Serato4,
+            "/path/master.sqlite#30",
+            Some(1_000),
+        )
+        .unwrap();
+        upsert_captured(
+            &conn,
+            "serato4:31",
+            SessionSource::Serato4,
+            "/path/master.sqlite#31",
+            Some(2_000),
+            Some(2_500),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+        upsert_captured(
+            &conn,
+            "serato4:32",
+            SessionSource::Serato4,
+            "/path/master.sqlite#32",
+            Some(3_000),
+            Some(3_500),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+        mark_synced(&conn, "serato4:32", 9_999).unwrap();
+
+        let pending = rows_pending_sync(&conn).unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].session_identity, "serato4:31");
+    }
+
+    /// `mark_synced` stamps the exact value passed and only that row.
+    #[test]
+    fn mark_synced_stamps_synced_at_on_the_matching_row_only() {
+        let file = TempStoreFile::new("mark-synced");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_captured(
+            &conn,
+            "serato4:40",
+            SessionSource::Serato4,
+            "/path/master.sqlite#40",
+            Some(1_000),
+            Some(1_500),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+        upsert_captured(
+            &conn,
+            "serato4:41",
+            SessionSource::Serato4,
+            "/path/master.sqlite#41",
+            Some(2_000),
+            Some(2_500),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+
+        mark_synced(&conn, "serato4:40", 5_555).unwrap();
+
+        assert_eq!(
+            get_by_identity(&conn, "serato4:40")
+                .unwrap()
+                .unwrap()
+                .synced_at,
+            Some(5_555)
+        );
+        assert_eq!(
+            get_by_identity(&conn, "serato4:41")
+                .unwrap()
+                .unwrap()
+                .synced_at,
+            None,
+            "mark_synced must not touch an unrelated row"
+        );
     }
 
     /// Opening the same file twice (mirrors a process restart) does not lose
