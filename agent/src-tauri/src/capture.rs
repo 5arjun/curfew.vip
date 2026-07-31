@@ -173,8 +173,26 @@ pub const LEGACY_QUIET_PERIOD_SEC: u64 = 15 * 60;
 /// instead of sleeping the test thread for real minutes.
 pub fn legacy_quiet_period_elapsed(last_modified: SystemTime, now: SystemTime) -> bool {
     now.duration_since(last_modified)
-        .map(|elapsed| elapsed.as_secs() >= LEGACY_QUIET_PERIOD_SEC)
+        .map(|elapsed| elapsed.as_secs() >= legacy_quiet_period_sec())
         .unwrap_or(false)
+}
+
+/// The quiet-period threshold in seconds — normally [`LEGACY_QUIET_PERIOD_SEC`]
+/// (15 min), but in **debug builds only** overridable via
+/// `CURFEW_DEBUG_QUIET_PERIOD_SEC` so a legacy set can be captured seconds after
+/// the last write instead of forcing a real 15-minute wait during a manual
+/// end-to-end walkthrough. Compiled out entirely in release: release builds
+/// always return [`LEGACY_QUIET_PERIOD_SEC`].
+fn legacy_quiet_period_sec() -> u64 {
+    #[cfg(debug_assertions)]
+    {
+        if let Ok(raw) = std::env::var("CURFEW_DEBUG_QUIET_PERIOD_SEC") {
+            if let Ok(secs) = raw.parse::<u64>() {
+                return secs;
+            }
+        }
+    }
+    LEGACY_QUIET_PERIOD_SEC
 }
 
 // ---- Pipeline wiring (Task 5, AC-1) -----------------------------------------

@@ -207,13 +207,35 @@ impl Default for SupabaseSyncClient {
     }
 }
 
+/// The Supabase base URL `sync_set` posts to. Normally the compile-time
+/// `config::SUPABASE_URL`, but in **debug builds only** a
+/// `CURFEW_DEBUG_FORCE_OFFLINE=1` env var swaps in an unroutable base so the
+/// blocking HTTP call fails fast with a genuine `reqwest` connect error —
+/// classified `RetryClass::Transient` exactly like a real offline failure,
+/// driving the real `TrayState::Queued` path without needing to physically
+/// disconnect the network (loopback to a local Supabase survives Wi-Fi-off,
+/// which otherwise masks the Queued state). Compiled out entirely in release:
+/// release builds always return `config::SUPABASE_URL`.
+fn debug_sync_base_url() -> String {
+    #[cfg(debug_assertions)]
+    {
+        if std::env::var("CURFEW_DEBUG_FORCE_OFFLINE").as_deref() == Ok("1") {
+            // Loopback + a port nothing listens on: connect is refused
+            // immediately (fast fail), rather than hanging to the 15s connect
+            // timeout the way an unroutable public IP would.
+            return "http://127.0.0.1:1".to_string();
+        }
+    }
+    crate::config::SUPABASE_URL.to_string()
+}
+
 impl SyncClient for SupabaseSyncClient {
     fn sync_set(
         &self,
         access_token: &str,
         request_body: &serde_json::Value,
     ) -> Result<Uuid, SyncError> {
-        let url = format!("{}/rest/v1/rpc/sync_set", crate::config::SUPABASE_URL);
+        let url = format!("{}/rest/v1/rpc/sync_set", debug_sync_base_url());
         let response = self
             .http
             .post(&url)
