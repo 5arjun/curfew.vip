@@ -262,6 +262,56 @@ pub fn genre_breakdown(plays: &[EnrichedPlay]) -> GenreBreakdown {
     }
 }
 
+/// Per-subgenre tallies, each paired with its parent genre, plus an explicit
+/// no-genre count (mirrors [`genre_breakdown`]'s exact discipline one level down).
+///
+/// `no_genre_count` is always visible here too — same AD-11 rationale as
+/// [`GenreBreakdown::no_genre_count`].
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SubgenreBreakdown {
+    /// `(subgenre, parent genre, play_count)`, ordered by first-seen order in `plays`.
+    pub buckets: Vec<(String, String, usize)>,
+    pub no_genre_count: usize,
+}
+
+/// Tallies play count per subgenre, alongside its parent genre.
+///
+/// Same first-seen ordering discipline as [`genre_breakdown`] (not a "top N"
+/// ranking) — see that function's doc comment.
+pub fn subgenre_breakdown(plays: &[EnrichedPlay]) -> SubgenreBreakdown {
+    let mut order: Vec<String> = Vec::new();
+    let mut parent_of: HashMap<String, String> = HashMap::new();
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    let mut no_genre_count = 0usize;
+
+    for play in plays {
+        match &play.genre {
+            Some(g) => {
+                if !counts.contains_key(&g.subgenre) {
+                    order.push(g.subgenre.clone());
+                    parent_of.insert(g.subgenre.clone(), g.normalized.clone());
+                }
+                *counts.entry(g.subgenre.clone()).or_insert(0) += 1;
+            }
+            None => no_genre_count += 1,
+        }
+    }
+
+    let buckets = order
+        .into_iter()
+        .map(|subgenre| {
+            let count = counts[&subgenre];
+            let parent = parent_of[&subgenre].clone();
+            (subgenre, parent, count)
+        })
+        .collect();
+
+    SubgenreBreakdown {
+        buckets,
+        no_genre_count,
+    }
+}
+
 /// BPM summary statistics over plays with a known BPM (Task 2, AC-1).
 ///
 /// An empty distribution (zero plays with a BPM) is `count: 0` with all other fields

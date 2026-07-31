@@ -77,7 +77,11 @@
       "properties": {
         "raw": { "type": "string" },
         "normalized": { "type": "string" },
-        "taxonomy_version": { "type": "integer" }
+        "taxonomy_version": { "type": "integer" },
+        "subgenre": {
+          "description": "Added post-freeze (taxonomy v2). Optional per AD-15's additive-only rule, even though the agent always populates it alongside normalized in practice.",
+          "type": "string"
+        }
       }
     },
     "derived": {
@@ -104,6 +108,7 @@
           "items": { "$ref": "#/$defs/most_played_artist" }
         },
         "genre_breakdown": { "$ref": "#/$defs/genre_breakdown" },
+        "subgenre_breakdown": { "$ref": "#/$defs/subgenre_breakdown" },
         "bpm_distribution": { "$ref": "#/$defs/bpm_distribution" },
         "camelot_mixing_stats": { "$ref": "#/$defs/camelot_mixing_stats" },
         "set_length_sec": { "type": ["integer", "null"] },
@@ -151,6 +156,29 @@
       "additionalProperties": false,
       "required": ["genre", "play_count"],
       "properties": {
+        "genre": { "type": "string" },
+        "play_count": { "type": "integer" }
+      }
+    },
+    "subgenre_breakdown": {
+      "description": "Added post-freeze (taxonomy v2). Same shape/discipline as genre_breakdown, one level finer.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["buckets", "no_genre_count"],
+      "properties": {
+        "buckets": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/subgenre_bucket" }
+        },
+        "no_genre_count": { "type": "integer" }
+      }
+    },
+    "subgenre_bucket": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subgenre", "genre", "play_count"],
+      "properties": {
+        "subgenre": { "type": "string" },
         "genre": { "type": "string" },
         "play_count": { "type": "integer" }
       }

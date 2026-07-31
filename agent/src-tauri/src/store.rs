@@ -438,12 +438,13 @@ pub struct CapturedPlay {
     pub in_library: bool,
 }
 
-/// Mirrors `EnrichedPlay.genre: Option<NormalizedGenre>` — raw + normalized +
-/// taxonomy version, carried verbatim (AD-12), never collapsed to just
-/// `normalized`.
+/// Mirrors `EnrichedPlay.genre: Option<NormalizedGenre>` — raw + subgenre +
+/// normalized parent + taxonomy version, carried verbatim (AD-12), never
+/// collapsed to just `normalized`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CapturedGenre {
     pub raw: String,
+    pub subgenre: String,
     pub normalized: String,
     pub taxonomy_version: u32,
 }
@@ -470,6 +471,22 @@ pub struct CapturedGenreBucket {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct CapturedGenreBreakdown {
     pub buckets: Vec<CapturedGenreBucket>,
+    pub no_genre_count: usize,
+}
+
+/// Mirrors `stats::SubgenreBreakdown`'s per-bucket entry: subgenre + its parent
+/// genre + play count.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CapturedSubgenreBucket {
+    pub subgenre: String,
+    pub genre: String,
+    pub play_count: usize,
+}
+
+/// Mirrors `stats::SubgenreBreakdown`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct CapturedSubgenreBreakdown {
+    pub buckets: Vec<CapturedSubgenreBucket>,
     pub no_genre_count: usize,
 }
 
@@ -519,6 +536,7 @@ pub struct CapturedDerived {
     pub most_played_tracks: Vec<CapturedTrackCount>,
     pub most_played_artists: Vec<CapturedArtistCount>,
     pub genre_breakdown: CapturedGenreBreakdown,
+    pub subgenre_breakdown: CapturedSubgenreBreakdown,
     pub bpm_distribution: CapturedBpmDistribution,
     pub camelot_mixing_stats: CapturedCamelotMixingStats,
     pub set_length_sec: Option<u32>,
@@ -570,6 +588,14 @@ mod tests {
                 }],
                 no_genre_count: 0,
             },
+            subgenre_breakdown: CapturedSubgenreBreakdown {
+                buckets: vec![CapturedSubgenreBucket {
+                    subgenre: "Deep House".into(),
+                    genre: "House".into(),
+                    play_count: 2,
+                }],
+                no_genre_count: 0,
+            },
             bpm_distribution: CapturedBpmDistribution {
                 count: 2,
                 min: 120.0,
@@ -605,6 +631,7 @@ mod tests {
             bpm: Some(120.0),
             genre: Some(CapturedGenre {
                 raw: "Deep House".into(),
+                subgenre: "Deep House".into(),
                 normalized: "House".into(),
                 taxonomy_version: 1,
             }),

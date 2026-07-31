@@ -24,7 +24,8 @@ use crate::stats::{self, EnrichedPlay, TrackIdentity};
 use crate::store::{
     CapturedArtistCount, CapturedBpmDistribution, CapturedCamelotMixingStats, CapturedConfidence,
     CapturedDerived, CapturedEnergyPoint, CapturedGenre, CapturedGenreBreakdown,
-    CapturedGenreBucket, CapturedPlay, CapturedTrackCount,
+    CapturedGenreBucket, CapturedPlay, CapturedSubgenreBreakdown, CapturedSubgenreBucket,
+    CapturedTrackCount,
 };
 
 /// Everything that can go wrong building a captured session from raw sources.
@@ -288,6 +289,7 @@ fn assemble(pairs: &[(Play, JoinedMetadata)]) -> (Vec<CapturedPlay>, CapturedDer
             bpm: enriched_play.bpm,
             genre: enriched_play.genre.as_ref().map(|g| CapturedGenre {
                 raw: g.raw.clone(),
+                subgenre: g.subgenre.clone(),
                 normalized: g.normalized.clone(),
                 taxonomy_version: g.taxonomy_version,
             }),
@@ -297,6 +299,7 @@ fn assemble(pairs: &[(Play, JoinedMetadata)]) -> (Vec<CapturedPlay>, CapturedDer
         .collect();
 
     let genre_breakdown = stats::genre_breakdown(&enriched);
+    let subgenre_breakdown = stats::subgenre_breakdown(&enriched);
     let bpm_distribution = stats::bpm_distribution(&enriched);
     let camelot_mixing_stats = stats::camelot::mixing_stats(&enriched);
     let confidence = crate::confidence::classify(&enriched);
@@ -314,6 +317,18 @@ fn assemble(pairs: &[(Play, JoinedMetadata)]) -> (Vec<CapturedPlay>, CapturedDer
                 .map(|(genre, play_count)| CapturedGenreBucket { genre, play_count })
                 .collect(),
             no_genre_count: genre_breakdown.no_genre_count,
+        },
+        subgenre_breakdown: CapturedSubgenreBreakdown {
+            buckets: subgenre_breakdown
+                .buckets
+                .into_iter()
+                .map(|(subgenre, genre, play_count)| CapturedSubgenreBucket {
+                    subgenre,
+                    genre,
+                    play_count,
+                })
+                .collect(),
+            no_genre_count: subgenre_breakdown.no_genre_count,
         },
         bpm_distribution: CapturedBpmDistribution {
             count: bpm_distribution.count,

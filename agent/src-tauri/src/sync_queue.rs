@@ -311,6 +311,7 @@ mod tests {
             most_played_tracks: vec![],
             most_played_artists: vec![],
             genre_breakdown: Default::default(),
+            subgenre_breakdown: Default::default(),
             bpm_distribution: Default::default(),
             camelot_mixing_stats: Default::default(),
             set_length_sec: Some(600),
