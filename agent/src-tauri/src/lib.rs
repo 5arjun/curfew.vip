@@ -253,26 +253,26 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
-            // Tracks the logical tray state so a system Appearance flip
-            // (light/dark menu bar) can redraw the icon below without
-            // changing what it means — see `tray::refresh_tray_icon_for_theme`.
-            app.manage(CurrentTrayState(std::sync::Mutex::new(TrayState::Idle)));
+            // Tracks the logical tray state + last-drawn colorway so a menu
+            // bar appearance change can redraw the icon below without
+            // changing what it means — see `tray::poll_menu_bar_theme`. The
+            // placeholder `Theme::Dark` here is overwritten by the real
+            // `set_tray_state(Idle)` call below before anything reads it.
+            app.manage(CurrentTrayState(std::sync::Mutex::new((
+                TrayState::Idle,
+                tauri::Theme::Dark,
+            ))));
 
             let window = app
                 .get_webview_window("main")
                 .ok_or("agent: main window not found during setup")?;
 
             let close_target = window.clone();
-            let theme_app_handle = app.handle().clone();
-            window.on_window_event(move |event| match event {
-                WindowEvent::CloseRequested { api, .. } => {
+            window.on_window_event(move |event| {
+                if let WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
                     let _ = close_target.hide();
                 }
-                WindowEvent::ThemeChanged(theme) => {
-                    let _ = tray::refresh_tray_icon_for_theme(&theme_app_handle, *theme);
-                }
-                _ => {}
             });
 
             let default_icon = app
@@ -384,6 +384,28 @@ pub fn run() {
             // override this to DriveNotConnected if a confirmed override no
             // longer resolves at launch.
             set_tray_state(app.handle(), TrayState::Idle)?;
+
+            // Desktop-picture vibrancy can re-tint the menu bar (light vs.
+            // dark) with no AppKit notification to hook — `WindowEvent::
+            // ThemeChanged` only fires for an actual system Appearance
+            // toggle (see `tray::poll_menu_bar_theme`'s doc comment) — so a
+            // short poll is the only way to keep the icon's colorway
+            // matching its surroundings. AppKit calls must run on the main
+            // thread, hence the `run_on_main_thread` hop from this
+            // background thread.
+            let poll_app_handle = app.handle().clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+                let handle = poll_app_handle.clone();
+                if poll_app_handle
+                    .run_on_main_thread(move || {
+                        let _ = tray::poll_menu_bar_theme(&handle);
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            });
 
             // Story 2.6: find (or confirm, or start watching) the DJ's Serato
             // install. An existing manual override (Story 2.5) is the single

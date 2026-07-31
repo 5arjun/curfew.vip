@@ -150,3 +150,29 @@ base64 = "0.22"
 # tauri dependency bump could silently drop that transitive requirement and
 # break this crate's build with an unrelated-looking error).
 uuid = { version = "1", features = ["v4", "v5", "serde"] }
+
+# Tray icon light/dark selection (tray.rs): the tray's colored state icons
+# can't be macOS "template" images (those discard color, keeping only an
+# alpha mask), and the general system Appearance preference doesn't reliably
+# match the *menu bar's* actual rendered darkness (desktop-picture vibrancy
+# can tint the bar dark even in Light Appearance). Tauri's tray API doesn't
+# expose the underlying `NSStatusItem`, so a dedicated zero-width status item
+# is created directly via these bindings purely to read the true, menu-bar-
+# hosted `effectiveAppearance` — the same signal AppKit uses to resolve
+# template icons correctly. Versions matched to what `tao` (Tauri's own
+# windowing crate) already resolves in Cargo.lock, to avoid a second copy of
+# these getting compiled.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+    "std",
+    "NSAppearance",
+    "NSButton",
+    "NSControl",
+    "NSResponder",
+    "NSStatusBar",
+    "NSStatusBarButton",
+    "NSStatusItem",
+    "NSView",
+] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std"] }

@@ -15,10 +15,11 @@ use tauri::{AppHandle, Manager, Theme};
 /// when pushing a state update.
 pub const TRAY_ID: &str = "main";
 
-/// The logical state currently shown, tracked so a system appearance change
-/// (light/dark menu bar) can redraw the icon in the right colorway without
-/// touching the state itself — see [`refresh_tray_icon_for_theme`].
-pub struct CurrentTrayState(pub Mutex<TrayState>);
+/// The logical state currently shown plus the menu-bar colorway it was last
+/// drawn in, tracked so [`poll_menu_bar_theme`] can redraw the icon when the
+/// colorway changes without touching the state itself, and can skip the
+/// `set_icon` call entirely when it hasn't.
+pub struct CurrentTrayState(pub Mutex<(TrayState, Theme)>);
 
 /// The five states this agent's tray can show. `Idle` is the default at
 /// startup. `Queued` (Story 3.3, AC-3/UX-DR19) is a fifth state added on top
@@ -106,14 +107,91 @@ impl TrayState {
     }
 }
 
-/// The menu bar appearance to draw tray icons for. Backed by the `main`
-/// window's effective theme (macOS drives both from the same system
-/// Appearance setting), falling back to `Dark` — the existing icon set's
-/// original colorway — if the window can't be queried yet.
+/// The menu bar appearance to draw tray icons for.
+///
+/// On macOS this is *not* the same as the system's general Appearance
+/// (Light/Dark) preference: a dark desktop picture can tint the menu bar
+/// dark via vibrancy even while Appearance is set to Light, so `NSApp`'s or
+/// the main window's `effectiveAppearance` can disagree with what the menu
+/// bar actually renders (confirmed on a dev machine: `AppleInterfaceStyle`
+/// read Light while the real menu bar — and every other app's template icon
+/// in it — was dark). See [`macos_probe`] for how this queries the true,
+/// menu-bar-hosted appearance instead.
+#[cfg(target_os = "macos")]
+fn menu_bar_theme(_app: &AppHandle) -> Theme {
+    macos_probe::menu_bar_theme()
+}
+
+/// Non-macOS fallback: keyed off the `main` window's effective theme, since
+/// there's no menu-bar-vs-window-appearance split to account for elsewhere.
+#[cfg(not(target_os = "macos"))]
 fn menu_bar_theme(app: &AppHandle) -> Theme {
     app.get_webview_window("main")
         .and_then(|w| w.theme().ok())
         .unwrap_or(Theme::Dark)
+}
+
+/// Reads the *real* menu-bar appearance directly from AppKit, bypassing both
+/// `NSApplication.effectiveAppearance` and any cached window theme — see
+/// [`menu_bar_theme`] for why those can't be trusted here.
+///
+/// Tauri's tray API doesn't expose the `NSStatusItem` behind our actual tray
+/// icon, so this creates its own zero-width, never-visible status item purely
+/// to read `effectiveAppearance` off a button that's genuinely hosted in the
+/// system menu bar — the same context AppKit resolves template icons
+/// against, so this stays correct even under vibrancy tinting that the
+/// system Appearance preference doesn't reflect.
+#[cfg(target_os = "macos")]
+mod macos_probe {
+    use std::sync::OnceLock;
+
+    use objc2::rc::Retained;
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSAppearanceCustomization, NSStatusBar, NSStatusItem};
+    use objc2_foundation::NSArray;
+
+    use super::Theme;
+
+    // Safety: only ever touched from the main thread (enforced by the
+    // `MainThreadMarker` required to obtain one), matching `NSStatusItem`'s
+    // own thread requirements.
+    struct ProbeItem(Retained<NSStatusItem>);
+    unsafe impl Send for ProbeItem {}
+    unsafe impl Sync for ProbeItem {}
+
+    static PROBE: OnceLock<ProbeItem> = OnceLock::new();
+
+    pub fn menu_bar_theme() -> Theme {
+        let Some(mtm) = MainThreadMarker::new() else {
+            // Every caller in this module runs on the main thread (setup()
+            // and window-event callbacks); this is a defensive fallback,
+            // not an expected path.
+            return Theme::Dark;
+        };
+
+        let probe = PROBE.get_or_init(|| {
+            let bar = NSStatusBar::systemStatusBar();
+            ProbeItem(bar.statusItemWithLength(0.0))
+        });
+
+        let Some(button) = probe.0.button(mtm) else {
+            return Theme::Dark;
+        };
+
+        let appearance = button.effectiveAppearance();
+        let names = [
+            unsafe { objc2_app_kit::NSAppearanceNameAqua },
+            unsafe { objc2_app_kit::NSAppearanceNameDarkAqua },
+        ];
+        let best = appearance.bestMatchFromAppearancesWithNames(&NSArray::from_slice(&names));
+
+        match best {
+            Some(name) if &*name == unsafe { objc2_app_kit::NSAppearanceNameDarkAqua } => {
+                Theme::Dark
+            }
+            _ => Theme::Light,
+        }
+    }
 }
 
 /// Push a new state to the running tray (icon + tooltip together). Any later
@@ -124,26 +202,39 @@ fn menu_bar_theme(app: &AppHandle) -> Theme {
 /// icon/tooltip mismatch where the icon shows a new state but the tooltip
 /// still describes the old one.
 pub fn set_tray_state(app: &AppHandle, state: TrayState) -> tauri::Result<()> {
+    let theme = menu_bar_theme(app);
     let tray = app.tray_by_id(TRAY_ID).ok_or_else(|| {
         tauri::Error::AssetNotFound(format!("agent: tray icon '{TRAY_ID}' not found"))
     })?;
     tray.set_tooltip(Some(state.tooltip()))?;
-    tray.set_icon(Some(state.icon(menu_bar_theme(app))))?;
+    tray.set_icon(Some(state.icon(theme)))?;
     if let Some(current) = app.try_state::<CurrentTrayState>() {
-        *current.0.lock().expect("current tray state mutex poisoned") = state;
+        *current.0.lock().expect("current tray state mutex poisoned") = (state, theme);
     }
     Ok(())
 }
 
-/// Redraw the tray icon for the current logical state in `theme`'s colorway,
-/// without changing the state or its tooltip. Called when the menu bar's
-/// appearance flips (light/dark) so a colored-outline icon designed for one
-/// background doesn't go invisible on the other.
-pub fn refresh_tray_icon_for_theme(app: &AppHandle, theme: Theme) -> tauri::Result<()> {
+/// Re-checks the menu bar's colorway and redraws the tray icon if it changed,
+/// without touching the logical state or tooltip. Meant to be called on a
+/// short repeating timer (see `lib.rs`'s `setup()`), *not* only in response
+/// to `WindowEvent::ThemeChanged` — macOS doesn't emit any notification for
+/// the desktop-picture-vibrancy tinting this app cares about (only for a
+/// genuine system Appearance toggle), so a poll is the only way to catch it.
+pub fn poll_menu_bar_theme(app: &AppHandle) -> tauri::Result<()> {
     let Some(current) = app.try_state::<CurrentTrayState>() else {
         return Ok(());
     };
-    let state = *current.0.lock().expect("current tray state mutex poisoned");
+    let theme = menu_bar_theme(app);
+
+    let state = {
+        let mut current = current.0.lock().expect("current tray state mutex poisoned");
+        if current.1 == theme {
+            return Ok(());
+        }
+        current.1 = theme;
+        current.0
+    };
+
     let tray = app.tray_by_id(TRAY_ID).ok_or_else(|| {
         tauri::Error::AssetNotFound(format!("agent: tray icon '{TRAY_ID}' not found"))
     })?;
