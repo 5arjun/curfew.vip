@@ -6,12 +6,19 @@
 //! builds the state machine and proves it renders (a debug menu item cycles
 //! through the states for manual verification, see Task 5 in the story file).
 
+use std::sync::Mutex;
+
 use tauri::image::Image;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager, Theme};
 
 /// The tray's id, used to look it up later via [`tauri::Manager::tray_by_id`]
 /// when pushing a state update.
 pub const TRAY_ID: &str = "main";
+
+/// The logical state currently shown, tracked so a system appearance change
+/// (light/dark menu bar) can redraw the icon in the right colorway without
+/// touching the state itself — see [`refresh_tray_icon_for_theme`].
+pub struct CurrentTrayState(pub Mutex<TrayState>);
 
 /// The five states this agent's tray can show. `Idle` is the default at
 /// startup. `Queued` (Story 3.3, AC-3/UX-DR19) is a fifth state added on top
@@ -65,20 +72,48 @@ impl TrayState {
         Self::ALL[(idx + 1) % Self::ALL.len()]
     }
 
-    /// Compile-time-embedded icon for this state (see `icons/tray/`). `include_image!`
-    /// decodes the PNG at build time, so no `image` crate is needed as a runtime
-    /// dependency of this crate.
-    fn icon(self) -> Image<'static> {
-        match self {
-            TrayState::Idle => tauri::include_image!("icons/tray/idle.png"),
-            TrayState::Syncing => tauri::include_image!("icons/tray/syncing.png"),
-            TrayState::Failed => tauri::include_image!("icons/tray/failed.png"),
-            TrayState::DriveNotConnected => {
-                tauri::include_image!("icons/tray/drive-not-connected.png")
+    /// Compile-time-embedded icon for this state (see `icons/tray/`), in the
+    /// colorway matching `theme`: a light menu bar needs the dark-outline
+    /// asset to stay visible, a dark menu bar needs the white-outline one —
+    /// the reverse of the theme's own name. `include_image!` decodes the PNG
+    /// at build time, so no `image` crate is needed as a runtime dependency
+    /// of this crate.
+    fn icon(self, theme: Theme) -> Image<'static> {
+        match (theme, self) {
+            (Theme::Light, TrayState::Idle) => tauri::include_image!("icons/tray/light/idle.png"),
+            (Theme::Light, TrayState::Syncing) => {
+                tauri::include_image!("icons/tray/light/syncing.png")
             }
-            TrayState::Queued => tauri::include_image!("icons/tray/queued.png"),
+            (Theme::Light, TrayState::Failed) => {
+                tauri::include_image!("icons/tray/light/failed.png")
+            }
+            (Theme::Light, TrayState::DriveNotConnected) => {
+                tauri::include_image!("icons/tray/light/drive-not-connected.png")
+            }
+            (Theme::Light, TrayState::Queued) => {
+                tauri::include_image!("icons/tray/light/queued.png")
+            }
+            // Dark is the default colorway for any theme variant future
+            // Tauri versions may add (`Theme` is `#[non_exhaustive]`).
+            (_, TrayState::Idle) => tauri::include_image!("icons/tray/dark/idle.png"),
+            (_, TrayState::Syncing) => tauri::include_image!("icons/tray/dark/syncing.png"),
+            (_, TrayState::Failed) => tauri::include_image!("icons/tray/dark/failed.png"),
+            (_, TrayState::DriveNotConnected) => {
+                tauri::include_image!("icons/tray/dark/drive-not-connected.png")
+            }
+            (_, TrayState::Queued) => tauri::include_image!("icons/tray/dark/queued.png"),
         }
     }
+}
+
+/// The menu bar appearance to draw tray icons for. Backed by the `main`
+/// window's effective theme (macOS drives both from the same system
+/// Appearance setting), falling back to `Dark` — the existing icon set's
+/// original colorway — if the window can't be queried yet.
+fn menu_bar_theme(app: &AppHandle) -> Theme {
+    app.get_webview_window("main")
+        .and_then(|w| w.theme().ok())
+        .unwrap_or(Theme::Dark)
 }
 
 /// Push a new state to the running tray (icon + tooltip together). Any later
@@ -93,13 +128,43 @@ pub fn set_tray_state(app: &AppHandle, state: TrayState) -> tauri::Result<()> {
         tauri::Error::AssetNotFound(format!("agent: tray icon '{TRAY_ID}' not found"))
     })?;
     tray.set_tooltip(Some(state.tooltip()))?;
-    tray.set_icon(Some(state.icon()))?;
+    tray.set_icon(Some(state.icon(menu_bar_theme(app))))?;
+    if let Some(current) = app.try_state::<CurrentTrayState>() {
+        *current.0.lock().expect("current tray state mutex poisoned") = state;
+    }
+    Ok(())
+}
+
+/// Redraw the tray icon for the current logical state in `theme`'s colorway,
+/// without changing the state or its tooltip. Called when the menu bar's
+/// appearance flips (light/dark) so a colored-outline icon designed for one
+/// background doesn't go invisible on the other.
+pub fn refresh_tray_icon_for_theme(app: &AppHandle, theme: Theme) -> tauri::Result<()> {
+    let Some(current) = app.try_state::<CurrentTrayState>() else {
+        return Ok(());
+    };
+    let state = *current.0.lock().expect("current tray state mutex poisoned");
+    let tray = app.tray_by_id(TRAY_ID).ok_or_else(|| {
+        tauri::Error::AssetNotFound(format!("agent: tray icon '{TRAY_ID}' not found"))
+    })?;
+    tray.set_icon(Some(state.icon(theme)))?;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_state_has_an_icon_in_both_menu_bar_colorways() {
+        // `include_image!` panics at compile time if a path is missing, so
+        // this mainly guards against the match arms silently falling through
+        // to the wrong file for a given (theme, state) pair.
+        for state in TrayState::ALL {
+            let _ = state.icon(Theme::Light);
+            let _ = state.icon(Theme::Dark);
+        }
+    }
 
     #[test]
     fn every_state_has_a_real_text_tooltip_not_just_icon() {

@@ -247,22 +247,32 @@ pub fn run() {
             use tauri::menu::{Menu, MenuItem};
             use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
             use tauri::{Manager, WindowEvent};
-            use tray::{set_tray_state, TrayState, TRAY_ID};
+            use tray::{set_tray_state, CurrentTrayState, TrayState, TRAY_ID};
 
             // Don't show a Dock icon / Cmd+Tab entry for a tray-only app.
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
+            // Tracks the logical tray state so a system Appearance flip
+            // (light/dark menu bar) can redraw the icon below without
+            // changing what it means — see `tray::refresh_tray_icon_for_theme`.
+            app.manage(CurrentTrayState(std::sync::Mutex::new(TrayState::Idle)));
 
             let window = app
                 .get_webview_window("main")
                 .ok_or("agent: main window not found during setup")?;
 
             let close_target = window.clone();
-            window.on_window_event(move |event| {
-                if let WindowEvent::CloseRequested { api, .. } = event {
+            let theme_app_handle = app.handle().clone();
+            window.on_window_event(move |event| match event {
+                WindowEvent::CloseRequested { api, .. } => {
                     api.prevent_close();
                     let _ = close_target.hide();
                 }
+                WindowEvent::ThemeChanged(theme) => {
+                    let _ = tray::refresh_tray_icon_for_theme(&theme_app_handle, *theme);
+                }
+                _ => {}
             });
 
             let default_icon = app
