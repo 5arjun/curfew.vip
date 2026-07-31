@@ -7,7 +7,18 @@
 //! Does **not** build a retry queue, backoff, or offline-detection (Story
 //! 3.3's explicit scope) — a failed attempt here simply leaves `synced_at`
 //! `NULL` for a later sync pass (or Story 3.3's queue) to retry.
+//!
+//! **Story 3.3 extension:** [`SyncError::retry_class`] classifies a per-row
+//! failure as [`RetryClass::Transient`] (worth retrying — looks like a
+//! connectivity problem) or [`RetryClass::Permanent`] (a data/logic problem
+//! that will never resolve by retrying — e.g. `SetIdMismatch`) so the
+//! offline-sync-queue drain loop (`sync_queue.rs`) can skip a permanently-bad
+//! row instead of letting it spin the backoff loop's state forever.
+//! [`sync_pending_sessions`] takes a `skip` set of already-permanent-failed
+//! session identities for exactly this reason — the *mechanism* (auth token
+//! fetch, row iteration, `sync_one`) is unchanged from Story 3.2.
 
+use std::collections::HashSet;
 use std::sync::Mutex;
 
 use serde::Serialize;
@@ -112,6 +123,50 @@ impl std::fmt::Display for SyncError {
 
 impl std::error::Error for SyncError {}
 
+/// Whether a per-row [`SyncError`] is worth retrying on the offline-sync-
+/// queue's backoff cadence, or should be skipped on subsequent passes
+/// instead (Story 3.3 Task 1's circuit-breaker requirement).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RetryClass {
+    /// Looks like a connectivity problem (network down, or the server
+    /// briefly unable to serve the request) — the same request could
+    /// plausibly succeed on a later attempt.
+    Transient,
+    /// A data or logic problem that retrying will never fix on its own
+    /// (a deterministic id mismatch, corrupt stored JSON, a malformed
+    /// claim, a row missing required fields) — retrying at the same
+    /// cadence forever is indistinguishable from a spin loop.
+    Permanent,
+}
+
+impl SyncError {
+    /// Classifies a per-row failure from [`sync_one`]. `Http` (a `reqwest`
+    /// transport-level failure — can't reach the host, timed out, connection
+    /// reset) and a `5xx` `Rejected` status are treated as transient; every
+    /// other variant is permanent. There is no reachability/ping crate in
+    /// this codebase and none should be added for this story (Dev Notes) — a
+    /// failed sync attempt *is* the offline signal.
+    pub fn retry_class(&self) -> RetryClass {
+        match self {
+            SyncError::Http(_) => RetryClass::Transient,
+            SyncError::Rejected(status) if status.is_server_error() => RetryClass::Transient,
+            // `Auth`/`Store` never actually reach a per-row classification in
+            // practice — `sync_pending_sessions` fetches the token and opens
+            // the connection once, up front, before iterating rows, so
+            // either one aborts the whole pass rather than failing one row
+            // (see `sync_queue.rs`'s pass-level handling). Grouped here as
+            // permanent anyway so this method stays total over every variant.
+            SyncError::Rejected(_)
+            | SyncError::Auth(_)
+            | SyncError::Store(_)
+            | SyncError::Corrupt(_)
+            | SyncError::MalformedDjId
+            | SyncError::SetIdMismatch { .. }
+            | SyncError::MissingTimeBounds => RetryClass::Permanent,
+        }
+    }
+}
+
 /// Wraps the `sync_set` RPC call — mirrors `auth::client::AuthClient`'s
 /// trait-injection pattern so tests never make a real network call.
 pub trait SyncClient {
@@ -179,10 +234,21 @@ impl SyncClient for SupabaseSyncClient {
 /// Outcome of one [`sync_pending_sessions`] pass — how many rows were
 /// eligible, and how many actually synced (the rest simply keep `synced_at`
 /// `NULL`, per this story's "attempt once" scope — see module doc).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+///
+/// **Story 3.3 extension:** `failed_transient`/`failed_permanent` split the
+/// remainder (`attempted - synced`) by [`SyncError::retry_class`], and
+/// `permanent_failure_identities` names exactly which rows the caller should
+/// add to its own skip-list for the next pass (the circuit-breaker Task 1
+/// requires) — `attempted` already excludes anything in the `skip` set
+/// passed in, so a repeatedly-skipped row is only counted here once, the
+/// pass it first fails permanently.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SyncSummary {
     pub attempted: usize,
     pub synced: usize,
+    pub failed_transient: usize,
+    pub failed_permanent: usize,
+    pub permanent_failure_identities: Vec<String>,
 }
 
 /// Builds one row's `sync_set` request body from its stored `plays_json`/
@@ -215,16 +281,24 @@ fn build_request(row: &CapturedSessionRow) -> Result<serde_json::Value, SyncErro
 /// `auth::client::get_valid_access_token`) and reused for every row in the
 /// pass, rather than refreshed per row.
 ///
-/// This is a straightforward "attempt once" pass, not a retry loop: a row
-/// whose sync fails simply keeps `synced_at` `NULL` and is picked up again by
-/// the next call to this function (or Story 3.3's future retry queue) — no
-/// backoff/queue machinery is built here (out of this story's scope).
+/// This is a straightforward "attempt once per eligible row" pass, not a
+/// retry loop itself — a row whose sync fails transiently simply keeps
+/// `synced_at` `NULL` and is picked up again by the next call to this
+/// function; the retry cadence/backoff is Story 3.3's `sync_queue` module's
+/// job, layered on top of this function, not inside it.
+///
+/// `skip` names session identities to exclude from this pass entirely (Story
+/// 3.3's circuit breaker: a row already classified [`RetryClass::Permanent`]
+/// on a prior pass) — excluded rows are not counted in `attempted` and never
+/// reach [`sync_one`], so a deterministically-broken row costs one wasted
+/// network call total, not one per pass forever.
 pub fn sync_pending_sessions(
     conn: &rusqlite::Connection,
     tokens: &Mutex<Option<TokenPair>>,
     token_store: &dyn TokenStore,
     auth_client: &dyn AuthClient,
     sync_client: &dyn SyncClient,
+    skip: &HashSet<String>,
 ) -> Result<SyncSummary, SyncError> {
     let access_token =
         get_valid_access_token(tokens, token_store, auth_client).map_err(SyncError::Auth)?;
@@ -232,19 +306,32 @@ pub fn sync_pending_sessions(
         crate::auth::client::current_dj_id(&access_token).ok_or(SyncError::MalformedDjId)?;
     let dj_id = Uuid::parse_str(&dj_id_claim).map_err(|_| SyncError::MalformedDjId)?;
 
-    let rows = store::rows_pending_sync(conn).map_err(SyncError::Store)?;
+    let rows: Vec<_> = store::rows_pending_sync(conn)
+        .map_err(SyncError::Store)?
+        .into_iter()
+        .filter(|row| !skip.contains(&row.session_identity))
+        .collect();
     let mut summary = SyncSummary {
         attempted: rows.len(),
-        synced: 0,
+        ..Default::default()
     };
 
     for row in &rows {
         match sync_one(conn, sync_client, &access_token, dj_id, row) {
             Ok(()) => summary.synced += 1,
-            Err(_e) => {
+            Err(e) => {
+                match e.retry_class() {
+                    RetryClass::Transient => summary.failed_transient += 1,
+                    RetryClass::Permanent => {
+                        summary.failed_permanent += 1;
+                        summary
+                            .permanent_failure_identities
+                            .push(row.session_identity.clone());
+                    }
+                }
                 #[cfg(debug_assertions)]
                 eprintln!(
-                    "curfew-agent: sync failed for session {}: {_e}",
+                    "curfew-agent: sync failed for session {}: {e}",
                     row.session_identity
                 );
             }
@@ -340,17 +427,25 @@ mod tests {
         }
     }
 
+    /// A queue of canned `sync_set` responses, popped in call order — lets a
+    /// single test drive a mixed batch (one row syncs, one mismatches, one
+    /// looks offline) without a mocking framework, per this codebase's
+    /// established test-double convention.
     #[derive(Default)]
     struct FakeSyncClient {
         calls: AtomicUsize,
-        respond_with: Mutex<Option<Result<Uuid, ()>>>,
+        responses: Mutex<std::collections::VecDeque<Result<Uuid, SyncError>>>,
     }
 
     impl FakeSyncClient {
         fn returning(id: Uuid) -> Self {
+            Self::queue(vec![Ok(id)])
+        }
+
+        fn queue(responses: Vec<Result<Uuid, SyncError>>) -> Self {
             Self {
                 calls: AtomicUsize::new(0),
-                respond_with: Mutex::new(Some(Ok(id))),
+                responses: Mutex::new(responses.into()),
             }
         }
 
@@ -366,12 +461,13 @@ mod tests {
             _body: &serde_json::Value,
         ) -> Result<Uuid, SyncError> {
             self.calls.fetch_add(1, Ordering::SeqCst);
-            match *self.respond_with.lock().unwrap() {
-                Some(Ok(id)) => Ok(id),
-                _ => Err(SyncError::Rejected(
+            self.responses
+                .lock()
+                .unwrap()
+                .pop_front()
+                .unwrap_or(Err(SyncError::Rejected(
                     reqwest::StatusCode::INTERNAL_SERVER_ERROR,
-                )),
-            }
+                )))
         }
     }
 
@@ -451,9 +547,15 @@ mod tests {
         let expected_id = set_id(dj_uuid, "legacy:abc");
         let sync_client = FakeSyncClient::returning(expected_id);
 
-        let summary =
-            sync_pending_sessions(&conn, &tokens, &token_store, &auth_client, &sync_client)
-                .expect("sync pass succeeds");
+        let summary = sync_pending_sessions(
+            &conn,
+            &tokens,
+            &token_store,
+            &auth_client,
+            &sync_client,
+            &HashSet::new(),
+        )
+        .expect("sync pass succeeds");
 
         assert_eq!(summary.attempted, 1);
         assert_eq!(summary.synced, 1);
@@ -498,9 +600,15 @@ mod tests {
         // set_id(dj_uuid, "legacy:abc") computation.
         let sync_client = FakeSyncClient::returning(Uuid::nil());
 
-        let summary =
-            sync_pending_sessions(&conn, &tokens, &token_store, &auth_client, &sync_client)
-                .expect("sync pass itself does not abort on a per-row failure");
+        let summary = sync_pending_sessions(
+            &conn,
+            &tokens,
+            &token_store,
+            &auth_client,
+            &sync_client,
+            &HashSet::new(),
+        )
+        .expect("sync pass itself does not abort on a per-row failure");
 
         assert_eq!(summary.attempted, 1);
         assert_eq!(summary.synced, 0);
@@ -543,9 +651,15 @@ mod tests {
         let auth_client = FakeAuthClient;
         let sync_client = FakeSyncClient::returning(Uuid::nil());
 
-        let summary =
-            sync_pending_sessions(&conn, &tokens, &token_store, &auth_client, &sync_client)
-                .expect("sync pass itself does not abort on a per-row failure");
+        let summary = sync_pending_sessions(
+            &conn,
+            &tokens,
+            &token_store,
+            &auth_client,
+            &sync_client,
+            &HashSet::new(),
+        )
+        .expect("sync pass itself does not abort on a per-row failure");
 
         assert_eq!(summary.attempted, 1);
         assert_eq!(summary.synced, 0, "must not sync a bogus epoch-0 date");
@@ -579,11 +693,206 @@ mod tests {
         let auth_client = FakeAuthClient;
         let sync_client = FakeSyncClient::returning(Uuid::nil());
 
-        let summary =
-            sync_pending_sessions(&conn, &tokens, &token_store, &auth_client, &sync_client)
-                .expect("sync pass succeeds with nothing to do");
+        let summary = sync_pending_sessions(
+            &conn,
+            &tokens,
+            &token_store,
+            &auth_client,
+            &sync_client,
+            &HashSet::new(),
+        )
+        .expect("sync pass succeeds with nothing to do");
 
         assert_eq!(summary, SyncSummary::default());
         assert_eq!(sync_client.call_count(), 0);
+    }
+
+    // ---- Story 3.3 Task 1/3: error classification + SyncSummary extension ----
+
+    #[test]
+    fn a_server_error_status_is_classified_transient() {
+        assert_eq!(
+            SyncError::Rejected(reqwest::StatusCode::INTERNAL_SERVER_ERROR).retry_class(),
+            RetryClass::Transient
+        );
+        assert_eq!(
+            SyncError::Rejected(reqwest::StatusCode::SERVICE_UNAVAILABLE).retry_class(),
+            RetryClass::Transient
+        );
+    }
+
+    #[test]
+    fn a_non_server_error_status_is_classified_permanent() {
+        assert_eq!(
+            SyncError::Rejected(reqwest::StatusCode::BAD_REQUEST).retry_class(),
+            RetryClass::Permanent
+        );
+        assert_eq!(
+            SyncError::Rejected(reqwest::StatusCode::UNAUTHORIZED).retry_class(),
+            RetryClass::Permanent
+        );
+    }
+
+    #[test]
+    fn a_network_transport_failure_is_classified_transient() {
+        // A real `reqwest::Error` (loopback connection refused, no network
+        // dependency) -- `reqwest::Error` has no public test constructor, so
+        // this is the established way to obtain one.
+        let client = reqwest::blocking::Client::new();
+        let err = client
+            .get("http://127.0.0.1:1")
+            .send()
+            .expect_err("port 1 on loopback must refuse the connection");
+        assert_eq!(SyncError::Http(err).retry_class(), RetryClass::Transient);
+    }
+
+    #[test]
+    fn logic_and_data_errors_are_classified_permanent() {
+        let corrupt = serde_json::from_str::<serde_json::Value>("not json").unwrap_err();
+        assert_eq!(
+            SyncError::Corrupt(corrupt).retry_class(),
+            RetryClass::Permanent
+        );
+        assert_eq!(
+            SyncError::MalformedDjId.retry_class(),
+            RetryClass::Permanent
+        );
+        assert_eq!(
+            SyncError::MissingTimeBounds.retry_class(),
+            RetryClass::Permanent
+        );
+        assert_eq!(
+            SyncError::SetIdMismatch {
+                expected: Uuid::nil(),
+                actual: Uuid::max()
+            }
+            .retry_class(),
+            RetryClass::Permanent
+        );
+    }
+
+    #[test]
+    fn sync_summary_extension_fields_populate_correctly_across_a_mixed_batch() {
+        let file = TempStoreFile::new("mixed-batch");
+        let conn = open_at(&file.0).expect("store opens");
+
+        for identity in ["legacy:ok", "legacy:mismatch", "legacy:serverdown"] {
+            upsert_captured(
+                &conn,
+                identity,
+                SessionSource::Legacy,
+                "/sessions/x.session",
+                Some(1_000),
+                Some(1_600),
+                &sample_plays(),
+                &sample_derived(),
+            )
+            .unwrap();
+        }
+
+        let dj_uuid = dj(9);
+        let tokens = Mutex::new(Some(TokenPair {
+            access_token: fixture_jwt(&dj_uuid.to_string()),
+            refresh_token: "rt".into(),
+            expires_at: 9_999_999_999,
+        }));
+        let token_store = FakeTokenStore::default();
+        let auth_client = FakeAuthClient;
+
+        let ok_id = set_id(dj_uuid, "legacy:ok");
+        let sync_client = FakeSyncClient::queue(vec![
+            Ok(ok_id),
+            Ok(Uuid::nil()), // mismatches legacy:mismatch's real expected id
+            Err(SyncError::Rejected(
+                reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+            )),
+        ]);
+
+        let summary = sync_pending_sessions(
+            &conn,
+            &tokens,
+            &token_store,
+            &auth_client,
+            &sync_client,
+            &HashSet::new(),
+        )
+        .expect("pass itself succeeds despite per-row failures");
+
+        assert_eq!(summary.attempted, 3);
+        assert_eq!(summary.synced, 1);
+        assert_eq!(summary.failed_transient, 1);
+        assert_eq!(summary.failed_permanent, 1);
+        assert_eq!(
+            summary.permanent_failure_identities,
+            vec!["legacy:mismatch".to_string()]
+        );
+    }
+
+    #[test]
+    fn skip_list_excludes_rows_from_the_pass_without_deleting_them() {
+        let file = TempStoreFile::new("skip-list");
+        let conn = open_at(&file.0).expect("store opens");
+
+        for identity in ["legacy:skip-me", "legacy:attempt-me"] {
+            upsert_captured(
+                &conn,
+                identity,
+                SessionSource::Legacy,
+                "/sessions/x.session",
+                Some(1_000),
+                Some(1_600),
+                &sample_plays(),
+                &sample_derived(),
+            )
+            .unwrap();
+        }
+
+        let dj_uuid = dj(9);
+        let tokens = Mutex::new(Some(TokenPair {
+            access_token: fixture_jwt(&dj_uuid.to_string()),
+            refresh_token: "rt".into(),
+            expires_at: 9_999_999_999,
+        }));
+        let token_store = FakeTokenStore::default();
+        let auth_client = FakeAuthClient;
+        let expected_id = set_id(dj_uuid, "legacy:attempt-me");
+        let sync_client = FakeSyncClient::returning(expected_id);
+
+        let mut skip = HashSet::new();
+        skip.insert("legacy:skip-me".to_string());
+
+        let summary = sync_pending_sessions(
+            &conn,
+            &tokens,
+            &token_store,
+            &auth_client,
+            &sync_client,
+            &skip,
+        )
+        .expect("pass succeeds");
+
+        assert_eq!(
+            summary.attempted, 1,
+            "the skip-listed row must not count toward attempted"
+        );
+        assert_eq!(summary.synced, 1);
+        assert_eq!(
+            sync_client.call_count(),
+            1,
+            "the skip-listed row must never reach the RPC call"
+        );
+
+        let skipped_row = store::get_by_identity(&conn, "legacy:skip-me")
+            .unwrap()
+            .unwrap();
+        assert!(
+            skipped_row.synced_at.is_none(),
+            "skipping is not syncing -- the row is left exactly as it was"
+        );
+        assert_eq!(
+            store::rows_pending_sync(&conn).unwrap().len(),
+            1,
+            "the skipped row still appears as pending -- skipping never deletes/hides it from the store"
+        );
     }
 }

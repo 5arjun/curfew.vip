@@ -211,6 +211,13 @@ pub fn open_at(path: &Path) -> Result<Connection, StoreError> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     std::fs::create_dir_all(parent).map_err(StoreError::Io)?;
     let conn = Connection::open(path)?;
+    // Story 3.3: a second connection to this same file is now a live
+    // possibility, not hypothetical -- the offline-sync-queue drain loop
+    // opens its own `Connection`, alongside `watch_loop`'s long-lived one.
+    // `busy_timeout` makes a brief write collision wait instead of failing
+    // outright with `SQLITE_BUSY`; WAL lets a reader and a writer proceed
+    // concurrently rather than blocking each other for the whole transaction.
+    conn.execute_batch("PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL;")?;
     conn.execute_batch(SCHEMA_SQL)?;
     Ok(conn)
 }
@@ -996,6 +1003,49 @@ mod tests {
         let pending = rows_pending_sync(&conn).unwrap();
         assert_eq!(pending.len(), 1);
         assert_eq!(pending[0].session_identity, "serato4:31");
+    }
+
+    /// Story 3.3 AC-1: a session captured with zero connectivity is
+    /// provably indistinguishable from any other row awaiting sync -- proves
+    /// the offline queue *is* `captured_sessions.synced_at IS NULL` itself
+    /// (AD-5), not a separate table this story never builds.
+    /// `capture::build_serato4`/`build_legacy` (Story 2.8) call
+    /// `upsert_captured` unconditionally; connectivity is never a parameter
+    /// anywhere in that call chain, so "captured while offline" and
+    /// "captured while online but not yet synced" are the same row shape.
+    #[test]
+    fn a_session_captured_while_offline_is_indistinguishable_from_any_pending_sync_row() {
+        let file = TempStoreFile::new("offline-queue-ac1");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_captured(
+            &conn,
+            "legacy:offline-set",
+            SessionSource::Legacy,
+            "/sessions/offline.session",
+            Some(1_000),
+            Some(1_600),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .expect("upsert_captured has no connectivity parameter to gate on");
+
+        let row = get_by_identity(&conn, "legacy:offline-set")
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.status, SessionStatus::Captured);
+        assert!(
+            row.synced_at.is_none(),
+            "a captured-while-offline row has synced_at NULL -- it IS the queue (AD-5)"
+        );
+
+        let pending = rows_pending_sync(&conn).unwrap();
+        assert_eq!(
+            pending.len(),
+            1,
+            "the row is returned by the exact same rows_pending_sync query any other unsynced row uses"
+        );
+        assert_eq!(pending[0].session_identity, "legacy:offline-set");
     }
 
     /// `mark_synced` stamps the exact value passed and only that row.

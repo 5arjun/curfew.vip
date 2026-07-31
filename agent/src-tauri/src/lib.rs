@@ -67,6 +67,11 @@ pub mod store;
 /// `set_id = hash(dj_id, session_identity)` and pushes captured sessions to
 /// the cloud via an idempotent PostgREST RPC call. See [`sync`].
 pub mod sync;
+/// Offline sync-queue drain loop (Story 3.3, AR-2/AD-4): the backoff-driven
+/// background thread that periodically retries [`sync::sync_pending_sessions`]
+/// and drives `tray::TrayState::Queued` while a backlog exists. See
+/// [`sync_queue`].
+pub mod sync_queue;
 /// Tray state machine (Story 2.5): the four idle/syncing/failed/drive-not-connected
 /// states and the tooltip/icon update this agent's sole UI surface uses. See
 /// [`tray`].
@@ -403,6 +408,11 @@ pub fn run() {
             app.manage(watcher::PendingDetectionState(std::sync::Mutex::new(
                 pending_detected_path,
             )));
+            // Story 3.3: published by `watch_loop` on every connect/
+            // disconnect transition, read by the independent sync-queue
+            // drain loop below so it never overwrites `DriveNotConnected`
+            // with its own `Queued`/`Idle` tray state.
+            app.manage(watcher::DriveConnectionState::default());
 
             if let watcher::StartupResolution::PendingConfirmation(_) = resolution {
                 // AC-3: the confirm gate must not depend on the DJ thinking to
@@ -428,6 +438,13 @@ pub fn run() {
             app.manage(TrayHandles {
                 link_status: link_status_item,
             });
+
+            // Story 3.3: the offline sync-queue drain loop. Started after
+            // both `AuthState` (it needs the in-memory token cache) and
+            // `DriveConnectionState` (read on its very first iteration) are
+            // already managed above — same "always started, tracks live
+            // state itself" shape as `watcher::start_watching`.
+            sync_queue::start_syncing(app.handle().clone());
 
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
