@@ -377,8 +377,7 @@ pub fn normalize(raw: Option<&str>) -> Option<NormalizedGenre> {
         return None;
     }
 
-    let (subgenre, normalized) =
-        bucket_for(&key).unwrap_or((DEFAULT_BUCKET, DEFAULT_BUCKET));
+    let (subgenre, normalized) = bucket_for(&key).unwrap_or((DEFAULT_BUCKET, DEFAULT_BUCKET));
 
     Some(NormalizedGenre {
         raw: raw.to_string(),
@@ -443,7 +442,10 @@ mod tests {
     fn case_and_whitespace_variants_hit_same_bucket_but_keep_own_raw() {
         for input in ["deep house", "  Deep House ", "DEEP HOUSE"] {
             let out = normalize(Some(input)).expect("present genre normalizes");
-            assert_eq!(out.subgenre, "Deep House", "{input:?} should map to Deep House");
+            assert_eq!(
+                out.subgenre, "Deep House",
+                "{input:?} should map to Deep House"
+            );
             assert_eq!(out.normalized, "House", "{input:?} should map to House");
             assert_eq!(out.raw, input, "{input:?} raw must be untouched");
         }
