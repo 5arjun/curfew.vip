@@ -89,7 +89,7 @@ describe("@curfew/shared frozen contract", () => {
 
   it("matches the full SyncSetDerived required array and property set", () => {
     // Mirrors shared/src/index.ts's SyncSetDerived interface fields verbatim (Story 1.10 Task 3).
-    const expectedProperties = [
+    const requiredProperties = [
       "most_played_tracks",
       "most_played_artists",
       "genre_breakdown",
@@ -100,9 +100,12 @@ describe("@curfew/shared frozen contract", () => {
       "energy_arc",
       "confidence",
     ];
+    // subgenre_breakdown was added post-freeze (taxonomy v2) and is optional per
+    // AD-15 — present in `properties` but deliberately absent from `required`.
+    const allProperties = [...requiredProperties, "subgenre_breakdown"];
     const derivedSchema = schema.$defs.derived;
-    expect(Object.keys(derivedSchema.properties).sort()).toEqual([...expectedProperties].sort());
-    expect(derivedSchema.required.slice().sort()).toEqual([...expectedProperties].sort());
+    expect(Object.keys(derivedSchema.properties).sort()).toEqual([...allProperties].sort());
+    expect(derivedSchema.required.slice().sort()).toEqual([...requiredProperties].sort());
   });
 
   it("matches the full SessionConfidence-derived confidence required array and property set", () => {

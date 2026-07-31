@@ -211,6 +211,13 @@ pub fn open_at(path: &Path) -> Result<Connection, StoreError> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     std::fs::create_dir_all(parent).map_err(StoreError::Io)?;
     let conn = Connection::open(path)?;
+    // Story 3.3: a second connection to this same file is now a live
+    // possibility, not hypothetical -- the offline-sync-queue drain loop
+    // opens its own `Connection`, alongside `watch_loop`'s long-lived one.
+    // `busy_timeout` makes a brief write collision wait instead of failing
+    // outright with `SQLITE_BUSY`; WAL lets a reader and a writer proceed
+    // concurrently rather than blocking each other for the whole transaction.
+    conn.execute_batch("PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL;")?;
     conn.execute_batch(SCHEMA_SQL)?;
     Ok(conn)
 }
@@ -370,6 +377,35 @@ pub fn rows_with_status(
         .map_err(StoreError::from)
 }
 
+/// Every `captured_sessions` row eligible for a sync attempt (Story 3.2, Task
+/// 3's read source): `status = 'captured' AND synced_at IS NULL`. A row that
+/// already synced, or is still `watching`/`incomplete`, never appears here.
+pub fn rows_pending_sync(conn: &Connection) -> Result<Vec<CapturedSessionRow>, StoreError> {
+    let mut stmt = conn.prepare(
+        "SELECT * FROM captured_sessions WHERE status = 'captured' AND synced_at IS NULL",
+    )?;
+    let rows = stmt.query_map([], row_from)?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(StoreError::from)
+}
+
+/// Stamps a row's `synced_at` (Story 3.2 Task 3, the column `store.rs`'s own
+/// schema doc comment reserved for this story to set) after a successful
+/// `sync_set` RPC call. A no-op if `session_identity` does not match any row
+/// — callers only ever pass an identity just read from [`rows_pending_sync`],
+/// so this should not be reachable in practice.
+pub fn mark_synced(
+    conn: &Connection,
+    session_identity: &str,
+    synced_at: i64,
+) -> Result<(), StoreError> {
+    conn.execute(
+        "UPDATE captured_sessions SET synced_at = ?1 WHERE session_identity = ?2",
+        rusqlite::params![synced_at, session_identity],
+    )?;
+    Ok(())
+}
+
 // ---- Local capture DTOs (Task 3) -------------------------------------------
 //
 // Store-owned, `Serialize`/`Deserialize` shapes built *from* the pipeline's
@@ -402,12 +438,13 @@ pub struct CapturedPlay {
     pub in_library: bool,
 }
 
-/// Mirrors `EnrichedPlay.genre: Option<NormalizedGenre>` — raw + normalized +
-/// taxonomy version, carried verbatim (AD-12), never collapsed to just
-/// `normalized`.
+/// Mirrors `EnrichedPlay.genre: Option<NormalizedGenre>` — raw + subgenre +
+/// normalized parent + taxonomy version, carried verbatim (AD-12), never
+/// collapsed to just `normalized`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CapturedGenre {
     pub raw: String,
+    pub subgenre: String,
     pub normalized: String,
     pub taxonomy_version: u32,
 }
@@ -434,6 +471,22 @@ pub struct CapturedGenreBucket {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct CapturedGenreBreakdown {
     pub buckets: Vec<CapturedGenreBucket>,
+    pub no_genre_count: usize,
+}
+
+/// Mirrors `stats::SubgenreBreakdown`'s per-bucket entry: subgenre + its parent
+/// genre + play count.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CapturedSubgenreBucket {
+    pub subgenre: String,
+    pub genre: String,
+    pub play_count: usize,
+}
+
+/// Mirrors `stats::SubgenreBreakdown`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct CapturedSubgenreBreakdown {
+    pub buckets: Vec<CapturedSubgenreBucket>,
     pub no_genre_count: usize,
 }
 
@@ -483,6 +536,7 @@ pub struct CapturedDerived {
     pub most_played_tracks: Vec<CapturedTrackCount>,
     pub most_played_artists: Vec<CapturedArtistCount>,
     pub genre_breakdown: CapturedGenreBreakdown,
+    pub subgenre_breakdown: CapturedSubgenreBreakdown,
     pub bpm_distribution: CapturedBpmDistribution,
     pub camelot_mixing_stats: CapturedCamelotMixingStats,
     pub set_length_sec: Option<u32>,
@@ -534,6 +588,14 @@ mod tests {
                 }],
                 no_genre_count: 0,
             },
+            subgenre_breakdown: CapturedSubgenreBreakdown {
+                buckets: vec![CapturedSubgenreBucket {
+                    subgenre: "Deep House".into(),
+                    genre: "House".into(),
+                    play_count: 2,
+                }],
+                no_genre_count: 0,
+            },
             bpm_distribution: CapturedBpmDistribution {
                 count: 2,
                 min: 120.0,
@@ -569,6 +631,7 @@ mod tests {
             bpm: Some(120.0),
             genre: Some(CapturedGenre {
                 raw: "Deep House".into(),
+                subgenre: "Deep House".into(),
                 normalized: "House".into(),
                 taxonomy_version: 1,
             }),
@@ -922,6 +985,142 @@ mod tests {
         let captured = rows_with_status(&conn, SessionStatus::Captured).unwrap();
         assert_eq!(captured.len(), 1);
         assert_eq!(captured[0].session_identity, "serato4:11");
+    }
+
+    /// Story 3.2 Task 3: `rows_pending_sync` returns only rows that are both
+    /// `status = 'captured'` and still `synced_at IS NULL` — a `watching` row
+    /// and an already-synced row both never leak in.
+    #[test]
+    fn rows_pending_sync_filters_to_captured_and_unsynced_only() {
+        let file = TempStoreFile::new("pending-sync");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_watching(
+            &conn,
+            "serato4:30",
+            SessionSource::Serato4,
+            "/path/master.sqlite#30",
+            Some(1_000),
+        )
+        .unwrap();
+        upsert_captured(
+            &conn,
+            "serato4:31",
+            SessionSource::Serato4,
+            "/path/master.sqlite#31",
+            Some(2_000),
+            Some(2_500),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+        upsert_captured(
+            &conn,
+            "serato4:32",
+            SessionSource::Serato4,
+            "/path/master.sqlite#32",
+            Some(3_000),
+            Some(3_500),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+        mark_synced(&conn, "serato4:32", 9_999).unwrap();
+
+        let pending = rows_pending_sync(&conn).unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].session_identity, "serato4:31");
+    }
+
+    /// Story 3.3 AC-1: a session captured with zero connectivity is
+    /// provably indistinguishable from any other row awaiting sync -- proves
+    /// the offline queue *is* `captured_sessions.synced_at IS NULL` itself
+    /// (AD-5), not a separate table this story never builds.
+    /// `capture::build_serato4`/`build_legacy` (Story 2.8) call
+    /// `upsert_captured` unconditionally; connectivity is never a parameter
+    /// anywhere in that call chain, so "captured while offline" and
+    /// "captured while online but not yet synced" are the same row shape.
+    #[test]
+    fn a_session_captured_while_offline_is_indistinguishable_from_any_pending_sync_row() {
+        let file = TempStoreFile::new("offline-queue-ac1");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_captured(
+            &conn,
+            "legacy:offline-set",
+            SessionSource::Legacy,
+            "/sessions/offline.session",
+            Some(1_000),
+            Some(1_600),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .expect("upsert_captured has no connectivity parameter to gate on");
+
+        let row = get_by_identity(&conn, "legacy:offline-set")
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.status, SessionStatus::Captured);
+        assert!(
+            row.synced_at.is_none(),
+            "a captured-while-offline row has synced_at NULL -- it IS the queue (AD-5)"
+        );
+
+        let pending = rows_pending_sync(&conn).unwrap();
+        assert_eq!(
+            pending.len(),
+            1,
+            "the row is returned by the exact same rows_pending_sync query any other unsynced row uses"
+        );
+        assert_eq!(pending[0].session_identity, "legacy:offline-set");
+    }
+
+    /// `mark_synced` stamps the exact value passed and only that row.
+    #[test]
+    fn mark_synced_stamps_synced_at_on_the_matching_row_only() {
+        let file = TempStoreFile::new("mark-synced");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_captured(
+            &conn,
+            "serato4:40",
+            SessionSource::Serato4,
+            "/path/master.sqlite#40",
+            Some(1_000),
+            Some(1_500),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+        upsert_captured(
+            &conn,
+            "serato4:41",
+            SessionSource::Serato4,
+            "/path/master.sqlite#41",
+            Some(2_000),
+            Some(2_500),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+
+        mark_synced(&conn, "serato4:40", 5_555).unwrap();
+
+        assert_eq!(
+            get_by_identity(&conn, "serato4:40")
+                .unwrap()
+                .unwrap()
+                .synced_at,
+            Some(5_555)
+        );
+        assert_eq!(
+            get_by_identity(&conn, "serato4:41")
+                .unwrap()
+                .unwrap()
+                .synced_at,
+            None,
+            "mark_synced must not touch an unrelated row"
+        );
     }
 
     /// Opening the same file twice (mirrors a process restart) does not lose

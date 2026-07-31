@@ -13,24 +13,33 @@ use tauri::AppHandle;
 /// when pushing a state update.
 pub const TRAY_ID: &str = "main";
 
-/// The four states this story's AC-1 requires. `Idle` is the default at startup;
-/// no real watcher/sync logic exists yet to drive the others (that's 2.6/2.8/3.x).
+/// The five states this agent's tray can show. `Idle` is the default at
+/// startup. `Queued` (Story 3.3, AC-3/UX-DR19) is a fifth state added on top
+/// of the four Story 2.5 originally built — UX-DR23's "four tray states"
+/// predates this story and does not override AC-3's requirement for a
+/// distinct "offline / queued" glyph.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayState {
     Idle,
     Syncing,
     Failed,
     DriveNotConnected,
+    /// Set completed while offline (or otherwise unsynced) is queued locally
+    /// and awaiting the sync-queue drain loop's next attempt — a neutral,
+    /// expected state (UX-DR18's Failure Register explicitly places it
+    /// outside "failure"), not an error.
+    Queued,
 }
 
 impl TrayState {
-    /// All four states, in the fixed order the debug cycle menu item rotates
+    /// All five states, in the fixed order the debug cycle menu item rotates
     /// through.
-    pub const ALL: [TrayState; 4] = [
+    pub const ALL: [TrayState; 5] = [
         TrayState::Idle,
         TrayState::Syncing,
         TrayState::Failed,
         TrayState::DriveNotConnected,
+        TrayState::Queued,
     ];
 
     /// Tooltip text carrying the state as a real label (UX-DR21). Failure-adjacent
@@ -42,6 +51,10 @@ impl TrayState {
             TrayState::Syncing => "Curfew Agent — Syncing",
             TrayState::Failed => "Curfew Agent — Sync failed",
             TrayState::DriveNotConnected => "Curfew Agent — Drive not connected",
+            // Base wording on UX-DR19's exact copy string ("Queued — will
+            // sync when you're back online", EXPERIENCE.md:86); calm/neutral
+            // per UX-DR18, not the Failure Register.
+            TrayState::Queued => "Curfew Agent — Offline, sets queued",
         }
     }
 
@@ -63,6 +76,7 @@ impl TrayState {
             TrayState::DriveNotConnected => {
                 tauri::include_image!("icons/tray/drive-not-connected.png")
             }
+            TrayState::Queued => tauri::include_image!("icons/tray/queued.png"),
         }
     }
 }
@@ -108,20 +122,31 @@ mod tests {
             TrayState::DriveNotConnected.tooltip(),
             "Curfew Agent — Drive not connected"
         );
+        assert_eq!(
+            TrayState::Queued.tooltip(),
+            "Curfew Agent — Offline, sets queued"
+        );
     }
 
     #[test]
     fn failure_wording_is_calm_and_technical_no_exclamations() {
-        for state in [TrayState::Failed, TrayState::DriveNotConnected] {
+        // Queued is not a failure state, but UX-DR18's calm/neutral wording
+        // requirement (no exclamations) applies just as much here — it's
+        // still the Console Voice, not an alarm.
+        for state in [
+            TrayState::Failed,
+            TrayState::DriveNotConnected,
+            TrayState::Queued,
+        ] {
             assert!(!state.tooltip().contains('!'), "UX-DR18: no exclamations");
         }
     }
 
     #[test]
-    fn cycle_visits_all_four_states_then_wraps() {
+    fn cycle_visits_all_five_states_then_wraps() {
         let mut state = TrayState::Idle;
         let mut seen = vec![state];
-        for _ in 0..3 {
+        for _ in 0..4 {
             state = state.next();
             seen.push(state);
         }
@@ -132,6 +157,7 @@ mod tests {
                 TrayState::Syncing,
                 TrayState::Failed,
                 TrayState::DriveNotConnected,
+                TrayState::Queued,
             ]
         );
         assert_eq!(

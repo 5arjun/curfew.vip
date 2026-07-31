@@ -140,6 +140,13 @@ base64 = "0.22"
 # the agent generates a random value when opening the browser for "Link
 # Account," and rejects a `curfew-agent://link` callback whose nonce doesn't
 # match. Already transitively resolved (same "not importable without its own
-# entry" reasoning as `reqwest`/`url`/`base64` above); `v4` is the only
-# feature needed (random generation, no need for time- or name-based UUIDs).
-uuid = { version = "1", features = ["v4"] }
+# entry" reasoning as `reqwest`/`url`/`base64` above); `v4` is for that random
+# generation. `v5` (Story 3.2, Task 1) adds `Uuid::new_v5`, the deterministic
+# namespaced hash `set_id = hash(dj_id, session_identity)` (AD-4) is built
+# from — namespace-based, not random, so it needs its own feature flag.
+# `serde` (Story 3.2, Task 3) is needed for `sync.rs`'s `response.json::<Uuid>()`
+# (`Uuid: DeserializeOwned`) — requested explicitly rather than relying on it
+# being enabled transitively via `tauri-utils` (review finding: a future
+# tauri dependency bump could silently drop that transitive requirement and
+# break this crate's build with an unrelated-looking error).
+uuid = { version = "1", features = ["v4", "v5", "serde"] }

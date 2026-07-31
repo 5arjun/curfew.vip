@@ -84,8 +84,20 @@ export interface SyncPlay {
   started_at: string | null;
   /** From `EnrichedPlay.bpm`. Already `sane_bpm`-filtered by the joiner (finite, positive). */
   bpm: number | null;
-  /** From `EnrichedPlay.genre: Option<NormalizedGenre>`. Raw + normalized + taxonomy version, verbatim (AD-12) — never collapsed to just `normalized`. */
-  genre: { raw: string; normalized: string; taxonomy_version: number } | null;
+  /**
+   * From `EnrichedPlay.genre: Option<NormalizedGenre>`. Raw + normalized + taxonomy
+   * version, verbatim (AD-12) — never collapsed to just `normalized`.
+   *
+   * `subgenre` was added post-freeze (taxonomy v2) and is therefore optional per
+   * AD-15's additive-only rule, even though the agent always populates it alongside
+   * `normalized` in practice — see `genre.rs::NormalizedGenre`.
+   */
+  genre: {
+    raw: string;
+    normalized: string;
+    taxonomy_version: number;
+    subgenre?: string;
+  } | null;
   /** Camelot notation string (e.g. `"8A"`), from `EnrichedPlay.camelot: Option<CamelotKey>`. Encoded as a string, not the two-field Rust struct — it's the source format already and what `web/` wants directly. */
   camelot_key: string | null;
   /** From `JoinedMetadata.in_library` — NOT carried by `EnrichedPlay` itself. Required, never omitted or guessed (Consistency Conventions table). */
@@ -115,6 +127,17 @@ export interface SyncSetDerived {
   /** From `stats::genre_breakdown`/`GenreBreakdown`. Unlike `most_played_artists`, `no_genre_count` is always visible here — no CAP-5-style exemption. */
   genre_breakdown: {
     buckets: Array<{ genre: string; play_count: number }>;
+    no_genre_count: number;
+  };
+  /**
+   * From `stats::subgenre_breakdown`/`SubgenreBreakdown` (added post-freeze,
+   * taxonomy v2). Optional per AD-15 — a new field, not present in the frozen
+   * baseline. Same per-bucket/`no_genre_count` shape as `genre_breakdown`, one
+   * level finer: each bucket also carries its parent `genre` so a client can group
+   * back up to `genre_breakdown`'s level without a second lookup.
+   */
+  subgenre_breakdown?: {
+    buckets: Array<{ subgenre: string; genre: string; play_count: number }>;
     no_genre_count: number;
   };
   /** From `stats::bpm_distribution`/`BpmDistribution`. An empty distribution is `count: 0` with all other fields `0`, never `null`/`NaN`. */

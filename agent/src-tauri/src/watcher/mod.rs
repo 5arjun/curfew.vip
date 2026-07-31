@@ -90,6 +90,24 @@ pub fn resolve_startup(
 /// auto-detection found at startup, awaiting the DJ's confirm/edit + Save.
 pub struct PendingDetectionState(pub Mutex<Option<String>>);
 
+/// Story 3.3: the current "is the configured Serato source reachable" signal,
+/// published by [`watch_loop`] on every connect/disconnect transition —
+/// shared Tauri state so the independent sync-queue drain loop
+/// (`sync_queue.rs`) can read it before writing its own tray state. Two
+/// independent problems ("drive not connected" vs. "sync backlog queued")
+/// must never fight over the tray: this story's Dev Notes rule that
+/// `DriveNotConnected` is the more specific, more actionable state and must
+/// win whenever both are true at once. Defaults to `true` (assume connected,
+/// matching the tray's own `Idle` default at boot) until the first
+/// classification tick says otherwise.
+pub struct DriveConnectionState(pub std::sync::atomic::AtomicBool);
+
+impl Default for DriveConnectionState {
+    fn default() -> Self {
+        Self(std::sync::atomic::AtomicBool::new(true))
+    }
+}
+
 /// A pending detection is only ever shown before an override exists — once the DJ
 /// saves one (via `set_serato_path_override`, Task 3/4's confirm action), it must
 /// stop appearing even though the cached value is still sitting in
@@ -276,6 +294,7 @@ fn watch_loop(app: AppHandle) {
                     // untouched here (only a path change resets it, above).
                     if connected != Some(true) {
                         connected = Some(true);
+                        publish_drive_connection_state(&app, true);
                         let _ = crate::tray::set_tray_state(&app, crate::tray::TrayState::Idle);
                         _fs_watcher = start_fs_watch(&install, tx.clone());
                         if let SeratoInstall::Serato4 { db_path } = &install {
@@ -325,6 +344,7 @@ fn watch_loop(app: AppHandle) {
                     if connected != Some(false) {
                         connected = Some(false);
                         _fs_watcher = None;
+                        publish_drive_connection_state(&app, false);
                         let _ = crate::tray::set_tray_state(
                             &app,
                             crate::tray::TrayState::DriveNotConnected,
@@ -414,6 +434,19 @@ fn watch_loop(app: AppHandle) {
 struct LegacyPendingSession {
     last_modified: SystemTime,
     session_identity: String,
+}
+
+/// Story 3.3: publishes the drive-reachability signal for
+/// [`DriveConnectionState`]'s consumers (the sync-queue drain loop) — a
+/// no-op if the state isn't managed yet (should not happen once `.setup()`
+/// completes, but this loop must never panic over a missing `try_state`).
+fn publish_drive_connection_state(app: &AppHandle, connected: bool) {
+    use tauri::Manager;
+    if let Some(state) = app.try_state::<DriveConnectionState>() {
+        state
+            .0
+            .store(connected, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 /// Logs a local-store write failure in debug builds only, matching this

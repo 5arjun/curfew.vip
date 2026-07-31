@@ -24,7 +24,8 @@ use crate::stats::{self, EnrichedPlay, TrackIdentity};
 use crate::store::{
     CapturedArtistCount, CapturedBpmDistribution, CapturedCamelotMixingStats, CapturedConfidence,
     CapturedDerived, CapturedEnergyPoint, CapturedGenre, CapturedGenreBreakdown,
-    CapturedGenreBucket, CapturedPlay, CapturedTrackCount,
+    CapturedGenreBucket, CapturedPlay, CapturedSubgenreBreakdown, CapturedSubgenreBucket,
+    CapturedTrackCount,
 };
 
 /// Everything that can go wrong building a captured session from raw sources.
@@ -288,6 +289,7 @@ fn assemble(pairs: &[(Play, JoinedMetadata)]) -> (Vec<CapturedPlay>, CapturedDer
             bpm: enriched_play.bpm,
             genre: enriched_play.genre.as_ref().map(|g| CapturedGenre {
                 raw: g.raw.clone(),
+                subgenre: g.subgenre.clone(),
                 normalized: g.normalized.clone(),
                 taxonomy_version: g.taxonomy_version,
             }),
@@ -297,6 +299,7 @@ fn assemble(pairs: &[(Play, JoinedMetadata)]) -> (Vec<CapturedPlay>, CapturedDer
         .collect();
 
     let genre_breakdown = stats::genre_breakdown(&enriched);
+    let subgenre_breakdown = stats::subgenre_breakdown(&enriched);
     let bpm_distribution = stats::bpm_distribution(&enriched);
     let camelot_mixing_stats = stats::camelot::mixing_stats(&enriched);
     let confidence = crate::confidence::classify(&enriched);
@@ -314,6 +317,18 @@ fn assemble(pairs: &[(Play, JoinedMetadata)]) -> (Vec<CapturedPlay>, CapturedDer
                 .map(|(genre, play_count)| CapturedGenreBucket { genre, play_count })
                 .collect(),
             no_genre_count: genre_breakdown.no_genre_count,
+        },
+        subgenre_breakdown: CapturedSubgenreBreakdown {
+            buckets: subgenre_breakdown
+                .buckets
+                .into_iter()
+                .map(|(subgenre, genre, play_count)| CapturedSubgenreBucket {
+                    subgenre,
+                    genre,
+                    play_count,
+                })
+                .collect(),
+            no_genre_count: subgenre_breakdown.no_genre_count,
         },
         bpm_distribution: CapturedBpmDistribution {
             count: bpm_distribution.count,
@@ -454,6 +469,79 @@ mod tests {
         assert_eq!(
             legacy_session_identity(&play),
             legacy_session_identity(&play)
+        );
+    }
+
+    /// Story 3.2 AC-6 contract test: `session_identity` never depends on
+    /// `raw_ref` (the watched `.session` file's own path — a filesystem
+    /// artifact of the *log file*, not the session's content). Two guards,
+    /// together closing the AD-16 boundary:
+    ///
+    /// 1. `legacy_session_identity`'s signature takes only `&Play` — a
+    ///    `raw_ref`/mtime/watched-file-path can never be threaded in at all,
+    ///    since the type system gives the function no parameter to receive
+    ///    it through (see the call site in `watcher/mod.rs`, where `identity`
+    ///    and `raw_ref` are computed as two independent locals from
+    ///    unrelated inputs).
+    /// 2. Within `first_play` itself, only `path`/`start_time` affect the
+    ///    hash — every other field is free to vary and must not. This is
+    ///    the falsifiable half: if a future edit folded some other
+    ///    filesystem-adjacent `Play` field (or a new field entirely) into
+    ///    the hash, this test would catch it.
+    #[test]
+    fn ac6_session_identity_depends_only_on_first_play_path_and_start_time() {
+        let base = Play {
+            path: Some("/music/first-track.mp3".to_string()),
+            start_time: Some(1_000),
+            title: Some("Original Title".to_string()),
+            artist: Some("Original Artist".to_string()),
+            duration_sec: Some(180),
+            ..Play::default()
+        };
+        // Simulates a re-save/rename of the watched log file re-parsing the
+        // identical first play but with every non-hashed field perturbed —
+        // a real re-save can change duration/genre-detection metadata even
+        // when the underlying track/start_time are unchanged.
+        let re_parsed = Play {
+            path: base.path.clone(),
+            start_time: base.start_time,
+            title: Some("Retagged Title".to_string()),
+            artist: Some("Retagged Artist".to_string()),
+            duration_sec: Some(200),
+            ..Play::default()
+        };
+
+        assert_eq!(
+            legacy_session_identity(&base),
+            legacy_session_identity(&re_parsed),
+            "session_identity must be stable across a watched-file rename/re-save: \
+             it is derived only from the played track's own path/start_time, \
+             never from raw_ref/mtime/the log file's own path, nor from any other \
+             Play field"
+        );
+    }
+
+    /// AC-6, the two same-night-sessions half: two distinct sessions
+    /// detected the same night (different first plays) never collide, even
+    /// though both are watched through the same-shaped `raw_ref` naming.
+    #[test]
+    fn ac6_two_distinct_same_night_sessions_never_collide() {
+        let session_one_first_play = Play {
+            path: Some("/music/opening-track.mp3".to_string()),
+            start_time: Some(20_000),
+            ..Play::default()
+        };
+        let session_two_first_play = Play {
+            path: Some("/music/opening-track.mp3".to_string()),
+            start_time: Some(30_000), // same track played again later that night, different session
+            ..Play::default()
+        };
+
+        assert_ne!(
+            legacy_session_identity(&session_one_first_play),
+            legacy_session_identity(&session_two_first_play),
+            "two distinct same-night sessions must never collide, even when \
+             opened with the identical first track"
         );
     }
 
