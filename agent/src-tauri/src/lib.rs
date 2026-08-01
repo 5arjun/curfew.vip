@@ -82,8 +82,6 @@ pub mod tray;
 /// reconnect). See [`watcher`].
 pub mod watcher;
 
-use std::path::PathBuf;
-
 /// The language-neutral sync-contract schema the agent consumes, embedded at
 /// compile time (not resolved via a runtime filesystem path) so a bundled,
 /// installed agent can load it without the `shared/` source tree existing on
@@ -416,18 +414,13 @@ pub fn run() {
             //
             // A home-directory resolution failure must not take down the whole
             // tray-only agent (this used to `?`-propagate out of `.setup()`,
-            // aborting tray/window creation entirely) — fall back to a path that
-            // deliberately resolves nothing so OS-default detection degrades to
-            // `NothingFound` instead, while a manual override (which doesn't
-            // depend on `home` at all) still works via the tray settings panel.
-            let home = app.path().home_dir().unwrap_or_else(|_| {
-                #[cfg(debug_assertions)]
-                eprintln!(
-                    "curfew-agent: could not resolve home directory, Serato OS-default \
-                     auto-detection will find nothing (manual override via tray still works)"
-                );
-                PathBuf::from("/curfew-agent-home-dir-unresolved")
-            });
+            // aborting tray/window creation entirely) — `resolve_home` falls
+            // back to a path that deliberately resolves nothing so OS-default
+            // detection degrades to `NothingFound` instead, while a manual
+            // override (which doesn't depend on `home` at all) still works via
+            // the tray settings panel. Story 3.3b: the same fallback is also
+            // needed by `watch_loop` now, so it lives in one shared place.
+            let home = watcher::resolve_home(app.handle());
             let settings = settings::load(app.handle()).unwrap_or_default();
             let resolution =
                 watcher::resolve_startup(&settings, &home, &watcher::detect::SystemDisks);

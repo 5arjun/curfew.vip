@@ -15,8 +15,11 @@ use crate::joiner::legacy::{DATABASE_FILENAME, SERATO_DIR};
 /// confirmed macOS path (Story 1.3b Dev Agent Record: a real file was inspected
 /// read-only at this exact location). Windows has no equivalent confirmed anywhere
 /// in this project's research; only the legacy default has a documented Windows
-/// convention (see [`os_default_roots`]).
-const SERATO4_HOME_RELPATH: &str = "Library/Application Support/Serato/Library/master.sqlite";
+/// convention (see [`os_default_roots`]). `pub(crate)` so other modules' test
+/// fixtures (Story 3.3b, e.g. `settings::tests`) can build a realistic internal
+/// Serato4 fixture without duplicating this literal.
+pub(crate) const SERATO4_HOME_RELPATH: &str =
+    "Library/Application Support/Serato/Library/master.sqlite";
 
 /// `master.sqlite`'s own filename, checked directly against a candidate path so a
 /// DJ (or a USB mount point) pointing straight at the `Serato/Library` folder
@@ -158,6 +161,171 @@ pub fn scan_removable_volumes(disks: &dyn DiskSource) -> Option<SeratoInstall> {
 /// the DJ can correct a wrong first hit instead).
 pub fn detect(home: &Path, disks: &dyn DiskSource) -> Option<SeratoInstall> {
     detect_os_default(home).or_else(|| scan_removable_volumes(disks))
+}
+
+/// Classifies one candidate path the same way [`classify`] does, but
+/// **collects every hit instead of returning on the first** (Story 3.3b,
+/// AC-1/AC-3). A migrated install — both generations still on disk under one
+/// root, e.g. a USB `_Serato_` folder that still carries pre-migration
+/// `.session` files alongside a real `master.sqlite` — must surface as
+/// **both** a `Serato4` and a `Legacy` hit; [`classify`]'s "Serato 4+ wins"
+/// precedence is exactly the single-answer behavior this story moves away
+/// from at watch-time (precedence becomes a capture-time dedup instead, see
+/// `capture::same_night`).
+///
+/// `classify` itself is kept unchanged and still exported — `watch_loop`'s
+/// per-source reachability check still wants a single-answer "does this
+/// exact source still resolve" probe, and this function is additive, not a
+/// replacement.
+pub fn classify_all(root: &Path) -> Vec<SeratoInstall> {
+    let mut found = Vec::new();
+
+    let serato4 =
+        if root.is_file() && root.file_name() == Some(std::ffi::OsStr::new(SERATO4_DB_FILENAME)) {
+            Some(SeratoInstall::Serato4 {
+                db_path: root.to_path_buf(),
+            })
+        } else {
+            let via_container = root.join(SERATO4_HOME_RELPATH);
+            if via_container.is_file() {
+                Some(SeratoInstall::Serato4 {
+                    db_path: via_container,
+                })
+            } else {
+                let via_direct = root.join(SERATO4_DB_FILENAME);
+                via_direct.is_file().then_some(SeratoInstall::Serato4 {
+                    db_path: via_direct,
+                })
+            }
+        };
+    found.extend(serato4);
+
+    let serato_dir = root.join(SERATO_DIR);
+    let legacy = if serato_dir.join(DATABASE_FILENAME).is_file() {
+        Some(SeratoInstall::Legacy(serato_dir))
+    } else if root.join(DATABASE_FILENAME).is_file() {
+        Some(SeratoInstall::Legacy(root.to_path_buf()))
+    } else {
+        None
+    };
+    found.extend(legacy);
+
+    found
+}
+
+/// A live Serato 4+ history source to watch: `db_path` is the `master.sqlite`
+/// file itself, `root` is the scope-guard root `joiner::serato4::open_read_only`
+/// checks it against. **`root` is per-source, not the DJ's configured
+/// override** — the internal source (fixed under `$HOME`) and an override
+/// pointing at a USB volume can be entirely different filesystem locations,
+/// so each source must carry the root that actually contains it (see the
+/// story's Dev Notes, "The `open_read_only` root trap").
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Serato4Source {
+    pub root: PathBuf,
+    pub db_path: PathBuf,
+}
+
+/// A live legacy history source to watch: `serato_dir` is the `_Serato_`
+/// folder (`History/Sessions/*.session` is watched under it), `library_root`
+/// is its parent — the root `capture::build_legacy` expects.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LegacySource {
+    pub serato_dir: PathBuf,
+    pub library_root: PathBuf,
+}
+
+/// Every history source this agent should watch concurrently (Story 3.3b,
+/// AC-1) — the set-of-sources replacement for one install at one place.
+/// `serato4`/`legacy` are independent: neither slot implies or excludes the
+/// other, and **Serato 4+ wins nothing here** — when a real night surfaces
+/// from both, precedence is resolved at capture time
+/// (`capture::same_night`), never at watch-time.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WatchPlan {
+    pub serato4: Option<Serato4Source>,
+    pub legacy: Option<LegacySource>,
+}
+
+/// Whether two paths name the same file once symlinks/`..` are resolved —
+/// used only for [`resolve_watch_plan`]'s de-dup rule. Falls back to a raw
+/// equality check if either side fails to canonicalize (most commonly: a
+/// test fixture path, or a transient mid-Save state) — a resolution failure
+/// must never manufacture a false "these are different files" that would
+/// stand up two watchers on the same physical database.
+fn paths_match(a: &Path, b: &Path) -> bool {
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    }
+}
+
+/// Resolves the full set of history sources to watch (Story 3.3b, AC-1/AC-3)
+/// — the root-cause fix for the incident where a saved override skipped
+/// detecting the OS-fixed Serato 4+ internal database entirely (see the
+/// story's Dev Notes, "Read this first: what actually broke").
+///
+/// Rules, applied in this exact order:
+/// 1. **Always** probe `home` for the internal Serato 4+ `master.sqlite`
+///    (`SERATO4_HOME_RELPATH`) — unconditionally, override or not. This
+///    single check alone is the root-cause fix.
+/// 2. When an override is saved, union in every source [`classify_all`]
+///    resolves under it.
+/// 3. When no override is saved, union in [`detect`]'s hit (so first-run/
+///    auto-detect behavior for a legacy-only DJ is unchanged).
+/// 4. **Dedup by canonicalized path.** An override that *is* the internal
+///    `master.sqlite` itself (exactly what a Serato 4+ auto-detect Save
+///    produces) makes rules 1 and 2 resolve to the same file — that must
+///    collapse to **one** source, not two watchers on one path.
+/// 5. Serato 4+ wins nothing here: both slots fill independently.
+pub fn resolve_watch_plan(
+    override_path: Option<&str>,
+    home: &Path,
+    disks: &dyn DiskSource,
+) -> WatchPlan {
+    let mut serato4: Option<Serato4Source> = None;
+    let mut legacy: Option<LegacySource> = None;
+
+    // Rule 1: unconditional internal-master.sqlite probe.
+    let internal_db_path = home.join(SERATO4_HOME_RELPATH);
+    if internal_db_path.is_file() {
+        serato4 = Some(Serato4Source {
+            root: internal_db_path.clone(),
+            db_path: internal_db_path,
+        });
+    }
+
+    // Rules 2/3: union in whatever the override (or, absent one, full
+    // detection) resolves.
+    let extra_installs: Vec<SeratoInstall> = match override_path {
+        Some(path) => classify_all(Path::new(path)),
+        None => detect(home, disks).into_iter().collect(),
+    };
+
+    for install in extra_installs {
+        match install {
+            SeratoInstall::Serato4 { db_path } => {
+                // Rule 4: dedup by canonicalized path.
+                let already_have_this_file = serato4
+                    .as_ref()
+                    .is_some_and(|existing| paths_match(&existing.db_path, &db_path));
+                if !already_have_this_file {
+                    serato4.get_or_insert(Serato4Source {
+                        root: db_path.clone(),
+                        db_path,
+                    });
+                }
+            }
+            SeratoInstall::Legacy(serato_dir) => {
+                legacy.get_or_insert_with(|| LegacySource {
+                    library_root: serato_dir.parent().unwrap_or(&serato_dir).to_path_buf(),
+                    serato_dir,
+                });
+            }
+        }
+    }
+
+    WatchPlan { serato4, legacy }
 }
 
 #[cfg(test)]
@@ -433,5 +601,170 @@ mod tests {
         let disks = FakeDisks(vec![]);
 
         assert_eq!(detect(&home.0, &disks), None);
+    }
+
+    // ---- classify_all: collects every hit, doesn't stop at the first --------
+
+    /// The exact migrated-USB shape (Arjun's own setup): a `_Serato_` folder
+    /// carrying pre-migration `database V2` **and** a real `master.sqlite`
+    /// dropped alongside it. `classify` would return only Serato4 (AC-5
+    /// precedence); `classify_all` must return both.
+    #[test]
+    fn classify_all_returns_both_generations_for_a_migrated_root() {
+        let root = TempDir::new("classify-all-migrated");
+        touch(&root.0.join(SERATO_DIR).join(DATABASE_FILENAME));
+        touch(&root.0.join(SERATO4_HOME_RELPATH));
+
+        let found = classify_all(&root.0);
+
+        assert_eq!(found.len(), 2);
+        assert!(found
+            .iter()
+            .any(|i| matches!(i, SeratoInstall::Serato4 { .. })));
+        assert!(found.iter().any(|i| matches!(i, SeratoInstall::Legacy(_))));
+
+        assert_eq!(
+            classify(&root.0),
+            Some(SeratoInstall::Serato4 {
+                db_path: root.0.join(SERATO4_HOME_RELPATH)
+            }),
+            "sanity: classify() still returns only the Serato4 winner"
+        );
+    }
+
+    #[test]
+    fn classify_all_returns_a_single_hit_for_a_legacy_only_root() {
+        let root = TempDir::new("classify-all-legacy-only");
+        touch(&root.0.join(SERATO_DIR).join(DATABASE_FILENAME));
+
+        let found = classify_all(&root.0);
+
+        assert_eq!(found, vec![SeratoInstall::Legacy(root.0.join(SERATO_DIR))]);
+    }
+
+    #[test]
+    fn classify_all_returns_empty_for_a_root_with_neither() {
+        let root = TempDir::new("classify-all-empty");
+        assert_eq!(classify_all(&root.0), Vec::new());
+    }
+
+    // ---- resolve_watch_plan: the incident fix --------------------------------
+
+    /// AC-1/AC-3: the incident configuration itself — override points at a
+    /// USB `_Serato_` folder with no history at all (legacy-only shape,
+    /// nothing Serato4-shaped under it), but the DJ's real Serato 4+ install
+    /// lives at the fixed internal home path. The resolved plan must still
+    /// carry the internal serato4 source — this is the root-cause fix,
+    /// proven directly.
+    #[test]
+    fn resolve_watch_plan_finds_the_internal_serato4_source_despite_a_legacy_only_override() {
+        let home = TempDir::new("plan-incident-home");
+        touch(&home.0.join(SERATO4_HOME_RELPATH));
+        let usb = TempDir::new("plan-incident-usb");
+        touch(&usb.0.join(SERATO_DIR).join(DATABASE_FILENAME));
+        let disks = FakeDisks(vec![]);
+
+        let plan = resolve_watch_plan(Some(usb.0.to_str().unwrap()), &home.0, &disks);
+
+        assert_eq!(
+            plan.serato4,
+            Some(Serato4Source {
+                root: home.0.join(SERATO4_HOME_RELPATH),
+                db_path: home.0.join(SERATO4_HOME_RELPATH),
+            }),
+            "AC-3: the internal master.sqlite must be watched regardless of the override"
+        );
+        assert_eq!(
+            plan.legacy,
+            Some(LegacySource {
+                serato_dir: usb.0.join(SERATO_DIR),
+                library_root: usb.0.clone(),
+            }),
+            "AC-1: the override's own legacy source must still be watched too"
+        );
+    }
+
+    /// The dedup rule (Task 1, rule 4): an override that *is* the internal
+    /// `master.sqlite` — what a Serato 4+ auto-detect Save actually produces
+    /// — must resolve to exactly one serato4 source, not two watchers on the
+    /// same file.
+    #[test]
+    fn resolve_watch_plan_dedups_when_override_is_the_internal_master_sqlite() {
+        let home = TempDir::new("plan-dedup-home");
+        let internal = home.0.join(SERATO4_HOME_RELPATH);
+        touch(&internal);
+        let disks = FakeDisks(vec![]);
+
+        let plan = resolve_watch_plan(Some(internal.to_str().unwrap()), &home.0, &disks);
+
+        assert_eq!(
+            plan.serato4,
+            Some(Serato4Source {
+                root: internal.clone(),
+                db_path: internal,
+            })
+        );
+        assert_eq!(plan.legacy, None);
+    }
+
+    /// Both a real internal serato4 install and a distinct override-derived
+    /// legacy install resolve into both plan slots simultaneously (AC-1) —
+    /// the base "watch both" case with no dedup in play.
+    #[test]
+    fn resolve_watch_plan_fills_both_slots_when_both_sources_are_real_and_distinct() {
+        let home = TempDir::new("plan-both-home");
+        touch(&home.0.join(SERATO4_HOME_RELPATH));
+        let override_dir = TempDir::new("plan-both-override");
+        touch(&override_dir.0.join(SERATO_DIR).join(DATABASE_FILENAME));
+        let disks = FakeDisks(vec![]);
+
+        let plan = resolve_watch_plan(Some(override_dir.0.to_str().unwrap()), &home.0, &disks);
+
+        assert!(plan.serato4.is_some());
+        assert!(plan.legacy.is_some());
+    }
+
+    /// No override saved: falls back to `detect(home, disks)`, so a
+    /// legacy-only DJ's first-run/auto-detect behavior is unchanged from
+    /// before this story.
+    #[test]
+    fn resolve_watch_plan_with_no_override_falls_back_to_detect() {
+        let home = TempDir::new("plan-no-override-home");
+        touch(
+            &home
+                .0
+                .join("Music")
+                .join(SERATO_DIR)
+                .join(DATABASE_FILENAME),
+        );
+        let disks = FakeDisks(vec![]);
+
+        let plan = resolve_watch_plan(None, &home.0, &disks);
+
+        assert_eq!(
+            plan.legacy,
+            Some(LegacySource {
+                serato_dir: home.0.join("Music").join(SERATO_DIR),
+                library_root: home.0.join("Music"),
+            })
+        );
+        assert_eq!(plan.serato4, None);
+    }
+
+    /// No override, and truly nothing anywhere: both slots stay empty.
+    #[test]
+    fn resolve_watch_plan_with_no_override_and_nothing_detected_is_fully_empty() {
+        let home = TempDir::new("plan-nothing-home");
+        let disks = FakeDisks(vec![]);
+
+        let plan = resolve_watch_plan(None, &home.0, &disks);
+
+        assert_eq!(
+            plan,
+            WatchPlan {
+                serato4: None,
+                legacy: None,
+            }
+        );
     }
 }

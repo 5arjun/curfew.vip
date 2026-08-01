@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS captured_sessions (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
   session_identity  TEXT NOT NULL UNIQUE,
   source            TEXT NOT NULL,        -- 'legacy' | 'serato4'
-  status            TEXT NOT NULL,        -- 'watching' | 'captured' | 'incomplete'
+  status            TEXT NOT NULL,        -- 'watching' | 'captured' | 'incomplete' | 'superseded'
   raw_ref           TEXT NOT NULL,        -- legacy: absolute .session path; serato4: "<db_path>#<serato_session_id>"
   started_at        INTEGER,              -- unix epoch seconds, first known play start_time
   ended_at          INTEGER,              -- unix epoch seconds, last known play start_time
@@ -130,6 +130,16 @@ pub enum SessionStatus {
     /// if the completion signal resolves on reconnect, otherwise stays flagged
     /// here rather than left ambiguously `Watching` forever.
     Incomplete,
+    /// Story 3.3b, AC-2: a real capture whose night was already captured by
+    /// the higher-precedence Serato 4+ source (or, on the rarer reverse
+    /// arrival order, a legacy row a later serato4 capture superseded).
+    /// Excluded from [`rows_pending_sync`] automatically — that query's
+    /// `status = 'captured'` filter already excludes anything not exactly
+    /// `Captured`. Kept in the local store rather than deleted, so a
+    /// superseded row stays visible for debugging (Story 3.3's review
+    /// precedent for keeping a stuck set visible, `TrayState::Failed`, rather
+    /// than reusing an existing "nothing to see" state).
+    Superseded,
 }
 
 impl SessionStatus {
@@ -138,6 +148,7 @@ impl SessionStatus {
             SessionStatus::Watching => "watching",
             SessionStatus::Captured => "captured",
             SessionStatus::Incomplete => "incomplete",
+            SessionStatus::Superseded => "superseded",
         }
     }
 
@@ -146,6 +157,7 @@ impl SessionStatus {
             "watching" => Some(SessionStatus::Watching),
             "captured" => Some(SessionStatus::Captured),
             "incomplete" => Some(SessionStatus::Incomplete),
+            "superseded" => Some(SessionStatus::Superseded),
             _ => None,
         }
     }
@@ -342,6 +354,19 @@ pub fn mark_incomplete(conn: &Connection, session_identity: &str) -> Result<(), 
     Ok(())
 }
 
+/// Marks a `captured` row `superseded` (Story 3.3b, AC-2): the capture-time
+/// "Serato 4 wins" dedup guard's terminal outcome for the losing side of a
+/// same-night duplicate. Scoped to `status = 'captured'` only, mirroring
+/// [`mark_incomplete`]'s no-op-on-mismatch idiom — a no-op (not an error) if
+/// the row is not currently `captured`.
+pub fn mark_superseded(conn: &Connection, session_identity: &str) -> Result<(), StoreError> {
+    conn.execute(
+        "UPDATE captured_sessions SET status = 'superseded' WHERE session_identity = ?1 AND status = 'captured'",
+        [session_identity],
+    )?;
+    Ok(())
+}
+
 /// Reads one row by its dedup key, if it exists.
 pub fn get_by_identity(
     conn: &Connection,
@@ -398,6 +423,36 @@ pub fn rows_pending_sync(conn: &Connection) -> Result<Vec<CapturedSessionRow>, S
     let rows = stmt.query_map([], row_from)?;
     rows.collect::<rusqlite::Result<Vec<_>>>()
         .map_err(StoreError::from)
+}
+
+/// Candidate rows for the capture-time "Serato 4 wins" dedup guard (Story
+/// 3.3b, AC-2): every `status = 'captured'` row of `source` whose time bounds
+/// overlap `(started_at, ended_at)` per [`crate::capture::same_night`]'s
+/// tolerance, checked in Rust rather than embedded as arithmetic in the SQL
+/// `WHERE` clause. Only rows with **both** bounds set are ever candidates —
+/// a `NULL` bound can never be proven to overlap, and the dedup guard's own
+/// fail-open principle says an unprovable overlap must not suppress a
+/// capture (see the caller in `watcher::mod`, `capture_and_store_legacy`/
+/// `_serato4`).
+pub fn overlapping_captured(
+    conn: &Connection,
+    source: SessionSource,
+    started_at: i64,
+    ended_at: i64,
+) -> Result<Vec<CapturedSessionRow>, StoreError> {
+    let mut stmt =
+        conn.prepare("SELECT * FROM captured_sessions WHERE source = ?1 AND status = 'captured'")?;
+    let rows = stmt.query_map([source.as_str()], row_from)?;
+    let candidates = rows
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(StoreError::from)?;
+    Ok(candidates
+        .into_iter()
+        .filter(|row| match (row.started_at, row.ended_at) {
+            (Some(s), Some(e)) => crate::capture::same_night((started_at, ended_at), (s, e)),
+            _ => false,
+        })
+        .collect())
 }
 
 /// Stamps a row's `synced_at` (Story 3.2 Task 3, the column `store.rs`'s own
@@ -1155,5 +1210,208 @@ mod tests {
             status_of(&conn, "serato4:20").unwrap(),
             Some(SessionStatus::Watching)
         );
+    }
+
+    // ---- overlapping_captured / mark_superseded (Story 3.3b, AC-2) ---------
+
+    /// The base case: a serato4 row overlapping the queried night is found.
+    #[test]
+    fn overlapping_captured_finds_an_overlapping_row_of_the_given_source() {
+        let file = TempStoreFile::new("overlap-finds");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_captured(
+            &conn,
+            "serato4:50",
+            SessionSource::Serato4,
+            "/path/master.sqlite#50",
+            Some(1_000),
+            Some(5_000),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+
+        let found = overlapping_captured(&conn, SessionSource::Serato4, 4_000, 8_000).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].session_identity, "serato4:50");
+    }
+
+    #[test]
+    fn overlapping_captured_excludes_a_clearly_disjoint_row() {
+        let file = TempStoreFile::new("overlap-disjoint");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_captured(
+            &conn,
+            "serato4:51",
+            SessionSource::Serato4,
+            "/path/master.sqlite#51",
+            Some(1_000),
+            Some(2_000),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+
+        let found = overlapping_captured(&conn, SessionSource::Serato4, 50_000, 52_000).unwrap();
+        assert!(found.is_empty());
+    }
+
+    /// Fail-open: a row with an unset bound can never be proven to overlap,
+    /// so it must never be treated as a match.
+    #[test]
+    fn overlapping_captured_excludes_rows_with_unknown_bounds() {
+        let file = TempStoreFile::new("overlap-unknown-bounds");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_captured(
+            &conn,
+            "serato4:52",
+            SessionSource::Serato4,
+            "/path/master.sqlite#52",
+            None,
+            None,
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+
+        let found = overlapping_captured(&conn, SessionSource::Serato4, 1_000, 5_000).unwrap();
+        assert!(found.is_empty());
+    }
+
+    #[test]
+    fn overlapping_captured_excludes_a_different_source() {
+        let file = TempStoreFile::new("overlap-different-source");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_captured(
+            &conn,
+            "legacy:53",
+            SessionSource::Legacy,
+            "/sessions/53.session",
+            Some(1_000),
+            Some(5_000),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+
+        let found = overlapping_captured(&conn, SessionSource::Serato4, 1_000, 5_000).unwrap();
+        assert!(
+            found.is_empty(),
+            "a legacy row must never satisfy a serato4-source overlap query"
+        );
+    }
+
+    #[test]
+    fn overlapping_captured_excludes_non_captured_status_rows() {
+        let file = TempStoreFile::new("overlap-non-captured");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_watching(
+            &conn,
+            "serato4:54",
+            SessionSource::Serato4,
+            "/path/master.sqlite#54",
+            Some(1_000),
+        )
+        .unwrap();
+
+        let found = overlapping_captured(&conn, SessionSource::Serato4, 1_000, 5_000).unwrap();
+        assert!(
+            found.is_empty(),
+            "a watching row has no settled bounds to compare"
+        );
+    }
+
+    #[test]
+    fn mark_superseded_transitions_captured_to_superseded() {
+        let file = TempStoreFile::new("mark-superseded");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_captured(
+            &conn,
+            "legacy:55",
+            SessionSource::Legacy,
+            "/sessions/55.session",
+            Some(1_000),
+            Some(1_500),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+
+        mark_superseded(&conn, "legacy:55").unwrap();
+
+        assert_eq!(
+            status_of(&conn, "legacy:55").unwrap(),
+            Some(SessionStatus::Superseded)
+        );
+        // The row's content must survive the transition (DJ-visibility/
+        // debugging, not a deletion).
+        let row = get_by_identity(&conn, "legacy:55").unwrap().unwrap();
+        assert!(row.plays_json.is_some());
+    }
+
+    #[test]
+    fn mark_superseded_is_a_noop_for_a_non_captured_row() {
+        let file = TempStoreFile::new("mark-superseded-noop");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_watching(
+            &conn,
+            "legacy:56",
+            SessionSource::Legacy,
+            "/sessions/56.session",
+            Some(1_000),
+        )
+        .unwrap();
+
+        mark_superseded(&conn, "legacy:56").unwrap();
+
+        assert_eq!(
+            status_of(&conn, "legacy:56").unwrap(),
+            Some(SessionStatus::Watching),
+            "mark_superseded must not touch a row that isn't captured"
+        );
+    }
+
+    /// Task 3's own instruction: verify (rather than add a new filter) that
+    /// `rows_pending_sync`'s existing `status = 'captured'` clause already
+    /// excludes a superseded row automatically.
+    #[test]
+    fn rows_pending_sync_excludes_a_superseded_row_automatically() {
+        let file = TempStoreFile::new("pending-sync-excludes-superseded");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_captured(
+            &conn,
+            "legacy:57",
+            SessionSource::Legacy,
+            "/sessions/57.session",
+            Some(1_000),
+            Some(1_500),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+        upsert_captured(
+            &conn,
+            "serato4:58",
+            SessionSource::Serato4,
+            "/path/master.sqlite#58",
+            Some(2_000),
+            Some(2_500),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+        mark_superseded(&conn, "legacy:57").unwrap();
+
+        let pending = rows_pending_sync(&conn).unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].session_identity, "serato4:58");
     }
 }

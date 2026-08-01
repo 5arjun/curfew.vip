@@ -89,24 +89,37 @@ pub fn get_serato_path_override(app: AppHandle) -> Result<Option<String>, String
         .map_err(|e| e.to_string())
 }
 
-/// Checks whether a trimmed, non-empty path string resolves to a Serato install
-/// (Story 2.6 Task 3), via `watcher::detect::classify`. Split out from
-/// [`set_serato_path_override`] so it is unit-testable without an `AppHandle` —
-/// the command itself needs a running Tauri app and has no test coverage today,
-/// same as `get_serato_path_override`.
-fn validate_override(trimmed: &str) -> Result<(), String> {
-    if crate::watcher::detect::classify(Path::new(trimmed)).is_none() {
-        return Err(format!(
-            "\"{trimmed}\" doesn't look like a Serato folder — expected a `_Serato_` folder \
-             (legacy) or a Serato 4+ install containing `master.sqlite`."
-        ));
+/// Checks whether a trimmed, non-empty path string resolves to at least one
+/// live history source once resolved into a full [`crate::watcher::detect::WatchPlan`]
+/// (Story 3.3b, AC-4) — not merely whether *this* path alone classifies. A
+/// Serato 4+ DJ pointing at a genuinely history-less folder (the incident
+/// configuration — a USB `_Serato_` carrying a library but no play history)
+/// must still be **accepted**, because the fixed internal `master.sqlite`
+/// will be watched regardless of what this override resolves to (AC-3);
+/// only a DJ with truly nothing anywhere is rejected. Split out from
+/// [`set_serato_path_override`] so it is unit-testable without an
+/// `AppHandle` — the command itself needs a running Tauri app and has no
+/// test coverage today, same as `get_serato_path_override`.
+fn validate_override(
+    trimmed: &str,
+    home: &Path,
+    disks: &dyn crate::watcher::detect::DiskSource,
+) -> Result<(), String> {
+    let plan = crate::watcher::detect::resolve_watch_plan(Some(trimmed), home, disks);
+    if plan.serato4.is_none() && plan.legacy.is_none() {
+        // Verbatim per AC-4 (Failure Register: calm, technical, no
+        // exclamation) — replaces the longer per-format-detail string this
+        // story's incident showed was misleading (it implied *this* folder
+        // alone was the only thing that mattered).
+        return Err("No Serato library found here — point me at your `_Serato_` folder.".into());
     }
     Ok(())
 }
 
-/// Persist a new Serato path override. Accepts a non-empty path string that
-/// resolves to a real Serato install (Story 2.6 Task 3) — this is the confirm
-/// action itself (UX-DR20): nothing commits without passing this check.
+/// Persist a new Serato path override. Accepts a non-empty path string whose
+/// resolved plan carries at least one live history source (Story 3.3b,
+/// AC-4) — this is the confirm action itself (UX-DR20): nothing commits
+/// without passing this check, synchronously, at Save.
 ///
 /// A malformed/corrupt existing settings file must never block saving a new
 /// override — falls back to defaults rather than propagating the load error,
@@ -117,7 +130,8 @@ pub fn set_serato_path_override(app: AppHandle, path: String) -> Result<(), Stri
     if trimmed.is_empty() {
         return Err("path override cannot be empty".into());
     }
-    validate_override(trimmed)?;
+    let home = crate::watcher::resolve_home(&app);
+    validate_override(trimmed, &home, &crate::watcher::detect::SystemDisks)?;
     let mut settings = load(&app).unwrap_or_default();
     settings.serato_path_override = Some(trimmed.to_string());
     save(&app, &settings).map_err(|e| e.to_string())
@@ -128,37 +142,99 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicU64, Ordering};
 
-    /// Story 2.6 Task 3: a folder that resolves to a real Serato install passes
-    /// validation; anything else is a clear `Err`, never a silently accepted
-    /// garbage path.
+    /// No removable volumes — mirrors `watcher::detect`/`watcher::mod`'s own
+    /// local `NoDisks` fixture (duplicated per this crate's "no shared
+    /// test-support crate" convention).
+    struct NoDisks;
+    impl crate::watcher::detect::DiskSource for NoDisks {
+        fn removable_mount_points(&self) -> Vec<PathBuf> {
+            vec![]
+        }
+    }
+
+    /// A scratch temp dir, unique per test, cleaned up on drop — used as
+    /// both the override candidate and the `home` param below.
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new(tag: &str) -> Self {
+            static COUNTER: AtomicU64 = AtomicU64::new(0);
+            let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+            let dir = std::env::temp_dir().join(format!(
+                "curfew-settings-validate-{tag}-{}-{n}",
+                std::process::id()
+            ));
+            std::fs::create_dir_all(&dir).expect("temp fixture dir creates");
+            Self(dir)
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// Story 2.6 Task 3 / Story 3.3b AC-4: a folder that resolves to a real
+    /// Serato install passes validation; anything else is a clear `Err`,
+    /// never a silently accepted garbage path. `home` here is an unrelated,
+    /// empty temp dir — this override alone must be sufficient.
     #[test]
     fn validate_override_accepts_a_real_legacy_folder() {
-        let dir = std::env::temp_dir().join(format!(
-            "curfew-settings-validate-legacy-{}",
-            std::process::id()
-        ));
-        let serato_dir = dir.join("_Serato_");
-        std::fs::create_dir_all(&serato_dir).unwrap();
-        std::fs::write(serato_dir.join("database V2"), b"").unwrap();
+        let serato_dir = TempDir::new("legacy-ok");
+        std::fs::write(serato_dir.0.join("database V2"), b"").unwrap();
+        let home = TempDir::new("legacy-ok-home");
 
-        let result = validate_override(serato_dir.to_str().unwrap());
-        let _ = std::fs::remove_dir_all(&dir);
+        let result = validate_override(serato_dir.0.to_str().unwrap(), &home.0, &NoDisks);
 
         assert!(result.is_ok());
     }
 
     #[test]
-    fn validate_override_rejects_a_folder_with_no_serato_install() {
-        let dir = std::env::temp_dir().join(format!(
-            "curfew-settings-validate-empty-{}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
+    fn validate_override_rejects_a_folder_with_no_history_and_no_internal_serato4_anywhere() {
+        let dir = TempDir::new("empty");
+        let home = TempDir::new("empty-home");
 
-        let result = validate_override(dir.to_str().unwrap());
-        let _ = std::fs::remove_dir_all(&dir);
+        let result = validate_override(dir.0.to_str().unwrap(), &home.0, &NoDisks);
 
         assert!(result.is_err(), "an unrecognized path must be a clear Err");
+        assert_eq!(
+            result.unwrap_err(),
+            "No Serato library found here — point me at your `_Serato_` folder.",
+            "AC-4's rejection copy must be verbatim"
+        );
+    }
+
+    /// Story 3.3b, AC-3/AC-4 — the incident configuration itself: a Serato 4+
+    /// DJ's override points at a folder with a library but genuinely no play
+    /// history (e.g. a migrated USB `_Serato_`). Because the fixed internal
+    /// `master.sqlite` will be watched regardless (AC-3), this override must
+    /// be **accepted**, not rejected — the exact behavior change this story
+    /// exists to make.
+    #[test]
+    fn validate_override_accepts_a_no_history_folder_when_the_internal_serato4_install_exists() {
+        let usb = TempDir::new("no-history-usb");
+        std::fs::write(usb.0.join("database V2"), b"").unwrap(); // library, no History/
+        let home = TempDir::new("no-history-home");
+        std::fs::create_dir_all(
+            home.0
+                .join(crate::watcher::detect::SERATO4_HOME_RELPATH)
+                .parent()
+                .unwrap(),
+        )
+        .unwrap();
+        std::fs::write(
+            home.0.join(crate::watcher::detect::SERATO4_HOME_RELPATH),
+            b"",
+        )
+        .unwrap();
+
+        let result = validate_override(usb.0.to_str().unwrap(), &home.0, &NoDisks);
+
+        assert!(
+            result.is_ok(),
+            "a no-history override must still be accepted when the internal serato4 install exists"
+        );
     }
 
     /// A scratch file path under the OS temp dir, unique per test so parallel
