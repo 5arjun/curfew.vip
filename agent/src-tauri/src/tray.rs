@@ -179,10 +179,9 @@ mod macos_probe {
         };
 
         let appearance = button.effectiveAppearance();
-        let names = [
-            unsafe { objc2_app_kit::NSAppearanceNameAqua },
-            unsafe { objc2_app_kit::NSAppearanceNameDarkAqua },
-        ];
+        let names = [unsafe { objc2_app_kit::NSAppearanceNameAqua }, unsafe {
+            objc2_app_kit::NSAppearanceNameDarkAqua
+        }];
         let best = appearance.bestMatchFromAppearancesWithNames(&NSArray::from_slice(&names));
 
         match best {
