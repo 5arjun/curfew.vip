@@ -636,7 +636,13 @@ fn recheck_pending_serato4(
         .collect();
 
     for id in resolved {
-        if capture_and_store_serato4(store_conn, root, db_path, id) {
+        if capture_and_store_serato4(
+            store_conn,
+            root,
+            db_path,
+            id,
+            &crate::error_reporting::SentryReporter,
+        ) {
             pending.remove(&id);
         }
     }
@@ -650,16 +656,23 @@ fn recheck_pending_serato4(
 /// (parse/join/correlation/SQLite error, or a failed store write), logged in
 /// debug builds: the caller keeps the session pending so the next poll tick
 /// retries it, rather than silently losing it for the rest of this run.
-fn capture_and_store_serato4(
+///
+/// `reporter` is `pub(crate)` DI (Story 3.4, Task 2) — production call sites
+/// always pass `&error_reporting::SentryReporter` as a literal; tests pass a
+/// fake so they never depend on `config::SENTRY_DSN`'s build-time value.
+/// Bumped to `pub(crate)` visibility: `backfill::reprocess_parse_failures`
+/// (Task 3) calls this directly from its own module.
+pub(crate) fn capture_and_store_serato4(
     store_conn: &Connection,
     root: &Path,
     db_path: &Path,
     session_id: i64,
+    reporter: &dyn crate::error_reporting::ErrorReporter,
 ) -> bool {
+    let identity = crate::capture::serato4_session_identity(session_id);
+    let raw_ref = crate::capture::serato4_raw_ref(db_path, session_id);
     match crate::capture::build_serato4(root, db_path, session_id) {
         Ok((plays, derived)) => {
-            let identity = crate::capture::serato4_session_identity(session_id);
-            let raw_ref = crate::capture::serato4_raw_ref(db_path, session_id);
             let (started_at, ended_at) = crate::capture::session_bounds(&plays);
             if let Err(_e) = crate::store::upsert_captured(
                 store_conn,
@@ -721,9 +734,25 @@ fn capture_and_store_serato4(
             // resolves to `captured`.
             true
         }
-        Err(_e) => {
+        Err(e) => {
             #[cfg(debug_assertions)]
-            eprintln!("curfew-agent: serato4 capture failed for session {session_id}: {_e}");
+            eprintln!("curfew-agent: serato4 capture failed for session {session_id}: {e}");
+            log_store_err(
+                "record_parse_failure (serato4)",
+                crate::store::record_parse_failure(
+                    store_conn,
+                    &identity,
+                    crate::store::SessionSource::Serato4,
+                    &raw_ref,
+                    crate::config::AGENT_VERSION,
+                    &e.to_string(),
+                ),
+            );
+            reporter.report(
+                "serato4 capture",
+                crate::config::AGENT_VERSION,
+                &e.to_string(),
+            );
             false
         }
     }
@@ -825,24 +854,32 @@ fn recheck_legacy_quiet_periods(
         else {
             continue;
         };
-        if capture_and_store_legacy(store_conn, library_root, &session_path, &session_identity) {
+        if capture_and_store_legacy(
+            store_conn,
+            library_root,
+            &session_path,
+            &session_identity,
+            &crate::error_reporting::SentryReporter,
+        ) {
             pending.remove(&session_path);
         }
     }
 }
 
 /// Runs the legacy capture pipeline for one now-quiet session and persists it.
-/// Mirrors [`capture_and_store_serato4`]'s error handling and terminal-outcome
-/// `bool` return.
-fn capture_and_store_legacy(
+/// Mirrors [`capture_and_store_serato4`]'s error handling, terminal-outcome
+/// `bool` return, and `reporter` DI (Story 3.4, Task 2) — see that function's
+/// doc comment for both.
+pub(crate) fn capture_and_store_legacy(
     store_conn: &Connection,
     library_root: &Path,
     session_path: &Path,
     session_identity: &str,
+    reporter: &dyn crate::error_reporting::ErrorReporter,
 ) -> bool {
+    let raw_ref = session_path.to_string_lossy().into_owned();
     match crate::capture::build_legacy(library_root, session_path) {
         Ok((plays, derived)) => {
-            let raw_ref = session_path.to_string_lossy().into_owned();
             let (started_at, ended_at) = crate::capture::session_bounds(&plays);
             if let Err(_e) = crate::store::upsert_captured(
                 store_conn,
@@ -892,11 +929,27 @@ fn capture_and_store_legacy(
             // sibling above.
             true
         }
-        Err(_e) => {
+        Err(e) => {
             #[cfg(debug_assertions)]
             eprintln!(
-                "curfew-agent: legacy capture failed for {}: {_e}",
+                "curfew-agent: legacy capture failed for {}: {e}",
                 session_path.display()
+            );
+            log_store_err(
+                "record_parse_failure (legacy)",
+                crate::store::record_parse_failure(
+                    store_conn,
+                    session_identity,
+                    crate::store::SessionSource::Legacy,
+                    &raw_ref,
+                    crate::config::AGENT_VERSION,
+                    &e.to_string(),
+                ),
+            );
+            reporter.report(
+                "legacy capture",
+                crate::config::AGENT_VERSION,
+                &e.to_string(),
             );
             false
         }
@@ -972,7 +1025,13 @@ fn check_for_new_sessions(
             );
 
             if crate::capture::serato4_end_time_resolved(session.end_time) {
-                if !capture_and_store_serato4(store_conn, root, db_path, session.id) {
+                if !capture_and_store_serato4(
+                    store_conn,
+                    root,
+                    db_path,
+                    session.id,
+                    &crate::error_reporting::SentryReporter,
+                ) {
                     pending.insert(session.id);
                 }
             } else {
@@ -999,6 +1058,30 @@ mod tests {
     use super::*;
     use crate::watcher::detect::DiskSource;
     use std::sync::atomic::{AtomicU64, Ordering};
+
+    /// A no-op `ErrorReporter` fake (Story 3.4, Task 2) — these tests never
+    /// depend on `config::SENTRY_DSN`'s build-time value.
+    struct NoopReporter;
+    impl crate::error_reporting::ErrorReporter for NoopReporter {
+        fn report(&self, _context: &str, _agent_version: &str, _message: &str) {}
+    }
+
+    /// Records every call instead of no-op-ing (Story 3.4, Task 6) — used by
+    /// the terminal-failure tests below to assert `report()` is actually
+    /// invoked with the right `context`/`agent_version`/message.
+    #[derive(Default)]
+    struct RecordingReporter {
+        calls: Mutex<Vec<(String, String, String)>>,
+    }
+    impl crate::error_reporting::ErrorReporter for RecordingReporter {
+        fn report(&self, context: &str, agent_version: &str, message: &str) {
+            self.calls.lock().unwrap().push((
+                context.to_string(),
+                agent_version.to_string(),
+                message.to_string(),
+            ));
+        }
+    }
 
     struct TempDir(PathBuf);
 
@@ -1352,7 +1435,8 @@ mod tests {
             &store_conn,
             &serato4_dir.0,
             &db_path,
-            7
+            7,
+            &NoopReporter
         ));
 
         let legacy_lib_dir = TempDir::new("dedup-forward-legacy-lib");
@@ -1369,6 +1453,7 @@ mod tests {
             &legacy_lib_dir.0,
             &session_path,
             identity,
+            &NoopReporter,
         ));
 
         assert_eq!(
@@ -1407,6 +1492,7 @@ mod tests {
             &legacy_lib_dir.0,
             &session_path,
             identity,
+            &NoopReporter,
         ));
         assert_eq!(
             crate::store::status_of(&store_conn, identity).unwrap(),
@@ -1419,7 +1505,8 @@ mod tests {
             &store_conn,
             &serato4_dir.0,
             &db_path,
-            9
+            9,
+            &NoopReporter
         ));
 
         assert_eq!(
@@ -1456,6 +1543,7 @@ mod tests {
             &legacy_lib_dir.0,
             &session_path,
             identity,
+            &NoopReporter,
         ));
         crate::store::mark_synced(&store_conn, identity, 999_999).unwrap();
 
@@ -1465,7 +1553,8 @@ mod tests {
             &store_conn,
             &serato4_dir.0,
             &db_path,
-            11
+            11,
+            &NoopReporter
         ));
 
         assert_eq!(
@@ -1489,7 +1578,8 @@ mod tests {
             &store_conn,
             &serato4_dir.0,
             &db_path,
-            13
+            13,
+            &NoopReporter
         ));
 
         let legacy_lib_dir = TempDir::new("dedup-fail-open-legacy-lib");
@@ -1506,6 +1596,7 @@ mod tests {
             &legacy_lib_dir.0,
             &session_path,
             identity,
+            &NoopReporter,
         ));
 
         assert_eq!(
@@ -1513,5 +1604,81 @@ mod tests {
             Some(crate::store::SessionStatus::Captured),
             "unknown bounds must never suppress a capture -- fail open"
         );
+    }
+
+    // ---- Terminal-failure -> parse_failures + ErrorReporter (Story 3.4, Task 2/6) ---
+
+    /// A genuine `build_serato4` error (not `CaptureError::EmptySession`) —
+    /// `db_path` names a file that was never created, so `open_read_only`
+    /// fails outright — records a `parse_failures` row and reports it,
+    /// tagged with the running build's `agent_version`.
+    #[test]
+    fn a_terminal_serato4_capture_failure_records_and_reports() {
+        let store_dir = TempDir::new("terminal-failure-serato4-store");
+        let store_conn =
+            crate::store::open_at(&store_dir.0.join("local.sqlite")).expect("store opens");
+
+        let serato4_dir = TempDir::new("terminal-failure-serato4-missing");
+        let db_path = serato4_dir.0.join("master.sqlite");
+        let reporter = RecordingReporter::default();
+
+        let succeeded = capture_and_store_serato4(&store_conn, &db_path, &db_path, 77, &reporter);
+
+        assert!(
+            !succeeded,
+            "a genuine build_serato4 error is not terminal-success"
+        );
+
+        let identity = crate::capture::serato4_session_identity(77);
+        let rows = crate::store::unresolved_parse_failures(&store_conn).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].session_identity, identity);
+        assert_eq!(rows[0].source, crate::store::SessionSource::Serato4);
+        assert_eq!(rows[0].failed_agent_version, crate::config::AGENT_VERSION);
+
+        let calls = reporter.calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0, "serato4 capture");
+        assert_eq!(calls[0].1, crate::config::AGENT_VERSION);
+    }
+
+    /// A genuine `build_legacy` error (not `CaptureError::EmptySession`) —
+    /// `session_path` names a file that was never created, so
+    /// `parse_session_file_partial`'s `std::fs::read` fails outright.
+    #[test]
+    fn a_terminal_legacy_capture_failure_records_and_reports() {
+        let store_dir = TempDir::new("terminal-failure-legacy-store");
+        let store_conn =
+            crate::store::open_at(&store_dir.0.join("local.sqlite")).expect("store opens");
+
+        let legacy_lib_dir = TempDir::new("terminal-failure-legacy-lib");
+        empty_legacy_library_root(&legacy_lib_dir.0);
+        let missing_session_path = legacy_lib_dir.0.join("nonexistent.session");
+        let identity = "legacy:terminal-failure";
+        let reporter = RecordingReporter::default();
+
+        let succeeded = capture_and_store_legacy(
+            &store_conn,
+            &legacy_lib_dir.0,
+            &missing_session_path,
+            identity,
+            &reporter,
+        );
+
+        assert!(
+            !succeeded,
+            "a genuine build_legacy error is not terminal-success"
+        );
+
+        let rows = crate::store::unresolved_parse_failures(&store_conn).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].session_identity, identity);
+        assert_eq!(rows[0].source, crate::store::SessionSource::Legacy);
+        assert_eq!(rows[0].failed_agent_version, crate::config::AGENT_VERSION);
+
+        let calls = reporter.calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0, "legacy capture");
+        assert_eq!(calls[0].1, crate::config::AGENT_VERSION);
     }
 }

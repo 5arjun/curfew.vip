@@ -128,6 +128,22 @@ keyring = { version = "3", features = ["apple-native", "windows-native"] }
 # forced Cargo's resolver back onto the older, security-regressed 0.13.1).
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "blocking"] }
 
+# Agent-side tagged error reporting (Story 3.4, Task 1, AD-13/AR-7 layer 2:
+# a real error-tracking provider so format-drift that only surfaces on a
+# real DJ's machine post-release is ever seen at all). The official crate,
+# not a bespoke Supabase write path -- AD-8 forbids inventing a second
+# exception to its "no ad-hoc write path" rule (Stripe's webhook is the one
+# carved-out exception), and a genuinely external third-party service was
+# never a "cloud mutation" in AD-8's sense to begin with. Same "buy the
+# undifferentiated part" posture already applied to Stripe/triseratops/id3/
+# rusqlite. `default-features = false` then explicit `reqwest`+`rustls`:
+# the crate's own default pairs `reqwest` with `native-tls`, and `rustls`
+# (not `native-tls`) mirrors the `reqwest` dependency's own TLS choice
+# above -- one TLS stack, not two. `config::SENTRY_DSN` compiles to an
+# empty string until Arjun provisions a real DSN (see `config.rs`), at
+# which point `error_reporting::SentryReporter` no-ops rather than sending.
+sentry = { version = "0.49", default-features = false, features = ["backtrace", "contexts", "panic", "reqwest", "rustls"] }
+
 # JWT `exp`/`sub` claim extraction (Task 5) — already transitively resolved
 # (it's `reqwest`'s own dependency per `Cargo.lock`), needs its own entry for
 # the same reason as `reqwest`/`url` above. No signature verification is done

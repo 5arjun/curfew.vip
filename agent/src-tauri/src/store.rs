@@ -45,6 +45,23 @@ CREATE TABLE IF NOT EXISTS captured_sessions (
   derived_json      TEXT,                 -- serialized CapturedDerived (stats + confidence), NULL until captured
   synced_at         INTEGER               -- NULL forever in this story; Story 3.2 owns setting it
 );
+
+-- Story 3.4, Task 2: local parse-failure ledger (AR-7 layers 2+3). An
+-- additive new table, not an `ALTER TABLE` on `captured_sessions` -- no
+-- precedent in this codebase for adding a column to an existing local
+-- SQLite file across DJ machines already running an older schema;
+-- `CREATE TABLE IF NOT EXISTS` sidesteps that entirely, same reasoning
+-- Story 3.3b used for `SessionStatus::Superseded`. No "resolved" status
+-- column: a resolved failure is deleted (see `clear_parse_failure`), not
+-- flagged.
+CREATE TABLE IF NOT EXISTS parse_failures (
+  session_identity     TEXT PRIMARY KEY,
+  source                TEXT NOT NULL,        -- 'legacy' | 'serato4'
+  raw_ref               TEXT NOT NULL,
+  failed_agent_version  TEXT NOT NULL,
+  failed_at             INTEGER NOT NULL,      -- unix epoch seconds, agent wall-clock
+  last_error            TEXT NOT NULL
+);
 "#;
 
 /// Everything that can go wrong opening or writing to the local store. Mirrors
@@ -468,6 +485,98 @@ pub fn mark_synced(
     conn.execute(
         "UPDATE captured_sessions SET synced_at = ?1 WHERE session_identity = ?2",
         rusqlite::params![synced_at, session_identity],
+    )?;
+    Ok(())
+}
+
+// ---- Parse-failure ledger (Story 3.4, Task 2) ------------------------------
+
+/// One `parse_failures` row, read back.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ParseFailureRow {
+    pub session_identity: String,
+    pub source: SessionSource,
+    pub raw_ref: String,
+    pub failed_agent_version: String,
+    pub failed_at: i64,
+    pub last_error: String,
+}
+
+fn parse_failure_row_from(row: &rusqlite::Row) -> rusqlite::Result<ParseFailureRow> {
+    let source_raw: String = row.get("source")?;
+    Ok(ParseFailureRow {
+        session_identity: row.get("session_identity")?,
+        source: SessionSource::parse(&source_raw).ok_or_else(|| {
+            rusqlite::Error::FromSqlConversionFailure(
+                0,
+                rusqlite::types::Type::Text,
+                format!("unknown source {source_raw:?}").into(),
+            )
+        })?,
+        raw_ref: row.get("raw_ref")?,
+        failed_agent_version: row.get("failed_agent_version")?,
+        failed_at: row.get("failed_at")?,
+        last_error: row.get("last_error")?,
+    })
+}
+
+/// Records (or updates in place) a terminal capture failure. A session can
+/// fail more than once across restarts/backfill attempts — each failure
+/// overwrites the row with the latest attempt's info; this ledger does not
+/// accumulate a history of past failures.
+pub fn record_parse_failure(
+    conn: &Connection,
+    session_identity: &str,
+    source: SessionSource,
+    raw_ref: &str,
+    agent_version: &str,
+    error_message: &str,
+) -> Result<(), StoreError> {
+    conn.execute(
+        r#"INSERT INTO parse_failures
+             (session_identity, source, raw_ref, failed_agent_version, failed_at, last_error)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+           ON CONFLICT(session_identity) DO UPDATE SET
+             failed_agent_version = excluded.failed_agent_version,
+             failed_at = excluded.failed_at,
+             last_error = excluded.last_error"#,
+        rusqlite::params![
+            session_identity,
+            source.as_str(),
+            raw_ref,
+            agent_version,
+            now_unix(),
+            error_message,
+        ],
+    )?;
+    Ok(())
+}
+
+/// Every row currently in the ledger, no filter — there is no "resolved"
+/// status to filter on (see `parse_failures`' schema doc comment above).
+pub fn unresolved_parse_failures(conn: &Connection) -> Result<Vec<ParseFailureRow>, StoreError> {
+    let mut stmt = conn.prepare("SELECT * FROM parse_failures")?;
+    let rows = stmt.query_map([], parse_failure_row_from)?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(StoreError::from)
+}
+
+/// The tray-precedence signal `sync_queue.rs`'s `desired_tray_state` reads
+/// (Task 4): whether any format-drift failure is currently unresolved.
+pub fn has_unresolved_parse_failures(conn: &Connection) -> Result<bool, StoreError> {
+    Ok(conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM parse_failures LIMIT 1)",
+        [],
+        |row| row.get::<_, bool>(0),
+    )?)
+}
+
+/// Removes a row once a reprocess attempt (Task 3) succeeds. A no-op (not an
+/// error) if `session_identity` does not match any row.
+pub fn clear_parse_failure(conn: &Connection, session_identity: &str) -> Result<(), StoreError> {
+    conn.execute(
+        "DELETE FROM parse_failures WHERE session_identity = ?1",
+        [session_identity],
     )?;
     Ok(())
 }
@@ -1413,5 +1522,102 @@ mod tests {
         let pending = rows_pending_sync(&conn).unwrap();
         assert_eq!(pending.len(), 1);
         assert_eq!(pending[0].session_identity, "serato4:58");
+    }
+
+    // ---- Parse-failure ledger (Story 3.4, Task 2/6) -------------------------
+
+    #[test]
+    fn record_parse_failure_then_unresolved_round_trips() {
+        let file = TempStoreFile::new("parse-failure-roundtrip");
+        let conn = open_at(&file.0).expect("store opens");
+
+        record_parse_failure(
+            &conn,
+            "legacy:bad-file",
+            SessionSource::Legacy,
+            "/sessions/bad.session",
+            "0.1.0",
+            "unexpected EOF",
+        )
+        .unwrap();
+
+        let rows = unresolved_parse_failures(&conn).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].session_identity, "legacy:bad-file");
+        assert_eq!(rows[0].source, SessionSource::Legacy);
+        assert_eq!(rows[0].raw_ref, "/sessions/bad.session");
+        assert_eq!(rows[0].failed_agent_version, "0.1.0");
+        assert_eq!(rows[0].last_error, "unexpected EOF");
+    }
+
+    #[test]
+    fn a_second_record_parse_failure_for_the_same_identity_overwrites_not_duplicates() {
+        let file = TempStoreFile::new("parse-failure-overwrite");
+        let conn = open_at(&file.0).expect("store opens");
+
+        record_parse_failure(
+            &conn,
+            "legacy:flaky",
+            SessionSource::Legacy,
+            "/sessions/flaky.session",
+            "0.1.0",
+            "first error",
+        )
+        .unwrap();
+        record_parse_failure(
+            &conn,
+            "legacy:flaky",
+            SessionSource::Legacy,
+            "/sessions/flaky.session",
+            "0.2.0",
+            "second error",
+        )
+        .unwrap();
+
+        let rows = unresolved_parse_failures(&conn).unwrap();
+        assert_eq!(rows.len(), 1, "must overwrite, not accumulate history");
+        assert_eq!(rows[0].failed_agent_version, "0.2.0");
+        assert_eq!(rows[0].last_error, "second error");
+    }
+
+    #[test]
+    fn has_unresolved_parse_failures_reflects_ledger_state() {
+        let file = TempStoreFile::new("parse-failure-has-unresolved");
+        let conn = open_at(&file.0).expect("store opens");
+
+        assert!(!has_unresolved_parse_failures(&conn).unwrap());
+
+        record_parse_failure(
+            &conn,
+            "serato4:99",
+            SessionSource::Serato4,
+            "/path/master.sqlite#99",
+            "0.1.0",
+            "corrupt row",
+        )
+        .unwrap();
+        assert!(has_unresolved_parse_failures(&conn).unwrap());
+    }
+
+    #[test]
+    fn clear_parse_failure_removes_the_row_and_flips_has_unresolved_back_to_false() {
+        let file = TempStoreFile::new("parse-failure-clear");
+        let conn = open_at(&file.0).expect("store opens");
+
+        record_parse_failure(
+            &conn,
+            "legacy:cleared",
+            SessionSource::Legacy,
+            "/sessions/cleared.session",
+            "0.1.0",
+            "some error",
+        )
+        .unwrap();
+        assert!(has_unresolved_parse_failures(&conn).unwrap());
+
+        clear_parse_failure(&conn, "legacy:cleared").unwrap();
+
+        assert!(!has_unresolved_parse_failures(&conn).unwrap());
+        assert!(unresolved_parse_failures(&conn).unwrap().is_empty());
     }
 }

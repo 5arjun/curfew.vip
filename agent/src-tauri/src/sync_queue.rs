@@ -137,7 +137,7 @@ fn sync_loop(app: AppHandle) {
             &permanently_skipped,
         ) {
             Ok(summary) => {
-                handle_pass_outcome(&app, &mut backoff, &mut permanently_skipped, summary)
+                handle_pass_outcome(&app, &conn, &mut backoff, &mut permanently_skipped, summary)
             }
             Err(e) => {
                 // A pass-level failure never got as far as attempting a
@@ -160,11 +160,17 @@ fn sync_loop(app: AppHandle) {
                 }
                 backoff.increase();
                 if let Some(coordinator) = app.try_state::<crate::tray::DriveTrayCoordinator>() {
+                    // Fail-open to `false` on a store read error -- a store
+                    // hiccup must not paint every DJ's tray with a
+                    // format-drift signal that was never actually detected.
+                    let has_format_drift =
+                        crate::store::has_unresolved_parse_failures(&conn).unwrap_or(false);
                     let has_transient_backlog = has_retryable_backlog(&conn, &permanently_skipped);
                     let has_permanent_backlog = permanent || !permanently_skipped.is_empty();
                     coordinator.write_if_drive_state(&app, |drive_connected| {
                         desired_tray_state(
                             drive_connected,
+                            has_format_drift,
                             has_transient_backlog,
                             has_permanent_backlog,
                         )
@@ -180,9 +186,12 @@ fn sync_loop(app: AppHandle) {
 /// Applies one successful pass's [`SyncSummary`] to the backoff state, the
 /// permanent-failure skip-list, and the tray — split out from [`sync_loop`]
 /// so the decision logic is unit-testable without a real `AppHandle`/SQLite
-/// connection driving the whole loop.
+/// connection driving the whole loop. `conn` is read-only here (Story 3.4,
+/// Task 4): only to check `store::has_unresolved_parse_failures` for the
+/// tray-precedence decision.
 fn handle_pass_outcome(
     app: &AppHandle,
+    conn: &rusqlite::Connection,
     backoff: &mut Backoff,
     permanently_skipped: &mut HashSet<String>,
     summary: SyncSummary,
@@ -200,11 +209,15 @@ fn handle_pass_outcome(
     }
 
     if let Some(coordinator) = app.try_state::<crate::tray::DriveTrayCoordinator>() {
+        // Fail-open to `false` on a store read error, same reasoning as
+        // `sync_loop`'s pass-level-`Err` branch above.
+        let has_format_drift = crate::store::has_unresolved_parse_failures(conn).unwrap_or(false);
         let has_transient_backlog = summary.failed_transient > 0;
         let has_permanent_backlog = !permanently_skipped.is_empty();
         coordinator.write_if_drive_state(app, |drive_connected| {
             desired_tray_state(
                 drive_connected,
+                has_format_drift,
                 has_transient_backlog,
                 has_permanent_backlog,
             )
@@ -213,26 +226,38 @@ fn handle_pass_outcome(
 }
 
 /// Decides what tray state (if any) this loop should write, given the
-/// current drive-connectivity signal and whether this pass left a backlog
-/// outstanding. `drive_connected` is a tri-state: `None` (not yet classified
-/// by `watch_loop`'s first tick) is treated the same as `Some(false)` — skip
+/// current drive-connectivity signal, whether format drift is suspected
+/// (Story 3.4, Task 4), and whether this pass left a backlog outstanding.
+/// `drive_connected` is a tri-state: `None` (not yet classified by
+/// `watch_loop`'s first tick) is treated the same as `Some(false)` — skip
 /// writing rather than assume connectivity. Returns `None` whenever the
 /// drive isn't known-connected: `TrayState::DriveNotConnected` is the more
 /// specific, more actionable problem for the DJ and must not be overwritten
 /// by this independent loop (Dev Notes precedence rule) — `watch_loop` owns
-/// that transition exclusively. A backlog that will never clear on its own
-/// (`has_permanent_backlog`, e.g. a `SetIdMismatch`) shows `Failed` rather
-/// than `Idle` once nothing transient remains, so a permanently-stuck set
-/// stays visible to the DJ instead of looking identical to "fully synced."
+/// that transition exclusively.
+///
+/// `has_format_drift` is checked next, ahead of both backlog flags — a
+/// disconnected drive still wins over it (the more urgent, more actionable
+/// problem), but once the drive is known-connected, a suspected format
+/// change is surfaced before an ordinary sync backlog, since it's the
+/// signal a DJ is most likely to want to act on (or simply wait out until a
+/// fix ships and the backfill sweep clears it). A backlog that will never
+/// clear on its own (`has_permanent_backlog`, e.g. a `SetIdMismatch`) shows
+/// `Failed` rather than `Idle` once nothing transient remains, so a
+/// permanently-stuck set stays visible to the DJ instead of looking
+/// identical to "fully synced."
 fn desired_tray_state(
     drive_connected: Option<bool>,
+    has_format_drift: bool,
     has_transient_backlog: bool,
     has_permanent_backlog: bool,
 ) -> Option<TrayState> {
     if drive_connected != Some(true) {
         return None;
     }
-    Some(if has_transient_backlog {
+    Some(if has_format_drift {
+        TrayState::FormatDriftPaused
+    } else if has_transient_backlog {
         TrayState::Queued
     } else if has_permanent_backlog {
         TrayState::Failed
@@ -292,18 +317,18 @@ mod tests {
         assert_eq!(backoff.wait(), BASE_INTERVAL);
     }
 
-    // ---- desired_tray_state (Task 2's precedence rule) ----------------------
+    // ---- desired_tray_state (Task 2/4's precedence rule) --------------------
 
     #[test]
     fn drive_not_connected_always_wins_regardless_of_backlog() {
-        assert_eq!(desired_tray_state(Some(false), true, false), None);
-        assert_eq!(desired_tray_state(Some(false), false, true), None);
+        assert_eq!(desired_tray_state(Some(false), false, true, false), None);
+        assert_eq!(desired_tray_state(Some(false), false, false, true), None);
     }
 
     #[test]
     fn drive_not_yet_classified_is_treated_like_disconnected() {
         assert_eq!(
-            desired_tray_state(None, true, false),
+            desired_tray_state(None, false, true, false),
             None,
             "must not assume connectivity before watch_loop's first classification tick"
         );
@@ -312,7 +337,7 @@ mod tests {
     #[test]
     fn drive_connected_with_a_transient_backlog_shows_queued() {
         assert_eq!(
-            desired_tray_state(Some(true), true, false),
+            desired_tray_state(Some(true), false, true, false),
             Some(TrayState::Queued)
         );
     }
@@ -320,7 +345,7 @@ mod tests {
     #[test]
     fn drive_connected_with_no_backlog_shows_idle() {
         assert_eq!(
-            desired_tray_state(Some(true), false, false),
+            desired_tray_state(Some(true), false, false, false),
             Some(TrayState::Idle)
         );
     }
@@ -328,7 +353,7 @@ mod tests {
     #[test]
     fn drive_connected_with_only_permanent_backlog_shows_failed() {
         assert_eq!(
-            desired_tray_state(Some(true), false, true),
+            desired_tray_state(Some(true), false, false, true),
             Some(TrayState::Failed),
             "a permanently-stuck set must stay visible, not look identical to fully synced"
         );
@@ -337,8 +362,30 @@ mod tests {
     #[test]
     fn transient_backlog_takes_precedence_over_permanent() {
         assert_eq!(
-            desired_tray_state(Some(true), true, true),
+            desired_tray_state(Some(true), false, true, true),
             Some(TrayState::Queued)
+        );
+    }
+
+    #[test]
+    fn drive_not_connected_wins_over_format_drift_too() {
+        assert_eq!(
+            desired_tray_state(Some(false), true, false, false),
+            None,
+            "a disconnected drive is still the more urgent, more actionable problem"
+        );
+    }
+
+    #[test]
+    fn format_drift_outranks_both_backlog_flags() {
+        assert_eq!(
+            desired_tray_state(Some(true), true, true, true),
+            Some(TrayState::FormatDriftPaused),
+            "format drift must be surfaced ahead of an ordinary sync backlog"
+        );
+        assert_eq!(
+            desired_tray_state(Some(true), true, false, false),
+            Some(TrayState::FormatDriftPaused)
         );
     }
 

@@ -14,7 +14,12 @@ fn emit_build_time_env() {
     let _ = dotenvy::from_path(".env.local");
     println!("cargo:rerun-if-changed=.env.local");
 
-    for key in ["SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY", "CURFEW_WEB_URL"] {
+    for key in [
+        "SUPABASE_URL",
+        "SUPABASE_PUBLISHABLE_KEY",
+        "CURFEW_WEB_URL",
+        "SENTRY_DSN",
+    ] {
         let value = std::env::var(key).unwrap_or_default();
         println!("cargo:rustc-env={key}={value}");
     }

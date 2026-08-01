@@ -21,11 +21,12 @@ pub const TRAY_ID: &str = "main";
 /// `set_icon` call entirely when it hasn't.
 pub struct CurrentTrayState(pub Mutex<(TrayState, Theme)>);
 
-/// The five states this agent's tray can show. `Idle` is the default at
+/// The six states this agent's tray can show. `Idle` is the default at
 /// startup. `Queued` (Story 3.3, AC-3/UX-DR19) is a fifth state added on top
 /// of the four Story 2.5 originally built — UX-DR23's "four tray states"
 /// predates this story and does not override AC-3's requirement for a
-/// distinct "offline / queued" glyph.
+/// distinct "offline / queued" glyph. `FormatDriftPaused` (Story 3.4, AC-3)
+/// is the sixth, added the same mechanical way.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayState {
     Idle,
@@ -37,17 +38,24 @@ pub enum TrayState {
     /// expected state (UX-DR18's Failure Register explicitly places it
     /// outside "failure"), not an error.
     Queued,
+    /// A terminal capture failure was recorded (Story 3.4, Task 2) and has
+    /// not yet been backfilled — format drift is suspected. A calm, distinct
+    /// "paused" state (UX-DR18/UX-DR19), not the alarmed `Failed` state:
+    /// this is expected to self-resolve once a fix ships and the startup
+    /// backfill sweep (Task 3) clears the underlying `parse_failures` row.
+    FormatDriftPaused,
 }
 
 impl TrayState {
-    /// All five states, in the fixed order the debug cycle menu item rotates
+    /// All six states, in the fixed order the debug cycle menu item rotates
     /// through.
-    pub const ALL: [TrayState; 5] = [
+    pub const ALL: [TrayState; 6] = [
         TrayState::Idle,
         TrayState::Syncing,
         TrayState::Failed,
         TrayState::DriveNotConnected,
         TrayState::Queued,
+        TrayState::FormatDriftPaused,
     ];
 
     /// Tooltip text carrying the state as a real label (UX-DR21). Failure-adjacent
@@ -63,6 +71,12 @@ impl TrayState {
             // sync when you're back online", EXPERIENCE.md:86); calm/neutral
             // per UX-DR18, not the Failure Register.
             TrayState::Queued => "Curfew Agent — Offline, sets queued",
+            // Terse "Curfew Agent — X" tooltip convention (UX-DR21); the
+            // fuller Failure Register sentence ("Format change detected —
+            // sync paused until verified.", EXPERIENCE.md:52) is written
+            // for a future dashboard-status surface (Story 3.6+), not this
+            // tray-only tooltip.
+            TrayState::FormatDriftPaused => "Curfew Agent — Format drift detected",
         }
     }
 
@@ -94,6 +108,9 @@ impl TrayState {
             (Theme::Light, TrayState::Queued) => {
                 tauri::include_image!("icons/tray/light/queued.png")
             }
+            (Theme::Light, TrayState::FormatDriftPaused) => {
+                tauri::include_image!("icons/tray/light/format-drift-paused.png")
+            }
             // Dark is the default colorway for any theme variant future
             // Tauri versions may add (`Theme` is `#[non_exhaustive]`).
             (_, TrayState::Idle) => tauri::include_image!("icons/tray/dark/idle.png"),
@@ -103,6 +120,9 @@ impl TrayState {
                 tauri::include_image!("icons/tray/dark/drive-not-connected.png")
             }
             (_, TrayState::Queued) => tauri::include_image!("icons/tray/dark/queued.png"),
+            (_, TrayState::FormatDriftPaused) => {
+                tauri::include_image!("icons/tray/dark/format-drift-paused.png")
+            }
         }
     }
 }
@@ -344,6 +364,10 @@ mod tests {
             TrayState::Queued.tooltip(),
             "Curfew Agent — Offline, sets queued"
         );
+        assert_eq!(
+            TrayState::FormatDriftPaused.tooltip(),
+            "Curfew Agent — Format drift detected"
+        );
     }
 
     #[test]
@@ -355,16 +379,17 @@ mod tests {
             TrayState::Failed,
             TrayState::DriveNotConnected,
             TrayState::Queued,
+            TrayState::FormatDriftPaused,
         ] {
             assert!(!state.tooltip().contains('!'), "UX-DR18: no exclamations");
         }
     }
 
     #[test]
-    fn cycle_visits_all_five_states_then_wraps() {
+    fn cycle_visits_all_six_states_then_wraps() {
         let mut state = TrayState::Idle;
         let mut seen = vec![state];
-        for _ in 0..4 {
+        for _ in 0..5 {
             state = state.next();
             seen.push(state);
         }
@@ -376,6 +401,7 @@ mod tests {
                 TrayState::Failed,
                 TrayState::DriveNotConnected,
                 TrayState::Queued,
+                TrayState::FormatDriftPaused,
             ]
         );
         assert_eq!(
