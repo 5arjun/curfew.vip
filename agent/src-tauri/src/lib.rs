@@ -440,11 +440,11 @@ pub fn run() {
             app.manage(watcher::PendingDetectionState(std::sync::Mutex::new(
                 pending_detected_path,
             )));
-            // Story 3.3: published by `watch_loop` on every connect/
-            // disconnect transition, read by the independent sync-queue
-            // drain loop below so it never overwrites `DriveNotConnected`
-            // with its own `Queued`/`Idle` tray state.
-            app.manage(watcher::DriveConnectionState::default());
+            // Story 3.3 (review fix): single-writer coordinator shared by
+            // `watch_loop` and the sync-queue drain loop below, so the two
+            // independent tray writers can never interleave and stomp
+            // `DriveNotConnected` with a stale `Queued`/`Idle`/`Failed`.
+            app.manage(tray::DriveTrayCoordinator::default());
 
             if let watcher::StartupResolution::PendingConfirmation(_) = resolution {
                 // AC-3: the confirm gate must not depend on the DJ thinking to
@@ -473,7 +473,7 @@ pub fn run() {
 
             // Story 3.3: the offline sync-queue drain loop. Started after
             // both `AuthState` (it needs the in-memory token cache) and
-            // `DriveConnectionState` (read on its very first iteration) are
+            // `DriveTrayCoordinator` (read on its very first iteration) are
             // already managed above — same "always started, tracks live
             // state itself" shape as `watcher::start_watching`.
             sync_queue::start_syncing(app.handle().clone());

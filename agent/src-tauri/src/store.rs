@@ -217,7 +217,18 @@ pub fn open_at(path: &Path) -> Result<Connection, StoreError> {
     // `busy_timeout` makes a brief write collision wait instead of failing
     // outright with `SQLITE_BUSY`; WAL lets a reader and a writer proceed
     // concurrently rather than blocking each other for the whole transaction.
-    conn.execute_batch("PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL;")?;
+    // Best-effort: if the filesystem doesn't support setting these (e.g. an
+    // unusual mount), the store must still open and work under SQLite's
+    // rollback-journal default rather than fail outright -- this pragma call
+    // didn't exist before this story, so it must not become a new way for
+    // `open_at` (and everything that depends on it, capture included) to
+    // fail.
+    if let Err(_e) = conn.execute_batch("PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL;") {
+        #[cfg(debug_assertions)]
+        eprintln!(
+            "curfew-agent: could not set busy_timeout/WAL pragmas, continuing without them: {_e}"
+        );
+    }
     conn.execute_batch(SCHEMA_SQL)?;
     Ok(conn)
 }

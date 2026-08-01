@@ -213,6 +213,69 @@ pub fn set_tray_state(app: &AppHandle, state: TrayState) -> tauri::Result<()> {
     Ok(())
 }
 
+/// Single-writer coordinator for the two independent loops that drive tray
+/// state from drive-connectivity and sync-backlog signals (`watcher::watch_loop`
+/// and `sync_queue::sync_loop`) — Story 3.3 code review fix. Before this,
+/// each loop read the drive-connected signal and wrote the tray
+/// independently, leaving a race: a disconnect landing between
+/// `sync_queue`'s read and its write could leave the tray showing a stale
+/// `Queued`/`Idle` instead of `DriveNotConnected` until the next reconnect
+/// (`watch_loop` only re-writes the tray on a *transition*, not every tick).
+/// Routing both loops' decide-and-write sequence through the same
+/// [`Mutex`] makes that interleaving impossible.
+///
+/// Also owns the tri-state "is the drive reachable" signal itself —
+/// `None` until `watch_loop`'s first classification tick, so a `sync_queue`
+/// pass that runs before that first tick does not assume connectivity and
+/// briefly flash the wrong state.
+pub struct DriveTrayCoordinator(Mutex<Option<bool>>);
+
+impl Default for DriveTrayCoordinator {
+    fn default() -> Self {
+        Self(Mutex::new(None))
+    }
+}
+
+impl DriveTrayCoordinator {
+    /// Called by `watch_loop` on every connect/disconnect transition —
+    /// updates the shared drive-reachability signal and writes the
+    /// corresponding tray state atomically under the same lock a concurrent
+    /// `sync_queue` write contends on.
+    pub fn set_drive_connected(&self, app: &AppHandle, connected: bool) {
+        let mut guard = self
+            .0
+            .lock()
+            .expect("drive tray coordinator mutex poisoned");
+        *guard = Some(connected);
+        let state = if connected {
+            TrayState::Idle
+        } else {
+            TrayState::DriveNotConnected
+        };
+        let _ = set_tray_state(app, state);
+    }
+
+    /// Called by `sync_queue`'s drain loop after each pass. `decide` receives
+    /// the current drive-connected signal (locked, so it cannot change out
+    /// from under this write) and returns the tray state to write, or `None`
+    /// to leave the tray untouched — used so `sync_queue` never overwrites
+    /// `DriveNotConnected` (the more specific, more actionable state) with
+    /// its own `Queued`/`Idle`/`Failed`.
+    pub fn write_if_drive_state(
+        &self,
+        app: &AppHandle,
+        decide: impl FnOnce(Option<bool>) -> Option<TrayState>,
+    ) {
+        let guard = self
+            .0
+            .lock()
+            .expect("drive tray coordinator mutex poisoned");
+        if let Some(state) = decide(*guard) {
+            let _ = set_tray_state(app, state);
+        }
+    }
+}
+
 /// Re-checks the menu bar's colorway and redraws the tray icon if it changed,
 /// without touching the logical state or tooltip. Meant to be called on a
 /// short repeating timer (see `lib.rs`'s `setup()`), *not* only in response
