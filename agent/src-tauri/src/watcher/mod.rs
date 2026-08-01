@@ -306,6 +306,29 @@ fn watch_loop(app: AppHandle) {
                                 &mut pending_serato4,
                             );
                         }
+                        // Mirrors the Serato4 branch above: the live `notify`
+                        // watcher (started just above) only sees `.session`
+                        // files written *after* this point, so a session that
+                        // completed while the agent was closed would
+                        // otherwise never be discovered (no watermark-style
+                        // cursor exists for a directory of files the way it
+                        // does for `master.sqlite` rows). This one-time scan
+                        // on (re)connect closes that gap by registering every
+                        // existing `.session` file the same way a live event
+                        // would — `handle_legacy_session_event`'s in-memory
+                        // `pending` check and the store's `upsert_watching`
+                        // (refuses to regress a `captured` row) make this
+                        // idempotent against files already seen/captured in a
+                        // prior run.
+                        if let SeratoInstall::Legacy(serato_dir) = &install {
+                            if let Some(conn) = &store_conn {
+                                scan_legacy_session_dir(
+                                    conn,
+                                    &serato_dir.join("History").join("Sessions"),
+                                    &mut legacy_pending,
+                                );
+                            }
+                        }
                         // Story 2.8 AC-4 resume: a session marked `incomplete`
                         // on a prior disconnect goes back to `watching` the
                         // moment its source is reachable again — the next
@@ -645,6 +668,31 @@ fn handle_legacy_session_event(
     );
 }
 
+/// Startup/reconnect catch-up for a legacy install (see call site in
+/// `watch_loop`): lists every `.session` file already sitting in
+/// `sessions_dir` and hands each to [`handle_legacy_session_event`] as if it
+/// had just fired a live filesystem event. A file whose quiet period has
+/// already elapsed (the common case — it finished days ago) is picked up and
+/// captured on the very next `recheck_legacy_quiet_periods` tick, no
+/// different from a session that went quiet while the agent was watching
+/// live. A missing/unreadable directory is a no-op, not an error — Serato
+/// hasn't necessarily ever written to it yet.
+fn scan_legacy_session_dir(
+    store_conn: &Connection,
+    sessions_dir: &Path,
+    pending: &mut HashMap<PathBuf, LegacyPendingSession>,
+) {
+    let Ok(entries) = std::fs::read_dir(sessions_dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) == Some("session") {
+            handle_legacy_session_event(store_conn, &path, pending);
+        }
+    }
+}
+
 /// Story 2.8 Task 4/6: checks every tracked legacy session's quiet-period
 /// clock, capturing (and dropping from `pending`) whichever have gone
 /// [`crate::capture::LEGACY_QUIET_PERIOD_SEC`] without a modify event (AC-4).
@@ -930,5 +978,75 @@ mod tests {
     fn no_cached_detection_is_none_regardless_of_override_state() {
         assert_eq!(pending_after_override_check(false, None), None);
         assert_eq!(pending_after_override_check(true, None), None);
+    }
+
+    // ---- scan_legacy_session_dir (startup/reconnect catch-up) ----
+
+    fn multi_play_fixture() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/session/multi_play.session")
+    }
+
+    /// The gap this closes: a `.session` file written entirely while the agent
+    /// was closed generates no `notify` event once the agent finally starts, so
+    /// without this scan it would never be registered. Proves a pre-existing
+    /// file is discovered and registered exactly as a live event would (Task 4
+    /// resume semantics), without needing to wait for a quiet-period tick.
+    #[test]
+    fn scan_legacy_session_dir_registers_a_pre_existing_session_file() {
+        let root = TempDir::new("scan-legacy-registers");
+        let sessions_dir = root.0.join("History").join("Sessions");
+        std::fs::create_dir_all(&sessions_dir).unwrap();
+        let dest = sessions_dir.join("gig_from_while_agent_was_closed.session");
+        std::fs::copy(multi_play_fixture(), &dest).expect("fixture copies");
+
+        let store_file = TempDir::new("scan-legacy-registers-store");
+        let conn = crate::store::open_at(&store_file.0.join("local.sqlite")).expect("store opens");
+        let mut pending = HashMap::new();
+
+        scan_legacy_session_dir(&conn, &sessions_dir, &mut pending);
+
+        assert!(
+            pending.contains_key(&dest),
+            "a pre-existing .session file must be registered as pending on scan"
+        );
+        let identity = pending.get(&dest).unwrap().session_identity.clone();
+        let row = crate::store::get_by_identity(&conn, &identity)
+            .expect("store query succeeds")
+            .expect("row was upserted by the scan");
+        assert_eq!(row.status, crate::store::SessionStatus::Watching);
+    }
+
+    /// Calling the scan twice (e.g. two reconnects before the file ever goes
+    /// quiet) must not double-register or otherwise disturb the existing
+    /// pending entry — same idempotency guarantee `check_for_new_sessions`
+    /// documents for its Serato4 sibling.
+    #[test]
+    fn scan_legacy_session_dir_is_idempotent_across_repeated_scans() {
+        let root = TempDir::new("scan-legacy-idempotent");
+        let sessions_dir = root.0.join("History").join("Sessions");
+        std::fs::create_dir_all(&sessions_dir).unwrap();
+        let dest = sessions_dir.join("gig.session");
+        std::fs::copy(multi_play_fixture(), &dest).expect("fixture copies");
+
+        let store_file = TempDir::new("scan-legacy-idempotent-store");
+        let conn = crate::store::open_at(&store_file.0.join("local.sqlite")).expect("store opens");
+        let mut pending = HashMap::new();
+
+        scan_legacy_session_dir(&conn, &sessions_dir, &mut pending);
+        scan_legacy_session_dir(&conn, &sessions_dir, &mut pending);
+
+        assert_eq!(pending.len(), 1);
+    }
+
+    #[test]
+    fn scan_legacy_session_dir_is_a_noop_for_a_missing_directory() {
+        let root = TempDir::new("scan-legacy-missing-dir");
+        let store_file = TempDir::new("scan-legacy-missing-dir-store");
+        let conn = crate::store::open_at(&store_file.0.join("local.sqlite")).expect("store opens");
+        let mut pending = HashMap::new();
+
+        scan_legacy_session_dir(&conn, &root.0.join("nonexistent"), &mut pending);
+
+        assert!(pending.is_empty());
     }
 }
