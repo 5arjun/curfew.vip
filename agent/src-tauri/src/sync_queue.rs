@@ -23,7 +23,7 @@ use std::time::Duration;
 
 use tauri::{AppHandle, Manager};
 
-use crate::sync::SyncSummary;
+use crate::sync::{RetryClass, SyncSummary};
 use crate::tray::TrayState;
 
 /// Base retry interval — deliberately much coarser than
@@ -78,10 +78,33 @@ impl Backoff {
 /// app launch (mirrors [`crate::watcher::start_watching`]) — a linked-but-
 /// idle agent with nothing pending just finds zero rows every pass and stays
 /// quiet. Must be called only after `auth::AuthState` and
-/// `watcher::DriveConnectionState` are already `app.manage()`d (both read via
+/// `tray::DriveTrayCoordinator` are already `app.manage()`d (both read via
 /// `AppHandle::state`/`try_state` on the very first loop iteration).
 pub fn start_syncing(app: AppHandle) {
     std::thread::spawn(move || sync_loop(app));
+}
+
+/// Opens the local store, retrying on [`BASE_INTERVAL`] until it succeeds
+/// rather than giving up — unlike `watch_loop`, this loop has nothing useful
+/// to do without a store connection (there's no drive-detection/tray duty to
+/// keep running in the meantime), so silently exiting the thread forever on
+/// a transient open failure (e.g. a momentary permissions/disk hiccup at
+/// boot) would disable sync-queue drain for the rest of the app session with
+/// no recovery. Logged (debug builds only — this can legitimately retry a
+/// few times during a slow boot) on every failed attempt.
+fn open_store_with_retry(app: &AppHandle) -> rusqlite::Connection {
+    loop {
+        match crate::store::open(app) {
+            Ok(conn) => return conn,
+            Err(_e) => {
+                #[cfg(debug_assertions)]
+                eprintln!(
+                    "curfew-agent: could not open local store for sync-queue drain, retrying: {_e}"
+                );
+                std::thread::sleep(BASE_INTERVAL);
+            }
+        }
+    }
 }
 
 /// One drain attempt, backed off and looped forever. Opens its own SQLite
@@ -89,14 +112,7 @@ pub fn start_syncing(app: AppHandle) {
 /// now sets `busy_timeout`/WAL pragmas precisely because this is a second,
 /// concurrent connection to the same file) once for the loop's lifetime.
 fn sync_loop(app: AppHandle) {
-    let Ok(conn) = crate::store::open(&app) else {
-        #[cfg(debug_assertions)]
-        eprintln!(
-            "curfew-agent: could not open local store; sync-queue drain disabled this run \
-             (capture/tray still work)"
-        );
-        return;
-    };
+    let conn = open_store_with_retry(&app);
 
     let mut backoff = Backoff::new();
     // Story 3.3's circuit breaker (Task 1): a row that fails
@@ -121,23 +137,44 @@ fn sync_loop(app: AppHandle) {
             &permanently_skipped,
         ) {
             Ok(summary) => {
-                handle_pass_outcome(&app, &mut backoff, &mut permanently_skipped, summary)
+                handle_pass_outcome(&app, &conn, &mut backoff, &mut permanently_skipped, summary)
             }
-            Err(_e) => {
-                // A pass-level failure (most likely `SyncError::Auth`'s
-                // network leg failing to reach Supabase to refresh a token —
-                // the same "can't reach the host" signal as a per-row `Http`
-                // failure) never got as far as attempting a single row.
-                // Treated as transient: back off, and show Queued only if
-                // there's something a later pass could actually retry.
-                #[cfg(debug_assertions)]
-                eprintln!("curfew-agent: sync-queue drain pass failed: {_e}");
+            Err(e) => {
+                // A pass-level failure never got as far as attempting a
+                // single row (token refresh, or the DJ-id claim itself is
+                // broken — e.g. `SyncError::MalformedDjId`, which Task 1's
+                // circuit breaker names explicitly but can only ever occur
+                // here, before any row is reachable to skip-list). Classify
+                // it the same way a per-row failure is classified: `Http`
+                // (can't reach the host) is transient and retried normally;
+                // anything else is a logic/data problem retrying will never
+                // fix, and is logged loudly (not just debug builds) instead
+                // of silently backing off forever indistinguishable from
+                // being offline.
+                let permanent = e.retry_class() == RetryClass::Permanent;
+                if permanent {
+                    eprintln!("curfew-agent: sync-queue drain pass failed permanently: {e}");
+                } else {
+                    #[cfg(debug_assertions)]
+                    eprintln!("curfew-agent: sync-queue drain pass failed: {e}");
+                }
                 backoff.increase();
-                if let Some(state) = desired_tray_state(
-                    drive_connected(&app),
-                    has_retryable_backlog(&conn, &permanently_skipped),
-                ) {
-                    let _ = crate::tray::set_tray_state(&app, state);
+                if let Some(coordinator) = app.try_state::<crate::tray::DriveTrayCoordinator>() {
+                    // Fail-open to `false` on a store read error -- a store
+                    // hiccup must not paint every DJ's tray with a
+                    // format-drift signal that was never actually detected.
+                    let has_format_drift =
+                        crate::store::has_unresolved_parse_failures(&conn).unwrap_or(false);
+                    let has_transient_backlog = has_retryable_backlog(&conn, &permanently_skipped);
+                    let has_permanent_backlog = permanent || !permanently_skipped.is_empty();
+                    coordinator.write_if_drive_state(&app, |drive_connected| {
+                        desired_tray_state(
+                            drive_connected,
+                            has_format_drift,
+                            has_transient_backlog,
+                            has_permanent_backlog,
+                        )
+                    });
                 }
             }
         }
@@ -149,9 +186,12 @@ fn sync_loop(app: AppHandle) {
 /// Applies one successful pass's [`SyncSummary`] to the backoff state, the
 /// permanent-failure skip-list, and the tray — split out from [`sync_loop`]
 /// so the decision logic is unit-testable without a real `AppHandle`/SQLite
-/// connection driving the whole loop.
+/// connection driving the whole loop. `conn` is read-only here (Story 3.4,
+/// Task 4): only to check `store::has_unresolved_parse_failures` for the
+/// tray-precedence decision.
 fn handle_pass_outcome(
     app: &AppHandle,
+    conn: &rusqlite::Connection,
     backoff: &mut Backoff,
     permanently_skipped: &mut HashSet<String>,
     summary: SyncSummary,
@@ -168,34 +208,59 @@ fn handle_pass_outcome(
         backoff.reset();
     }
 
-    if let Some(state) = desired_tray_state(drive_connected(app), summary.failed_transient > 0) {
-        let _ = crate::tray::set_tray_state(app, state);
+    if let Some(coordinator) = app.try_state::<crate::tray::DriveTrayCoordinator>() {
+        // Fail-open to `false` on a store read error, same reasoning as
+        // `sync_loop`'s pass-level-`Err` branch above.
+        let has_format_drift = crate::store::has_unresolved_parse_failures(conn).unwrap_or(false);
+        let has_transient_backlog = summary.failed_transient > 0;
+        let has_permanent_backlog = !permanently_skipped.is_empty();
+        coordinator.write_if_drive_state(app, |drive_connected| {
+            desired_tray_state(
+                drive_connected,
+                has_format_drift,
+                has_transient_backlog,
+                has_permanent_backlog,
+            )
+        });
     }
 }
 
-/// Reads the live drive-reachability signal `watch_loop` publishes
-/// (`watcher::DriveConnectionState`). Defaults to `true` (assume connected)
-/// if the state isn't managed yet — should not happen once `.setup()`
-/// completes, but this loop must never panic over a missing `try_state`.
-fn drive_connected(app: &AppHandle) -> bool {
-    app.try_state::<crate::watcher::DriveConnectionState>()
-        .map(|s| s.0.load(std::sync::atomic::Ordering::Relaxed))
-        .unwrap_or(true)
-}
-
-/// Decides what tray state (if any) this loop should write, given whether
-/// the drive is currently reachable and whether this pass left a transient
-/// backlog outstanding. Returns `None` when the drive is disconnected:
-/// `TrayState::DriveNotConnected` is the more specific, more actionable
-/// problem for the DJ and must not be overwritten by this independent loop
-/// (Dev Notes precedence rule) — `watch_loop` owns that transition
-/// exclusively.
-fn desired_tray_state(drive_connected: bool, has_transient_backlog: bool) -> Option<TrayState> {
-    if !drive_connected {
+/// Decides what tray state (if any) this loop should write, given the
+/// current drive-connectivity signal, whether format drift is suspected
+/// (Story 3.4, Task 4), and whether this pass left a backlog outstanding.
+/// `drive_connected` is a tri-state: `None` (not yet classified by
+/// `watch_loop`'s first tick) is treated the same as `Some(false)` — skip
+/// writing rather than assume connectivity. Returns `None` whenever the
+/// drive isn't known-connected: `TrayState::DriveNotConnected` is the more
+/// specific, more actionable problem for the DJ and must not be overwritten
+/// by this independent loop (Dev Notes precedence rule) — `watch_loop` owns
+/// that transition exclusively.
+///
+/// `has_format_drift` is checked next, ahead of both backlog flags — a
+/// disconnected drive still wins over it (the more urgent, more actionable
+/// problem), but once the drive is known-connected, a suspected format
+/// change is surfaced before an ordinary sync backlog, since it's the
+/// signal a DJ is most likely to want to act on (or simply wait out until a
+/// fix ships and the backfill sweep clears it). A backlog that will never
+/// clear on its own (`has_permanent_backlog`, e.g. a `SetIdMismatch`) shows
+/// `Failed` rather than `Idle` once nothing transient remains, so a
+/// permanently-stuck set stays visible to the DJ instead of looking
+/// identical to "fully synced."
+fn desired_tray_state(
+    drive_connected: Option<bool>,
+    has_format_drift: bool,
+    has_transient_backlog: bool,
+    has_permanent_backlog: bool,
+) -> Option<TrayState> {
+    if drive_connected != Some(true) {
         return None;
     }
-    Some(if has_transient_backlog {
+    Some(if has_format_drift {
+        TrayState::FormatDriftPaused
+    } else if has_transient_backlog {
         TrayState::Queued
+    } else if has_permanent_backlog {
+        TrayState::Failed
     } else {
         TrayState::Idle
     })
@@ -252,22 +317,76 @@ mod tests {
         assert_eq!(backoff.wait(), BASE_INTERVAL);
     }
 
-    // ---- desired_tray_state (Task 2's precedence rule) ----------------------
+    // ---- desired_tray_state (Task 2/4's precedence rule) --------------------
 
     #[test]
     fn drive_not_connected_always_wins_regardless_of_backlog() {
-        assert_eq!(desired_tray_state(false, true), None);
-        assert_eq!(desired_tray_state(false, false), None);
+        assert_eq!(desired_tray_state(Some(false), false, true, false), None);
+        assert_eq!(desired_tray_state(Some(false), false, false, true), None);
     }
 
     #[test]
-    fn drive_connected_with_a_backlog_shows_queued() {
-        assert_eq!(desired_tray_state(true, true), Some(TrayState::Queued));
+    fn drive_not_yet_classified_is_treated_like_disconnected() {
+        assert_eq!(
+            desired_tray_state(None, false, true, false),
+            None,
+            "must not assume connectivity before watch_loop's first classification tick"
+        );
+    }
+
+    #[test]
+    fn drive_connected_with_a_transient_backlog_shows_queued() {
+        assert_eq!(
+            desired_tray_state(Some(true), false, true, false),
+            Some(TrayState::Queued)
+        );
     }
 
     #[test]
     fn drive_connected_with_no_backlog_shows_idle() {
-        assert_eq!(desired_tray_state(true, false), Some(TrayState::Idle));
+        assert_eq!(
+            desired_tray_state(Some(true), false, false, false),
+            Some(TrayState::Idle)
+        );
+    }
+
+    #[test]
+    fn drive_connected_with_only_permanent_backlog_shows_failed() {
+        assert_eq!(
+            desired_tray_state(Some(true), false, false, true),
+            Some(TrayState::Failed),
+            "a permanently-stuck set must stay visible, not look identical to fully synced"
+        );
+    }
+
+    #[test]
+    fn transient_backlog_takes_precedence_over_permanent() {
+        assert_eq!(
+            desired_tray_state(Some(true), false, true, true),
+            Some(TrayState::Queued)
+        );
+    }
+
+    #[test]
+    fn drive_not_connected_wins_over_format_drift_too() {
+        assert_eq!(
+            desired_tray_state(Some(false), true, false, false),
+            None,
+            "a disconnected drive is still the more urgent, more actionable problem"
+        );
+    }
+
+    #[test]
+    fn format_drift_outranks_both_backlog_flags() {
+        assert_eq!(
+            desired_tray_state(Some(true), true, true, true),
+            Some(TrayState::FormatDriftPaused),
+            "format drift must be surfaced ahead of an ordinary sync backlog"
+        );
+        assert_eq!(
+            desired_tray_state(Some(true), true, false, false),
+            Some(TrayState::FormatDriftPaused)
+        );
     }
 
     // ---- handle_pass_outcome / has_retryable_backlog ------------------------

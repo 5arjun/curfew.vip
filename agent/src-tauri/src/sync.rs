@@ -142,20 +142,30 @@ pub enum RetryClass {
 impl SyncError {
     /// Classifies a per-row failure from [`sync_one`]. `Http` (a `reqwest`
     /// transport-level failure — can't reach the host, timed out, connection
-    /// reset) and a `5xx` `Rejected` status are treated as transient; every
-    /// other variant is permanent. There is no reachability/ping crate in
-    /// this codebase and none should be added for this story (Dev Notes) — a
-    /// failed sync attempt *is* the offline signal.
+    /// reset), a `5xx` `Rejected` status, and `429 Too Many Requests` are
+    /// treated as transient (rate-limiting is a "try again later" condition,
+    /// not a data/logic problem); every other variant is permanent. There is
+    /// no reachability/ping crate in this codebase and none should be added
+    /// for this story (Dev Notes) — a failed sync attempt *is* the offline
+    /// signal.
     pub fn retry_class(&self) -> RetryClass {
         match self {
             SyncError::Http(_) => RetryClass::Transient,
-            SyncError::Rejected(status) if status.is_server_error() => RetryClass::Transient,
+            SyncError::Rejected(status)
+                if status.is_server_error()
+                    || *status == reqwest::StatusCode::TOO_MANY_REQUESTS =>
+            {
+                RetryClass::Transient
+            }
             // `Auth`/`Store` never actually reach a per-row classification in
             // practice — `sync_pending_sessions` fetches the token and opens
             // the connection once, up front, before iterating rows, so
-            // either one aborts the whole pass rather than failing one row
-            // (see `sync_queue.rs`'s pass-level handling). Grouped here as
-            // permanent anyway so this method stays total over every variant.
+            // either one aborts the whole pass rather than failing one row.
+            // `sync_queue.rs`'s pass-level handling now also calls this same
+            // method on the pass-level error, so this classification applies
+            // there too — e.g. a broken/expired token (`Auth`,
+            // `MalformedDjId`) is correctly treated as permanent rather than
+            // silently retried forever like a network outage.
             SyncError::Rejected(_)
             | SyncError::Auth(_)
             | SyncError::Store(_)
@@ -207,13 +217,35 @@ impl Default for SupabaseSyncClient {
     }
 }
 
+/// The Supabase base URL `sync_set` posts to. Normally the compile-time
+/// `config::SUPABASE_URL`, but in **debug builds only** a
+/// `CURFEW_DEBUG_FORCE_OFFLINE=1` env var swaps in an unroutable base so the
+/// blocking HTTP call fails fast with a genuine `reqwest` connect error —
+/// classified `RetryClass::Transient` exactly like a real offline failure,
+/// driving the real `TrayState::Queued` path without needing to physically
+/// disconnect the network (loopback to a local Supabase survives Wi-Fi-off,
+/// which otherwise masks the Queued state). Compiled out entirely in release:
+/// release builds always return `config::SUPABASE_URL`.
+fn debug_sync_base_url() -> String {
+    #[cfg(debug_assertions)]
+    {
+        if std::env::var("CURFEW_DEBUG_FORCE_OFFLINE").as_deref() == Ok("1") {
+            // Loopback + a port nothing listens on: connect is refused
+            // immediately (fast fail), rather than hanging to the 15s connect
+            // timeout the way an unroutable public IP would.
+            return "http://127.0.0.1:1".to_string();
+        }
+    }
+    crate::config::SUPABASE_URL.to_string()
+}
+
 impl SyncClient for SupabaseSyncClient {
     fn sync_set(
         &self,
         access_token: &str,
         request_body: &serde_json::Value,
     ) -> Result<Uuid, SyncError> {
-        let url = format!("{}/rest/v1/rpc/sync_set", crate::config::SUPABASE_URL);
+        let url = format!("{}/rest/v1/rpc/sync_set", debug_sync_base_url());
         let response = self
             .http
             .post(&url)
@@ -735,15 +767,30 @@ mod tests {
     }
 
     #[test]
+    fn a_rate_limit_status_is_classified_transient() {
+        assert_eq!(
+            SyncError::Rejected(reqwest::StatusCode::TOO_MANY_REQUESTS).retry_class(),
+            RetryClass::Transient,
+            "429 is a try-again-later condition, not a data/logic problem to skip-list forever"
+        );
+    }
+
+    #[test]
     fn a_network_transport_failure_is_classified_transient() {
-        // A real `reqwest::Error` (loopback connection refused, no network
-        // dependency) -- `reqwest::Error` has no public test constructor, so
-        // this is the established way to obtain one.
+        // A real `reqwest::Error` -- `reqwest::Error` has no public test
+        // constructor, so this is the established way to obtain one. Uses a
+        // malformed URL rather than an actual loopback connection attempt:
+        // `Client::get` defers URL parsing to `.send()`, so this fails
+        // immediately with no real network I/O -- avoids the flakiness of
+        // depending on a sandboxed/firewalled CI runner actually refusing a
+        // connection on a given port. `retry_class()` only inspects the
+        // `SyncError::Http` variant, not the underlying error's specific
+        // kind, so any real `reqwest::Error` proves the same thing.
         let client = reqwest::blocking::Client::new();
         let err = client
-            .get("http://127.0.0.1:1")
+            .get("not a valid url")
             .send()
-            .expect_err("port 1 on loopback must refuse the connection");
+            .expect_err("a malformed URL must fail to send without any real network call");
         assert_eq!(SyncError::Http(err).retry_class(), RetryClass::Transient);
     }
 

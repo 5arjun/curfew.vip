@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS captured_sessions (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
   session_identity  TEXT NOT NULL UNIQUE,
   source            TEXT NOT NULL,        -- 'legacy' | 'serato4'
-  status            TEXT NOT NULL,        -- 'watching' | 'captured' | 'incomplete'
+  status            TEXT NOT NULL,        -- 'watching' | 'captured' | 'incomplete' | 'superseded'
   raw_ref           TEXT NOT NULL,        -- legacy: absolute .session path; serato4: "<db_path>#<serato_session_id>"
   started_at        INTEGER,              -- unix epoch seconds, first known play start_time
   ended_at          INTEGER,              -- unix epoch seconds, last known play start_time
@@ -44,6 +44,23 @@ CREATE TABLE IF NOT EXISTS captured_sessions (
   plays_json        TEXT,                 -- serialized Vec<CapturedPlay>, NULL until captured
   derived_json      TEXT,                 -- serialized CapturedDerived (stats + confidence), NULL until captured
   synced_at         INTEGER               -- NULL forever in this story; Story 3.2 owns setting it
+);
+
+-- Story 3.4, Task 2: local parse-failure ledger (AR-7 layers 2+3). An
+-- additive new table, not an `ALTER TABLE` on `captured_sessions` -- no
+-- precedent in this codebase for adding a column to an existing local
+-- SQLite file across DJ machines already running an older schema;
+-- `CREATE TABLE IF NOT EXISTS` sidesteps that entirely, same reasoning
+-- Story 3.3b used for `SessionStatus::Superseded`. No "resolved" status
+-- column: a resolved failure is deleted (see `clear_parse_failure`), not
+-- flagged.
+CREATE TABLE IF NOT EXISTS parse_failures (
+  session_identity     TEXT PRIMARY KEY,
+  source                TEXT NOT NULL,        -- 'legacy' | 'serato4'
+  raw_ref               TEXT NOT NULL,
+  failed_agent_version  TEXT NOT NULL,
+  failed_at             INTEGER NOT NULL,      -- unix epoch seconds, agent wall-clock
+  last_error            TEXT NOT NULL
 );
 "#;
 
@@ -130,6 +147,16 @@ pub enum SessionStatus {
     /// if the completion signal resolves on reconnect, otherwise stays flagged
     /// here rather than left ambiguously `Watching` forever.
     Incomplete,
+    /// Story 3.3b, AC-2: a real capture whose night was already captured by
+    /// the higher-precedence Serato 4+ source (or, on the rarer reverse
+    /// arrival order, a legacy row a later serato4 capture superseded).
+    /// Excluded from [`rows_pending_sync`] automatically — that query's
+    /// `status = 'captured'` filter already excludes anything not exactly
+    /// `Captured`. Kept in the local store rather than deleted, so a
+    /// superseded row stays visible for debugging (Story 3.3's review
+    /// precedent for keeping a stuck set visible, `TrayState::Failed`, rather
+    /// than reusing an existing "nothing to see" state).
+    Superseded,
 }
 
 impl SessionStatus {
@@ -138,6 +165,7 @@ impl SessionStatus {
             SessionStatus::Watching => "watching",
             SessionStatus::Captured => "captured",
             SessionStatus::Incomplete => "incomplete",
+            SessionStatus::Superseded => "superseded",
         }
     }
 
@@ -146,6 +174,7 @@ impl SessionStatus {
             "watching" => Some(SessionStatus::Watching),
             "captured" => Some(SessionStatus::Captured),
             "incomplete" => Some(SessionStatus::Incomplete),
+            "superseded" => Some(SessionStatus::Superseded),
             _ => None,
         }
     }
@@ -217,7 +246,18 @@ pub fn open_at(path: &Path) -> Result<Connection, StoreError> {
     // `busy_timeout` makes a brief write collision wait instead of failing
     // outright with `SQLITE_BUSY`; WAL lets a reader and a writer proceed
     // concurrently rather than blocking each other for the whole transaction.
-    conn.execute_batch("PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL;")?;
+    // Best-effort: if the filesystem doesn't support setting these (e.g. an
+    // unusual mount), the store must still open and work under SQLite's
+    // rollback-journal default rather than fail outright -- this pragma call
+    // didn't exist before this story, so it must not become a new way for
+    // `open_at` (and everything that depends on it, capture included) to
+    // fail.
+    if let Err(_e) = conn.execute_batch("PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL;") {
+        #[cfg(debug_assertions)]
+        eprintln!(
+            "curfew-agent: could not set busy_timeout/WAL pragmas, continuing without them: {_e}"
+        );
+    }
     conn.execute_batch(SCHEMA_SQL)?;
     Ok(conn)
 }
@@ -331,6 +371,19 @@ pub fn mark_incomplete(conn: &Connection, session_identity: &str) -> Result<(), 
     Ok(())
 }
 
+/// Marks a `captured` row `superseded` (Story 3.3b, AC-2): the capture-time
+/// "Serato 4 wins" dedup guard's terminal outcome for the losing side of a
+/// same-night duplicate. Scoped to `status = 'captured'` only, mirroring
+/// [`mark_incomplete`]'s no-op-on-mismatch idiom — a no-op (not an error) if
+/// the row is not currently `captured`.
+pub fn mark_superseded(conn: &Connection, session_identity: &str) -> Result<(), StoreError> {
+    conn.execute(
+        "UPDATE captured_sessions SET status = 'superseded' WHERE session_identity = ?1 AND status = 'captured'",
+        [session_identity],
+    )?;
+    Ok(())
+}
+
 /// Reads one row by its dedup key, if it exists.
 pub fn get_by_identity(
     conn: &Connection,
@@ -389,6 +442,36 @@ pub fn rows_pending_sync(conn: &Connection) -> Result<Vec<CapturedSessionRow>, S
         .map_err(StoreError::from)
 }
 
+/// Candidate rows for the capture-time "Serato 4 wins" dedup guard (Story
+/// 3.3b, AC-2): every `status = 'captured'` row of `source` whose time bounds
+/// overlap `(started_at, ended_at)` per [`crate::capture::same_night`]'s
+/// tolerance, checked in Rust rather than embedded as arithmetic in the SQL
+/// `WHERE` clause. Only rows with **both** bounds set are ever candidates —
+/// a `NULL` bound can never be proven to overlap, and the dedup guard's own
+/// fail-open principle says an unprovable overlap must not suppress a
+/// capture (see the caller in `watcher::mod`, `capture_and_store_legacy`/
+/// `_serato4`).
+pub fn overlapping_captured(
+    conn: &Connection,
+    source: SessionSource,
+    started_at: i64,
+    ended_at: i64,
+) -> Result<Vec<CapturedSessionRow>, StoreError> {
+    let mut stmt =
+        conn.prepare("SELECT * FROM captured_sessions WHERE source = ?1 AND status = 'captured'")?;
+    let rows = stmt.query_map([source.as_str()], row_from)?;
+    let candidates = rows
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(StoreError::from)?;
+    Ok(candidates
+        .into_iter()
+        .filter(|row| match (row.started_at, row.ended_at) {
+            (Some(s), Some(e)) => crate::capture::same_night((started_at, ended_at), (s, e)),
+            _ => false,
+        })
+        .collect())
+}
+
 /// Stamps a row's `synced_at` (Story 3.2 Task 3, the column `store.rs`'s own
 /// schema doc comment reserved for this story to set) after a successful
 /// `sync_set` RPC call. A no-op if `session_identity` does not match any row
@@ -402,6 +485,98 @@ pub fn mark_synced(
     conn.execute(
         "UPDATE captured_sessions SET synced_at = ?1 WHERE session_identity = ?2",
         rusqlite::params![synced_at, session_identity],
+    )?;
+    Ok(())
+}
+
+// ---- Parse-failure ledger (Story 3.4, Task 2) ------------------------------
+
+/// One `parse_failures` row, read back.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ParseFailureRow {
+    pub session_identity: String,
+    pub source: SessionSource,
+    pub raw_ref: String,
+    pub failed_agent_version: String,
+    pub failed_at: i64,
+    pub last_error: String,
+}
+
+fn parse_failure_row_from(row: &rusqlite::Row) -> rusqlite::Result<ParseFailureRow> {
+    let source_raw: String = row.get("source")?;
+    Ok(ParseFailureRow {
+        session_identity: row.get("session_identity")?,
+        source: SessionSource::parse(&source_raw).ok_or_else(|| {
+            rusqlite::Error::FromSqlConversionFailure(
+                0,
+                rusqlite::types::Type::Text,
+                format!("unknown source {source_raw:?}").into(),
+            )
+        })?,
+        raw_ref: row.get("raw_ref")?,
+        failed_agent_version: row.get("failed_agent_version")?,
+        failed_at: row.get("failed_at")?,
+        last_error: row.get("last_error")?,
+    })
+}
+
+/// Records (or updates in place) a terminal capture failure. A session can
+/// fail more than once across restarts/backfill attempts — each failure
+/// overwrites the row with the latest attempt's info; this ledger does not
+/// accumulate a history of past failures.
+pub fn record_parse_failure(
+    conn: &Connection,
+    session_identity: &str,
+    source: SessionSource,
+    raw_ref: &str,
+    agent_version: &str,
+    error_message: &str,
+) -> Result<(), StoreError> {
+    conn.execute(
+        r#"INSERT INTO parse_failures
+             (session_identity, source, raw_ref, failed_agent_version, failed_at, last_error)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+           ON CONFLICT(session_identity) DO UPDATE SET
+             failed_agent_version = excluded.failed_agent_version,
+             failed_at = excluded.failed_at,
+             last_error = excluded.last_error"#,
+        rusqlite::params![
+            session_identity,
+            source.as_str(),
+            raw_ref,
+            agent_version,
+            now_unix(),
+            error_message,
+        ],
+    )?;
+    Ok(())
+}
+
+/// Every row currently in the ledger, no filter — there is no "resolved"
+/// status to filter on (see `parse_failures`' schema doc comment above).
+pub fn unresolved_parse_failures(conn: &Connection) -> Result<Vec<ParseFailureRow>, StoreError> {
+    let mut stmt = conn.prepare("SELECT * FROM parse_failures")?;
+    let rows = stmt.query_map([], parse_failure_row_from)?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(StoreError::from)
+}
+
+/// The tray-precedence signal `sync_queue.rs`'s `desired_tray_state` reads
+/// (Task 4): whether any format-drift failure is currently unresolved.
+pub fn has_unresolved_parse_failures(conn: &Connection) -> Result<bool, StoreError> {
+    Ok(conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM parse_failures LIMIT 1)",
+        [],
+        |row| row.get::<_, bool>(0),
+    )?)
+}
+
+/// Removes a row once a reprocess attempt (Task 3) succeeds. A no-op (not an
+/// error) if `session_identity` does not match any row.
+pub fn clear_parse_failure(conn: &Connection, session_identity: &str) -> Result<(), StoreError> {
+    conn.execute(
+        "DELETE FROM parse_failures WHERE session_identity = ?1",
+        [session_identity],
     )?;
     Ok(())
 }
@@ -1144,5 +1319,305 @@ mod tests {
             status_of(&conn, "serato4:20").unwrap(),
             Some(SessionStatus::Watching)
         );
+    }
+
+    // ---- overlapping_captured / mark_superseded (Story 3.3b, AC-2) ---------
+
+    /// The base case: a serato4 row overlapping the queried night is found.
+    #[test]
+    fn overlapping_captured_finds_an_overlapping_row_of_the_given_source() {
+        let file = TempStoreFile::new("overlap-finds");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_captured(
+            &conn,
+            "serato4:50",
+            SessionSource::Serato4,
+            "/path/master.sqlite#50",
+            Some(1_000),
+            Some(5_000),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+
+        let found = overlapping_captured(&conn, SessionSource::Serato4, 4_000, 8_000).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].session_identity, "serato4:50");
+    }
+
+    #[test]
+    fn overlapping_captured_excludes_a_clearly_disjoint_row() {
+        let file = TempStoreFile::new("overlap-disjoint");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_captured(
+            &conn,
+            "serato4:51",
+            SessionSource::Serato4,
+            "/path/master.sqlite#51",
+            Some(1_000),
+            Some(2_000),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+
+        let found = overlapping_captured(&conn, SessionSource::Serato4, 50_000, 52_000).unwrap();
+        assert!(found.is_empty());
+    }
+
+    /// Fail-open: a row with an unset bound can never be proven to overlap,
+    /// so it must never be treated as a match.
+    #[test]
+    fn overlapping_captured_excludes_rows_with_unknown_bounds() {
+        let file = TempStoreFile::new("overlap-unknown-bounds");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_captured(
+            &conn,
+            "serato4:52",
+            SessionSource::Serato4,
+            "/path/master.sqlite#52",
+            None,
+            None,
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+
+        let found = overlapping_captured(&conn, SessionSource::Serato4, 1_000, 5_000).unwrap();
+        assert!(found.is_empty());
+    }
+
+    #[test]
+    fn overlapping_captured_excludes_a_different_source() {
+        let file = TempStoreFile::new("overlap-different-source");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_captured(
+            &conn,
+            "legacy:53",
+            SessionSource::Legacy,
+            "/sessions/53.session",
+            Some(1_000),
+            Some(5_000),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+
+        let found = overlapping_captured(&conn, SessionSource::Serato4, 1_000, 5_000).unwrap();
+        assert!(
+            found.is_empty(),
+            "a legacy row must never satisfy a serato4-source overlap query"
+        );
+    }
+
+    #[test]
+    fn overlapping_captured_excludes_non_captured_status_rows() {
+        let file = TempStoreFile::new("overlap-non-captured");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_watching(
+            &conn,
+            "serato4:54",
+            SessionSource::Serato4,
+            "/path/master.sqlite#54",
+            Some(1_000),
+        )
+        .unwrap();
+
+        let found = overlapping_captured(&conn, SessionSource::Serato4, 1_000, 5_000).unwrap();
+        assert!(
+            found.is_empty(),
+            "a watching row has no settled bounds to compare"
+        );
+    }
+
+    #[test]
+    fn mark_superseded_transitions_captured_to_superseded() {
+        let file = TempStoreFile::new("mark-superseded");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_captured(
+            &conn,
+            "legacy:55",
+            SessionSource::Legacy,
+            "/sessions/55.session",
+            Some(1_000),
+            Some(1_500),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+
+        mark_superseded(&conn, "legacy:55").unwrap();
+
+        assert_eq!(
+            status_of(&conn, "legacy:55").unwrap(),
+            Some(SessionStatus::Superseded)
+        );
+        // The row's content must survive the transition (DJ-visibility/
+        // debugging, not a deletion).
+        let row = get_by_identity(&conn, "legacy:55").unwrap().unwrap();
+        assert!(row.plays_json.is_some());
+    }
+
+    #[test]
+    fn mark_superseded_is_a_noop_for_a_non_captured_row() {
+        let file = TempStoreFile::new("mark-superseded-noop");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_watching(
+            &conn,
+            "legacy:56",
+            SessionSource::Legacy,
+            "/sessions/56.session",
+            Some(1_000),
+        )
+        .unwrap();
+
+        mark_superseded(&conn, "legacy:56").unwrap();
+
+        assert_eq!(
+            status_of(&conn, "legacy:56").unwrap(),
+            Some(SessionStatus::Watching),
+            "mark_superseded must not touch a row that isn't captured"
+        );
+    }
+
+    /// Task 3's own instruction: verify (rather than add a new filter) that
+    /// `rows_pending_sync`'s existing `status = 'captured'` clause already
+    /// excludes a superseded row automatically.
+    #[test]
+    fn rows_pending_sync_excludes_a_superseded_row_automatically() {
+        let file = TempStoreFile::new("pending-sync-excludes-superseded");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_captured(
+            &conn,
+            "legacy:57",
+            SessionSource::Legacy,
+            "/sessions/57.session",
+            Some(1_000),
+            Some(1_500),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+        upsert_captured(
+            &conn,
+            "serato4:58",
+            SessionSource::Serato4,
+            "/path/master.sqlite#58",
+            Some(2_000),
+            Some(2_500),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+        mark_superseded(&conn, "legacy:57").unwrap();
+
+        let pending = rows_pending_sync(&conn).unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].session_identity, "serato4:58");
+    }
+
+    // ---- Parse-failure ledger (Story 3.4, Task 2/6) -------------------------
+
+    #[test]
+    fn record_parse_failure_then_unresolved_round_trips() {
+        let file = TempStoreFile::new("parse-failure-roundtrip");
+        let conn = open_at(&file.0).expect("store opens");
+
+        record_parse_failure(
+            &conn,
+            "legacy:bad-file",
+            SessionSource::Legacy,
+            "/sessions/bad.session",
+            "0.1.0",
+            "unexpected EOF",
+        )
+        .unwrap();
+
+        let rows = unresolved_parse_failures(&conn).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].session_identity, "legacy:bad-file");
+        assert_eq!(rows[0].source, SessionSource::Legacy);
+        assert_eq!(rows[0].raw_ref, "/sessions/bad.session");
+        assert_eq!(rows[0].failed_agent_version, "0.1.0");
+        assert_eq!(rows[0].last_error, "unexpected EOF");
+    }
+
+    #[test]
+    fn a_second_record_parse_failure_for_the_same_identity_overwrites_not_duplicates() {
+        let file = TempStoreFile::new("parse-failure-overwrite");
+        let conn = open_at(&file.0).expect("store opens");
+
+        record_parse_failure(
+            &conn,
+            "legacy:flaky",
+            SessionSource::Legacy,
+            "/sessions/flaky.session",
+            "0.1.0",
+            "first error",
+        )
+        .unwrap();
+        record_parse_failure(
+            &conn,
+            "legacy:flaky",
+            SessionSource::Legacy,
+            "/sessions/flaky.session",
+            "0.2.0",
+            "second error",
+        )
+        .unwrap();
+
+        let rows = unresolved_parse_failures(&conn).unwrap();
+        assert_eq!(rows.len(), 1, "must overwrite, not accumulate history");
+        assert_eq!(rows[0].failed_agent_version, "0.2.0");
+        assert_eq!(rows[0].last_error, "second error");
+    }
+
+    #[test]
+    fn has_unresolved_parse_failures_reflects_ledger_state() {
+        let file = TempStoreFile::new("parse-failure-has-unresolved");
+        let conn = open_at(&file.0).expect("store opens");
+
+        assert!(!has_unresolved_parse_failures(&conn).unwrap());
+
+        record_parse_failure(
+            &conn,
+            "serato4:99",
+            SessionSource::Serato4,
+            "/path/master.sqlite#99",
+            "0.1.0",
+            "corrupt row",
+        )
+        .unwrap();
+        assert!(has_unresolved_parse_failures(&conn).unwrap());
+    }
+
+    #[test]
+    fn clear_parse_failure_removes_the_row_and_flips_has_unresolved_back_to_false() {
+        let file = TempStoreFile::new("parse-failure-clear");
+        let conn = open_at(&file.0).expect("store opens");
+
+        record_parse_failure(
+            &conn,
+            "legacy:cleared",
+            SessionSource::Legacy,
+            "/sessions/cleared.session",
+            "0.1.0",
+            "some error",
+        )
+        .unwrap();
+        assert!(has_unresolved_parse_failures(&conn).unwrap());
+
+        clear_parse_failure(&conn, "legacy:cleared").unwrap();
+
+        assert!(!has_unresolved_parse_failures(&conn).unwrap());
+        assert!(unresolved_parse_failures(&conn).unwrap().is_empty());
     }
 }

@@ -14,6 +14,11 @@
 /// handoff from `web/`'s `/link-agent` page, OS-native secure refresh-token
 /// storage, and JWT refresh/`dj_id` extraction. See [`auth`].
 pub mod auth;
+/// Startup backfill/reprocess sweep (Story 3.4, Task 3, AR-7 layer 3): retries
+/// every unresolved `parse_failures` row against the current build, once a
+/// version bump (shipped via [`crate::error_reporting`]'s sibling layer-3
+/// updater loop) makes a retry worth attempting. See [`backfill`].
+pub mod backfill;
 /// Pipeline orchestration (Story 2.8, AC-1): the first real caller of Stories
 /// 1.3-1.8's engine, wiring parse -> join -> embedded-tag-fallback -> enrich ->
 /// stat -> confidence into one captured session, plus the session-identity and
@@ -29,6 +34,10 @@ pub mod confidence;
 /// other modules read `SUPABASE_URL`/`SUPABASE_PUBLISHABLE_KEY`/`CURFEW_WEB_URL`
 /// from. See [`config`].
 pub mod config;
+/// Agent-side tagged error reporting (Story 3.4, Task 1, AD-13/AR-7 layer 2):
+/// the `ErrorReporter` trait + `SentryReporter`, reporting terminal capture
+/// failures to Sentry tagged with `agent_version`. See [`error_reporting`].
+pub mod error_reporting;
 /// Filesystem-scope guard (Story 2.7, AC-1): confines the two Serato catalogue
 /// reads (`joiner::legacy::LegacyLibrary::load`, `joiner::serato4::open_read_only`)
 /// to the DJ's configured Serato root, canonicalizing before comparing so a
@@ -81,8 +90,6 @@ pub mod tray;
 /// precedence, and the live watch loop (new-session detection + drive
 /// reconnect). See [`watcher`].
 pub mod watcher;
-
-use std::path::PathBuf;
 
 /// The language-neutral sync-contract schema the agent consumes, embedded at
 /// compile time (not resolved via a runtime filesystem path) so a bundled,
@@ -218,8 +225,60 @@ fn forward_deep_link_from_argv(app: &tauri::AppHandle, argv: &[String]) {
     }
 }
 
+/// How often [`updater_loop`] checks for a new release, after its first
+/// immediate check on startup. **Flagged to Arjun as a tunable, not a
+/// load-bearing number** — same treatment Story 1.7 gave its unconfirmed
+/// performance targets — proposed as a starting default.
+#[cfg(not(debug_assertions))]
+const UPDATE_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(6 * 60 * 60);
+
+/// Story 3.4, Task 5 (AR-7 layer 3): the missing "something" that actually
+/// calls the auto-updater plugin's `check()`/`download_and_install()` —
+/// registered since Story 2.9c, with a real signing pubkey and GitHub-
+/// releases endpoint already configured, but never invoked by anything
+/// until this story. Without this, a shipped parser fix never reaches an
+/// installed agent, and `backfill::reprocess_parse_failures`'s whole
+/// "retry once the version changes" mechanism (see that module's doc
+/// comment) never has a version change to react to.
+///
+/// Mirrors `watch_loop`/`sync_loop`'s exact `std::thread::spawn(move ||
+/// loop { ... })` shape — deliberately not an async top-level loop or a new
+/// `tokio` dependency (this codebase has zero existing `tokio::*`/
+/// `async_runtime::spawn` usage); `tauri::async_runtime::block_on` is used
+/// only for the two calls that are genuinely async, inside an otherwise
+/// synchronous loop. Silent background behavior with no user-facing prompt
+/// (FR-5) — no UI change accompanies this task.
+#[cfg(not(debug_assertions))]
+fn updater_loop(app: tauri::AppHandle) {
+    use tauri_plugin_updater::UpdaterExt;
+
+    loop {
+        tauri::async_runtime::block_on(async {
+            let Ok(updater) = app.updater() else {
+                return;
+            };
+            match updater.check().await {
+                Ok(Some(update)) => {
+                    if update.download_and_install(|_, _| {}, || {}).await.is_ok() {
+                        app.restart(); // does not return
+                    }
+                }
+                _ => {}
+            }
+        });
+        std::thread::sleep(UPDATE_CHECK_INTERVAL);
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Must bind to a local, not a discarded `_` — the guard's `Drop` is what
+    // flushes pending events on exit. `run()` blocks for the app's whole
+    // lifetime (`.run(...)` below never returns until exit), so a local
+    // here is alive exactly as long as the process needs it to be. `None`
+    // (no-op) until Arjun provisions a real `SENTRY_DSN` — see `config.rs`.
+    let _sentry_guard = error_reporting::init();
+
     tauri::Builder::default()
         // Must be the very first `.plugin(...)` call (the plugin's own
         // requirement) — the agent is a long-running tray background
@@ -247,11 +306,21 @@ pub fn run() {
             use tauri::menu::{Menu, MenuItem};
             use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
             use tauri::{Manager, WindowEvent};
-            use tray::{set_tray_state, TrayState, TRAY_ID};
+            use tray::{set_tray_state, CurrentTrayState, TrayState, TRAY_ID};
 
             // Don't show a Dock icon / Cmd+Tab entry for a tray-only app.
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
+            // Tracks the logical tray state + last-drawn colorway so a menu
+            // bar appearance change can redraw the icon below without
+            // changing what it means — see `tray::poll_menu_bar_theme`. The
+            // placeholder `Theme::Dark` here is overwritten by the real
+            // `set_tray_state(Idle)` call below before anything reads it.
+            app.manage(CurrentTrayState(std::sync::Mutex::new((
+                TrayState::Idle,
+                tauri::Theme::Dark,
+            ))));
 
             let window = app
                 .get_webview_window("main")
@@ -375,6 +444,28 @@ pub fn run() {
             // longer resolves at launch.
             set_tray_state(app.handle(), TrayState::Idle)?;
 
+            // Desktop-picture vibrancy can re-tint the menu bar (light vs.
+            // dark) with no AppKit notification to hook — `WindowEvent::
+            // ThemeChanged` only fires for an actual system Appearance
+            // toggle (see `tray::poll_menu_bar_theme`'s doc comment) — so a
+            // short poll is the only way to keep the icon's colorway
+            // matching its surroundings. AppKit calls must run on the main
+            // thread, hence the `run_on_main_thread` hop from this
+            // background thread.
+            let poll_app_handle = app.handle().clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+                let handle = poll_app_handle.clone();
+                if poll_app_handle
+                    .run_on_main_thread(move || {
+                        let _ = tray::poll_menu_bar_theme(&handle);
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            });
+
             // Story 2.6: find (or confirm, or start watching) the DJ's Serato
             // install. An existing manual override (Story 2.5) is the single
             // source of truth and skips detection entirely (Task 3); otherwise
@@ -384,18 +475,13 @@ pub fn run() {
             //
             // A home-directory resolution failure must not take down the whole
             // tray-only agent (this used to `?`-propagate out of `.setup()`,
-            // aborting tray/window creation entirely) — fall back to a path that
-            // deliberately resolves nothing so OS-default detection degrades to
-            // `NothingFound` instead, while a manual override (which doesn't
-            // depend on `home` at all) still works via the tray settings panel.
-            let home = app.path().home_dir().unwrap_or_else(|_| {
-                #[cfg(debug_assertions)]
-                eprintln!(
-                    "curfew-agent: could not resolve home directory, Serato OS-default \
-                     auto-detection will find nothing (manual override via tray still works)"
-                );
-                PathBuf::from("/curfew-agent-home-dir-unresolved")
-            });
+            // aborting tray/window creation entirely) — `resolve_home` falls
+            // back to a path that deliberately resolves nothing so OS-default
+            // detection degrades to `NothingFound` instead, while a manual
+            // override (which doesn't depend on `home` at all) still works via
+            // the tray settings panel. Story 3.3b: the same fallback is also
+            // needed by `watch_loop` now, so it lives in one shared place.
+            let home = watcher::resolve_home(app.handle());
             let settings = settings::load(app.handle()).unwrap_or_default();
             let resolution =
                 watcher::resolve_startup(&settings, &home, &watcher::detect::SystemDisks);
@@ -408,11 +494,11 @@ pub fn run() {
             app.manage(watcher::PendingDetectionState(std::sync::Mutex::new(
                 pending_detected_path,
             )));
-            // Story 3.3: published by `watch_loop` on every connect/
-            // disconnect transition, read by the independent sync-queue
-            // drain loop below so it never overwrites `DriveNotConnected`
-            // with its own `Queued`/`Idle` tray state.
-            app.manage(watcher::DriveConnectionState::default());
+            // Story 3.3 (review fix): single-writer coordinator shared by
+            // `watch_loop` and the sync-queue drain loop below, so the two
+            // independent tray writers can never interleave and stomp
+            // `DriveNotConnected` with a stale `Queued`/`Idle`/`Failed`.
+            app.manage(tray::DriveTrayCoordinator::default());
 
             if let watcher::StartupResolution::PendingConfirmation(_) = resolution {
                 // AC-3: the confirm gate must not depend on the DJ thinking to
@@ -428,6 +514,34 @@ pub fn run() {
             // from the tray settings panel, without needing a relaunch.
             watcher::start_watching(app.handle().clone());
 
+            // Story 3.4, Task 3 (AR-7 layer 3): startup backfill/reprocess
+            // sweep — retries every unresolved `parse_failures` row now that
+            // the agent may be running a newer build than whatever recorded
+            // the failure (see `backfill`'s module doc comment for why that
+            // comparison alone is the whole retry trigger). Resolves the
+            // `WatchPlan` the same way `watch_loop`'s first tick does.
+            // Spawned on its own thread, not inline (same reasoning as the
+            // startup eager-refresh thread below) — `.setup()` must not
+            // block agent startup on store I/O.
+            {
+                let backfill_plan = watcher::detect::resolve_watch_plan(
+                    settings.serato_path_override.as_deref(),
+                    &home,
+                    &watcher::detect::SystemDisks,
+                );
+                let app_handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    let Ok(conn) = store::open(&app_handle) else {
+                        return;
+                    };
+                    backfill::reprocess_parse_failures(
+                        &conn,
+                        &backfill_plan,
+                        &error_reporting::SentryReporter,
+                    );
+                });
+            }
+
             // Story 2.10 (AD-10): account linking + secure token storage.
             // Managed before the deep-link handlers below so they always
             // have somewhere to write.
@@ -441,10 +555,23 @@ pub fn run() {
 
             // Story 3.3: the offline sync-queue drain loop. Started after
             // both `AuthState` (it needs the in-memory token cache) and
-            // `DriveConnectionState` (read on its very first iteration) are
+            // `DriveTrayCoordinator` (read on its very first iteration) are
             // already managed above — same "always started, tracks live
             // state itself" shape as `watcher::start_watching`.
             sync_queue::start_syncing(app.handle().clone());
+
+            // Story 3.4, Task 5: the auto-updater check/download/install
+            // loop, on its own spawned thread (mirrors every other
+            // startup-thread pattern above — `.setup()` must not block on
+            // it, and it loops forever). Release builds only — an unsigned
+            // debug build has no valid updater signature to verify against,
+            // and a dev loop silently polling GitHub every few hours during
+            // local development is pure noise.
+            #[cfg(not(debug_assertions))]
+            {
+                let updater_app_handle = app.handle().clone();
+                std::thread::spawn(move || updater_loop(updater_app_handle));
+            }
 
             {
                 use tauri_plugin_deep_link::DeepLinkExt;

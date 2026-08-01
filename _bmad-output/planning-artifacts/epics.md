@@ -615,6 +615,29 @@ So that I never lose a set to a bad connection at the venue.
 3. **Given** the tray, **Then** it reflects "offline / queued" with a text-labeled glyph. *(UX-DR19 sync-offline, UX-DR23)*
 4. **Given** two agents on one account draining the same shared-USB session (a rare multi-device / shared-USB edge persona), **When** both `PUT` the same `set_id`, **Then** MVP behavior is explicit **last-write-wins** on content columns — accepted as a deliberate MVP choice (not a silent gap); a writer-of-record rule is deferred and does **not** change the architecture spine. *(Ruling, party 2026-07-20 — Arjun)*
 
+### Story 3.3b: Version-agnostic history capture (watch-both + capture-time dedup)
+
+*Surfaced by Story 3.3 manual verification (2026-07-31) as a silent-capture incident — the most severe class of failure this product can have: a Serato 4 DJ pointing at a USB `_Serato_` folder (the default migrated/USB layout) is classified legacy, watches a non-existent `History/Sessions/` path, and captures **nothing**, with the agent showing healthy `Idle` the whole time. Caught pre-launch by manual verification. Full investigation + decided design: `_bmad-output/implementation-artifacts/serato4-history-location-detection-gap-2026-07-31.md`; ledger: `deferred-work.md`.*
+
+As a DJ,
+I want the agent to capture my play history no matter which Serato generation is writing it or where my library lives,
+So that I never silently lose nights to a setup detail I never knew mattered.
+
+**Acceptance Criteria:**
+
+1. **Given** an install exposing both a Serato 4 internal `master.sqlite` and a legacy `History/Sessions` catalogue, **When** the agent watches, **Then** it watches **both** sources concurrently rather than selecting one — so a silently-watched empty source can never be the whole picture. *(FR-4; direct fix for the 3.3 incident)*
+2. **Given** the same real-world night surfaces from both sources, **Then** the Serato 4 capture wins and the legacy twin is suppressed before sync — no duplicate set reaches the cloud — enforced by a capture-time test, since the two formats emit **deliberately non-colliding** `session_identity` values (`serato4:{id}` vs `legacy:{fnv1a(path+start_time)}`, `capture.rs:473`) that Story 3.2's idempotency key would **not** dedup. *(Story 2.6 AC-5 "Serato 4 wins" precedence, moved from watch-time selection to capture-time dedup; AR-2)*
+3. **Given** a Serato 4 install is present, **Then** the fixed internal `master.sqlite` is always a watched source regardless of a DJ's library-folder override (the saved override no longer skips detection of it — `mod.rs:80-82`), **And** `joiner::serato4::open_read_only(root, db_path)`'s containment check is satisfied by swapping `root` to the internal container on redirect rather than refusing the internal `db_path`. *(fixes the override-precedence root cause + the `open_read_only` root/db_path coupling)*
+4. **Given** the DJ points the override at a folder with no reachable history, **When** they Save, **Then** the confirm UI rejects it **synchronously** with a specific reason ("No Serato library found here — point me at your `_Serato_` folder"), never a silent green. *(UX-DR18 calm failure copy)*
+5. **Given** the fix, **Then** no new tray state is introduced — runtime staleness stays owned by the existing `DriveNotConnected` (drive unplugged) and Story 3.4 (post-setup format/layout drift), so this story does not duplicate one or pre-empt the other. *(UX-DR19 state ownership)*
+6. **Given** the live watch/capture path, **Then** it carries automated coverage for: both-sources-present capture, the Serato-4-wins dedup on a night present in both, internal-path-wins-over-a-legacy-override, and Save-time rejection of a no-history folder — the incident escaped precisely because the live loop had no such coverage (standing gap from Story 2.6's review). *(AR-7 layer 1 discipline)*
+
+**Open questions (logged, non-blocking — the AC-2 dedup guard keeps AC-1 safe either way):**
+- Does Serato 4 ever write a **new** `.session` file for a set it also records in `master.sqlite`? One data point (Arjun's machine, 2026-07-31) says no; this determines whether AC-2's guard is load-bearing or belt-and-suspenders. A second migrated install settles it.
+- Windows Serato 4 internal history path is unconfirmed (`SERATO4_HOME_RELPATH` is macOS-only, `detect.rs:14-19`).
+
+**Explicitly deferred to a separate follow-on story (Arjun 2026-07-31, "onboarding polish can be done later as long as we know to do it"):** first-run **verified setup** — a live test capture proving capture works on the DJ's exact machine (the only thing that closes the residual "path validates but new plays land elsewhere" false-green); optional "on Serato 4? you're all set" copy, **never a version requirement**. Tracked in `deferred-work.md`.
+
 ### Story 3.4: Format-drift resilience + backfill
 
 As the system,

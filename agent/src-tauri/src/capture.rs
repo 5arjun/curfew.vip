@@ -173,8 +173,50 @@ pub const LEGACY_QUIET_PERIOD_SEC: u64 = 15 * 60;
 /// instead of sleeping the test thread for real minutes.
 pub fn legacy_quiet_period_elapsed(last_modified: SystemTime, now: SystemTime) -> bool {
     now.duration_since(last_modified)
-        .map(|elapsed| elapsed.as_secs() >= LEGACY_QUIET_PERIOD_SEC)
+        .map(|elapsed| elapsed.as_secs() >= legacy_quiet_period_sec())
         .unwrap_or(false)
+}
+
+/// The quiet-period threshold in seconds — normally [`LEGACY_QUIET_PERIOD_SEC`]
+/// (15 min), but in **debug builds only** overridable via
+/// `CURFEW_DEBUG_QUIET_PERIOD_SEC` so a legacy set can be captured seconds after
+/// the last write instead of forcing a real 15-minute wait during a manual
+/// end-to-end walkthrough. Compiled out entirely in release: release builds
+/// always return [`LEGACY_QUIET_PERIOD_SEC`].
+fn legacy_quiet_period_sec() -> u64 {
+    #[cfg(debug_assertions)]
+    {
+        if let Ok(raw) = std::env::var("CURFEW_DEBUG_QUIET_PERIOD_SEC") {
+            if let Ok(secs) = raw.parse::<u64>() {
+                return secs;
+            }
+        }
+    }
+    LEGACY_QUIET_PERIOD_SEC
+}
+
+// ---- Capture-time dedup (Story 3.3b, AC-2) ---------------------------------
+
+/// Whether two captured sessions' time bounds describe "the same night"
+/// within a small tolerance — the capture-time "Serato 4 wins" dedup guard's
+/// core predicate. `a`/`b` are each `(started_at, ended_at)` in unix epoch
+/// seconds, both derived from Serato's own play `start_time`s
+/// ([`session_bounds`]) regardless of which format produced them, so they are
+/// directly comparable with no clock conversion.
+///
+/// `TOLERANCE_SEC = 60` covers a single-play session where
+/// `started_at == ended_at`, and any second-resolution skew between the two
+/// source formats' records of the same play.
+///
+/// **Fail open, by construction of the caller, not this function**: this
+/// predicate only ever runs against two *known* interval pairs — a caller
+/// holding an unknown (`None`) bound must skip calling this rather than
+/// invent a value, since a spurious duplicate set is recoverable-ish but a
+/// silently suppressed real set is the exact failure class this story exists
+/// to eliminate (see the call sites in `watcher::mod`).
+pub fn same_night(a: (i64, i64), b: (i64, i64)) -> bool {
+    const TOLERANCE_SEC: i64 = 60;
+    a.0 <= b.1 + TOLERANCE_SEC && b.0 <= a.1 + TOLERANCE_SEC
 }
 
 // ---- Pipeline wiring (Task 5, AC-1) -----------------------------------------
@@ -615,6 +657,49 @@ mod tests {
         let last_modified = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000);
         let now = SystemTime::UNIX_EPOCH;
         assert!(!legacy_quiet_period_elapsed(last_modified, now));
+    }
+
+    // ---- same_night (Story 3.3b, AC-2 dedup guard) --------------------------
+
+    #[test]
+    fn same_night_identical_bounds_match() {
+        assert!(same_night((1_000, 5_000), (1_000, 5_000)));
+    }
+
+    #[test]
+    fn same_night_overlapping_ranges_match() {
+        assert!(same_night((1_000, 5_000), (4_000, 8_000)));
+    }
+
+    #[test]
+    fn same_night_single_play_sessions_within_tolerance_match() {
+        // started_at == ended_at for a single-play session on both sides;
+        // the two formats' records of "the same play" can skew by a couple
+        // seconds without being a genuinely different night.
+        assert!(same_night((1_000, 1_000), (1_030, 1_030)));
+    }
+
+    #[test]
+    fn same_night_exactly_at_the_tolerance_boundary_matches() {
+        // a.0 <= b.1 + 60 and b.0 <= a.1 + 60, both exactly at the edge.
+        assert!(same_night((1_000, 1_000), (1_060, 1_060)));
+    }
+
+    #[test]
+    fn same_night_just_past_the_tolerance_boundary_does_not_match() {
+        assert!(!same_night((1_000, 1_000), (1_061, 1_061)));
+    }
+
+    #[test]
+    fn same_night_clearly_disjoint_ranges_do_not_match() {
+        assert!(!same_night((1_000, 2_000), (10_000, 12_000)));
+    }
+
+    #[test]
+    fn same_night_is_symmetric() {
+        let a = (1_000, 5_000);
+        let b = (4_500, 9_000);
+        assert_eq!(same_night(a, b), same_night(b, a));
     }
 
     // ---- Pipeline wiring: legacy --------------------------------------------

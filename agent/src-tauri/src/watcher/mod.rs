@@ -24,7 +24,7 @@ use std::time::{Duration, SystemTime};
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use rusqlite::Connection;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 pub use detect::SeratoInstall;
 
@@ -90,24 +90,6 @@ pub fn resolve_startup(
 /// auto-detection found at startup, awaiting the DJ's confirm/edit + Save.
 pub struct PendingDetectionState(pub Mutex<Option<String>>);
 
-/// Story 3.3: the current "is the configured Serato source reachable" signal,
-/// published by [`watch_loop`] on every connect/disconnect transition —
-/// shared Tauri state so the independent sync-queue drain loop
-/// (`sync_queue.rs`) can read it before writing its own tray state. Two
-/// independent problems ("drive not connected" vs. "sync backlog queued")
-/// must never fight over the tray: this story's Dev Notes rule that
-/// `DriveNotConnected` is the more specific, more actionable state and must
-/// win whenever both are true at once. Defaults to `true` (assume connected,
-/// matching the tray's own `Idle` default at boot) until the first
-/// classification tick says otherwise.
-pub struct DriveConnectionState(pub std::sync::atomic::AtomicBool);
-
-impl Default for DriveConnectionState {
-    fn default() -> Self {
-        Self(std::sync::atomic::AtomicBool::new(true))
-    }
-}
-
 /// A pending detection is only ever shown before an override exists — once the DJ
 /// saves one (via `set_serato_path_override`, Task 3/4's confirm action), it must
 /// stop appearing even though the cached value is still sitting in
@@ -155,7 +137,263 @@ pub fn start_watching(app: AppHandle) {
     std::thread::spawn(move || watch_loop(app));
 }
 
-/// One connected/disconnected cycle plus live session discovery, looped forever.
+/// Resolves the DJ's home directory, with the same non-fatal fallback used
+/// everywhere in this crate a missing home dir must not take down the whole
+/// tray-only agent: a path that deliberately resolves nothing, so OS-default
+/// detection (and, since Story 3.3b, the unconditional internal-Serato4
+/// probe in [`detect::resolve_watch_plan`]) just degrades to finding
+/// nothing rather than panicking or aborting `.setup()`. Shared by `lib.rs`'s
+/// `.setup()` and [`watch_loop`] so the fallback logic exists in one place.
+pub fn resolve_home(app: &AppHandle) -> PathBuf {
+    app.path().home_dir().unwrap_or_else(|_| {
+        #[cfg(debug_assertions)]
+        eprintln!(
+            "curfew-agent: could not resolve home directory, Serato OS-default \
+             auto-detection will find nothing (manual override via tray still works)"
+        );
+        PathBuf::from("/curfew-agent-home-dir-unresolved")
+    })
+}
+
+/// AC-5's combined drive-reachability signal: **connected iff any configured
+/// history source currently resolves** — decided by Arjun 2026-08-01 (see the
+/// story's Dev Notes, "Drive-connected semantics"). A [`WatchPlan`] slot being
+/// `Some` already means "resolves right now" ([`detect::resolve_watch_plan`]
+/// only fills a slot when the underlying file/folder actually stats), so this
+/// is a direct, pure projection with no extra state to track — extracted so
+/// it is unit-testable without a running watch loop.
+fn drive_connected(plan: &detect::WatchPlan) -> bool {
+    plan.serato4.is_some() || plan.legacy.is_some()
+}
+
+/// Per-source watch state for the Serato 4+ slot (Story 3.3b). `source.db_path`
+/// is this slot's identity — the value [`advance_serato4`] diffs against a
+/// freshly resolved [`detect::Serato4Source`] to tell a genuine path change
+/// (reset) apart from a mere reconnect of the same file (announce only).
+struct Serato4Watch {
+    source: detect::Serato4Source,
+    // `None` = not yet evaluated against the current `source` (true both at
+    // first sight and right after an identity change) — distinct from
+    // `Some(false)` (evaluated and found disconnected), so the very first
+    // classification for a source always announces instead of only a
+    // transition edge (mirrors the old single-source `connected` local).
+    connected: Option<bool>,
+    watermark: i64,
+    _fs_watcher: Option<RecommendedWatcher>,
+}
+
+/// Per-source watch state for the legacy slot (Story 3.3b). Mirrors
+/// [`Serato4Watch`]; `source.serato_dir` is this slot's identity.
+struct LegacyWatch {
+    source: detect::LegacySource,
+    connected: Option<bool>,
+    _fs_watcher: Option<RecommendedWatcher>,
+}
+
+/// Advances the Serato4 slot for one loop tick (Story 3.3b, Task 2): detects
+/// a genuine identity change (the resolved `db_path` itself differs from what
+/// was last tracked — reset, scoped to just this slot, mirroring the old
+/// single-source "override changed" branch) versus a mere connect/disconnect
+/// of the *same* identity (announce the transition only; the watermark and
+/// pending trackers are deliberately left untouched so a reconnect resumes
+/// rather than re-backfilling — see the story's Dev Notes, "Watermark reset
+/// is a 490-row event"). The completion re-check runs every tick this slot is
+/// configured, including the very tick it first connects — mirrors the old
+/// loop's unconditional every-iteration recheck.
+fn advance_serato4(
+    new_source: Option<&detect::Serato4Source>,
+    state: &mut Option<Serato4Watch>,
+    tx: &mpsc::Sender<notify::Result<notify::Event>>,
+    store_conn: Option<&Connection>,
+    pending: &mut HashSet<i64>,
+) {
+    if let (Some(new_source), Some(existing)) = (new_source, state.as_ref()) {
+        if existing.source.db_path != new_source.db_path {
+            if let Some(conn) = store_conn {
+                for id in pending.iter() {
+                    log_store_err(
+                        "mark_incomplete on serato4 path change",
+                        crate::store::mark_incomplete(
+                            conn,
+                            &crate::capture::serato4_session_identity(*id),
+                        ),
+                    );
+                }
+            }
+            pending.clear();
+            *state = None;
+        }
+    }
+
+    match new_source {
+        Some(new_source) => {
+            let watch_state = state.get_or_insert_with(|| Serato4Watch {
+                source: new_source.clone(),
+                connected: None,
+                watermark: 0,
+                _fs_watcher: None,
+            });
+            watch_state.source = new_source.clone();
+            if watch_state.connected != Some(true) {
+                connect_serato4(watch_state, tx, store_conn, pending);
+            }
+            if let Some(conn) = store_conn {
+                recheck_pending_serato4(
+                    conn,
+                    &watch_state.source.root,
+                    &watch_state.source.db_path,
+                    pending,
+                );
+            }
+        }
+        None => {
+            if let Some(existing) = state.as_mut() {
+                if existing.connected != Some(false) {
+                    disconnect_serato4(existing, pending, store_conn);
+                }
+            }
+        }
+    }
+}
+
+fn connect_serato4(
+    state: &mut Serato4Watch,
+    tx: &mpsc::Sender<notify::Result<notify::Event>>,
+    store_conn: Option<&Connection>,
+    pending: &mut HashSet<i64>,
+) {
+    state.connected = Some(true);
+    state._fs_watcher = start_fs_watch(&state.source.db_path, tx.clone());
+    // Startup/reconnect catch-up: discovers every session up to the (per-
+    // source, preserved-across-reconnect) watermark, exactly as before.
+    check_for_new_sessions(
+        &state.source.root,
+        &state.source.db_path,
+        &mut state.watermark,
+        store_conn,
+        pending,
+    );
+    if let Some(conn) = store_conn {
+        // Story 2.8 AC-4 resume: a session marked `incomplete` on a prior
+        // disconnect goes back to `watching` the moment this source is
+        // reachable again.
+        reregister_pending_serato4_as_watching(conn, &state.source.db_path, pending);
+    }
+}
+
+fn disconnect_serato4(
+    state: &mut Serato4Watch,
+    pending: &HashSet<i64>,
+    store_conn: Option<&Connection>,
+) {
+    state.connected = Some(false);
+    state._fs_watcher = None;
+    // Story 2.8 AC-4: a session still `watching` when its source disconnects
+    // is neither silently dropped nor left ambiguously `watching` forever —
+    // flag it `incomplete`. Still tracked in-memory (not cleared here) so a
+    // reconnect can resume it.
+    if let Some(conn) = store_conn {
+        for id in pending {
+            log_store_err(
+                "mark_incomplete on disconnect",
+                crate::store::mark_incomplete(conn, &crate::capture::serato4_session_identity(*id)),
+            );
+        }
+    }
+}
+
+/// Legacy-slot equivalent of [`advance_serato4`].
+fn advance_legacy(
+    new_source: Option<&detect::LegacySource>,
+    state: &mut Option<LegacyWatch>,
+    tx: &mpsc::Sender<notify::Result<notify::Event>>,
+    store_conn: Option<&Connection>,
+    pending: &mut HashMap<PathBuf, LegacyPendingSession>,
+) {
+    if let (Some(new_source), Some(existing)) = (new_source, state.as_ref()) {
+        if existing.source.serato_dir != new_source.serato_dir {
+            if let Some(conn) = store_conn {
+                for entry in pending.values() {
+                    log_store_err(
+                        "mark_incomplete on legacy path change",
+                        crate::store::mark_incomplete(conn, &entry.session_identity),
+                    );
+                }
+            }
+            pending.clear();
+            *state = None;
+        }
+    }
+
+    match new_source {
+        Some(new_source) => {
+            let watch_state = state.get_or_insert_with(|| LegacyWatch {
+                source: new_source.clone(),
+                connected: None,
+                _fs_watcher: None,
+            });
+            watch_state.source = new_source.clone();
+            if watch_state.connected != Some(true) {
+                connect_legacy(watch_state, tx, store_conn, pending);
+            }
+            if let Some(conn) = store_conn {
+                recheck_legacy_quiet_periods(conn, &watch_state.source.library_root, pending);
+            }
+        }
+        None => {
+            if let Some(existing) = state.as_mut() {
+                if existing.connected != Some(false) {
+                    disconnect_legacy(existing, pending, store_conn);
+                }
+            }
+        }
+    }
+}
+
+fn connect_legacy(
+    state: &mut LegacyWatch,
+    tx: &mpsc::Sender<notify::Result<notify::Event>>,
+    store_conn: Option<&Connection>,
+    pending: &mut HashMap<PathBuf, LegacyPendingSession>,
+) {
+    state.connected = Some(true);
+    let watch_target = state.source.serato_dir.join("History").join("Sessions");
+    state._fs_watcher = start_fs_watch(&watch_target, tx.clone());
+    if let Some(conn) = store_conn {
+        // Mirrors the Serato4 branch: the live `notify` watcher (started just
+        // above) only sees `.session` files written *after* this point, so a
+        // session that completed while the agent was closed would otherwise
+        // never be discovered. This one-time scan on (re)connect closes that
+        // gap — idempotent against files already seen/captured in a prior run
+        // (`handle_legacy_session_event`'s in-memory `pending` check and the
+        // store's `upsert_watching`, which refuses to regress a `captured`
+        // row).
+        scan_legacy_session_dir(conn, &watch_target, pending);
+        reregister_pending_legacy_as_watching(conn, pending);
+    }
+}
+
+fn disconnect_legacy(
+    state: &mut LegacyWatch,
+    pending: &HashMap<PathBuf, LegacyPendingSession>,
+    store_conn: Option<&Connection>,
+) {
+    state.connected = Some(false);
+    state._fs_watcher = None;
+    if let Some(conn) = store_conn {
+        for entry in pending.values() {
+            log_store_err(
+                "mark_incomplete on disconnect",
+                crate::store::mark_incomplete(conn, &entry.session_identity),
+            );
+        }
+    }
+}
+
+/// One connected/disconnected cycle plus live session discovery, looped
+/// forever, for **both** history sources concurrently (Story 3.3b, AC-1) —
+/// the direct fix for the incident where a saved override silently starved
+/// out the Serato 4+ internal database from ever being watched at all.
 ///
 /// **Re-reads `settings::load` every cycle rather than taking a fixed path.**
 /// The confirm action (`set_serato_path_override`, Task 3/4) only ever writes to
@@ -164,12 +402,11 @@ pub fn start_watching(app: AppHandle) {
 /// state. Polling the live override instead means Save doesn't need to know this
 /// loop exists at all: whatever is on disk right now is what gets watched, and a
 /// changed override (first Save, or editing an existing one) is picked up on the
-/// next [`RECONNECT_POLL_INTERVAL`] tick, same as a reconnect.
-///
-/// Two other concerns share this one loop rather than running as two: a
-/// disconnect must tear down the live fs-watcher (it is watching a path that
-/// just vanished), and a reconnect must stand a fresh one back up against the
-/// same, possibly-relaunched, volume.
+/// next [`RECONNECT_POLL_INTERVAL`] tick, same as a reconnect. Each tick
+/// re-resolves the full [`detect::WatchPlan`] via [`detect::resolve_watch_plan`]
+/// (home is resolved once, up front — it cannot change during a run) and hands
+/// each slot to [`advance_serato4`]/[`advance_legacy`], which own that source's
+/// own connect/disconnect/path-change bookkeeping independently of the other.
 ///
 /// **Story 2.8** extends this loop with set-capture bookkeeping: a session
 /// seen but not yet complete is tracked in [`pending_serato4`]/
@@ -180,16 +417,7 @@ pub fn start_watching(app: AppHandle) {
 /// cadence via `recv_timeout`'s timeout below, so no new timer is introduced.
 /// The store's [`Connection`] is opened once for the loop's lifetime (Task 6),
 /// not per capture or per poll tick.
-#[allow(unused_assignments)] // `_fs_watcher` is a lifetime guard: dropping it stops the watch.
 fn watch_loop(app: AppHandle) {
-    let mut current_path: Option<PathBuf> = None;
-    // `None` = not yet evaluated against the current `current_path` (true both
-    // at boot and right after a path change) — distinct from `Some(false)`
-    // (evaluated and found disconnected), so the very first classification for
-    // a path always announces its result instead of only a transition edge.
-    let mut connected: Option<bool> = None;
-    let mut watermark: i64 = 0;
-    let mut _fs_watcher: Option<RecommendedWatcher> = None;
     let (tx, rx) = mpsc::channel::<notify::Result<notify::Event>>();
 
     // Story 2.8 Task 6: opened once for the loop's lifetime. A failure to open
@@ -239,185 +467,76 @@ fn watch_loop(app: AppHandle) {
         }
     }
 
+    let home = resolve_home(&app);
+    let mut serato4_state: Option<Serato4Watch> = None;
+    let mut legacy_state: Option<LegacyWatch> = None;
+    // `None` = not yet evaluated this run — distinct from `Some(false)`, so
+    // the very first tick always announces even if nothing resolves.
+    let mut overall_connected: Option<bool> = None;
+
     loop {
         let override_path = crate::settings::load(&app)
             .ok()
-            .and_then(|s| s.serato_path_override)
-            .map(PathBuf::from);
+            .and_then(|s| s.serato_path_override);
+        let plan =
+            detect::resolve_watch_plan(override_path.as_deref(), &home, &detect::SystemDisks);
 
-        // The override changed (first ever Save, or a DJ pointing it somewhere
-        // new) — drop whatever was being watched and re-evaluate from scratch
-        // against the new path. A genuine path change resets the high-water
-        // mark (a different database has no meaningful prior watermark); a
-        // mere disconnect/reconnect of the *same* path does not (see below) —
-        // otherwise every USB unplug/replug would re-report all previously-seen
-        // sessions as new. Story 2.8: a path change also invalidates any
-        // in-flight pending-capture bookkeeping for the old path, same reasoning.
-        if override_path != current_path {
-            // Story 2.8 AC-4: a path change abandons whatever was pending for
-            // the old path — flag those store rows `incomplete` (same as a
-            // disconnect) before dropping the in-memory trackers, so they are
-            // not silently left at `watching` forever with nothing left to
-            // ever resume or flag them.
-            if let Some(conn) = &store_conn {
-                for id in &pending_serato4 {
-                    log_store_err(
-                        "mark_incomplete on path change",
-                        crate::store::mark_incomplete(
-                            conn,
-                            &crate::capture::serato4_session_identity(*id),
-                        ),
-                    );
-                }
-                for entry in legacy_pending.values() {
-                    log_store_err(
-                        "mark_incomplete on path change",
-                        crate::store::mark_incomplete(conn, &entry.session_identity),
-                    );
-                }
-            }
-            current_path = override_path.clone();
-            connected = None;
-            watermark = 0;
-            _fs_watcher = None;
-            pending_serato4.clear();
-            legacy_pending.clear();
-        }
+        advance_serato4(
+            plan.serato4.as_ref(),
+            &mut serato4_state,
+            &tx,
+            store_conn.as_ref(),
+            &mut pending_serato4,
+        );
+        advance_legacy(
+            plan.legacy.as_ref(),
+            &mut legacy_state,
+            &tx,
+            store_conn.as_ref(),
+            &mut legacy_pending,
+        );
 
-        if let Some(path) = &current_path {
-            match detect::classify(path) {
-                Some(install) => {
-                    // Covers both the first-ever classification for this path
-                    // (`None`, including at boot) and a genuine reconnect
-                    // (`Some(false)`) — either way the tray/watcher need to
-                    // (re)announce, but the watermark is deliberately left
-                    // untouched here (only a path change resets it, above).
-                    if connected != Some(true) {
-                        connected = Some(true);
-                        publish_drive_connection_state(&app, true);
-                        let _ = crate::tray::set_tray_state(&app, crate::tray::TrayState::Idle);
-                        _fs_watcher = start_fs_watch(&install, tx.clone());
-                        if let SeratoInstall::Serato4 { db_path } = &install {
-                            check_for_new_sessions(
-                                path,
-                                db_path,
-                                &mut watermark,
-                                store_conn.as_ref(),
-                                &mut pending_serato4,
-                            );
-                        }
-                        // Story 2.8 AC-4 resume: a session marked `incomplete`
-                        // on a prior disconnect goes back to `watching` the
-                        // moment its source is reachable again — the next
-                        // completion re-check below promotes it to `captured`
-                        // if the signal has resolved, or it simply continues
-                        // as a normal pending session otherwise.
-                        if let Some(conn) = &store_conn {
-                            reregister_pending_as_watching(
-                                conn,
-                                db_path_for(&install),
-                                &pending_serato4,
-                                &legacy_pending,
-                            );
-                        }
-                    }
-                    // Story 2.8 Task 4/6: completion re-check, every iteration
-                    // while connected.
-                    if let Some(conn) = &store_conn {
-                        match &install {
-                            SeratoInstall::Serato4 { db_path } => {
-                                recheck_pending_serato4(conn, path, db_path, &mut pending_serato4);
-                            }
-                            SeratoInstall::Legacy(serato_dir) => {
-                                let library_root =
-                                    crate::capture::library_root_from_serato_dir(serato_dir);
-                                recheck_legacy_quiet_periods(
-                                    conn,
-                                    &library_root,
-                                    &mut legacy_pending,
-                                );
-                            }
-                        }
-                    }
-                }
-                None => {
-                    if connected != Some(false) {
-                        connected = Some(false);
-                        _fs_watcher = None;
-                        publish_drive_connection_state(&app, false);
-                        let _ = crate::tray::set_tray_state(
-                            &app,
-                            crate::tray::TrayState::DriveNotConnected,
-                        );
-                        // Story 2.8 AC-4: a session still `watching` when its
-                        // source disconnects is neither silently dropped nor
-                        // left ambiguously `watching` forever — flag it
-                        // `incomplete`. Still tracked in-memory (not cleared
-                        // here, unlike a genuine path change above) so a
-                        // reconnect can resume it.
-                        if let Some(conn) = &store_conn {
-                            for id in &pending_serato4 {
-                                log_store_err(
-                                    "mark_incomplete on disconnect",
-                                    crate::store::mark_incomplete(
-                                        conn,
-                                        &crate::capture::serato4_session_identity(*id),
-                                    ),
-                                );
-                            }
-                            for entry in legacy_pending.values() {
-                                log_store_err(
-                                    "mark_incomplete on disconnect",
-                                    crate::store::mark_incomplete(conn, &entry.session_identity),
-                                );
-                            }
-                        }
-                    }
-                }
+        // AC-5: the combined drive-reachability signal, written through the
+        // single-writer coordinator only on an actual transition.
+        let now_connected = drive_connected(&plan);
+        if overall_connected != Some(now_connected) {
+            overall_connected = Some(now_connected);
+            if let Some(coordinator) = app.try_state::<crate::tray::DriveTrayCoordinator>() {
+                coordinator.set_drive_connected(&app, now_connected);
             }
         }
-        // No override at all yet: nothing to watch. Tray/window state for that
-        // case belongs to the first-run confirm flow (`resolve_startup`), not
-        // this loop.
 
         match rx.recv_timeout(RECONNECT_POLL_INTERVAL) {
             Ok(Ok(event)) => {
-                // `notify` on a SQLite file in WAL mode can fire more than once per
-                // logical write (temp-file churn) — harmless here because
-                // `check_for_new_sessions` is idempotent against `watermark`, so a
-                // spurious extra event just re-runs a query that finds nothing new.
-                if let Some(path) = &current_path {
-                    match detect::classify(path) {
-                        Some(SeratoInstall::Serato4 { db_path }) => {
-                            check_for_new_sessions(
-                                path,
-                                &db_path,
-                                &mut watermark,
-                                store_conn.as_ref(),
-                                &mut pending_serato4,
-                            );
+                // Dispatch on the event's own path(s), not by re-classifying —
+                // with two live sources sharing one channel, re-running
+                // `classify` against a single `current_path` is ambiguous by
+                // construction. A `.session` extension is unambiguously a
+                // legacy event; anything else is assumed to be the serato4
+                // source's `master.sqlite` (the only other file either
+                // watcher targets). `notify` on a SQLite file in WAL mode can
+                // fire more than once per logical write (temp-file churn) —
+                // harmless here because `check_for_new_sessions` is
+                // idempotent against `watermark`.
+                let mut session_paths = event
+                    .paths
+                    .iter()
+                    .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("session"));
+                if let Some(first) = session_paths.next() {
+                    if let Some(conn) = &store_conn {
+                        handle_legacy_session_event(conn, first, &mut legacy_pending);
+                        for path in session_paths {
+                            handle_legacy_session_event(conn, path, &mut legacy_pending);
                         }
-                        Some(SeratoInstall::Legacy(_)) => {
-                            // Story 2.8: register/refresh whichever `.session`
-                            // file(s) this event touched — completion itself
-                            // is decided by the quiet-period re-check above,
-                            // not here.
-                            if let Some(conn) = &store_conn {
-                                for event_path in &event.paths {
-                                    if event_path.extension().and_then(|e| e.to_str())
-                                        == Some("session")
-                                    {
-                                        handle_legacy_session_event(
-                                            conn,
-                                            event_path,
-                                            &mut legacy_pending,
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                        None => {}
                     }
+                } else if let Some(state) = &mut serato4_state {
+                    check_for_new_sessions(
+                        &state.source.root,
+                        &state.source.db_path,
+                        &mut state.watermark,
+                        store_conn.as_ref(),
+                        &mut pending_serato4,
+                    );
                 }
             }
             Ok(Err(_)) => {}
@@ -436,19 +555,6 @@ struct LegacyPendingSession {
     session_identity: String,
 }
 
-/// Story 3.3: publishes the drive-reachability signal for
-/// [`DriveConnectionState`]'s consumers (the sync-queue drain loop) — a
-/// no-op if the state isn't managed yet (should not happen once `.setup()`
-/// completes, but this loop must never panic over a missing `try_state`).
-fn publish_drive_connection_state(app: &AppHandle, connected: bool) {
-    use tauri::Manager;
-    if let Some(state) = app.try_state::<DriveConnectionState>() {
-        state
-            .0
-            .store(connected, std::sync::atomic::Ordering::Relaxed);
-    }
-}
-
 /// Logs a local-store write failure in debug builds only, matching this
 /// module's other write-failure logging (`capture_and_store_serato4`/
 /// `_legacy`). Release builds have no UI surface to report to yet, and a
@@ -462,44 +568,36 @@ fn log_store_err(context: &str, result: Result<(), crate::store::StoreError>) {
     }
 }
 
-/// The `db_path` a Serato4 install carries, for callers that already matched
-/// on [`SeratoInstall`] generically. `None` for a legacy install — Task 4's
-/// resume step only applies to Serato4's `pending_serato4` set via this path;
-/// the legacy half is handled directly against `legacy_pending`, which does
-/// not need a `db_path` at all.
-fn db_path_for(install: &SeratoInstall) -> Option<&Path> {
-    match install {
-        SeratoInstall::Serato4 { db_path } => Some(db_path),
-        SeratoInstall::Legacy(_) => None,
+/// Story 2.8 AC-4 resume, serato4 half: re-marks every currently-tracked
+/// pending session `'watching'` (from whatever it was, including
+/// `'incomplete'`) now that this source is reachable again. A no-op for a
+/// session already `'captured'` — [`crate::store::upsert_watching`]'s own
+/// `WHERE` clause refuses to regress that terminal state.
+fn reregister_pending_serato4_as_watching(
+    conn: &Connection,
+    db_path: &Path,
+    pending: &HashSet<i64>,
+) {
+    for id in pending {
+        log_store_err(
+            "upsert_watching on reconnect",
+            crate::store::upsert_watching(
+                conn,
+                &crate::capture::serato4_session_identity(*id),
+                crate::store::SessionSource::Serato4,
+                &crate::capture::serato4_raw_ref(db_path, *id),
+                None,
+            ),
+        );
     }
 }
 
-/// Story 2.8 AC-4 resume: re-marks every currently-tracked pending session
-/// `'watching'` (from whatever it was, including `'incomplete'`) now that its
-/// source is reachable again. A no-op for a session already `'captured'` —
-/// [`crate::store::upsert_watching`]'s own `WHERE` clause refuses to regress
-/// that terminal state.
-fn reregister_pending_as_watching(
+/// Legacy half of [`reregister_pending_serato4_as_watching`].
+fn reregister_pending_legacy_as_watching(
     conn: &Connection,
-    serato4_db_path: Option<&Path>,
-    pending_serato4: &HashSet<i64>,
-    legacy_pending: &HashMap<PathBuf, LegacyPendingSession>,
+    pending: &HashMap<PathBuf, LegacyPendingSession>,
 ) {
-    if let Some(db_path) = serato4_db_path {
-        for id in pending_serato4 {
-            log_store_err(
-                "upsert_watching on reconnect",
-                crate::store::upsert_watching(
-                    conn,
-                    &crate::capture::serato4_session_identity(*id),
-                    crate::store::SessionSource::Serato4,
-                    &crate::capture::serato4_raw_ref(db_path, *id),
-                    None,
-                ),
-            );
-        }
-    }
-    for (path, entry) in legacy_pending {
+    for (path, entry) in pending {
         log_store_err(
             "upsert_watching on reconnect",
             crate::store::upsert_watching(
@@ -538,7 +636,13 @@ fn recheck_pending_serato4(
         .collect();
 
     for id in resolved {
-        if capture_and_store_serato4(store_conn, root, db_path, id) {
+        if capture_and_store_serato4(
+            store_conn,
+            root,
+            db_path,
+            id,
+            &crate::error_reporting::SentryReporter,
+        ) {
             pending.remove(&id);
         }
     }
@@ -552,16 +656,23 @@ fn recheck_pending_serato4(
 /// (parse/join/correlation/SQLite error, or a failed store write), logged in
 /// debug builds: the caller keeps the session pending so the next poll tick
 /// retries it, rather than silently losing it for the rest of this run.
-fn capture_and_store_serato4(
+///
+/// `reporter` is `pub(crate)` DI (Story 3.4, Task 2) — production call sites
+/// always pass `&error_reporting::SentryReporter` as a literal; tests pass a
+/// fake so they never depend on `config::SENTRY_DSN`'s build-time value.
+/// Bumped to `pub(crate)` visibility: `backfill::reprocess_parse_failures`
+/// (Task 3) calls this directly from its own module.
+pub(crate) fn capture_and_store_serato4(
     store_conn: &Connection,
     root: &Path,
     db_path: &Path,
     session_id: i64,
+    reporter: &dyn crate::error_reporting::ErrorReporter,
 ) -> bool {
+    let identity = crate::capture::serato4_session_identity(session_id);
+    let raw_ref = crate::capture::serato4_raw_ref(db_path, session_id);
     match crate::capture::build_serato4(root, db_path, session_id) {
         Ok((plays, derived)) => {
-            let identity = crate::capture::serato4_session_identity(session_id);
-            let raw_ref = crate::capture::serato4_raw_ref(db_path, session_id);
             let (started_at, ended_at) = crate::capture::session_bounds(&plays);
             if let Err(_e) = crate::store::upsert_captured(
                 store_conn,
@@ -579,6 +690,41 @@ fn capture_and_store_serato4(
                 );
                 return false;
             }
+            // Story 3.3b AC-2, reverse direction: a legacy capture that beat
+            // this serato4 capture to the store (legacy's quiet-period
+            // completion can, rarely, resolve before serato4's `end_time`
+            // does) is superseded now rather than double-counting the night.
+            // Fail-open: unknown bounds, or a query error, leave every
+            // candidate row untouched rather than risk a wrong supersede.
+            if let (Some(started_at), Some(ended_at)) = (started_at, ended_at) {
+                if let Ok(overlap) = crate::store::overlapping_captured(
+                    store_conn,
+                    crate::store::SessionSource::Legacy,
+                    started_at,
+                    ended_at,
+                ) {
+                    for row in overlap {
+                        // A legacy row that has *already synced* is left
+                        // alone — there is no retraction path in the sync
+                        // contract (AD-5), and inventing one is out of
+                        // scope for this story. Logged so the gap stays
+                        // visible rather than silently accepted.
+                        if row.synced_at.is_some() {
+                            #[cfg(debug_assertions)]
+                            eprintln!(
+                                "curfew-agent: legacy session {} already synced, leaving it \
+                                 uncontested by serato4 session {session_id} (no retraction path)",
+                                row.session_identity
+                            );
+                            continue;
+                        }
+                        log_store_err(
+                            "mark_superseded (serato4 wins, reverse arrival order)",
+                            crate::store::mark_superseded(store_conn, &row.session_identity),
+                        );
+                    }
+                }
+            }
             true
         }
         Err(crate::capture::CaptureError::EmptySession) => {
@@ -588,9 +734,25 @@ fn capture_and_store_serato4(
             // resolves to `captured`.
             true
         }
-        Err(_e) => {
+        Err(e) => {
             #[cfg(debug_assertions)]
-            eprintln!("curfew-agent: serato4 capture failed for session {session_id}: {_e}");
+            eprintln!("curfew-agent: serato4 capture failed for session {session_id}: {e}");
+            log_store_err(
+                "record_parse_failure (serato4)",
+                crate::store::record_parse_failure(
+                    store_conn,
+                    &identity,
+                    crate::store::SessionSource::Serato4,
+                    &raw_ref,
+                    crate::config::AGENT_VERSION,
+                    &e.to_string(),
+                ),
+            );
+            reporter.report(
+                "serato4 capture",
+                crate::config::AGENT_VERSION,
+                &e.to_string(),
+            );
             false
         }
     }
@@ -645,6 +807,31 @@ fn handle_legacy_session_event(
     );
 }
 
+/// Startup/reconnect catch-up for a legacy install (see call site in
+/// `watch_loop`): lists every `.session` file already sitting in
+/// `sessions_dir` and hands each to [`handle_legacy_session_event`] as if it
+/// had just fired a live filesystem event. A file whose quiet period has
+/// already elapsed (the common case — it finished days ago) is picked up and
+/// captured on the very next `recheck_legacy_quiet_periods` tick, no
+/// different from a session that went quiet while the agent was watching
+/// live. A missing/unreadable directory is a no-op, not an error — Serato
+/// hasn't necessarily ever written to it yet.
+fn scan_legacy_session_dir(
+    store_conn: &Connection,
+    sessions_dir: &Path,
+    pending: &mut HashMap<PathBuf, LegacyPendingSession>,
+) {
+    let Ok(entries) = std::fs::read_dir(sessions_dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) == Some("session") {
+            handle_legacy_session_event(store_conn, &path, pending);
+        }
+    }
+}
+
 /// Story 2.8 Task 4/6: checks every tracked legacy session's quiet-period
 /// clock, capturing (and dropping from `pending`) whichever have gone
 /// [`crate::capture::LEGACY_QUIET_PERIOD_SEC`] without a modify event (AC-4).
@@ -667,24 +854,32 @@ fn recheck_legacy_quiet_periods(
         else {
             continue;
         };
-        if capture_and_store_legacy(store_conn, library_root, &session_path, &session_identity) {
+        if capture_and_store_legacy(
+            store_conn,
+            library_root,
+            &session_path,
+            &session_identity,
+            &crate::error_reporting::SentryReporter,
+        ) {
             pending.remove(&session_path);
         }
     }
 }
 
 /// Runs the legacy capture pipeline for one now-quiet session and persists it.
-/// Mirrors [`capture_and_store_serato4`]'s error handling and terminal-outcome
-/// `bool` return.
-fn capture_and_store_legacy(
+/// Mirrors [`capture_and_store_serato4`]'s error handling, terminal-outcome
+/// `bool` return, and `reporter` DI (Story 3.4, Task 2) — see that function's
+/// doc comment for both.
+pub(crate) fn capture_and_store_legacy(
     store_conn: &Connection,
     library_root: &Path,
     session_path: &Path,
     session_identity: &str,
+    reporter: &dyn crate::error_reporting::ErrorReporter,
 ) -> bool {
+    let raw_ref = session_path.to_string_lossy().into_owned();
     match crate::capture::build_legacy(library_root, session_path) {
         Ok((plays, derived)) => {
-            let raw_ref = session_path.to_string_lossy().into_owned();
             let (started_at, ended_at) = crate::capture::session_bounds(&plays);
             if let Err(_e) = crate::store::upsert_captured(
                 store_conn,
@@ -703,6 +898,29 @@ fn capture_and_store_legacy(
                 );
                 return false;
             }
+            // Story 3.3b AC-2, forward direction (the common case — serato4's
+            // `end_time` resolves at set end, legacy needs a 15-minute quiet
+            // period, so serato4 almost always lands first): a night already
+            // captured by the higher-precedence serato4 source is superseded
+            // here rather than reaching the sync queue as a duplicate. The
+            // row stays in the local store (content intact) for debugging —
+            // never deleted. Fail-open: unknown bounds, or a query error,
+            // leave this row `captured`.
+            if let (Some(started_at), Some(ended_at)) = (started_at, ended_at) {
+                if let Ok(overlap) = crate::store::overlapping_captured(
+                    store_conn,
+                    crate::store::SessionSource::Serato4,
+                    started_at,
+                    ended_at,
+                ) {
+                    if !overlap.is_empty() {
+                        log_store_err(
+                            "mark_superseded (serato4 wins)",
+                            crate::store::mark_superseded(store_conn, session_identity),
+                        );
+                    }
+                }
+            }
             true
         }
         Err(crate::capture::CaptureError::EmptySession) => {
@@ -711,37 +929,48 @@ fn capture_and_store_legacy(
             // sibling above.
             true
         }
-        Err(_e) => {
+        Err(e) => {
             #[cfg(debug_assertions)]
             eprintln!(
-                "curfew-agent: legacy capture failed for {}: {_e}",
+                "curfew-agent: legacy capture failed for {}: {e}",
                 session_path.display()
+            );
+            log_store_err(
+                "record_parse_failure (legacy)",
+                crate::store::record_parse_failure(
+                    store_conn,
+                    session_identity,
+                    crate::store::SessionSource::Legacy,
+                    &raw_ref,
+                    crate::config::AGENT_VERSION,
+                    &e.to_string(),
+                ),
+            );
+            reporter.report(
+                "legacy capture",
+                crate::config::AGENT_VERSION,
+                &e.to_string(),
             );
             false
         }
     }
 }
 
-/// Stands up a live filesystem watcher for one install: the legacy
-/// `History/Sessions` folder (new/modified `.session` files), or the Serato 4+
-/// `master.sqlite` file itself (changes on every play). Returns `None` if the
-/// watcher fails to start (e.g. the path just vanished between `classify`
-/// succeeding and this call) — the outer loop's next reconnect poll will retry.
+/// Stands up a live filesystem watcher for one source's watch target: the
+/// legacy `History/Sessions` folder (new/modified `.session` files), or the
+/// Serato 4+ `master.sqlite` file itself (changes on every play). Returns
+/// `None` if the watcher fails to start (e.g. the path just vanished between
+/// resolution and this call) — the outer loop's next reconnect poll will retry.
 fn start_fs_watch(
-    install: &SeratoInstall,
+    watch_target: &Path,
     tx: mpsc::Sender<notify::Result<notify::Event>>,
 ) -> Option<RecommendedWatcher> {
-    let watch_target = match install {
-        SeratoInstall::Legacy(serato_dir) => serato_dir.join("History").join("Sessions"),
-        SeratoInstall::Serato4 { db_path } => db_path.clone(),
-    };
-
     let mut watcher = notify::recommended_watcher(move |res| {
         let _ = tx.send(res);
     })
     .ok()?;
     watcher
-        .watch(&watch_target, RecursiveMode::NonRecursive)
+        .watch(watch_target, RecursiveMode::NonRecursive)
         .ok()?;
     Some(watcher)
 }
@@ -796,7 +1025,13 @@ fn check_for_new_sessions(
             );
 
             if crate::capture::serato4_end_time_resolved(session.end_time) {
-                if !capture_and_store_serato4(store_conn, root, db_path, session.id) {
+                if !capture_and_store_serato4(
+                    store_conn,
+                    root,
+                    db_path,
+                    session.id,
+                    &crate::error_reporting::SentryReporter,
+                ) {
                     pending.insert(session.id);
                 }
             } else {
@@ -823,6 +1058,30 @@ mod tests {
     use super::*;
     use crate::watcher::detect::DiskSource;
     use std::sync::atomic::{AtomicU64, Ordering};
+
+    /// A no-op `ErrorReporter` fake (Story 3.4, Task 2) — these tests never
+    /// depend on `config::SENTRY_DSN`'s build-time value.
+    struct NoopReporter;
+    impl crate::error_reporting::ErrorReporter for NoopReporter {
+        fn report(&self, _context: &str, _agent_version: &str, _message: &str) {}
+    }
+
+    /// Records every call instead of no-op-ing (Story 3.4, Task 6) — used by
+    /// the terminal-failure tests below to assert `report()` is actually
+    /// invoked with the right `context`/`agent_version`/message.
+    #[derive(Default)]
+    struct RecordingReporter {
+        calls: Mutex<Vec<(String, String, String)>>,
+    }
+    impl crate::error_reporting::ErrorReporter for RecordingReporter {
+        fn report(&self, context: &str, agent_version: &str, message: &str) {
+            self.calls.lock().unwrap().push((
+                context.to_string(),
+                agent_version.to_string(),
+                message.to_string(),
+            ));
+        }
+    }
 
     struct TempDir(PathBuf);
 
@@ -930,5 +1189,496 @@ mod tests {
     fn no_cached_detection_is_none_regardless_of_override_state() {
         assert_eq!(pending_after_override_check(false, None), None);
         assert_eq!(pending_after_override_check(true, None), None);
+    }
+
+    // ---- scan_legacy_session_dir (startup/reconnect catch-up) ----
+
+    fn multi_play_fixture() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/session/multi_play.session")
+    }
+
+    /// The gap this closes: a `.session` file written entirely while the agent
+    /// was closed generates no `notify` event once the agent finally starts, so
+    /// without this scan it would never be registered. Proves a pre-existing
+    /// file is discovered and registered exactly as a live event would (Task 4
+    /// resume semantics), without needing to wait for a quiet-period tick.
+    #[test]
+    fn scan_legacy_session_dir_registers_a_pre_existing_session_file() {
+        let root = TempDir::new("scan-legacy-registers");
+        let sessions_dir = root.0.join("History").join("Sessions");
+        std::fs::create_dir_all(&sessions_dir).unwrap();
+        let dest = sessions_dir.join("gig_from_while_agent_was_closed.session");
+        std::fs::copy(multi_play_fixture(), &dest).expect("fixture copies");
+
+        let store_file = TempDir::new("scan-legacy-registers-store");
+        let conn = crate::store::open_at(&store_file.0.join("local.sqlite")).expect("store opens");
+        let mut pending = HashMap::new();
+
+        scan_legacy_session_dir(&conn, &sessions_dir, &mut pending);
+
+        assert!(
+            pending.contains_key(&dest),
+            "a pre-existing .session file must be registered as pending on scan"
+        );
+        let identity = pending.get(&dest).unwrap().session_identity.clone();
+        let row = crate::store::get_by_identity(&conn, &identity)
+            .expect("store query succeeds")
+            .expect("row was upserted by the scan");
+        assert_eq!(row.status, crate::store::SessionStatus::Watching);
+    }
+
+    /// Calling the scan twice (e.g. two reconnects before the file ever goes
+    /// quiet) must not double-register or otherwise disturb the existing
+    /// pending entry — same idempotency guarantee `check_for_new_sessions`
+    /// documents for its Serato4 sibling.
+    #[test]
+    fn scan_legacy_session_dir_is_idempotent_across_repeated_scans() {
+        let root = TempDir::new("scan-legacy-idempotent");
+        let sessions_dir = root.0.join("History").join("Sessions");
+        std::fs::create_dir_all(&sessions_dir).unwrap();
+        let dest = sessions_dir.join("gig.session");
+        std::fs::copy(multi_play_fixture(), &dest).expect("fixture copies");
+
+        let store_file = TempDir::new("scan-legacy-idempotent-store");
+        let conn = crate::store::open_at(&store_file.0.join("local.sqlite")).expect("store opens");
+        let mut pending = HashMap::new();
+
+        scan_legacy_session_dir(&conn, &sessions_dir, &mut pending);
+        scan_legacy_session_dir(&conn, &sessions_dir, &mut pending);
+
+        assert_eq!(pending.len(), 1);
+    }
+
+    #[test]
+    fn scan_legacy_session_dir_is_a_noop_for_a_missing_directory() {
+        let root = TempDir::new("scan-legacy-missing-dir");
+        let store_file = TempDir::new("scan-legacy-missing-dir-store");
+        let conn = crate::store::open_at(&store_file.0.join("local.sqlite")).expect("store opens");
+        let mut pending = HashMap::new();
+
+        scan_legacy_session_dir(&conn, &root.0.join("nonexistent"), &mut pending);
+
+        assert!(pending.is_empty());
+    }
+
+    // ---- drive_connected (Story 3.3b AC-5, decided 2026-08-01) ---------------
+
+    fn plan_with(
+        serato4: Option<detect::Serato4Source>,
+        legacy: Option<detect::LegacySource>,
+    ) -> detect::WatchPlan {
+        detect::WatchPlan { serato4, legacy }
+    }
+
+    fn fake_serato4() -> detect::Serato4Source {
+        detect::Serato4Source {
+            root: PathBuf::from("/home/master.sqlite"),
+            db_path: PathBuf::from("/home/master.sqlite"),
+        }
+    }
+
+    fn fake_legacy() -> detect::LegacySource {
+        detect::LegacySource {
+            serato_dir: PathBuf::from("/usb/_Serato_"),
+            library_root: PathBuf::from("/usb"),
+        }
+    }
+
+    #[test]
+    fn drive_connected_true_when_only_serato4_resolves() {
+        assert!(drive_connected(&plan_with(Some(fake_serato4()), None)));
+    }
+
+    #[test]
+    fn drive_connected_true_when_only_legacy_resolves() {
+        assert!(drive_connected(&plan_with(None, Some(fake_legacy()))));
+    }
+
+    #[test]
+    fn drive_connected_true_when_both_resolve() {
+        assert!(drive_connected(&plan_with(
+            Some(fake_serato4()),
+            Some(fake_legacy())
+        )));
+    }
+
+    #[test]
+    fn drive_connected_false_only_when_neither_resolves() {
+        assert!(!drive_connected(&plan_with(None, None)));
+    }
+
+    // ---- Capture-time "Serato 4 wins" dedup (Story 3.3b, AC-2) --------------
+    //
+    // Fixture generators mirror `capture.rs`'s own test helpers, duplicated
+    // locally per this crate's established "no shared test-support crate"
+    // convention (Task 5). `open_read_only` needs a real, canonicalizable
+    // file, unlike `capture.rs`'s own in-memory-db tests, so the serato4
+    // fixture is written to a real temp file.
+
+    fn utf16be_nul(s: &str) -> Vec<u8> {
+        let mut out = Vec::new();
+        for unit in s.encode_utf16() {
+            out.extend_from_slice(&unit.to_be_bytes());
+        }
+        out.extend_from_slice(&[0, 0]);
+        out
+    }
+
+    fn text_field(id: u32, s: &str) -> Vec<u8> {
+        let payload = utf16be_nul(s);
+        let mut f = Vec::new();
+        f.extend_from_slice(&id.to_be_bytes());
+        f.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+        f.extend_from_slice(&payload);
+        f
+    }
+
+    fn u32_field(id: u32, value: u32) -> Vec<u8> {
+        let mut f = Vec::new();
+        f.extend_from_slice(&id.to_be_bytes());
+        f.extend_from_slice(&4u32.to_be_bytes());
+        f.extend_from_slice(&value.to_be_bytes());
+        f
+    }
+
+    fn tagged(tag: &[u8; 4], payload: &[u8]) -> Vec<u8> {
+        let mut r = Vec::new();
+        r.extend_from_slice(tag);
+        r.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+        r.extend_from_slice(payload);
+        r
+    }
+
+    fn oent(fields: &[Vec<u8>]) -> Vec<u8> {
+        let adat = tagged(b"adat", &fields.concat());
+        tagged(b"oent", &adat)
+    }
+
+    fn legacy_play_record(path: &str, start: u32) -> Vec<u8> {
+        oent(&[
+            text_field(2, path),
+            text_field(6, "Track"),
+            text_field(7, "Artist"),
+            u32_field(28, start),
+            u32_field(31, 1),
+        ])
+    }
+
+    /// No start_time field at all — proves the dedup guard's fail-open
+    /// behavior when a session's bounds are unknown.
+    fn legacy_play_record_without_start_time(path: &str) -> Vec<u8> {
+        oent(&[
+            text_field(2, path),
+            text_field(6, "Track"),
+            text_field(7, "Artist"),
+            u32_field(31, 1),
+        ])
+    }
+
+    fn write_legacy_session_file(dir: &Path, name: &str, data: &[u8]) -> PathBuf {
+        std::fs::create_dir_all(dir).unwrap();
+        let path = dir.join(name);
+        std::fs::write(&path, data).unwrap();
+        path
+    }
+
+    /// An empty-but-real legacy catalogue at `root` — mirrors `capture.rs`'s
+    /// own `empty_legacy_library_root` fixture.
+    fn empty_legacy_library_root(root: &Path) {
+        let serato_dir = root.join(crate::joiner::legacy::SERATO_DIR);
+        std::fs::create_dir_all(&serato_dir).unwrap();
+        let content: Vec<u8> = utf16be_nul("2.0/Serato Scratch LIVE Database");
+        let mut header = Vec::from(*b"vrsn");
+        header.extend_from_slice(&(content.len() as u32).to_be_bytes());
+        header.extend_from_slice(&content);
+        std::fs::write(
+            serato_dir.join(crate::joiner::legacy::DATABASE_FILENAME),
+            header,
+        )
+        .unwrap();
+    }
+
+    /// A real on-disk `master.sqlite` fixture carrying one `history_entry`
+    /// row with the given `start_time` — enough for `capture::build_serato4`.
+    fn write_serato4_fixture(dir: &Path, session_id: i64, start: i64) -> PathBuf {
+        std::fs::create_dir_all(dir).unwrap();
+        let db_path = dir.join("master.sqlite");
+        let conn = Connection::open(&db_path).unwrap();
+        conn.execute_batch(
+            r#"CREATE TABLE history_entry (
+                   id INTEGER PRIMARY KEY, session_id INTEGER, name TEXT, artist TEXT,
+                   genre TEXT, "key" TEXT, bpm REAL, start_time INTEGER, deck TEXT
+               );"#,
+        )
+        .unwrap();
+        conn.execute(
+            r#"INSERT INTO history_entry (session_id, name, artist, genre, "key", bpm, start_time, deck)
+               VALUES (?1, 'Track', 'Artist', 'House', '1A', 120.0, ?2, '1')"#,
+            rusqlite::params![session_id, start],
+        )
+        .unwrap();
+        db_path
+    }
+
+    /// AC-2, forward direction (the common case): serato4 captures first, a
+    /// same-night legacy capture arriving after it is superseded rather than
+    /// reaching the sync queue as a duplicate.
+    #[test]
+    fn dedup_forward_direction_serato4_first_supersedes_the_legacy_row() {
+        let store_file = TempDir::new("dedup-forward-store");
+        let store_conn =
+            crate::store::open_at(&store_file.0.join("local.sqlite")).expect("store opens");
+
+        let serato4_dir = TempDir::new("dedup-forward-serato4");
+        let db_path = write_serato4_fixture(&serato4_dir.0, 7, 1_000);
+        assert!(capture_and_store_serato4(
+            &store_conn,
+            &serato4_dir.0,
+            &db_path,
+            7,
+            &NoopReporter
+        ));
+
+        let legacy_lib_dir = TempDir::new("dedup-forward-legacy-lib");
+        empty_legacy_library_root(&legacy_lib_dir.0);
+        let session_dir = TempDir::new("dedup-forward-legacy-session");
+        let session_path = write_legacy_session_file(
+            &session_dir.0,
+            "gig.session",
+            &legacy_play_record("/music/a.mp3", 1_010),
+        );
+        let identity = "legacy:test-forward";
+        assert!(capture_and_store_legacy(
+            &store_conn,
+            &legacy_lib_dir.0,
+            &session_path,
+            identity,
+            &NoopReporter,
+        ));
+
+        assert_eq!(
+            crate::store::status_of(&store_conn, identity).unwrap(),
+            Some(crate::store::SessionStatus::Superseded)
+        );
+        let serato4_identity = crate::capture::serato4_session_identity(7);
+        assert_eq!(
+            crate::store::status_of(&store_conn, &serato4_identity).unwrap(),
+            Some(crate::store::SessionStatus::Captured)
+        );
+        let pending = crate::store::rows_pending_sync(&store_conn).unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].session_identity, serato4_identity);
+    }
+
+    /// AC-2, reverse direction: a legacy capture that beats a same-night
+    /// serato4 capture to the store is superseded once serato4 arrives.
+    #[test]
+    fn dedup_reverse_direction_legacy_first_gets_superseded_when_serato4_arrives() {
+        let store_file = TempDir::new("dedup-reverse-store");
+        let store_conn =
+            crate::store::open_at(&store_file.0.join("local.sqlite")).expect("store opens");
+
+        let legacy_lib_dir = TempDir::new("dedup-reverse-legacy-lib");
+        empty_legacy_library_root(&legacy_lib_dir.0);
+        let session_dir = TempDir::new("dedup-reverse-legacy-session");
+        let session_path = write_legacy_session_file(
+            &session_dir.0,
+            "gig.session",
+            &legacy_play_record("/music/a.mp3", 2_000),
+        );
+        let identity = "legacy:test-reverse";
+        assert!(capture_and_store_legacy(
+            &store_conn,
+            &legacy_lib_dir.0,
+            &session_path,
+            identity,
+            &NoopReporter,
+        ));
+        assert_eq!(
+            crate::store::status_of(&store_conn, identity).unwrap(),
+            Some(crate::store::SessionStatus::Captured)
+        );
+
+        let serato4_dir = TempDir::new("dedup-reverse-serato4");
+        let db_path = write_serato4_fixture(&serato4_dir.0, 9, 2_010);
+        assert!(capture_and_store_serato4(
+            &store_conn,
+            &serato4_dir.0,
+            &db_path,
+            9,
+            &NoopReporter
+        ));
+
+        assert_eq!(
+            crate::store::status_of(&store_conn, identity).unwrap(),
+            Some(crate::store::SessionStatus::Superseded)
+        );
+        assert_eq!(
+            crate::store::status_of(&store_conn, &crate::capture::serato4_session_identity(9))
+                .unwrap(),
+            Some(crate::store::SessionStatus::Captured)
+        );
+    }
+
+    /// AC-2's documented accepted edge: a legacy row that has already synced
+    /// is left uncontested — there is no retraction path in the sync
+    /// contract.
+    #[test]
+    fn dedup_reverse_direction_leaves_an_already_synced_legacy_row_uncontested() {
+        let store_file = TempDir::new("dedup-reverse-synced-store");
+        let store_conn =
+            crate::store::open_at(&store_file.0.join("local.sqlite")).expect("store opens");
+
+        let legacy_lib_dir = TempDir::new("dedup-reverse-synced-legacy-lib");
+        empty_legacy_library_root(&legacy_lib_dir.0);
+        let session_dir = TempDir::new("dedup-reverse-synced-legacy-session");
+        let session_path = write_legacy_session_file(
+            &session_dir.0,
+            "gig.session",
+            &legacy_play_record("/music/a.mp3", 3_000),
+        );
+        let identity = "legacy:test-already-synced";
+        assert!(capture_and_store_legacy(
+            &store_conn,
+            &legacy_lib_dir.0,
+            &session_path,
+            identity,
+            &NoopReporter,
+        ));
+        crate::store::mark_synced(&store_conn, identity, 999_999).unwrap();
+
+        let serato4_dir = TempDir::new("dedup-reverse-synced-serato4");
+        let db_path = write_serato4_fixture(&serato4_dir.0, 11, 3_010);
+        assert!(capture_and_store_serato4(
+            &store_conn,
+            &serato4_dir.0,
+            &db_path,
+            11,
+            &NoopReporter
+        ));
+
+        assert_eq!(
+            crate::store::status_of(&store_conn, identity).unwrap(),
+            Some(crate::store::SessionStatus::Captured),
+            "an already-synced legacy row must never be superseded -- no retraction path"
+        );
+    }
+
+    /// Fail-open: a legacy session with unknown bounds is never suppressed,
+    /// even when a same-source-window serato4 capture already exists.
+    #[test]
+    fn dedup_fail_open_when_legacy_bounds_are_unknown_both_stay_captured() {
+        let store_file = TempDir::new("dedup-fail-open-store");
+        let store_conn =
+            crate::store::open_at(&store_file.0.join("local.sqlite")).expect("store opens");
+
+        let serato4_dir = TempDir::new("dedup-fail-open-serato4");
+        let db_path = write_serato4_fixture(&serato4_dir.0, 13, 4_000);
+        assert!(capture_and_store_serato4(
+            &store_conn,
+            &serato4_dir.0,
+            &db_path,
+            13,
+            &NoopReporter
+        ));
+
+        let legacy_lib_dir = TempDir::new("dedup-fail-open-legacy-lib");
+        empty_legacy_library_root(&legacy_lib_dir.0);
+        let session_dir = TempDir::new("dedup-fail-open-legacy-session");
+        let session_path = write_legacy_session_file(
+            &session_dir.0,
+            "gig.session",
+            &legacy_play_record_without_start_time("/music/a.mp3"),
+        );
+        let identity = "legacy:test-fail-open";
+        assert!(capture_and_store_legacy(
+            &store_conn,
+            &legacy_lib_dir.0,
+            &session_path,
+            identity,
+            &NoopReporter,
+        ));
+
+        assert_eq!(
+            crate::store::status_of(&store_conn, identity).unwrap(),
+            Some(crate::store::SessionStatus::Captured),
+            "unknown bounds must never suppress a capture -- fail open"
+        );
+    }
+
+    // ---- Terminal-failure -> parse_failures + ErrorReporter (Story 3.4, Task 2/6) ---
+
+    /// A genuine `build_serato4` error (not `CaptureError::EmptySession`) —
+    /// `db_path` names a file that was never created, so `open_read_only`
+    /// fails outright — records a `parse_failures` row and reports it,
+    /// tagged with the running build's `agent_version`.
+    #[test]
+    fn a_terminal_serato4_capture_failure_records_and_reports() {
+        let store_dir = TempDir::new("terminal-failure-serato4-store");
+        let store_conn =
+            crate::store::open_at(&store_dir.0.join("local.sqlite")).expect("store opens");
+
+        let serato4_dir = TempDir::new("terminal-failure-serato4-missing");
+        let db_path = serato4_dir.0.join("master.sqlite");
+        let reporter = RecordingReporter::default();
+
+        let succeeded = capture_and_store_serato4(&store_conn, &db_path, &db_path, 77, &reporter);
+
+        assert!(
+            !succeeded,
+            "a genuine build_serato4 error is not terminal-success"
+        );
+
+        let identity = crate::capture::serato4_session_identity(77);
+        let rows = crate::store::unresolved_parse_failures(&store_conn).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].session_identity, identity);
+        assert_eq!(rows[0].source, crate::store::SessionSource::Serato4);
+        assert_eq!(rows[0].failed_agent_version, crate::config::AGENT_VERSION);
+
+        let calls = reporter.calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0, "serato4 capture");
+        assert_eq!(calls[0].1, crate::config::AGENT_VERSION);
+    }
+
+    /// A genuine `build_legacy` error (not `CaptureError::EmptySession`) —
+    /// `session_path` names a file that was never created, so
+    /// `parse_session_file_partial`'s `std::fs::read` fails outright.
+    #[test]
+    fn a_terminal_legacy_capture_failure_records_and_reports() {
+        let store_dir = TempDir::new("terminal-failure-legacy-store");
+        let store_conn =
+            crate::store::open_at(&store_dir.0.join("local.sqlite")).expect("store opens");
+
+        let legacy_lib_dir = TempDir::new("terminal-failure-legacy-lib");
+        empty_legacy_library_root(&legacy_lib_dir.0);
+        let missing_session_path = legacy_lib_dir.0.join("nonexistent.session");
+        let identity = "legacy:terminal-failure";
+        let reporter = RecordingReporter::default();
+
+        let succeeded = capture_and_store_legacy(
+            &store_conn,
+            &legacy_lib_dir.0,
+            &missing_session_path,
+            identity,
+            &reporter,
+        );
+
+        assert!(
+            !succeeded,
+            "a genuine build_legacy error is not terminal-success"
+        );
+
+        let rows = crate::store::unresolved_parse_failures(&store_conn).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].session_identity, identity);
+        assert_eq!(rows[0].source, crate::store::SessionSource::Legacy);
+        assert_eq!(rows[0].failed_agent_version, crate::config::AGENT_VERSION);
+
+        let calls = reporter.calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0, "legacy capture");
+        assert_eq!(calls[0].1, crate::config::AGENT_VERSION);
     }
 }
