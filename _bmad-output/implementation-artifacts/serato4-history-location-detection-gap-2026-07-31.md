@@ -2,8 +2,27 @@
 
 **Date:** 2026-07-31
 **Surfaced by:** Story 3.3 manual verification (offline sync queue) on Arjun's machine
-**Status:** Open — blocks Story 3.3 manual verification; proposes a detection/UX change (not yet a story)
+**Status:** **Decided 2026-07-31** (see "Decision" below) — design settled into Story 3.3b + a separate onboarding follow-on; interim unblock available for Story 3.3 now
 **Owner:** TBD (detection lives in `agent/src-tauri/src/watcher/detect.rs`)
+
+---
+
+## Decision (2026-07-31, design discussion with Arjun) — supersedes the recommendation in "The design question" below
+
+The original recommendation below (auto-detect/**redirect** to a single internal source + a new never-silent **tray state**) was worked further and replaced with a more robust shape. Two realizations drove the change: (a) the OS-default detection *already* resolves the internal Serato 4 path correctly — the actual bug is that a saved override unconditionally wins over it (`mod.rs:80-82`); and (b) resolving to one source at all means *betting* we picked the right one, when watching both is cheap and removes the bet.
+
+1. **Watch BOTH sources, don't select one.** When both catalogues are present, watch the Serato 4 internal `master.sqlite` and the legacy `History/Sessions` concurrently. Silent-miss becomes a *structural* impossibility rather than something we must resolve correctly. Cost is negligible (one indexed SQLite query + one directory stat per set).
+2. **Dedup at capture with "Serato 4 wins."** The two formats produce deliberately non-colliding identities (`serato4:{id}` vs `legacy:{fnv1a(path+start_time)}`, asserted never-collide at `capture.rs:473`), so a night appearing in both would surface as **two** dashboard sets — Story 3.2's idempotency key does NOT dedup them. A capture-time guard suppresses the legacy twin when the Serato 4 one exists — the same "Serato 4 wins" precedence `classify()` already encodes, moved from watch-time *selection* to capture-time *dedup*.
+3. **Internal path always resolvable + Save-time validation.** The internal `master.sqlite` is always a watched source when a Serato 4 install is present, regardless of a library-folder override (also fixes the `open_read_only(root, db_path)` containment coupling: on redirect, `root` must swap to the internal container). A no-history folder is rejected **synchronously at Save** in the confirm UI — never a silent green.
+4. **No new tray state.** Runtime staleness is already owned: unplug → existing `DriveNotConnected`; post-setup format/layout drift → Story 3.4. A new state would duplicate one or steal the other's job. "Never fail silently" is delivered at the *configuration moment* (Save-time validation), which is where the DJ's attention already is.
+
+**Scope split:**
+- **Story 3.3b (agent-side correctness core):** items 1–4. Shippable fast; unblocks capture for every migrated/USB Serato 4 DJ.
+- **Separate follow-on (onboarding polish, deferred — "can be done later as long as we know to do it"):** first-run **verified setup** — a live test capture proving capture works on that machine (the only thing that closes the residual "path validates but new plays land elsewhere" false-green). Optional "on Serato 4? you're set" copy, **never a version requirement**. Tracked in `deferred-work.md`.
+
+**Open questions carried forward:** (a) does Serato 4 ever dual-write a new `.session` file (one data point — Arjun's machine — says no); this determines whether the dedup guard is load-bearing or belt-and-suspenders. (b) Windows internal history path unconfirmed.
+
+**Interim unblock (unchanged, see "Immediate unblock" below):** repoint the override to the internal `master.sqlite` to complete Story 3.3's manual verification now, ahead of 3.3b.
 
 ---
 
