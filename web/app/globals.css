@@ -176,13 +176,28 @@ a {
   inherits: true;
 }
 
+/* Icon/label colour uses the same model as the 21st.dev reference and the
+   preview artifact: the colour lives on the LINK and the icon inherits it.
+   Idle dims to --color-outline, the active route to --color-on-surface, a
+   hovered item to --color-nav-hover-text; the colour change rides the `color`
+   transition below. These are UNLAYERED rules so they beat globals'
+   `a { color: inherit }` reset by specificity — Tailwind's layered `text-*`
+   utilities can't (a layered rule always loses to an unlayered one), which is
+   why the same classes on the link element silently did nothing. */
 .floating-nav-link {
+  color: var(--color-outline);
   transition:
     background-color var(--motion-duration-fast) var(--motion-ease-standard),
     color var(--motion-duration-fast) var(--motion-ease-standard),
     scale var(--motion-duration-fast) var(--motion-ease-standard),
     --glow-x var(--motion-duration-fast) var(--motion-ease-out),
     --glow-y var(--motion-duration-fast) var(--motion-ease-out);
+}
+.floating-nav-link[aria-current="page"] {
+  color: var(--color-on-surface);
+}
+.floating-nav-link:not([aria-current="page"]):hover {
+  color: var(--color-nav-hover-text);
 }
 
 @media (prefers-reduced-motion: reduce) {

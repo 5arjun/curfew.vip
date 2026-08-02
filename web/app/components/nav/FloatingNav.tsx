@@ -71,11 +71,15 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
         "focus-visible:shadow-[0_0_0_2px_var(--color-primary),0_0_0_6px_var(--color-primary-glow)]",
         // Active is a neutral raised chip (subtle white overlay), not the old
         // pink-glow fill — a filled pastel block read as a consumer default.
-        // The active icon reads white too (Arjun): selection is carried by the
-        // fill-weight glyph + the label reveal, not a pink tint.
+        // Only the chip background lives on the link. Icon COLOUR is set on the
+        // <svg> itself (below), not here: globals.css ships an unlayered
+        // `a { color: inherit }` reset, and unlayered rules beat Tailwind's
+        // layered colour utilities, so any `text-*` on the <a> is dead — it'd
+        // pin every icon to inherited white and the hover tint would never
+        // fire. The <svg> escapes that reset, so its own utilities win.
         active
-          ? "bg-[var(--color-nav-chip-active)] text-on-surface"
-          : "text-outline hover:bg-[var(--color-nav-chip-hover)] hover:text-[var(--color-nav-hover-text)]",
+          ? "bg-[var(--color-nav-chip-active)]"
+          : "hover:bg-[var(--color-nav-chip-hover)]",
       )}
     >
       <span
@@ -88,6 +92,9 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
       />
       {/* weight="bold" (was "regular") per Arjun's dock revision — a heavier
           stroke to match the dock references; active stays "fill" per AC-2. */}
+      {/* Icon colour (idle / active / hover) is set in globals.css via the
+          unlayered .floating-nav-link colour rules; the icon inherits it. See
+          the note there for why the Tailwind text-* utility route doesn't win. */}
       <ItemIcon size={20} weight={active ? "fill" : "bold"} className="relative" />
       {/* Active-item label reveal: only the current route's label is shown,
           keeping the pill compact at every viewport (the prior all-labels
