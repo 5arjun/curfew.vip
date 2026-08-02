@@ -141,6 +141,10 @@
   --radius-sm: 0.125rem;
   --radius-lg: 0.25rem;
   --radius-xl: 0.5rem;
+  /* 2xl: the floating nav dock (Arjun's 2026-08-01 dock revision — the nav
+     moved off the full pill onto a squarer, dock-like rounded rect; `full`
+     remains reserved for the avatar and status dots). */
+  --radius-2xl: 1rem;
   --radius-full: 9999px;
 
   /* Motion (new 2026-07-28). The layer DESIGN.md was missing: every animation in
@@ -152,6 +156,7 @@
   --motion-duration-base: 240ms;     /* default UI transition */
   --motion-duration-slow: 400ms;     /* sheets, larger reveals */
   --motion-duration-gradient: 500ms; /* the button gradient sweep */
+  --motion-duration-shine: 3s;       /* the nav dock's border-shine rotation */
 
   --motion-ease-standard: cubic-bezier(0.2, 0, 0, 1);    /* general UI, decelerate */
   --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);      /* confident settle (enter) */
@@ -188,4 +193,34 @@
      AA-contrast requirement; see the focus-ring contrast test in
      tokens.test.ts for the reasoning. */
   --color-primary-glow: #e98aa233;
+
+  /* Floating nav surface (Story 3.5, UX-DR2) — --color-surface-container at
+     ~90% opacity (8-digit hex, #e6 ≈ 90.2%; same normalizeHex convention as
+     --color-primary-glow above) for the glassy backdrop-blur pill. A new
+     alpha token, not a color-mix()/rgb(...)-with-var() call, because
+     no-hardcoded-colors.test.ts's COLOR_LITERAL_PATTERN flags the
+     rgba?()/color-mix() function names themselves, regardless of whether a
+     var() sits inside them. */
+  --color-surface-container-90: #1b1f28e6;
+
+  /* Floating nav elevation shadow (Story 3.5 polish pass) — pure black at
+     ~35% alpha (8-digit hex, same normalizeHex convention as the alpha
+     tokens above). A soft drop shadow separating the glass pill from the
+     content scrolling beneath it; a token rather than an inline rgba()
+     because no-hardcoded-colors.test.ts flags rgba()/named-color literals
+     in component files. (The previous --color-primary-glow-fade token was
+     removed with the mouse-tracked hover-glow gradient it existed for.) */
+  --color-shadow-soft: #00000059;
+
+  /* Floating nav hover-glow (Story 3.5, reinstated at reference scale after
+     Arjun's review) — the 21st.dev hover-glow-button treatment: a large,
+     soft radial wash of primary that floods the item surface from the
+     cursor position. -strong is the gradient's center stop (~30% alpha),
+     -fade its 0-alpha outer stop (a token rather than the `transparent`
+     keyword, which no-hardcoded-colors.test.ts flags as a named-color
+     literal in scanned files). The original shipped glow was a 36px dot at
+     --color-primary-glow's 20% — too small and too dim to read as the
+     intended "lamp lighting the surface" effect. */
+  --color-primary-glow-strong: #e98aa24d;
+  --color-primary-glow-fade: #e98aa200;
 }
