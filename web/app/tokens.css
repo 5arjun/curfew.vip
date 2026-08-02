@@ -141,6 +141,10 @@
   --radius-sm: 0.125rem;
   --radius-lg: 0.25rem;
   --radius-xl: 0.5rem;
+  /* 2xl: the floating nav dock (Arjun's 2026-08-01 dock revision — the nav
+     moved off the full pill onto a squarer, dock-like rounded rect; `full`
+     remains reserved for the avatar and status dots). */
+  --radius-2xl: 1rem;
   --radius-full: 9999px;
 
   /* Motion (new 2026-07-28). The layer DESIGN.md was missing: every animation in
@@ -152,6 +156,7 @@
   --motion-duration-base: 240ms;     /* default UI transition */
   --motion-duration-slow: 400ms;     /* sheets, larger reveals */
   --motion-duration-gradient: 500ms; /* the button gradient sweep */
+  --motion-duration-shine: 3s;       /* the nav dock's border-shine rotation */
 
   --motion-ease-standard: cubic-bezier(0.2, 0, 0, 1);    /* general UI, decelerate */
   --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);      /* confident settle (enter) */
@@ -188,4 +193,66 @@
      AA-contrast requirement; see the focus-ring contrast test in
      tokens.test.ts for the reasoning. */
   --color-primary-glow: #e98aa233;
+
+  /* Floating nav surface (Story 3.5, UX-DR2) — --color-surface-container at
+     ~90% opacity (8-digit hex, #e6 ≈ 90.2%; same normalizeHex convention as
+     --color-primary-glow above) for the glassy backdrop-blur pill. A new
+     alpha token, not a color-mix()/rgb(...)-with-var() call, because
+     no-hardcoded-colors.test.ts's COLOR_LITERAL_PATTERN flags the
+     rgba?()/color-mix() function names themselves, regardless of whether a
+     var() sits inside them. */
+  --color-surface-container-90: #1b1f28e6;
+
+  /* Floating nav elevation shadow (Story 3.5 polish pass) — pure black at
+     ~35% alpha (8-digit hex, same normalizeHex convention as the alpha
+     tokens above). A soft drop shadow separating the glass pill from the
+     content scrolling beneath it; a token rather than an inline rgba()
+     because no-hardcoded-colors.test.ts flags rgba()/named-color literals
+     in component files. (The previous --color-primary-glow-fade token was
+     removed with the mouse-tracked hover-glow gradient it existed for.) */
+  --color-shadow-soft: #00000059;
+
+  /* Floating nav hover-glow (Story 3.5; recoloured to the reference's aqua
+     2026-08-02, retuned to a cursor-tracking spotlight 2026-08-02) — the
+     21st.dev hover-glow-button (@easemize) treatment: a soft radial glow that
+     FOLLOWS the cursor within the hovered item. Arjun prefers that component's
+     cyan-on-void palette to the brand rose, so the nav glow reads aqua while
+     the rest of the app stays Ember. The gradient is small (52px, set in
+     FloatingNav.tsx) so these stops paint a distinct blob that tracks the
+     pointer rather than a wash that floods the whole ~44px cell: -strong is the
+     bright centre core (~55% alpha), -mid the soft mid falloff (~20%), -fade
+     the 0-alpha outer stop — all cyan-hued (not rose) so it fades cyan→clear
+     without a muddy mid-hue. -hover-text is the reference's hoverTextColor: a
+     non-active item's icon brightens to light-cyan on hover, mirroring the
+     button's white→cyan text shift. Tokens, not inline, because the guard flags
+     literal colours (and the `transparent` keyword) in scanned files. To revert
+     the nav to brand rose, set -strong/-mid/-fade/-hover-text to
+     #e98aa28c / #e98aa233 / #e98aa200 / var(--color-on-surface). */
+  --color-nav-glow-strong: #00ffc38c;
+  --color-nav-glow-mid: #00ffc333;
+  --color-nav-glow-fade: #00ffc300;
+  --color-nav-hover-text: #67e8f9;
+
+  /* Still rose: the dock's see-through border stop (globals.css) — hue is
+     irrelevant at zero alpha, it just needs a token, not the `transparent`
+     keyword the guard flags. */
+  --color-primary-glow-fade: #e98aa200;
+
+  /* Floating nav dock revision 2 (Arjun, 2026-08-01) — the dock reads as a
+     true-black void framed by the rotating conic border-shine, sitting darker
+     than the near-black --color-surface page. A dedicated pure-black token
+     (rather than an inline #000 in globals.css) keeps the guard's
+     no-hardcoded-colors invariant intact; tokens.css is the one file allowed
+     to name literal colors. */
+  --color-surface-void: #000000;
+
+  /* Dock rim + chip overlays (dock revision 2) — thin white-alpha washes that
+     catch light on the void dock: -rim is the 1px inset top-edge highlight
+     (~8% white), -chip-active the active cell's raised-chip overlay (~1%),
+     -chip-hover the hover overlay (~4%). 8-digit hex alpha rather than
+     color-mix()/rgba(), both of which the color guard flags by function name
+     even with a var() inside. */
+  --color-nav-rim: #ffffff14;
+  --color-nav-chip-active: #ffffff03;
+  --color-nav-chip-hover: #ffffff0a;
 }

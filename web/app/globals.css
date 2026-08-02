@@ -1,4 +1,53 @@
+@import "tailwindcss";
 @import "./tokens.css";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* Tailwind v4 CSS-first theme (Story 3.5). Every entry aliases Tailwind's
+   utility-class vocabulary — both plain Tailwind names (Task 1) and shadcn's
+   own semantic vocabulary (Task 2, `background`/`foreground`/`card`/
+   `popover`/`border`/`ring`/etc — a different naming convention than
+   Curfew's Material-3-style `surface`/`on-surface`/`outline-variant`) — back
+   to the existing tokens.css custom property of the same *meaning*, via
+   `inline`, never a new hex/oklch literal. This is why `shadcn init`'s own
+   generated `:root`/`.dark` literal-oklch blocks and its `@layer base`
+   global-reset block (which would have fought this file's existing `body`
+   rule and forced `font-sans` onto `html`) were deleted rather than kept —
+   both are "alias, don't duplicate" violations of the exact kind
+   no-hardcoded-colors.test.ts exists to catch. Map only what this story
+   actually needs (FloatingNav's own tokens) plus shadcn's core semantic
+   vocabulary (so a future `shadcn add` doesn't silently reintroduce a
+   parallel palette) — extend additively as later stories need more;
+   chart-*, sidebar-* and shadcn's own calc-based radius scale are
+   deliberately not aliased here since nothing in this story consumes them. */
+@theme inline {
+  --color-primary: var(--color-primary);
+  --color-surface-container: var(--color-surface-container);
+  --color-outline-variant: var(--color-outline-variant);
+  --color-on-surface: var(--color-on-surface);
+  --color-outline: var(--color-outline);
+  --color-surface-container-90: var(--color-surface-container-90);
+  --color-surface-container-high: var(--color-surface-container-high);
+  --radius-full: var(--radius-full);
+
+  --color-background: var(--color-background);
+  --color-foreground: var(--color-on-background);
+  --color-card: var(--color-surface-container);
+  --color-card-foreground: var(--color-on-surface);
+  --color-popover: var(--color-surface-container);
+  --color-popover-foreground: var(--color-on-surface);
+  --color-primary-foreground: var(--color-on-primary);
+  --color-secondary: var(--color-secondary);
+  --color-secondary-foreground: var(--color-on-secondary);
+  --color-muted: var(--color-surface-container-high);
+  --color-muted-foreground: var(--color-on-surface-variant);
+  --color-accent: var(--color-surface-container-high);
+  --color-accent-foreground: var(--color-on-surface);
+  --color-destructive: var(--color-error);
+  --color-border: var(--color-outline-variant);
+  --color-input: var(--color-outline-variant);
+  --color-ring: var(--color-primary);
+}
 
 html {
   height: 100%;
@@ -22,15 +71,130 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
-}
+/* This app's own pre-Tailwind reset (box-sizing/padding/margin) used to live
+   here as a plain, unlayered `* {...}` rule. Removed (Story 3.5): Tailwind's
+   own Preflight now ships an identical reset inside `@layer base` — and
+   because CSS Cascade Layers give ANY unlayered rule priority over EVERY
+   layered rule regardless of source order, that plain `*` selector was
+   silently beating every Tailwind padding/margin utility (`px-*`, `py-*`,
+   `m-*`, ...) app-wide the moment Tailwind was introduced. Keeping a
+   redundant copy here isn't just dead weight, it's an active footgun for
+   every future Tailwind class in this file — hence removed, not layered. */
 
 a {
   color: inherit;
   text-decoration: none;
+}
+
+/* Floating nav dock (Story 3.5, 2026-08-01 dock revision) — border shine
+   adapted from the shiny-button reference Arjun sent: a conic-gradient
+   border with a rose→amber glint (the Ember two-pole pairing the button
+   gradient already established), static at rest, rotating while the dock
+   is hovered. Registered @property makes the angle interpolable so the
+   rotation is a real animation, not a stepped repaint. All colors are
+   token var()s; --color-primary-glow-fade stands in for the see-through
+   CSS keyword (which no-hardcoded-colors.test.ts flags even in comments —
+   hence this phrasing), same as the item glow.
+   The reference's styled-jsx wrapper, Google-Fonts @import, dot-matrix
+   pattern, and inner shimmer were deliberately not carried over — the
+   border treatment is the part that fits a persistent nav. */
+@property --nav-shine-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.floating-nav-dock {
+  /* Dock revision 2 (Arjun, 2026-08-01): the opaque --color-surface-container
+     fill read as a flat grey slab. Replaced with the --color-surface-void fill
+     (pure-dark, darker than the near-dark page) so the dock reads as a void
+     framed by the rotating conic border-shine (Arjun likes the edge animation —
+     it now runs continuously instead of only on hover, so it's always visibly
+     turning). --color-nav-rim is the 1px inset top highlight so the dark bar
+     still catches a little light. No backdrop-blur: an opaque fill has nothing
+     to blur. Literal colours live in tokens.css (the guard's one exempt file);
+     see those token comments for the alpha reasoning. */
+  border: 1px solid var(--color-primary-glow-fade);
+  border-radius: var(--radius-2xl);
+  background:
+    linear-gradient(var(--color-surface-void), var(--color-surface-void)) padding-box,
+    conic-gradient(
+        from var(--nav-shine-angle),
+        var(--color-outline-variant) 0% 78%,
+        var(--color-primary) 86%,
+        var(--color-spark) 90%,
+        var(--color-primary) 94%,
+        var(--color-outline-variant) 100%
+      )
+      border-box;
+  box-shadow:
+    inset 0 1px 0 0 var(--color-nav-rim),
+    0 16px 40px -12px var(--color-shadow-soft);
+  animation: nav-shine-spin var(--motion-duration-shine) linear infinite;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .floating-nav-dock:hover {
+    animation-play-state: running;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floating-nav-dock {
+    animation: none;
+  }
+}
+
+@keyframes nav-shine-spin {
+  to {
+    --nav-shine-angle: 360deg;
+  }
+}
+
+/* Glow follow-lag: the item's radial hover glow trails the cursor by a beat
+   instead of tracking it rigidly. This USED to be a pure-CSS effect — register
+   --glow-x/y as interpolable @property <length-percentage> vars and transition
+   them so each mousemove eased into place. That approach is dead in this build:
+   Next 16 + Tailwind v4 (Lightning CSS) leaves runtime
+   `element.style.setProperty()` on a *registered* @property custom property
+   silently ignored, so --glow-x/y stayed pinned at their 50% initial and the
+   glow never left centre (the "flat wash that doesn't track" bug). The lag is
+   now produced by a per-frame JS lerp writing UNregistered --gx/--gy vars,
+   which DO reflect runtime writes — see FloatingNav.tsx. So the @property
+   registrations that lived here are gone, and --glow-x/y are off the transition
+   list below; nothing reads them anymore. (The dock's --nav-shine-angle stays a
+   registered @property — it animates via @keyframes, never setProperty, so the
+   same bug doesn't touch it.)
+   The anchor's colour/scale transitions live here too (moved off the Tailwind
+   arbitrary utilities) so a single unlayered `transition` owns the element and
+   doesn't clobber, or get clobbered by, the layered utility. */
+
+/* Icon/label colour uses the same model as the 21st.dev reference and the
+   preview artifact: the colour lives on the LINK and the icon inherits it.
+   Idle dims to --color-outline, the active route to --color-on-surface, a
+   hovered item to --color-nav-hover-text; the colour change rides the `color`
+   transition below. These are UNLAYERED rules so they beat globals'
+   `a { color: inherit }` reset by specificity — Tailwind's layered `text-*`
+   utilities can't (a layered rule always loses to an unlayered one), which is
+   why the same classes on the link element silently did nothing. */
+.floating-nav-link {
+  color: var(--color-outline);
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    scale var(--motion-duration-fast) var(--motion-ease-standard);
+}
+.floating-nav-link[aria-current="page"] {
+  color: var(--color-on-surface);
+}
+.floating-nav-link:not([aria-current="page"]):hover {
+  color: var(--color-nav-hover-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floating-nav-link {
+    transition: none;
+  }
 }
 
 /* Obsidian type scale (UX-DR1 / Story 2.2 AC-2) */
@@ -325,7 +489,8 @@ a {
   .auth-ghost-field-input:focus-visible,
   .auth-button:focus-visible,
   .auth-biometric-anchor:focus-visible,
-  .auth-oauth-button:focus-visible {
+  .auth-oauth-button:focus-visible,
+  .floating-nav-link:focus-visible {
     outline: 2px solid CanvasText;
     outline-offset: 2px;
   }
