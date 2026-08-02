@@ -151,30 +151,23 @@ a {
   }
 }
 
-/* Glow follow-lag (Arjun, dock revision): the item's radial hover glow trails
-   the cursor by a beat instead of tracking it rigidly. --glow-x/y are written
-   inline on mousemove (see FloatingNav.tsx handleGlowMove); registering them as
-   typed, interpolable custom properties lets a transition on the pair turn each
-   discrete pointer update into a short catch-up — the glow eases toward the
-   cursor rather than snapping to it. Pure CSS, no rAF loop.
-   Syntax is <length-percentage> with a 50% initial value so the glow rests
-   dead-centre before the first mousemove (a bare <length>/0px initial parked it
-   in the top-left corner, so it flew in diagonally on hover-in — the "not right"
-   Arjun caught). Timing is the subtle `fast` beat, not `base`: the ask was the
-   *slightest* delay, and 240ms read as lag.
+/* Glow follow-lag: the item's radial hover glow trails the cursor by a beat
+   instead of tracking it rigidly. This USED to be a pure-CSS effect — register
+   --glow-x/y as interpolable @property <length-percentage> vars and transition
+   them so each mousemove eased into place. That approach is dead in this build:
+   Next 16 + Tailwind v4 (Lightning CSS) leaves runtime
+   `element.style.setProperty()` on a *registered* @property custom property
+   silently ignored, so --glow-x/y stayed pinned at their 50% initial and the
+   glow never left centre (the "flat wash that doesn't track" bug). The lag is
+   now produced by a per-frame JS lerp writing UNregistered --gx/--gy vars,
+   which DO reflect runtime writes — see FloatingNav.tsx. So the @property
+   registrations that lived here are gone, and --glow-x/y are off the transition
+   list below; nothing reads them anymore. (The dock's --nav-shine-angle stays a
+   registered @property — it animates via @keyframes, never setProperty, so the
+   same bug doesn't touch it.)
    The anchor's colour/scale transitions live here too (moved off the Tailwind
    arbitrary utilities) so a single unlayered `transition` owns the element and
    doesn't clobber, or get clobbered by, the layered utility. */
-@property --glow-x {
-  syntax: "<length-percentage>";
-  initial-value: 50%;
-  inherits: true;
-}
-@property --glow-y {
-  syntax: "<length-percentage>";
-  initial-value: 50%;
-  inherits: true;
-}
 
 /* Icon/label colour uses the same model as the 21st.dev reference and the
    preview artifact: the colour lives on the LINK and the icon inherits it.
@@ -189,9 +182,7 @@ a {
   transition:
     background-color var(--motion-duration-fast) var(--motion-ease-standard),
     color var(--motion-duration-fast) var(--motion-ease-standard),
-    scale var(--motion-duration-fast) var(--motion-ease-standard),
-    --glow-x var(--motion-duration-fast) var(--motion-ease-out),
-    --glow-y var(--motion-duration-fast) var(--motion-ease-out);
+    scale var(--motion-duration-fast) var(--motion-ease-standard);
 }
 .floating-nav-link[aria-current="page"] {
   color: var(--color-on-surface);

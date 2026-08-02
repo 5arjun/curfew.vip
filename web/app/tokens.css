@@ -213,19 +213,23 @@
   --color-shadow-soft: #00000059;
 
   /* Floating nav hover-glow (Story 3.5; recoloured to the reference's aqua
-     2026-08-02) — the 21st.dev hover-glow-button (@easemize) treatment: a
-     large, soft radial wash that floods the item surface from the cursor.
-     Arjun prefers that component's cyan-on-void palette to the brand rose, so
-     the nav glow reads aqua while the rest of the app stays Ember. -strong is
-     the gradient's centre stop (~40% alpha); -fade its 0-alpha outer stop,
-     cyan-hued (not rose) so the wash fades cyan→clear without a muddy mid-hue.
-     -hover-text is the reference's hoverTextColor: a non-active item's icon
-     brightens to light-cyan on hover, mirroring the button's white→cyan text
-     shift. Tokens, not inline, because the guard flags literal colours (and
-     the `transparent` keyword) in scanned files. To revert the nav to brand
-     rose, set -strong/-fade/-hover-text to #e98aa24d / #e98aa200 /
-     var(--color-on-surface). */
-  --color-nav-glow-strong: #00ffc366;
+     2026-08-02, retuned to a cursor-tracking spotlight 2026-08-02) — the
+     21st.dev hover-glow-button (@easemize) treatment: a soft radial glow that
+     FOLLOWS the cursor within the hovered item. Arjun prefers that component's
+     cyan-on-void palette to the brand rose, so the nav glow reads aqua while
+     the rest of the app stays Ember. The gradient is small (52px, set in
+     FloatingNav.tsx) so these stops paint a distinct blob that tracks the
+     pointer rather than a wash that floods the whole ~44px cell: -strong is the
+     bright centre core (~55% alpha), -mid the soft mid falloff (~20%), -fade
+     the 0-alpha outer stop — all cyan-hued (not rose) so it fades cyan→clear
+     without a muddy mid-hue. -hover-text is the reference's hoverTextColor: a
+     non-active item's icon brightens to light-cyan on hover, mirroring the
+     button's white→cyan text shift. Tokens, not inline, because the guard flags
+     literal colours (and the `transparent` keyword) in scanned files. To revert
+     the nav to brand rose, set -strong/-mid/-fade/-hover-text to
+     #e98aa28c / #e98aa233 / #e98aa200 / var(--color-on-surface). */
+  --color-nav-glow-strong: #00ffc38c;
+  --color-nav-glow-mid: #00ffc333;
   --color-nav-glow-fade: #00ffc300;
   --color-nav-hover-text: #67e8f9;
 

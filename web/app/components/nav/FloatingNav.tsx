@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Fragment, type MouseEvent } from "react";
+import { Fragment, useEffect, useRef, type MouseEvent } from "react";
 import { House, TrendUp, VinylRecord, UserCircle, type Icon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 
@@ -30,35 +30,118 @@ export function isActiveNavItem(pathname: string, href: string): boolean {
   return pathname === href;
 }
 
-// Hover glow (Arjun's 21st.dev hover-glow-button reference, @easemize):
-// a large radial wash of aqua that floods the item from the cursor position —
-// the reference's "lamp lighting the surface" effect, in that component's
-// cyan-on-void palette (Arjun prefers it to the brand rose here; the colour
-// lives in --color-nav-glow-* so a flip back to rose is one token). The first
-// implementation's mistake was scale, not concept: a 36px dot at 20% alpha
-// read as a gimmicky glint; the reference uses a gradient roughly the size
-// of the whole control at meaningful intensity. Cursor position is written
-// to CSS vars directly on the element (no React state — a re-render per
-// mousemove is pointless churn for a purely decorative layer), and the
+// Hover glow (Arjun's 21st.dev hover-glow-button reference, @easemize): a soft
+// radial spotlight of aqua that FOLLOWS the cursor within the hovered item, in
+// that component's cyan-on-void palette (Arjun prefers it to the brand rose
+// here; the colour lives in --color-nav-glow-* so a flip back to rose is a
+// token change). The gradient is small (52px) relative to the ~44px item so the
+// bright core is a distinct blob that visibly tracks the pointer, not a wash
+// that floods the whole cell uniformly — the earlier 120px radius was the
+// "flat, doesn't track" bug Arjun caught.
+//
+// Why this is JS-driven (rAF lerp) and NOT the CSS-only approach the reference
+// artifact uses: the artifact trails the cursor by transitioning registered
+// @property <length-percentage> vars (--glow-x/y) in CSS. That works in a plain
+// HTML page, but in THIS build (Next 16 + Tailwind v4 / Lightning CSS) runtime
+// `element.style.setProperty()` on a *registered* @property custom property is
+// silently ignored — the value stays pinned at the property's initial (50%), so
+// the glow never leaves centre. (Verified in-browser: unregistered vars accept
+// runtime values fine; the dock's keyframe-driven --nav-shine-angle is
+// unaffected because it never goes through setProperty.) So we drive the glow
+// with UNregistered --gx/--gy vars, which do reflect runtime writes, and get
+// the follow-lag from a per-frame lerp in JS instead of a CSS property
+// transition. Position is written straight to the element's style (no React
+// state — a re-render per frame is pointless churn for a decorative layer); the
 // glow fades in/out via group-hover opacity so entry/exit stays smooth.
-// The glow trails the cursor on a slight delay: --glow-x/y are registered as
-// interpolable <length-percentage> properties and transitioned in globals.css
-// (.floating-nav-link), so each mousemove update eases into place rather than
-// snapping — the follow-lag Arjun asked for, done in CSS not JS.
-function handleGlowMove(event: MouseEvent<HTMLAnchorElement>) {
-  const el = event.currentTarget;
-  const rect = el.getBoundingClientRect();
-  el.style.setProperty("--glow-x", `${event.clientX - rect.left}px`);
-  el.style.setProperty("--glow-y", `${event.clientY - rect.top}px`);
+
+// Per-frame catch-up fraction for the follow-lag: each frame the glow moves
+// this share of the remaining distance to the cursor (~0.2 ≈ a 160ms settle at
+// 60fps, matching the reference's transition beat). 1 = snap (reduced-motion).
+const GLOW_EASE = 0.2;
+
+function prefersReducedMotion() {
+  return (
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
 }
 
 function NavLink({ item, active }: { item: NavItem; active: boolean }) {
   const ItemIcon = item.icon;
 
+  // Glow follow-lag state (see handleGlowMove note above for why this is a JS
+  // rAF lerp on unregistered --gx/--gy rather than a CSS @property transition).
+  // Refs, not state: the loop mutates position ~60x/sec and must not re-render.
+  const linkRef = useRef<HTMLAnchorElement>(null);
+  const target = useRef({ x: 0, y: 0 }); // where the cursor is
+  const pos = useRef({ x: 0, y: 0 }); // where the glow currently is (trails target)
+  const raf = useRef<number | null>(null);
+  const hovering = useRef(false);
+
+  useEffect(
+    () => () => {
+      if (raf.current != null) cancelAnimationFrame(raf.current);
+    },
+    [],
+  );
+
+  function write(x: number, y: number) {
+    const el = linkRef.current;
+    if (!el) return;
+    el.style.setProperty("--gx", `${x}px`);
+    el.style.setProperty("--gy", `${y}px`);
+  }
+
+  function tick() {
+    const ease = prefersReducedMotion() ? 1 : GLOW_EASE;
+    const t = target.current;
+    const p = pos.current;
+    p.x += (t.x - p.x) * ease;
+    p.y += (t.y - p.y) * ease;
+    write(p.x, p.y);
+    const settled = Math.abs(t.x - p.x) < 0.5 && Math.abs(t.y - p.y) < 0.5;
+    if (hovering.current || !settled) {
+      raf.current = requestAnimationFrame(tick);
+    } else {
+      write(t.x, t.y); // land exactly on target, then idle
+      raf.current = null;
+    }
+  }
+
+  function pointIn(event: MouseEvent<HTMLAnchorElement>) {
+    const r = event.currentTarget.getBoundingClientRect();
+    return { x: event.clientX - r.left, y: event.clientY - r.top };
+  }
+
+  function handleEnter(event: MouseEvent<HTMLAnchorElement>) {
+    // Start the glow directly under the cursor (target === pos) so it lights up
+    // in place rather than flying in from the item's centre on hover-in.
+    const pt = pointIn(event);
+    target.current = pt;
+    pos.current = { ...pt };
+    write(pt.x, pt.y);
+    hovering.current = true;
+    if (raf.current == null) raf.current = requestAnimationFrame(tick);
+  }
+
+  function handleMove(event: MouseEvent<HTMLAnchorElement>) {
+    target.current = pointIn(event);
+    if (raf.current == null) raf.current = requestAnimationFrame(tick);
+  }
+
+  function handleLeave() {
+    // Stop tracking; the loop eases to a rest and cancels itself while the
+    // glow's opacity fades out via group-hover.
+    hovering.current = false;
+  }
+
   return (
     <Link
+      ref={linkRef}
       href={item.href}
-      onMouseMove={handleGlowMove}
+      onMouseEnter={handleEnter}
+      onMouseMove={handleMove}
+      onMouseLeave={handleLeave}
       aria-current={active ? "page" : undefined}
       aria-label={item.label}
       className={cn(
@@ -87,7 +170,7 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
         className="pointer-events-none absolute inset-0 rounded-[inherit] opacity-0 transition-opacity [transition-duration:var(--motion-duration-base)] [transition-timing-function:var(--motion-ease-standard)] group-hover:opacity-100"
         style={{
           background:
-            "radial-gradient(120px circle at var(--glow-x, 50%) var(--glow-y, 50%), var(--color-nav-glow-strong), var(--color-nav-glow-fade) 70%)",
+            "radial-gradient(52px circle at var(--gx, 50%) var(--gy, 50%), var(--color-nav-glow-strong) 0%, var(--color-nav-glow-mid) 34%, var(--color-nav-glow-fade) 58%)",
         }}
       />
       {/* weight="bold" (was "regular") per Arjun's dock revision — a heavier
