@@ -105,11 +105,19 @@ a {
 }
 
 .floating-nav-dock {
+  /* Dock revision 2 (Arjun, 2026-08-01): the opaque --color-surface-container
+     fill read as a flat grey slab. Replaced with the --color-surface-void fill
+     (pure-dark, darker than the near-dark page) so the dock reads as a void
+     framed by the rotating conic border-shine (Arjun likes the edge animation —
+     it now runs continuously instead of only on hover, so it's always visibly
+     turning). --color-nav-rim is the 1px inset top highlight so the dark bar
+     still catches a little light. No backdrop-blur: an opaque fill has nothing
+     to blur. Literal colours live in tokens.css (the guard's one exempt file);
+     see those token comments for the alpha reasoning. */
   border: 1px solid var(--color-primary-glow-fade);
   border-radius: var(--radius-2xl);
   background:
-    linear-gradient(var(--color-surface-container), var(--color-surface-container))
-      padding-box,
+    linear-gradient(var(--color-surface-void), var(--color-surface-void)) padding-box,
     conic-gradient(
         from var(--nav-shine-angle),
         var(--color-outline-variant) 0% 78%,
@@ -119,7 +127,10 @@ a {
         var(--color-outline-variant) 100%
       )
       border-box;
-  animation: nav-shine-spin var(--motion-duration-shine) linear infinite paused;
+  box-shadow:
+    inset 0 1px 0 0 var(--color-nav-rim),
+    0 16px 40px -12px var(--color-shadow-soft);
+  animation: nav-shine-spin var(--motion-duration-shine) linear infinite;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -137,6 +148,46 @@ a {
 @keyframes nav-shine-spin {
   to {
     --nav-shine-angle: 360deg;
+  }
+}
+
+/* Glow follow-lag (Arjun, dock revision): the item's radial hover glow trails
+   the cursor by a beat instead of tracking it rigidly. --glow-x/y are written
+   inline on mousemove (see FloatingNav.tsx handleGlowMove); registering them as
+   typed, interpolable custom properties lets a transition on the pair turn each
+   discrete pointer update into a short catch-up — the glow eases toward the
+   cursor rather than snapping to it. Pure CSS, no rAF loop.
+   Syntax is <length-percentage> with a 50% initial value so the glow rests
+   dead-centre before the first mousemove (a bare <length>/0px initial parked it
+   in the top-left corner, so it flew in diagonally on hover-in — the "not right"
+   Arjun caught). Timing is the subtle `fast` beat, not `base`: the ask was the
+   *slightest* delay, and 240ms read as lag.
+   The anchor's colour/scale transitions live here too (moved off the Tailwind
+   arbitrary utilities) so a single unlayered `transition` owns the element and
+   doesn't clobber, or get clobbered by, the layered utility. */
+@property --glow-x {
+  syntax: "<length-percentage>";
+  initial-value: 50%;
+  inherits: true;
+}
+@property --glow-y {
+  syntax: "<length-percentage>";
+  initial-value: 50%;
+  inherits: true;
+}
+
+.floating-nav-link {
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    scale var(--motion-duration-fast) var(--motion-ease-standard),
+    --glow-x var(--motion-duration-fast) var(--motion-ease-out),
+    --glow-y var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floating-nav-link {
+    transition: none;
   }
 }
 

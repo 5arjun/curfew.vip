@@ -30,15 +30,21 @@ export function isActiveNavItem(pathname: string, href: string): boolean {
   return pathname === href;
 }
 
-// Hover glow (Arjun's 21st.dev hover-glow-button reference, second pass):
-// a large radial wash of primary that floods the item from the cursor
-// position — the reference's "lamp lighting the surface" effect. The first
+// Hover glow (Arjun's 21st.dev hover-glow-button reference, @easemize):
+// a large radial wash of aqua that floods the item from the cursor position —
+// the reference's "lamp lighting the surface" effect, in that component's
+// cyan-on-void palette (Arjun prefers it to the brand rose here; the colour
+// lives in --color-nav-glow-* so a flip back to rose is one token). The first
 // implementation's mistake was scale, not concept: a 36px dot at 20% alpha
 // read as a gimmicky glint; the reference uses a gradient roughly the size
 // of the whole control at meaningful intensity. Cursor position is written
 // to CSS vars directly on the element (no React state — a re-render per
 // mousemove is pointless churn for a purely decorative layer), and the
 // glow fades in/out via group-hover opacity so entry/exit stays smooth.
+// The glow trails the cursor on a slight delay: --glow-x/y are registered as
+// interpolable <length-percentage> properties and transitioned in globals.css
+// (.floating-nav-link), so each mousemove update eases into place rather than
+// snapping — the follow-lag Arjun asked for, done in CSS not JS.
 function handleGlowMove(event: MouseEvent<HTMLAnchorElement>) {
   const el = event.currentTarget;
   const rect = el.getBoundingClientRect();
@@ -59,12 +65,17 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
         // Cell radius stays concentric with the dock's --radius-2xl outer
         // radius: inner = outer − the container's 6px padding.
         "floating-nav-link group relative flex min-h-11 min-w-11 shrink-0 items-center justify-center overflow-hidden rounded-[calc(var(--radius-2xl)-6px)] px-3 outline-none",
-        "transition-[background-color,color,scale] [transition-duration:var(--motion-duration-fast)] [transition-timing-function:var(--motion-ease-standard)]",
+        // colour/scale transitions + the glow follow-lag live in globals.css
+        // (.floating-nav-link) so one rule owns the transition list.
         "active:scale-[0.97] motion-reduce:active:scale-100",
         "focus-visible:shadow-[0_0_0_2px_var(--color-primary),0_0_0_6px_var(--color-primary-glow)]",
+        // Active is a neutral raised chip (subtle white overlay), not the old
+        // pink-glow fill — a filled pastel block read as a consumer default.
+        // The active icon reads white too (Arjun): selection is carried by the
+        // fill-weight glyph + the label reveal, not a pink tint.
         active
-          ? "bg-[var(--color-primary-glow)] text-primary"
-          : "text-outline hover:bg-surface-container-high hover:text-on-surface",
+          ? "bg-[var(--color-nav-chip-active)] text-on-surface"
+          : "text-outline hover:bg-[var(--color-nav-chip-hover)] hover:text-[var(--color-nav-hover-text)]",
       )}
     >
       <span
@@ -72,7 +83,7 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
         className="pointer-events-none absolute inset-0 rounded-[inherit] opacity-0 transition-opacity [transition-duration:var(--motion-duration-base)] [transition-timing-function:var(--motion-ease-standard)] group-hover:opacity-100"
         style={{
           background:
-            "radial-gradient(120px circle at var(--glow-x, 50%) var(--glow-y, 50%), var(--color-primary-glow-strong), var(--color-primary-glow-fade) 70%)",
+            "radial-gradient(120px circle at var(--glow-x, 50%) var(--glow-y, 50%), var(--color-nav-glow-strong), var(--color-nav-glow-fade) 70%)",
         }}
       />
       {/* weight="bold" (was "regular") per Arjun's dock revision — a heavier
@@ -119,7 +130,7 @@ export function FloatingNav() {
       // surface + conic border shine, all carried by .floating-nav-dock in
       // globals.css (the backdrop-blur glass treatment went with the 90%-
       // alpha background — an opaque dock has nothing to blur).
-      className="floating-nav-dock fixed bottom-6 left-1/2 z-50 flex w-max -translate-x-1/2 items-center gap-1 p-1.5 shadow-[0_16px_40px_-12px_var(--color-shadow-soft)]"
+      className="floating-nav-dock fixed bottom-6 left-1/2 z-50 flex w-max -translate-x-1/2 items-center gap-1 p-1.5"
     >
       {NAV_ITEMS.map((item, index) => (
         <Fragment key={item.href}>
