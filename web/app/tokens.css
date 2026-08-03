@@ -163,6 +163,16 @@
   --motion-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);  /* symmetric move */
   --motion-ease-spark: cubic-bezier(0.34, 1.56, 0.64, 1);/* slight overshoot: the "pop" */
 
+  /* Liquid house easing (dashboard redesign D4 — the progressive-blur ref's
+     signature timing, preserved exactly): everything structural on the
+     dashboard settles on -liquid; -liquid-pop is the ref's overshooting icon
+     spin; open 600ms / close 400ms / grand 1s (the artist-modal register). */
+  --motion-ease-liquid: cubic-bezier(0.17, 1, 0.33, 1);
+  --motion-ease-liquid-pop: cubic-bezier(0.32, 1.35, 0.75, 1);
+  --motion-duration-liquid-open: 600ms;
+  --motion-duration-liquid-close: 400ms;
+  --motion-duration-liquid-grand: 1000ms;
+
   /* OAuth-brand colors (Story 2.4) — Google's and Apple's own mandated
      button colors, the one sanctioned exception to Curfew's palette
      (DESIGN.md Do's/Don'ts). Values below are verified 2026-07-28 against
@@ -334,6 +344,8 @@
   --color-abyss-accent-soft: #4fb2d6;/* today-ring, secondary accent */
   --color-abyss-accent-glow: #7fd8f280;  /* 50% — glows, dancefloor arc halo */
   --color-abyss-on-accent: #04131c;  /* text on filled accent */
+  --color-abyss-shell-glass: #091018e0;  /* ~88% shell — the liquid-glass fill over the Silk (D1:
+                                            translucent frosted; pairs with backdrop-blur in dashboard.css) */
   --color-abyss-shell-glow: #18344880;   /* 50% — the ref's inset 150px shell glow, re-tinted */
   --color-abyss-shell-glow-dim: #18344859; /* ~35% — shell glow while a modal is active (ref drops to 0.7×) */
   --color-abyss-row-hover: #7fd8f217;    /* ~9% — row hover inset glow (ref white 0.075 re-tint) */

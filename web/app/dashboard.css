@@ -1,0 +1,140 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Dashboard redesign (Story 3.6 v2) — liquid metal + liquid glass on Abyss
+   Cyan (PLAN.md D1–D14). All classes are prefixed `dz-` (dashboard zone) so
+   they can't collide with the Set-Detail-retained `.dashboard-*` shell in
+   globals.css. Token-only (no-hardcoded-colors.test.ts scans this file);
+   every ref hex renders through the Abyss tokens.
+
+   The page is a viewport-locked app shell (D9 hard requirement: the page,
+   hero, and right column never move — only the set list scrolls, within its
+   own panel). Below 900px the lock is released: a phone can't hold three
+   stacked zones in one viewport, so the page scrolls and the set list caps
+   its own height instead (deviation from the desktop zone map, not from any
+   ref mechanic).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.dz {
+  position: relative;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  width: 100%;
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: var(--space-lg) var(--space-gutter)
+    calc(var(--space-xxl) + env(safe-area-inset-bottom));
+  overflow: hidden;
+  /* The refs' voice (Hanken Grotesk — already Curfew's display font, D4). */
+  font-family: var(--font-hanken-grotesk);
+  color: var(--color-abyss-text);
+}
+
+/* ─── Silk backdrop (D2) ─────────────────────────────────────────────────
+   Fixed full-bleed WebGL silk behind everything; the base token paints
+   beneath it while the canvas mounts (and wherever WebGL is off). */
+.dz-silk {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: var(--color-abyss-base);
+}
+
+.dz-silk > div,
+.dz-silk canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* ─── Shell language (D8: the music player's .content treatment, re-tinted;
+   translucent per D1's liquid-glass material so the Silk breathes through) ── */
+.dz-shell {
+  position: relative;
+  background: var(--color-abyss-shell-glass);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+  border: 2px solid var(--color-abyss-hairline);
+  border-radius: 50px;
+  box-shadow: inset 0 0 150px var(--color-abyss-shell-glow);
+  will-change: box-shadow;
+  transition:
+    box-shadow var(--motion-duration-liquid-grand) var(--motion-ease-liquid),
+    background-color var(--motion-duration-liquid-grand) var(--motion-ease-liquid);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .dz-shell {
+    background: var(--color-abyss-shell);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* ─── Greeting (D14: time-aware text only, nothing beside it) ──────────── */
+.dz-greeting {
+  flex-shrink: 0;
+  margin: 0;
+  font-size: clamp(24px, 3vw, 34px);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+  color: var(--color-abyss-text);
+}
+
+/* ─── Zone map (D7) ──────────────────────────────────────────────────────
+   Hero band (top ~33%) above a two-column split: set list left, right
+   column (calendar → most played → confidence → odometer). */
+.dz-hero {
+  flex: 0 0 clamp(220px, 32vh, 360px);
+  min-height: 0;
+}
+
+.dz-columns {
+  flex: 1 1 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
+  gap: var(--space-md);
+}
+
+.dz-list {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dz-right {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  /* Graceful degradation on short-but-wide viewports: the column may quietly
+     scroll itself; the scrollbar stays hidden (ref convention). */
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.dz-right::-webkit-scrollbar {
+  display: none;
+}
+
+/* ─── Responsive: release the viewport lock on narrow screens ──────────── */
+@media (max-width: 900px) {
+  .dz {
+    height: auto;
+    overflow: visible;
+  }
+  .dz-hero {
+    flex-basis: auto;
+    min-height: 240px;
+  }
+  .dz-columns {
+    grid-template-columns: 1fr;
+  }
+  .dz-list {
+    height: 70dvh;
+  }
+  .dz-right {
+    overflow-y: visible;
+  }
+}
