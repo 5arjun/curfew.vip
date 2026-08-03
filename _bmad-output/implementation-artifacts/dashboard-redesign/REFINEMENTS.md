@@ -54,11 +54,13 @@ when this pass started).
    re-verified (177/178 on the Jun 21 reference gig). Fixture rebuilt via
    `build-fixture.mjs`.
 
-### Process ruling (Arjun, mid-session)
+### Process ruling (Arjun, mid-session; tightened after his second reminder)
 
 Review sessions NOTE feedback here; implementation happens in a separate dev
-session. Only bugs in already-committed work get fixed live (to keep the page
-reviewable). Everything below in "Queued" is agreed direction, NOT built.
+session. NO live coding at all — including bug fixes (the 3d8662c rail-inset
+fix was done before this ruling landed; nothing after it). If a bug blocks
+reviewing, surface it and ask. Everything in "Queued" is agreed direction,
+NOT built.
 
 ### Queued for next dev session
 
@@ -78,6 +80,42 @@ reviewable). Everything below in "Queued" is agreed direction, NOT built.
    (tokens.css, currently 34px = full pill for the 68px rail). Try 20–24px;
    the plate follows automatically at −2px. Check the brand spine and
    top/bottom item clearances still breathe after the change.
+
+3. **Shell border glint: dimmer as well as slower** (Arjun, after seeing it
+   live). The sweep/arc colour stops are `--color-abyss-accent` /
+   `--dz-glint-shine` on `.dz-shell::before` (dashboard.css D3 block) — dial
+   brightness there (e.g. swap the accent stops toward `accent-soft` /
+   introduce a dimmer glint-specific token in tokens.css) rather than
+   opacity-ing the whole ring, so the hairline base stays.
+
+4. **Nav rail tooltips → the calendar's day-chip treatment, exactly.** Arjun:
+   the nav labels should use "the same exact way" the calendar shows
+   sets-per-day on hover. That's the `.cal-chip` cursor-follow floating chip
+   (GlassCalendar.tsx ~lines 19–35 & 215–230; styles `.cal-chip*` in
+   dashboard.css ~1428–1465, project-showcase ref mechanics). Dev session:
+   extract the chip into a shared primitive (surface, border, type scale,
+   enter animation, cursor-follow) and render nav labels through it,
+   replacing the current bespoke `.nav-tip` (globals.css). Note `.nav-tip`
+   was a placeholder; delete its styles when swapping.
+
+5. **Hero arc: gap handling** (from Arjun's "is the line graph even
+   accurate?"). Finding: the DATA is faithful — e.g. the Jun 26 set (977) has
+   71 real BPM points, 70→138 BPM — but the night contains six playback
+   gaps of 15–35 min (pauses between 21:57→02:27), and `arcGeometry`
+   (web/lib/sets/energyArc.ts) draws ONE continuous polyline across real
+   timestamps with no gap awareness, so it manufactures long slopes/plateaus
+   that were silence, not music. Continuous club sets (Jun 21 / 975) read
+   fine; stop-start nights read as nonsense. Options for the dev session
+   (pick with Arjun): break the polyline at gaps > N min (render segments,
+   dim or dot the voids); or draw gap segments as faint dashed connectors;
+   or clip the hero arc to the dancefloor window only. Also revisit the
+   existing "arc rolling-median smoothing" open item together with this —
+   same subsystem.
+
+### Approved as-built (no change needed)
+
+- Wordmark size on the rail spine ("the word mark size is good").
+- Hero height at 25vh (confirmed first session); hero span rail→gutter.
 
 ### Fixed live this session (bugs in committed work, not design changes)
 
