@@ -16,7 +16,21 @@ const VIEW = { width: 1000, height: 300, padding: 18 };
 export function HeroBand({ set }: { set: SetRecord }) {
   const segment = detectDancefloor(set.plays);
   const floor = segmentStats(set.plays, segment);
-  const geo = heroArcGeometry(set.derived.energy_arc, segment, VIEW);
+  // Item 5 (Arjun: "dancefloor only"): the hero plots ONLY the detected
+  // dancefloor window — one continuous smooth chrome line — so the warm-up /
+  // wind-down playback gaps (15–35 min pauses) can't manufacture false slopes
+  // across silence. No dim full-night backdrop. Falls back to the whole set
+  // when detection finds no floor (rare; then there's no window to clip to).
+  const floorArc = segment != null;
+  const arcSource = segment
+    ? set.derived.energy_arc.filter((p) => {
+        const t = new Date(p.started_at).getTime();
+        return t >= new Date(segment.start).getTime() && t <= new Date(segment.end).getTime();
+      })
+    : set.derived.energy_arc;
+  // null segment → heroArcGeometry emits no band; the clipped points ARE the
+  // whole line now, so there's nothing left to split dim-vs-bright.
+  const geo = heroArcGeometry(arcSource, null, VIEW);
   const bpm = set.derived.bpm_distribution;
 
   const stats: Array<{ label: string; value: string }> = [
@@ -51,32 +65,36 @@ export function HeroBand({ set }: { set: SetRecord }) {
             <stop offset="0" stopColor="var(--color-abyss-accent-glow)" />
             <stop offset="1" stopColor="var(--color-abyss-scrim-fade)" />
           </linearGradient>
-          {geo.band && (
-            <>
-              {/* Soft-edged band mask (polish pass): the glow segment fades in
-                  over the band's outer ~7% instead of cutting hard — an alpha
-                  mask so the ramp is real opacity, not luminance. */}
-              <linearGradient id="hero-floor-soft" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0" stopColor="var(--color-abyss-text)" stopOpacity="0" />
-                <stop offset="0.07" stopColor="var(--color-abyss-text)" stopOpacity="1" />
-                <stop offset="0.93" stopColor="var(--color-abyss-text)" stopOpacity="1" />
-                <stop offset="1" stopColor="var(--color-abyss-text)" stopOpacity="0" />
-              </linearGradient>
-              <mask id="hero-floor-mask" maskUnits="userSpaceOnUse" style={{ maskType: "alpha" }}>
-                <rect
-                  x={geo.band.x}
-                  y="0"
-                  width={geo.band.width}
-                  height={VIEW.height}
-                  fill="url(#hero-floor-soft)"
-                />
-              </mask>
-            </>
-          )}
+          {/* Fade the under-fill in from its left/right ends so the dancefloor
+              arc's fill doesn't hard-cut at the frame (item 5). */}
+          <linearGradient id="hero-floor-soft" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stopColor="var(--color-abyss-text)" stopOpacity="0" />
+            <stop offset="0.08" stopColor="var(--color-abyss-text)" stopOpacity="1" />
+            <stop offset="0.92" stopColor="var(--color-abyss-text)" stopOpacity="1" />
+            <stop offset="1" stopColor="var(--color-abyss-text)" stopOpacity="0" />
+          </linearGradient>
+          <mask id="hero-floor-mask" maskUnits="userSpaceOnUse" style={{ maskType: "alpha" }}>
+            <rect x="0" y="0" width={VIEW.width} height={VIEW.height} fill="url(#hero-floor-soft)" />
+          </mask>
         </defs>
 
-        {geo.count >= 2 && (
-          <>
+        {geo.count >= 2 &&
+          (floorArc ? (
+            /* Dancefloor-only: one bright continuous chrome line + soft under-fill. */
+            <>
+              <g mask="url(#hero-floor-mask)">
+                <path d={geo.area} className="dz-hero-fill" fill="url(#hero-floor-fill)" />
+              </g>
+              <path
+                d={geo.path}
+                className="dz-hero-line dz-hero-line--floor"
+                stroke="url(#hero-glow-stroke)"
+                vectorEffect="non-scaling-stroke"
+                pathLength={1}
+              />
+            </>
+          ) : (
+            /* No floor detected → the honest whole-set line, dimmed (fallback). */
             <path
               d={geo.path}
               className="dz-hero-line dz-hero-line--dim"
@@ -84,20 +102,7 @@ export function HeroBand({ set }: { set: SetRecord }) {
               vectorEffect="non-scaling-stroke"
               pathLength={1}
             />
-            {geo.band && (
-              <g mask="url(#hero-floor-mask)">
-                <path d={geo.area} className="dz-hero-fill" fill="url(#hero-floor-fill)" />
-                <path
-                  d={geo.path}
-                  className="dz-hero-line dz-hero-line--floor"
-                  stroke="url(#hero-glow-stroke)"
-                  vectorEffect="non-scaling-stroke"
-                  pathLength={1}
-                />
-              </g>
-            )}
-          </>
-        )}
+          ))}
         {geo.solo && <circle cx={geo.solo.x} cy={geo.solo.y} r="5" className="dz-hero-solo" />}
       </svg>
 

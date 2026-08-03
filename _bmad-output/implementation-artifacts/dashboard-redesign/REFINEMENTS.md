@@ -127,6 +127,18 @@ NOT built.
    or clip the hero arc to the dancefloor window only. Also revisit the
    existing "arc rolling-median smoothing" open item together with this —
    same subsystem.
+   > ✅ Landed 2026-08-03 (dev): Arjun picked **clip to the dancefloor window
+   > only** ("cleanest"). CORRECTION to the note: the HERO uses `heroArc.ts`
+   > (`heroArcGeometry`, a smooth Catmull-Rom chrome path), NOT
+   > `energyArc.ts`/`arcGeometry` — the latter is the `<EnergyArc>` primitive
+   > that Story 3.8's full chart will render, so this fix is isolated to the
+   > hero and does not touch 3.8. Impl (HeroBand.tsx): filter `energy_arc`
+   > points to `[segment.start, segment.end]` before `heroArcGeometry(…, null,
+   > …)`, so the clipped points ARE the whole line — one continuous bright
+   > chrome arc + soft under-fill (end-faded via a full-width alpha mask), no
+   > dim full-night backdrop, no band split. No-floor fallback keeps the dim
+   > whole-set line. The rolling-median smoothing open item is already
+   > satisfied in heroArc.ts (SMOOTH_HALF_WINDOW=2). Verified live.
 
 6. **Palette: ever-so-slightly more black, less blue** (Arjun; conditional on
    it still looking right). The Abyss surfaces read blue-heavy; nudge the
