@@ -369,6 +369,7 @@
      shadows (rest → hover tighten → press), preserved stop-for-stop (D8 "ALL
      its physics"). 8-digit hex, not rgba() (guard flags the function name).
      Shared vocabulary for any dashboard depth work. */
+  --shadow-ink-0: #00000000;  /* zero-alpha stop for mask/fade gradients (guard-safe) */
   --shadow-ink-2: #00000005;
   --shadow-ink-5: #0000000d;
   --shadow-ink-8: #00000014;

@@ -454,3 +454,593 @@
     outline-offset: 2px;
   }
 }
+
+/* ─── Set-list panel (D4/D9): the progressive-blur ref's mechanics ───────
+   Panel = the ref's .content; .dz-list-main = its .main-content (recedes
+   when a sheet is open); .dz-sheet = the song modal (in-place expansion).
+   All timings/easings are the ref's, via the liquid motion tokens. */
+.dz-list {
+  overflow: hidden;
+}
+
+.dz-list[data-modal] {
+  background: var(--color-abyss-base);
+  box-shadow: inset 0 0 150px var(--color-abyss-shell-glow-dim);
+}
+
+.dz-list-top {
+  flex-shrink: 0;
+  min-height: 68px;
+  display: flex;
+  align-items: center;
+  padding: 12px 16px 4px;
+}
+
+.dz-list-search {
+  width: 100%;
+}
+
+.dz-list-actions {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  opacity: 0;
+  transition: opacity var(--motion-duration-liquid-close) var(--motion-ease-liquid);
+}
+
+.dz-list-actions[data-active] {
+  opacity: 1;
+  transition: opacity var(--motion-duration-liquid-open) var(--motion-ease-liquid) 0.15s;
+}
+
+.dz-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 100px;
+  background: var(--color-abyss-row-line);
+  color: var(--color-abyss-text-72);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.dz-back:hover {
+  background: var(--color-abyss-row-hover);
+  color: var(--color-abyss-text);
+}
+
+.dz-back:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 6px var(--color-abyss-accent-glow);
+}
+
+.dz-list-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* The receding background — the ref's .content.active .main-content. */
+.dz-list-main {
+  position: absolute;
+  inset: 0;
+  transform: translate3d(0, 0, 0) scale(1);
+  filter: blur(0px) brightness(1);
+  will-change: transform, filter;
+  transition: var(--motion-duration-liquid-open) var(--motion-ease-liquid);
+}
+
+.dz-list[data-modal] .dz-list-main {
+  transform: translate3d(0, 0, 0) scale(0.9);
+  filter: blur(16px) brightness(0.7);
+  transition: 0.3s ease-out;
+}
+
+/* The ONLY scroll region on the page (D9 hard requirement). */
+.dz-list-scroll {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  padding: 6px 16px 28px;
+}
+
+.dz-list-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.dz-list-empty {
+  margin: var(--space-xl) auto 0;
+  max-width: 34ch;
+  text-align: center;
+  color: var(--color-abyss-text-45);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+/* ─── Rows: the ref's 72px song rows, re-tinted ─────────────────────────── */
+.dz-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dz-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 72px;
+  border-radius: 32px;
+  border: 2px solid var(--color-abyss-row-line);
+  background: none;
+  padding: 0 22px;
+  box-shadow: inset 0 0 0 0 var(--color-abyss-row-hover);
+  transition: 0.2s ease;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 16px;
+  text-align: left;
+}
+
+.dz-row:hover {
+  box-shadow: inset 0 0 64px 0 var(--color-abyss-row-hover);
+}
+
+.dz-row:focus-visible {
+  outline: none;
+  border-color: var(--color-abyss-accent-soft);
+  box-shadow: inset 0 0 64px 0 var(--color-abyss-row-hover);
+}
+
+.dz-row-when {
+  color: var(--color-abyss-text-72);
+}
+
+.dz-row-clock {
+  color: var(--color-abyss-text-45);
+}
+
+.dz-row-end {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.dz-row-meta {
+  color: var(--color-abyss-text-45);
+}
+
+/* The ref's hover-reveal icon: hidden at rest, 0.5 on row hover, 1 on its own. */
+.dz-row-icon {
+  opacity: 0;
+  color: var(--color-abyss-text);
+  transition: 0.2s ease;
+}
+
+.dz-row:hover .dz-row-icon {
+  opacity: 0.5;
+}
+
+/* Calendar cross-link pulse (D10): two soft beats of the hover glow. */
+.dz-row[data-pulse] {
+  animation: dz-row-pulse 1.2s var(--motion-ease-in-out) 2;
+}
+
+@keyframes dz-row-pulse {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 0 var(--color-abyss-row-hover);
+    border-color: var(--color-abyss-row-line);
+  }
+  50% {
+    box-shadow: inset 0 0 64px 0 var(--color-abyss-row-hover);
+    border-color: var(--color-abyss-accent-soft);
+  }
+}
+
+/* ─── The sheet: the ref's song modal, verbatim choreography ────────────
+   Collapsed twin of a row (72px, invisible) at the clicked row's position;
+   active = full width, ~430px tall, slid to the top of the panel body on
+   the 0.6s house easing (0.4s out), opacity snapping per the ref's timing. */
+.dz-sheet {
+  position: absolute;
+  z-index: 99;
+  left: 10px;
+  width: calc(100% - 20px);
+  height: 72px;
+  opacity: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  overflow: hidden;
+  border-radius: 32px;
+  background: var(--color-abyss-raised);
+  pointer-events: none;
+  will-change: width, height, transform;
+  transition:
+    all var(--motion-duration-liquid-close) var(--motion-ease-liquid),
+    top 0s,
+    opacity 0.2s 0.4s;
+}
+
+.dz-sheet[data-active] {
+  opacity: 1;
+  left: 0;
+  width: 100%;
+  padding: 0 10px;
+  pointer-events: all;
+  transition:
+    all var(--motion-duration-liquid-open) var(--motion-ease-liquid),
+    top 0s,
+    opacity 0s;
+}
+
+/* The sheet's header row — the ref's .song-modal .song. */
+.dz-sheet-row {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 72px;
+  padding: 0 22px;
+  border-bottom: 2px solid var(--color-abyss-row-line);
+  transition: all var(--motion-duration-liquid-close) var(--motion-ease-liquid);
+}
+
+.dz-sheet[data-active] .dz-sheet-row {
+  min-height: 88px;
+  transition: all var(--motion-duration-liquid-open) var(--motion-ease-liquid);
+}
+
+/* Title scales 2× from center-left, tightens, brightens (the ref's move). */
+.dz-sheet-title {
+  margin: 0;
+  font-size: 16px;
+  color: var(--color-abyss-text-72);
+  transform: scale(1);
+  transform-origin: center left;
+  transition: all var(--motion-duration-liquid-close) var(--motion-ease-liquid);
+}
+
+.dz-sheet[data-active] .dz-sheet-title {
+  letter-spacing: -0.03em;
+  transform: scale(2);
+  color: var(--color-abyss-text);
+  transition: all var(--motion-duration-liquid-open) var(--motion-ease-liquid);
+}
+
+.dz-sheet-end {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  transform: translateX(0);
+  transition: transform 0.4s ease;
+}
+
+.dz-sheet[data-active] .dz-sheet-end {
+  transform: translateX(65px);
+  transition: transform 0.2s ease;
+}
+
+/* The + spins −495° over 1.2s on the overshoot bezier and reads as close. */
+.dz-sheet-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--color-abyss-text);
+  cursor: pointer;
+  transform: rotateZ(0deg);
+  opacity: 0;
+  transition: transform 1.2s var(--motion-ease-liquid-pop) !important;
+}
+
+.dz-sheet[data-active] .dz-sheet-close {
+  transform: rotateZ(-495deg);
+  opacity: 0.5;
+}
+
+.dz-sheet-close:hover {
+  opacity: 1 !important;
+}
+
+.dz-sheet-close:focus-visible {
+  outline: none;
+  border-radius: 100px;
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 6px var(--color-abyss-accent-glow);
+  opacity: 1;
+}
+
+.dz-sheet-info {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  padding: 24px;
+  overflow: hidden;
+}
+
+.dz-sheet-stats {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md) var(--space-xl);
+}
+
+.dz-sheet-stats dd {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--color-abyss-text);
+}
+
+.dz-sheet-stats dd.dz-sheet-range {
+  font-size: 20px;
+  padding-top: 3px;
+}
+
+.dz-sheet-stats dt {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--color-abyss-text-45);
+}
+
+.dz-sheet-teaser {
+  min-height: 0;
+}
+
+.dz-sheet-teaser-label {
+  margin: 0 0 var(--space-sm);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-abyss-text-45);
+}
+
+.dz-sheet-teaser ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  counter-reset: teaser;
+}
+
+.dz-sheet-teaser li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  counter-increment: teaser;
+  font-size: 15px;
+}
+
+.dz-sheet-teaser li::before {
+  content: counter(teaser, decimal-leading-zero);
+  font-size: 12px;
+  color: var(--color-abyss-text-22);
+}
+
+.dz-sheet-track {
+  color: var(--color-abyss-text-72);
+}
+
+.dz-sheet-artist {
+  color: var(--color-abyss-text-45);
+}
+
+/* ─── The ref's 8-layer progressive blur (GradientBlur), verbatim ramp —
+   bottom-anchored inside the sheet so the teaser melts toward the edge. */
+.dz-gblur {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 55%;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 2;
+}
+
+.dz-gblur > div {
+  position: absolute;
+  inset: 0;
+  transition: 0.4s ease-out;
+}
+
+.dz-gblur > div:nth-of-type(1) {
+  z-index: 1;
+  backdrop-filter: blur(0.5px);
+  -webkit-backdrop-filter: blur(0.5px);
+  mask: linear-gradient(var(--shadow-ink-0) 21%, var(--color-surface-void) 29%);
+  -webkit-mask: linear-gradient(var(--shadow-ink-0) 21%, var(--color-surface-void) 29%);
+}
+
+.dz-gblur > div:nth-of-type(2) {
+  z-index: 2;
+  backdrop-filter: blur(1px);
+  -webkit-backdrop-filter: blur(1px);
+  mask: linear-gradient(var(--shadow-ink-0) 29%, var(--color-surface-void) 37%);
+  -webkit-mask: linear-gradient(var(--shadow-ink-0) 29%, var(--color-surface-void) 37%);
+}
+
+.dz-gblur > div:nth-of-type(3) {
+  z-index: 3;
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  mask: linear-gradient(var(--shadow-ink-0) 37%, var(--color-surface-void) 45%);
+  -webkit-mask: linear-gradient(var(--shadow-ink-0) 37%, var(--color-surface-void) 45%);
+}
+
+.dz-gblur > div:nth-of-type(4) {
+  z-index: 4;
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+  mask: linear-gradient(var(--shadow-ink-0) 45%, var(--color-surface-void) 53%);
+  -webkit-mask: linear-gradient(var(--shadow-ink-0) 45%, var(--color-surface-void) 53%);
+}
+
+.dz-gblur > div:nth-of-type(5) {
+  z-index: 5;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  mask: linear-gradient(var(--shadow-ink-0) 53%, var(--color-surface-void) 61%);
+  -webkit-mask: linear-gradient(var(--shadow-ink-0) 53%, var(--color-surface-void) 61%);
+}
+
+.dz-gblur > div:nth-of-type(6) {
+  z-index: 6;
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  mask: linear-gradient(var(--shadow-ink-0) 61%, var(--color-surface-void) 69%);
+  -webkit-mask: linear-gradient(var(--shadow-ink-0) 61%, var(--color-surface-void) 69%);
+}
+
+.dz-gblur > div:nth-of-type(7) {
+  z-index: 7;
+  backdrop-filter: blur(64px);
+  -webkit-backdrop-filter: blur(64px);
+  mask: linear-gradient(var(--shadow-ink-0) 69%, var(--color-surface-void) 77%);
+  -webkit-mask: linear-gradient(var(--shadow-ink-0) 69%, var(--color-surface-void) 77%);
+}
+
+.dz-gblur > div:nth-of-type(8) {
+  z-index: 8;
+  backdrop-filter: blur(128px);
+  -webkit-backdrop-filter: blur(128px);
+  mask: linear-gradient(var(--shadow-ink-0) 77%, var(--color-surface-void) 85%);
+  -webkit-mask: linear-gradient(var(--shadow-ink-0) 77%, var(--color-surface-void) 85%);
+}
+
+/* ─── Scroll-edge softening (D9): rows melt out at the panel bounds ─────── */
+.dz-efade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 34px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.dz-efade--top {
+  top: 0;
+}
+
+.dz-efade--bottom {
+  bottom: 0;
+}
+
+.dz-efade > div {
+  position: absolute;
+  inset: 0;
+  transition: 0.4s ease-out;
+}
+
+.dz-efade--top > div:nth-of-type(1) {
+  backdrop-filter: blur(1px);
+  -webkit-backdrop-filter: blur(1px);
+  mask: linear-gradient(var(--color-surface-void) 30%, var(--shadow-ink-0) 75%);
+  -webkit-mask: linear-gradient(var(--color-surface-void) 30%, var(--shadow-ink-0) 75%);
+}
+
+.dz-efade--top > div:nth-of-type(2) {
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  mask: linear-gradient(var(--color-surface-void) 12%, var(--shadow-ink-0) 45%);
+  -webkit-mask: linear-gradient(var(--color-surface-void) 12%, var(--shadow-ink-0) 45%);
+}
+
+.dz-efade--top > div:nth-of-type(3) {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  mask: linear-gradient(var(--color-surface-void) 0%, var(--shadow-ink-0) 25%);
+  -webkit-mask: linear-gradient(var(--color-surface-void) 0%, var(--shadow-ink-0) 25%);
+}
+
+.dz-efade--bottom > div:nth-of-type(1) {
+  backdrop-filter: blur(1px);
+  -webkit-backdrop-filter: blur(1px);
+  mask: linear-gradient(var(--shadow-ink-0) 25%, var(--color-surface-void) 70%);
+  -webkit-mask: linear-gradient(var(--shadow-ink-0) 25%, var(--color-surface-void) 70%);
+}
+
+.dz-efade--bottom > div:nth-of-type(2) {
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  mask: linear-gradient(var(--shadow-ink-0) 55%, var(--color-surface-void) 88%);
+  -webkit-mask: linear-gradient(var(--shadow-ink-0) 55%, var(--color-surface-void) 88%);
+}
+
+.dz-efade--bottom > div:nth-of-type(3) {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  mask: linear-gradient(var(--shadow-ink-0) 75%, var(--color-surface-void) 100%);
+  -webkit-mask: linear-gradient(var(--shadow-ink-0) 75%, var(--color-surface-void) 100%);
+}
+
+/* When a sheet is open the edge blur releases (the ref's .content.active
+   .gradient-blur behaviour: fade to blur 0, 0.5s ease-out after 0.3s). */
+.dz-list[data-modal] .dz-efade > div {
+  backdrop-filter: blur(0px);
+  -webkit-backdrop-filter: blur(0px);
+  transition: 0.5s ease-out 0.3s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dz-list-main,
+  .dz-list[data-modal] .dz-list-main {
+    transition: none;
+    transform: none;
+    filter: none;
+  }
+  .dz-sheet,
+  .dz-sheet[data-active],
+  .dz-sheet-row,
+  .dz-sheet-title,
+  .dz-sheet-end,
+  .dz-sheet-close {
+    transition: opacity var(--motion-duration-fast) var(--motion-ease-standard) !important;
+  }
+  .dz-sheet-close {
+    opacity: 0.5;
+  }
+  .dz-row[data-pulse] {
+    animation: none;
+    border-color: var(--color-abyss-accent-soft);
+  }
+}
+
+@media (forced-colors: active) {
+  .dz-row,
+  .dz-sheet {
+    border: 1px solid CanvasText;
+  }
+  .dz-row:focus-visible,
+  .dz-back:focus-visible,
+  .dz-sheet-close:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
+}

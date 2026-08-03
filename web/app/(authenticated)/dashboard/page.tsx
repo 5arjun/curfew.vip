@@ -1,8 +1,10 @@
 import { getRecentSets } from "@/lib/sets";
 import { splitSets } from "@/lib/sets/hero";
+import { buildSetRows } from "@/lib/sets/listModel";
 import { createClient } from "@/lib/supabase/server";
 import { Greeting } from "@/app/components/dashboard/Greeting";
 import { HeroBand } from "@/app/components/dashboard/HeroBand";
+import { SetListPanel } from "@/app/components/dashboard/SetListPanel";
 import { SilkBackdrop } from "@/app/components/dashboard/SilkBackdrop";
 
 // Dashboard home (Story 3.6 v2 redesign — PLAN.md D1–D14). A viewport-locked
@@ -34,6 +36,7 @@ export default async function DashboardPage() {
   // takes the slot); the LIST still shows every set including the hero's —
   // D9: the archive is complete, the hero is a spotlight.
   const { hero } = splitSets(sets);
+  const rows = buildSetRows(sets);
 
   return (
     <main className="dz">
@@ -49,9 +52,9 @@ export default async function DashboardPage() {
       )}
 
       <div className="dz-columns">
-        <section className="dz-list dz-shell" aria-label="Set archive">
-          {/* Steps 4–5: spotlight search + self-scrolling set list (D4/D6/D9/D12) */}
-        </section>
+        <SetListPanel rows={rows}>
+          {/* Step 5: the gooey spotlight search (D6/D12) mounts here */}
+        </SetListPanel>
 
         <aside className="dz-right" aria-label="Stats">
           {/* Step 6: calendar, most played, confidence, archive odometer (D5/D10) */}
