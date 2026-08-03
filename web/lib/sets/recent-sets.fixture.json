@@ -1,0 +1,4246 @@
+[
+  {
+    "external_id": "17577",
+    "started_at": "2026-08-01T21:54:59.000Z",
+    "ended_at": "2026-08-01T21:54:59.000Z",
+    "plays": [
+      {
+        "position": 1,
+        "title": "Beautiful (Remix) (Main)",
+        "artist": "Bazzi ft Camila Cabello",
+        "started_at": "2026-08-01T21:54:59.000Z",
+        "bpm": 50,
+        "genre": {
+          "raw": "Pop / Top 40",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "10B",
+        "in_library": true
+      }
+    ],
+    "derived": {
+      "most_played_tracks": [
+        {
+          "title": "Beautiful (Remix) (Main)",
+          "artist": "Bazzi ft Camila Cabello",
+          "play_count": 1
+        }
+      ],
+      "most_played_artists": [
+        {
+          "artist": "Bazzi ft Camila Cabello",
+          "play_count": 1
+        }
+      ],
+      "genre_breakdown": {
+        "buckets": [
+          {
+            "genre": "Other",
+            "play_count": 1
+          }
+        ],
+        "no_genre_count": 0
+      },
+      "subgenre_breakdown": {
+        "buckets": [
+          {
+            "subgenre": "Other",
+            "genre": "Other",
+            "play_count": 1
+          }
+        ],
+        "no_genre_count": 0
+      },
+      "bpm_distribution": {
+        "count": 1,
+        "min": 50,
+        "max": 50,
+        "mean": 50,
+        "median": 50
+      },
+      "camelot_mixing_stats": {
+        "compatible_transitions": 0,
+        "incompatible_transitions": 0,
+        "excluded_no_key": 0
+      },
+      "set_length_sec": 0,
+      "track_count": 1,
+      "energy_arc": [
+        {
+          "started_at": "2026-08-01T21:54:59.000Z",
+          "bpm": 50
+        }
+      ],
+      "confidence": {
+        "value": 1,
+        "track_count": 1,
+        "long_gap_count": 0
+      }
+    }
+  },
+  {
+    "external_id": "975",
+    "started_at": "2026-06-21T21:26:45.000Z",
+    "ended_at": "2026-06-22T03:22:44.000Z",
+    "plays": [
+      {
+        "position": 1,
+        "title": "2 Hard 4 The Radio (PT 1) (DJ Nasa Club ReWork) (Clean)",
+        "artist": "Drake",
+        "started_at": "2026-06-21T21:26:45.000Z",
+        "bpm": 105,
+        "genre": {
+          "raw": "Hip Hop",
+          "normalized": "Hip-Hop",
+          "taxonomy_version": 2,
+          "subgenre": "Hip-Hop"
+        },
+        "camelot_key": "9A",
+        "in_library": true
+      },
+      {
+        "position": 2,
+        "title": "Bad (feat. Vassy) (Radio Edit)",
+        "artist": "David Guetta, Showtek",
+        "started_at": "2026-06-21T21:27:12.000Z",
+        "bpm": 128.02,
+        "genre": null,
+        "camelot_key": "4A",
+        "in_library": true
+      },
+      {
+        "position": 3,
+        "title": "Chaleya - Jawan (Remix) - Deejay Money Tag",
+        "artist": "Deejay Money",
+        "started_at": "2026-06-21T21:36:26.000Z",
+        "bpm": 105,
+        "genre": null,
+        "camelot_key": "8A",
+        "in_library": true
+      },
+      {
+        "position": 4,
+        "title": "WHERES THE PARTY TONIGHT ( Remix ) - DJ AD RELOADED",
+        "artist": "DJ AD RELOADED",
+        "started_at": "2026-06-21T21:38:03.000Z",
+        "bpm": 129.99,
+        "genre": null,
+        "camelot_key": "7A",
+        "in_library": true
+      },
+      {
+        "position": 5,
+        "title": "130 - OBSESSED x AFROJACK ( MASHUP EDIT )",
+        "artist": "RAUL MUSIC",
+        "started_at": "2026-06-21T21:38:53.000Z",
+        "bpm": 130,
+        "genre": null,
+        "camelot_key": "4A",
+        "in_library": true
+      },
+      {
+        "position": 6,
+        "title": "Dr Zeus - Kangna (ZEEMUFFIN & Refilled Remix)",
+        "artist": "ZEEMUFFIN",
+        "started_at": "2026-06-21T21:39:02.000Z",
+        "bpm": 130,
+        "genre": null,
+        "camelot_key": "1A",
+        "in_library": true
+      },
+      {
+        "position": 7,
+        "title": "03 - Soni De Nakhre (Partner) - Dj Chani",
+        "artist": "Desi Junction Djs",
+        "started_at": "2026-06-21T21:39:51.000Z",
+        "bpm": 132.83,
+        "genre": {
+          "raw": "Bollywood",
+          "normalized": "Bollywood",
+          "taxonomy_version": 2,
+          "subgenre": "Bollywood"
+        },
+        "camelot_key": "1A",
+        "in_library": true
+      },
+      {
+        "position": 8,
+        "title": "Peelings",
+        "artist": "Devi Sri Prasad",
+        "started_at": "2026-06-21T21:40:21.000Z",
+        "bpm": 138,
+        "genre": null,
+        "camelot_key": "9A",
+        "in_library": true
+      },
+      {
+        "position": 9,
+        "title": "Outside (DJ N9NE 'Hilyte' Edit) 128",
+        "artist": "Ellie Goulding x Calvin Harris x Hilyte",
+        "started_at": "2026-06-21T21:41:14.000Z",
+        "bpm": 128,
+        "genre": null,
+        "camelot_key": "7A",
+        "in_library": true
+      },
+      {
+        "position": 10,
+        "title": "Party Rock Anthem (HH Clean Mixshow)",
+        "artist": "LMFAO",
+        "started_at": "2026-06-21T21:43:13.000Z",
+        "bpm": 130,
+        "genre": {
+          "raw": "Pop / Top 40",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "4A",
+        "in_library": true
+      },
+      {
+        "position": 11,
+        "title": "Lemonade - Anthem Kingz Levels Edit (Dirty)",
+        "artist": "Internet Money & Gunna ft. Don Toliver & NAV",
+        "started_at": "2026-06-21T21:43:22.000Z",
+        "bpm": 128,
+        "genre": {
+          "raw": "House",
+          "normalized": "House",
+          "taxonomy_version": 2,
+          "subgenre": "House"
+        },
+        "camelot_key": "12A",
+        "in_library": true
+      },
+      {
+        "position": 12,
+        "title": "Talkin Body (DJ N9NE 'Deceiver' Edit)",
+        "artist": "Tove Lo, Chris Lake, Max Styler",
+        "started_at": "2026-06-21T21:43:40.000Z",
+        "bpm": 128,
+        "genre": null,
+        "camelot_key": "9A",
+        "in_library": true
+      },
+      {
+        "position": 13,
+        "title": "Pursuit Of Happiness (Steve Aoki Remix) (Clean Extended)",
+        "artist": "Kid Cudi ft Ratatat & MGMT",
+        "started_at": "2026-06-21T21:43:53.000Z",
+        "bpm": 128,
+        "genre": {
+          "raw": "Electro House",
+          "normalized": "House",
+          "taxonomy_version": 2,
+          "subgenre": "Electro House"
+        },
+        "camelot_key": "8A",
+        "in_library": true
+      },
+      {
+        "position": 14,
+        "title": "Tiramisu (CK Intro - Clean)",
+        "artist": "Don Toliver",
+        "started_at": "2026-06-21T21:44:26.000Z",
+        "bpm": 66.5,
+        "genre": {
+          "raw": "Hip Hop",
+          "normalized": "Hip-Hop",
+          "taxonomy_version": 2,
+          "subgenre": "Hip-Hop"
+        },
+        "camelot_key": "9A",
+        "in_library": true
+      },
+      {
+        "position": 15,
+        "title": "Rosary (CK Intro - Dirty)",
+        "artist": "Don Toliver & Travis Scott",
+        "started_at": "2026-06-21T21:44:38.000Z",
+        "bpm": 74,
+        "genre": {
+          "raw": "Hip Hop",
+          "normalized": "Hip-Hop",
+          "taxonomy_version": 2,
+          "subgenre": "Hip-Hop"
+        },
+        "camelot_key": "2A",
+        "in_library": true
+      },
+      {
+        "position": 16,
+        "title": "Sexy Chick (Clean Short Edit)",
+        "artist": "David Guetta ft Akon",
+        "started_at": "2026-06-21T21:46:01.000Z",
+        "bpm": 130,
+        "genre": {
+          "raw": "Dance",
+          "normalized": "Electronica",
+          "taxonomy_version": 2,
+          "subgenre": "Dance"
+        },
+        "camelot_key": "9A",
+        "in_library": true
+      },
+      {
+        "position": 17,
+        "title": "Like A G6 - J Medina Click Edit",
+        "artist": "Far East Movement",
+        "started_at": "2026-06-21T21:47:56.000Z",
+        "bpm": 127,
+        "genre": {
+          "raw": "Dance",
+          "normalized": "Electronica",
+          "taxonomy_version": 2,
+          "subgenre": "Dance"
+        },
+        "camelot_key": "4A",
+        "in_library": true
+      },
+      {
+        "position": 18,
+        "title": "Like A G6 (HH Clean Intro)",
+        "artist": "Far East Movement ft The Cataracs",
+        "started_at": "2026-06-21T21:48:11.000Z",
+        "bpm": 125,
+        "genre": {
+          "raw": "Pop / Top 40",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "6B",
+        "in_library": true
+      },
+      {
+        "position": 19,
+        "title": "I Gotta Feeling (DJ Transit Edit) (Clean)",
+        "artist": "The Black Eyed Peas",
+        "started_at": "2026-06-21T21:50:44.000Z",
+        "bpm": 128,
+        "genre": {
+          "raw": "Pop / Top 40",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "9B",
+        "in_library": true
+      },
+      {
+        "position": 20,
+        "title": "2 Hard 4 The Radio (PT 1) (DJ Nasa Club ReWork) (Clean)",
+        "artist": "Drake",
+        "started_at": "2026-06-21T21:51:36.000Z",
+        "bpm": 105,
+        "genre": {
+          "raw": "Hip Hop",
+          "normalized": "Hip-Hop",
+          "taxonomy_version": 2,
+          "subgenre": "Hip-Hop"
+        },
+        "camelot_key": "9A",
+        "in_library": true
+      },
+      {
+        "position": 21,
+        "title": "Paramore - Still Into You (NETTED Remix)",
+        "artist": "NETTED",
+        "started_at": "2026-06-21T21:51:59.000Z",
+        "bpm": 132,
+        "genre": null,
+        "camelot_key": "7B",
+        "in_library": true
+      },
+      {
+        "position": 22,
+        "title": "Break Free (Clean Short Edit)",
+        "artist": "Ariana Grande ft Zedd",
+        "started_at": "2026-06-21T21:52:44.000Z",
+        "bpm": 130,
+        "genre": {
+          "raw": "Pop",
+          "normalized": "Pop",
+          "taxonomy_version": 2,
+          "subgenre": "Pop"
+        },
+        "camelot_key": "6B",
+        "in_library": true
+      },
+      {
+        "position": 23,
+        "title": "I Need Your Love (DJ N9NE 'Dont Wake Me Up' Edit) ",
+        "artist": "Ellie Goulding x James Hype",
+        "started_at": "2026-06-21T21:52:59.000Z",
+        "bpm": 130,
+        "genre": null,
+        "camelot_key": "5A",
+        "in_library": true
+      },
+      {
+        "position": 24,
+        "title": "Like A G6 (HH Clean Intro)",
+        "artist": "Far East Movement ft The Cataracs",
+        "started_at": "2026-06-21T21:53:49.000Z",
+        "bpm": 125,
+        "genre": {
+          "raw": "Pop / Top 40",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "6B",
+        "in_library": true
+      },
+      {
+        "position": 25,
+        "title": "On The Floor - Anthem Kingz In & Out Of My Life Edit",
+        "artist": "Jennifer Lopez ft. Pitbull",
+        "started_at": "2026-06-21T21:54:12.000Z",
+        "bpm": 126,
+        "genre": {
+          "raw": "House",
+          "normalized": "House",
+          "taxonomy_version": 2,
+          "subgenre": "House"
+        },
+        "camelot_key": "2A",
+        "in_library": true
+      },
+      {
+        "position": 26,
+        "title": "Pitbull - Fireball (Lyrics) ft. John Ryan",
+        "artist": null,
+        "started_at": "2026-06-21T21:54:31.000Z",
+        "bpm": 123,
+        "genre": null,
+        "camelot_key": "4A",
+        "in_library": true
+      },
+      {
+        "position": 27,
+        "title": "Fireball (Mintz House Edit)",
+        "artist": "Pitbull feat. John Ryan",
+        "started_at": "2026-06-21T21:54:33.000Z",
+        "bpm": 126,
+        "genre": {
+          "raw": "Other",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "4A",
+        "in_library": true
+      },
+      {
+        "position": 28,
+        "title": "Don't Stop The Music (Jean Philippe Edit - Greg Lassierra Hype Intro ) (Clean)",
+        "artist": "Rihanna",
+        "started_at": "2026-06-21T21:55:17.000Z",
+        "bpm": 125,
+        "genre": {
+          "raw": "Electronic / Dance",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "11A",
+        "in_library": true
+      },
+      {
+        "position": 29,
+        "title": "Mimosas_Volcanoes_Live_Mix_KLICKAUD",
+        "artist": null,
+        "started_at": "2026-06-21T22:56:16.000Z",
+        "bpm": null,
+        "genre": null,
+        "camelot_key": "9A",
+        "in_library": true
+      },
+      {
+        "position": 30,
+        "title": "Forever-[AudioTrimmer.com]",
+        "artist": "Ent The birthday girl Tiya  ",
+        "started_at": "2026-06-21T23:03:51.000Z",
+        "bpm": 79.03,
+        "genre": null,
+        "camelot_key": "5A",
+        "in_library": true
+      },
+      {
+        "position": 31,
+        "title": "True Bestie (Intro Clean)",
+        "artist": "Drake ft Iconic Savvy",
+        "started_at": "2026-06-21T23:05:07.000Z",
+        "bpm": 77.48,
+        "genre": {
+          "raw": "Hip Hop",
+          "normalized": "Hip-Hop",
+          "taxonomy_version": 2,
+          "subgenre": "Hip-Hop"
+        },
+        "camelot_key": "1A",
+        "in_library": true
+      },
+      {
+        "position": 32,
+        "title": "Janice STFU (Quick Hit Clean)",
+        "artist": "Drake",
+        "started_at": "2026-06-21T23:05:13.000Z",
+        "bpm": 63,
+        "genre": {
+          "raw": "Hip Hop",
+          "normalized": "Hip-Hop",
+          "taxonomy_version": 2,
+          "subgenre": "Hip-Hop"
+        },
+        "camelot_key": "1A",
+        "in_library": true
+      },
+      {
+        "position": 33,
+        "title": "High Fives (Intro Clean)",
+        "artist": "Drake",
+        "started_at": "2026-06-21T23:06:19.000Z",
+        "bpm": 71.5,
+        "genre": {
+          "raw": "R&B",
+          "normalized": "R&B",
+          "taxonomy_version": 2,
+          "subgenre": "R&B"
+        },
+        "camelot_key": "3A",
+        "in_library": true
+      },
+      {
+        "position": 34,
+        "title": "Janice STFU (Quick Hit Clean)",
+        "artist": "Drake",
+        "started_at": "2026-06-21T23:07:13.000Z",
+        "bpm": 63,
+        "genre": {
+          "raw": "Hip Hop",
+          "normalized": "Hip-Hop",
+          "taxonomy_version": 2,
+          "subgenre": "Hip-Hop"
+        },
+        "camelot_key": "1A",
+        "in_library": true
+      },
+      {
+        "position": 35,
+        "title": "Britney Spears - I Wanna Go (John Summit Remix)",
+        "artist": "John Summit, Britney Spears",
+        "started_at": "2026-06-21T23:08:28.000Z",
+        "bpm": 138.01,
+        "genre": null,
+        "camelot_key": "7A",
+        "in_library": true
+      },
+      {
+        "position": 36,
+        "title": "Fire Burning Papi (DJ N9NE Mashup)",
+        "artist": "Sean Kingston, Kaaze, DJ N9NE",
+        "started_at": "2026-06-21T23:10:07.000Z",
+        "bpm": 130.01,
+        "genre": null,
+        "camelot_key": "3A",
+        "in_library": true
+      },
+      {
+        "position": 37,
+        "title": "Fire Burning (Priz Remix)",
+        "artist": "Sean Kingston",
+        "started_at": "2026-06-21T23:10:22.000Z",
+        "bpm": 128,
+        "genre": null,
+        "camelot_key": "2A",
+        "in_library": true
+      },
+      {
+        "position": 38,
+        "title": "Sean Kingston - Fire Burning (Gin and Sonic x Sell Out MC Remix)",
+        "artist": "Sean Kingston, Gin and Sonic, Sell Out MC",
+        "started_at": "2026-06-21T23:10:45.000Z",
+        "bpm": 128,
+        "genre": {
+          "raw": "Wall Slappers",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "3A",
+        "in_library": true
+      },
+      {
+        "position": 39,
+        "title": "Britney Spears - I Wanna Go (John Summit Remix)",
+        "artist": "John Summit, Britney Spears",
+        "started_at": "2026-06-21T23:12:28.000Z",
+        "bpm": 138.01,
+        "genre": null,
+        "camelot_key": "7A",
+        "in_library": true
+      },
+      {
+        "position": 40,
+        "title": "Stay The Night (Even Steve Always Edit) Clean",
+        "artist": "Zedd & Hayley Williams vs jeonghyeon",
+        "started_at": "2026-06-21T23:14:15.000Z",
+        "bpm": 130,
+        "genre": {
+          "raw": "Electro House",
+          "normalized": "House",
+          "taxonomy_version": 2,
+          "subgenre": "Electro House"
+        },
+        "camelot_key": "5B",
+        "in_library": true
+      },
+      {
+        "position": 41,
+        "title": "Let Me Love You - Sharkk Remix",
+        "artist": "Ne-Yo",
+        "started_at": "2026-06-21T23:17:22.000Z",
+        "bpm": 123,
+        "genre": {
+          "raw": "Dance",
+          "normalized": "Electronica",
+          "taxonomy_version": 2,
+          "subgenre": "Dance"
+        },
+        "camelot_key": "4A",
+        "in_library": true
+      },
+      {
+        "position": 42,
+        "title": "Justin Bieber - YUKON (Gravagerz REMIX)",
+        "artist": "gravagerz",
+        "started_at": "2026-06-21T23:17:40.000Z",
+        "bpm": 137.99,
+        "genre": null,
+        "camelot_key": "5A",
+        "in_library": true
+      },
+      {
+        "position": 43,
+        "title": "If U Had My Love (Extended Mix) Clean",
+        "artist": "Ian Asher",
+        "started_at": "2026-06-21T23:19:46.000Z",
+        "bpm": 124,
+        "genre": {
+          "raw": "House",
+          "normalized": "House",
+          "taxonomy_version": 2,
+          "subgenre": "House"
+        },
+        "camelot_key": "10A",
+        "in_library": true
+      },
+      {
+        "position": 44,
+        "title": "Road Trips (Intro Clean)",
+        "artist": "Drake",
+        "started_at": "2026-06-21T23:22:53.000Z",
+        "bpm": 126,
+        "genre": {
+          "raw": "Hip Hop",
+          "normalized": "Hip-Hop",
+          "taxonomy_version": 2,
+          "subgenre": "Hip-Hop"
+        },
+        "camelot_key": "1A",
+        "in_library": true
+      },
+      {
+        "position": 45,
+        "title": "RATHER LIE (DJ Nasa Remix) (Clean Extended)",
+        "artist": "Playboi Carti ft The Weeknd",
+        "started_at": "2026-06-21T23:25:23.000Z",
+        "bpm": 130,
+        "genre": {
+          "raw": "Hip Hop",
+          "normalized": "Hip-Hop",
+          "taxonomy_version": 2,
+          "subgenre": "Hip-Hop"
+        },
+        "camelot_key": "4A",
+        "in_library": true
+      },
+      {
+        "position": 46,
+        "title": "Paramore - Still Into You (NETTED Remix)",
+        "artist": "NETTED",
+        "started_at": "2026-06-21T23:28:43.000Z",
+        "bpm": 132,
+        "genre": null,
+        "camelot_key": "7B",
+        "in_library": true
+      },
+      {
+        "position": 47,
+        "title": "DJ HUFFY - Jaanu Meri Jaan (Remix)",
+        "artist": "DJ HUFFY",
+        "started_at": "2026-06-21T23:31:53.000Z",
+        "bpm": 132,
+        "genre": null,
+        "camelot_key": "11A",
+        "in_library": true
+      },
+      {
+        "position": 48,
+        "title": "Ferrari vs Just Dance (Anthem Kingz VIP Party Break) (Clean Extended)",
+        "artist": "James Hype vs Lady Gaga vs David Guetta",
+        "started_at": "2026-06-21T23:33:25.000Z",
+        "bpm": 130,
+        "genre": {
+          "raw": "Dance Pop",
+          "normalized": "Pop",
+          "taxonomy_version": 2,
+          "subgenre": "Dance Pop"
+        },
+        "camelot_key": "12A",
+        "in_library": true
+      },
+      {
+        "position": 49,
+        "title": "I Need Your Love (DJ N9NE 'Dont Wake Me Up' Edit) ",
+        "artist": "Ellie Goulding x James Hype",
+        "started_at": "2026-06-21T23:33:47.000Z",
+        "bpm": 130,
+        "genre": null,
+        "camelot_key": "5A",
+        "in_library": true
+      },
+      {
+        "position": 50,
+        "title": "S&M (DJ N9NE 'Wont Be Possible' Edit)",
+        "artist": "Rihanna x Tiesto, Odd Mob & Goodboys",
+        "started_at": "2026-06-21T23:33:54.000Z",
+        "bpm": 130,
+        "genre": null,
+        "camelot_key": "2A",
+        "in_library": true
+      },
+      {
+        "position": 51,
+        "title": "Boys A Liar x When It Rains (Dollar Cub Blend / Clean)",
+        "artist": " Pink Pantheress x Ice Spice x Bad Boy Chiller Crew",
+        "started_at": "2026-06-21T23:36:07.000Z",
+        "bpm": 133,
+        "genre": {
+          "raw": "Hip Hop",
+          "normalized": "Hip-Hop",
+          "taxonomy_version": 2,
+          "subgenre": "Hip-Hop"
+        },
+        "camelot_key": "8A",
+        "in_library": true
+      },
+      {
+        "position": 52,
+        "title": "Pal Pal - Dj Vishal x ESDY",
+        "artist": "DJ VISHAL X DJ ESDY",
+        "started_at": "2026-06-21T23:37:52.000Z",
+        "bpm": 128,
+        "genre": {
+          "raw": "Other",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "4A",
+        "in_library": true
+      },
+      {
+        "position": 53,
+        "title": "I Gotta Feeling (HH Clean Intro)",
+        "artist": "The Black Eyed Peas",
+        "started_at": "2026-06-21T23:40:07.000Z",
+        "bpm": 128,
+        "genre": {
+          "raw": "Pop / Top 40",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "9B",
+        "in_library": true
+      },
+      {
+        "position": 54,
+        "title": "That's What I Like (Alan Walker Remix) (Main)",
+        "artist": "Bruno Mars",
+        "started_at": "2026-06-21T23:40:42.000Z",
+        "bpm": 134,
+        "genre": {
+          "raw": "Electronic / Dance",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "3B",
+        "in_library": true
+      },
+      {
+        "position": 55,
+        "title": "I Gotta Feeling (HH Clean Intro)",
+        "artist": "The Black Eyed Peas",
+        "started_at": "2026-06-21T23:40:45.000Z",
+        "bpm": 128,
+        "genre": {
+          "raw": "Pop / Top 40",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "9B",
+        "in_library": true
+      },
+      {
+        "position": 56,
+        "title": "Bad (feat. Vassy) (Radio Edit)",
+        "artist": "David Guetta, Showtek",
+        "started_at": "2026-06-21T23:41:06.000Z",
+        "bpm": 128.02,
+        "genre": null,
+        "camelot_key": "4A",
+        "in_library": true
+      },
+      {
+        "position": 57,
+        "title": "Ye Toh Sach Hai Ke Bhagwan-[AudioTrimmer.com]",
+        "artist": "Urvashi Baa (Tiya’s Baa)\n",
+        "started_at": "2026-06-21T23:44:20.000Z",
+        "bpm": 94.86,
+        "genre": null,
+        "camelot_key": "8A",
+        "in_library": true
+      },
+      {
+        "position": 58,
+        "title": null,
+        "artist": "Girls Court and the sister Jiya\n",
+        "started_at": "2026-06-21T23:44:49.000Z",
+        "bpm": 131.5,
+        "genre": null,
+        "camelot_key": "12A",
+        "in_library": true
+      },
+      {
+        "position": 59,
+        "title": null,
+        "artist": "Boys Court and the parents Sanjay and Rupal\n",
+        "started_at": "2026-06-21T23:45:39.000Z",
+        "bpm": 102,
+        "genre": null,
+        "camelot_key": "8A",
+        "in_library": true
+      },
+      {
+        "position": 60,
+        "title": null,
+        "artist": "Boys Court and the parents Sanjay and Rupal\n",
+        "started_at": "2026-06-21T23:45:47.000Z",
+        "bpm": 102,
+        "genre": null,
+        "camelot_key": "8A",
+        "in_library": true
+      },
+      {
+        "position": 61,
+        "title": "Waka Flocka Flame - No Hands (feat. Roscoe Dash and Wale)  Lyrics-[AudioTrimmer.com]",
+        "artist": "Girls Court and the sister Jiya\n",
+        "started_at": "2026-06-21T23:45:47.000Z",
+        "bpm": 131.5,
+        "genre": null,
+        "camelot_key": "12A",
+        "in_library": true
+      },
+      {
+        "position": 62,
+        "title": null,
+        "artist": "Boys Court and the parents Sanjay and Rupal\n",
+        "started_at": "2026-06-21T23:46:11.000Z",
+        "bpm": 102,
+        "genre": null,
+        "camelot_key": "8A",
+        "in_library": true
+      },
+      {
+        "position": 63,
+        "title": "DJ HUFFY - Jaanu Meri Jaan (Remix)",
+        "artist": "DJ HUFFY",
+        "started_at": "2026-06-21T23:46:41.000Z",
+        "bpm": 132,
+        "genre": null,
+        "camelot_key": "11A",
+        "in_library": true
+      },
+      {
+        "position": 64,
+        "title": "I Need Your Love (DJ N9NE 'Dont Wake Me Up' Edit) ",
+        "artist": "Ellie Goulding x James Hype",
+        "started_at": "2026-06-21T23:48:11.000Z",
+        "bpm": 130,
+        "genre": null,
+        "camelot_key": "5A",
+        "in_library": true
+      },
+      {
+        "position": 65,
+        "title": "Forever-[AudioTrimmer.com]",
+        "artist": "Ent The birthday girl Tiya  ",
+        "started_at": "2026-06-21T23:49:53.000Z",
+        "bpm": 79.03,
+        "genre": null,
+        "camelot_key": "5A",
+        "in_library": true
+      },
+      {
+        "position": 66,
+        "title": "On The Floor - Anthem Kingz In & Out Of My Life Edit",
+        "artist": "Jennifer Lopez ft. Pitbull",
+        "started_at": "2026-06-21T23:51:44.000Z",
+        "bpm": 126,
+        "genre": {
+          "raw": "House",
+          "normalized": "House",
+          "taxonomy_version": 2,
+          "subgenre": "House"
+        },
+        "camelot_key": "2A",
+        "in_library": true
+      },
+      {
+        "position": 67,
+        "title": "RITMO (Steve Aoki Remix) (HH Dirty Intro)",
+        "artist": "The Black Eyed Peas & J Balvin",
+        "started_at": "2026-06-21T23:54:22.000Z",
+        "bpm": 112,
+        "genre": {
+          "raw": "Electronic / Dance",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "5A",
+        "in_library": true
+      },
+      {
+        "position": 68,
+        "title": "Chaleya - Jawan (Remix) - Deejay Money Tag",
+        "artist": "Deejay Money",
+        "started_at": "2026-06-21T23:55:31.000Z",
+        "bpm": 105,
+        "genre": null,
+        "camelot_key": "8A",
+        "in_library": true
+      },
+      {
+        "position": 69,
+        "title": "RITMO (Steve Aoki Remix) (HH Dirty Intro)",
+        "artist": "The Black Eyed Peas & J Balvin",
+        "started_at": "2026-06-21T23:56:20.000Z",
+        "bpm": 112,
+        "genre": {
+          "raw": "Electronic / Dance",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "5A",
+        "in_library": true
+      },
+      {
+        "position": 70,
+        "title": "Chaleya - Jawan (Remix) - Deejay Money Tag",
+        "artist": "Deejay Money",
+        "started_at": "2026-06-21T23:56:41.000Z",
+        "bpm": 105,
+        "genre": null,
+        "camelot_key": "8A",
+        "in_library": true
+      },
+      {
+        "position": 71,
+        "title": "Tauba Tauba X Aaye Haaye (Mashup)",
+        "artist": "Dj H Kudos Music",
+        "started_at": "2026-06-21T23:59:14.000Z",
+        "bpm": 104.99,
+        "genre": null,
+        "camelot_key": "6A",
+        "in_library": true
+      },
+      {
+        "position": 72,
+        "title": "Coca Cola - Lyrics- Tony Kakkar Neha Kakkar",
+        "artist": null,
+        "started_at": "2026-06-22T00:00:20.000Z",
+        "bpm": 101.95,
+        "genre": null,
+        "camelot_key": "5A",
+        "in_library": true
+      },
+      {
+        "position": 73,
+        "title": "Dil Le Gayee - DJ Sitanshu DJ Swati Bouncy Dhol Edit",
+        "artist": "Jasbir Jassi",
+        "started_at": "2026-06-22T00:00:34.000Z",
+        "bpm": 100,
+        "genre": {
+          "raw": "Other",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "6A",
+        "in_library": true
+      },
+      {
+        "position": 74,
+        "title": "Outside (DJ N9NE 'Hilyte' Edit) 128",
+        "artist": "Ellie Goulding x Calvin Harris x Hilyte",
+        "started_at": "2026-06-22T00:00:48.000Z",
+        "bpm": 128,
+        "genre": null,
+        "camelot_key": "7A",
+        "in_library": true
+      },
+      {
+        "position": 75,
+        "title": "Coca Cola - Lyrics- Tony Kakkar Neha Kakkar",
+        "artist": null,
+        "started_at": "2026-06-22T00:02:13.000Z",
+        "bpm": 101.95,
+        "genre": null,
+        "camelot_key": "5A",
+        "in_library": true
+      },
+      {
+        "position": 76,
+        "title": "Kesariya (Dance Mix) - Brahmāstra | Amitabh B | Ranbir | Alia | Pritam | Shashwat | Antara",
+        "artist": "Sony Music India",
+        "started_at": "2026-06-22T00:03:13.000Z",
+        "bpm": 100,
+        "genre": {
+          "raw": "Other",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "3A",
+        "in_library": true
+      },
+      {
+        "position": 77,
+        "title": "PAAGAL BADSHAH SONG ",
+        "artist": null,
+        "started_at": "2026-06-22T00:04:46.000Z",
+        "bpm": 107,
+        "genre": null,
+        "camelot_key": "9A",
+        "in_library": true
+      },
+      {
+        "position": 78,
+        "title": "Players",
+        "artist": "Badshah & Karan Aujla ft. Devika Badyal",
+        "started_at": "2026-06-22T00:08:23.000Z",
+        "bpm": 110,
+        "genre": null,
+        "camelot_key": "9A",
+        "in_library": true
+      },
+      {
+        "position": 79,
+        "title": "Dr Zeus - Kangna (ZEEMUFFIN & Refilled Remix)",
+        "artist": "ZEEMUFFIN",
+        "started_at": "2026-06-22T00:11:09.000Z",
+        "bpm": 130,
+        "genre": null,
+        "camelot_key": "1A",
+        "in_library": true
+      },
+      {
+        "position": 80,
+        "title": "Beautiful (HH Clean Intro)",
+        "artist": "Akon ft Colby O'Donis & Kardinal Offishall",
+        "started_at": "2026-06-22T00:12:07.000Z",
+        "bpm": 130,
+        "genre": {
+          "raw": "Pop / Top 40",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "5B",
+        "in_library": true
+      },
+      {
+        "position": 81,
+        "title": "Glad You Came [Funk3d Club Mix]",
+        "artist": "The Wanted",
+        "started_at": "2026-06-22T00:15:53.000Z",
+        "bpm": 128,
+        "genre": {
+          "raw": "House",
+          "normalized": "House",
+          "taxonomy_version": 2,
+          "subgenre": "House"
+        },
+        "camelot_key": "6A",
+        "in_library": true
+      },
+      {
+        "position": 82,
+        "title": "Pursuit Of Happiness (Steve Aoki Remix) (Clean Extended)",
+        "artist": "Kid Cudi ft Ratatat & MGMT",
+        "started_at": "2026-06-22T00:17:11.000Z",
+        "bpm": 128,
+        "genre": {
+          "raw": "Electro House",
+          "normalized": "House",
+          "taxonomy_version": 2,
+          "subgenre": "Electro House"
+        },
+        "camelot_key": "8A",
+        "in_library": true
+      },
+      {
+        "position": 83,
+        "title": "No Broke Boys (Intro - Clean)",
+        "artist": "Disco Lines & Tinashe",
+        "started_at": "2026-06-22T00:18:19.000Z",
+        "bpm": 131,
+        "genre": null,
+        "camelot_key": "1A",
+        "in_library": true
+      },
+      {
+        "position": 84,
+        "title": "Rich Baby Daddy (Intro Clean)",
+        "artist": "Drake ft Sexyy Red & SZA",
+        "started_at": "2026-06-22T00:19:12.000Z",
+        "bpm": 146,
+        "genre": {
+          "raw": "Hip Hop",
+          "normalized": "Hip-Hop",
+          "taxonomy_version": 2,
+          "subgenre": "Hip-Hop"
+        },
+        "camelot_key": "11A",
+        "in_library": true
+      },
+      {
+        "position": 85,
+        "title": "Rosary (CK Intro - Dirty)",
+        "artist": "Don Toliver & Travis Scott",
+        "started_at": "2026-06-22T00:20:37.000Z",
+        "bpm": 74,
+        "genre": {
+          "raw": "Hip Hop",
+          "normalized": "Hip-Hop",
+          "taxonomy_version": 2,
+          "subgenre": "Hip-Hop"
+        },
+        "camelot_key": "2A",
+        "in_library": true
+      },
+      {
+        "position": 86,
+        "title": "Sexy Chick (Clean Short Edit)",
+        "artist": "David Guetta ft Akon",
+        "started_at": "2026-06-22T00:22:18.000Z",
+        "bpm": 130,
+        "genre": {
+          "raw": "Dance",
+          "normalized": "Electronica",
+          "taxonomy_version": 2,
+          "subgenre": "Dance"
+        },
+        "camelot_key": "9A",
+        "in_library": true
+      },
+      {
+        "position": 87,
+        "title": "Sweet Sixteen-",
+        "artist": "Hillary Duff",
+        "started_at": "2026-06-22T00:24:33.000Z",
+        "bpm": 126.99,
+        "genre": null,
+        "camelot_key": "12B",
+        "in_library": true
+      },
+      {
+        "position": 88,
+        "title": "Don't Stop The Music (Jean Philippe Edit - Greg Lassierra Hype Intro ) (Clean)",
+        "artist": "Rihanna",
+        "started_at": "2026-06-22T00:26:25.000Z",
+        "bpm": 125,
+        "genre": {
+          "raw": "Electronic / Dance",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "11A",
+        "in_library": true
+      },
+      {
+        "position": 89,
+        "title": "Sweet Sixteen-",
+        "artist": "Hillary Duff",
+        "started_at": "2026-06-22T00:26:49.000Z",
+        "bpm": 126.99,
+        "genre": null,
+        "camelot_key": "12B",
+        "in_library": true
+      },
+      {
+        "position": 90,
+        "title": "Calling [Lose My Mind] (Extended Club Mix) ft. Ryan Tedder ",
+        "artist": "Sebastian Ingrosso and Alesso ",
+        "started_at": "2026-06-22T00:30:56.000Z",
+        "bpm": 125,
+        "genre": null,
+        "camelot_key": "12B",
+        "in_library": true
+      },
+      {
+        "position": 91,
+        "title": null,
+        "artist": "Father Daughter Dance\n",
+        "started_at": "2026-06-22T00:33:26.000Z",
+        "bpm": 93.48,
+        "genre": null,
+        "camelot_key": "5B",
+        "in_library": true
+      },
+      {
+        "position": 92,
+        "title": "0620-[AudioTrimmer.com]",
+        "artist": "Father Daughter Dance\n",
+        "started_at": "2026-06-22T00:33:34.000Z",
+        "bpm": 93.48,
+        "genre": null,
+        "camelot_key": "5B",
+        "in_library": true
+      },
+      {
+        "position": 93,
+        "title": "Ones You Miss (Radio Edit)",
+        "artist": "R3HAB",
+        "started_at": "2026-06-22T00:37:25.000Z",
+        "bpm": 124,
+        "genre": {
+          "raw": "Electronic / Dance",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "3A",
+        "in_library": true
+      },
+      {
+        "position": 94,
+        "title": null,
+        "artist": "Surprise dance",
+        "started_at": "2026-06-22T00:38:05.000Z",
+        "bpm": 90.01,
+        "genre": null,
+        "camelot_key": "12B",
+        "in_library": true
+      },
+      {
+        "position": 95,
+        "title": "Stay (Festival Mix) (HH Clean Short)",
+        "artist": "Nicky Romero",
+        "started_at": "2026-06-22T00:41:16.000Z",
+        "bpm": 126,
+        "genre": {
+          "raw": "Electronic / Dance",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "5B",
+        "in_library": true
+      },
+      {
+        "position": 96,
+        "title": "Be Kind (Joy Club Remix) (Clean Extended)",
+        "artist": "Marshmello & Halsey",
+        "started_at": "2026-06-22T00:50:23.000Z",
+        "bpm": 123,
+        "genre": {
+          "raw": "Dance Pop",
+          "normalized": "Pop",
+          "taxonomy_version": 2,
+          "subgenre": "Dance Pop"
+        },
+        "camelot_key": "12B",
+        "in_library": true
+      },
+      {
+        "position": 97,
+        "title": null,
+        "artist": "paretns surprise",
+        "started_at": "2026-06-22T00:52:57.000Z",
+        "bpm": 93,
+        "genre": null,
+        "camelot_key": "7A",
+        "in_library": true
+      },
+      {
+        "position": 98,
+        "title": "Roses (Imanbek Remix) (HH Dirty Short)",
+        "artist": "SAINt JHN",
+        "started_at": "2026-06-22T00:55:15.000Z",
+        "bpm": 122,
+        "genre": {
+          "raw": "Electronic / Dance",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "4A",
+        "in_library": true
+      },
+      {
+        "position": 99,
+        "title": null,
+        "artist": "tt",
+        "started_at": "2026-06-22T00:56:56.000Z",
+        "bpm": 98.14,
+        "genre": null,
+        "camelot_key": "2A",
+        "in_library": true
+      },
+      {
+        "position": 100,
+        "title": null,
+        "artist": "Boys Court Dance\n",
+        "started_at": "2026-06-22T00:58:53.000Z",
+        "bpm": 93.03,
+        "genre": null,
+        "camelot_key": "4A",
+        "in_library": true
+      },
+      {
+        "position": 101,
+        "title": null,
+        "artist": "Boys Court Dance\n",
+        "started_at": "2026-06-22T00:58:57.000Z",
+        "bpm": 93.03,
+        "genre": null,
+        "camelot_key": "4A",
+        "in_library": true
+      },
+      {
+        "position": 102,
+        "title": null,
+        "artist": "Boys Court Dance\n",
+        "started_at": "2026-06-22T00:59:11.000Z",
+        "bpm": 93.03,
+        "genre": null,
+        "camelot_key": "4A",
+        "in_library": true
+      },
+      {
+        "position": 103,
+        "title": "Nice For What (HH Dirty Intro)",
+        "artist": "Drake",
+        "started_at": "2026-06-22T01:00:36.000Z",
+        "bpm": 93.5,
+        "genre": {
+          "raw": "Hip-Hop / R&B",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "3A",
+        "in_library": true
+      },
+      {
+        "position": 104,
+        "title": "Work (BPM Supreme Bootleg) (Clean)",
+        "artist": "Rihanna ft Drake vs DJ Otto",
+        "started_at": "2026-06-22T01:01:17.000Z",
+        "bpm": 112,
+        "genre": {
+          "raw": "Moombahton",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "12A",
+        "in_library": true
+      },
+      {
+        "position": 105,
+        "title": null,
+        "artist": "Girls Court Dance\n",
+        "started_at": "2026-06-22T01:02:37.000Z",
+        "bpm": 76.02,
+        "genre": null,
+        "camelot_key": "2A",
+        "in_library": true
+      },
+      {
+        "position": 106,
+        "title": "E85 (Intro Dirty)",
+        "artist": "Don Toliver",
+        "started_at": "2026-06-22T01:03:55.000Z",
+        "bpm": 131.98,
+        "genre": {
+          "raw": "Hip Hop",
+          "normalized": "Hip-Hop",
+          "taxonomy_version": 2,
+          "subgenre": "Hip-Hop"
+        },
+        "camelot_key": "10A",
+        "in_library": true
+      },
+      {
+        "position": 107,
+        "title": "Janice STFU (Quick Hit Clean)",
+        "artist": "Drake",
+        "started_at": "2026-06-22T01:06:23.000Z",
+        "bpm": 63,
+        "genre": {
+          "raw": "Hip Hop",
+          "normalized": "Hip-Hop",
+          "taxonomy_version": 2,
+          "subgenre": "Hip-Hop"
+        },
+        "camelot_key": "1A",
+        "in_library": true
+      },
+      {
+        "position": 108,
+        "title": null,
+        "artist": "Girls Court Dance\n",
+        "started_at": "2026-06-22T01:06:33.000Z",
+        "bpm": 76.02,
+        "genre": null,
+        "camelot_key": "2A",
+        "in_library": true
+      },
+      {
+        "position": 109,
+        "title": "Janice STFU (Quick Hit Clean)",
+        "artist": "Drake",
+        "started_at": "2026-06-22T01:06:48.000Z",
+        "bpm": 63,
+        "genre": {
+          "raw": "Hip Hop",
+          "normalized": "Hip-Hop",
+          "taxonomy_version": 2,
+          "subgenre": "Hip-Hop"
+        },
+        "camelot_key": "1A",
+        "in_library": true
+      },
+      {
+        "position": 110,
+        "title": "Like A G6 (HH Clean Intro)",
+        "artist": "Far East Movement ft The Cataracs",
+        "started_at": "2026-06-22T01:09:22.000Z",
+        "bpm": 125,
+        "genre": {
+          "raw": "Pop / Top 40",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "6B",
+        "in_library": true
+      },
+      {
+        "position": 111,
+        "title": null,
+        "artist": "Vrishtii and Tiya’s Dance\n",
+        "started_at": "2026-06-22T01:11:18.000Z",
+        "bpm": 125.01,
+        "genre": null,
+        "camelot_key": "9A",
+        "in_library": true
+      },
+      {
+        "position": 112,
+        "title": null,
+        "artist": "Vrishtii and Tiya’s Dance\n",
+        "started_at": "2026-06-22T01:11:18.000Z",
+        "bpm": 125.01,
+        "genre": null,
+        "camelot_key": "9A",
+        "in_library": true
+      },
+      {
+        "position": 113,
+        "title": null,
+        "artist": null,
+        "started_at": "2026-06-22T01:12:10.000Z",
+        "bpm": 72,
+        "genre": null,
+        "camelot_key": "12A",
+        "in_library": true
+      },
+      {
+        "position": 114,
+        "title": null,
+        "artist": "Tiya’s Dance team Dance\n",
+        "started_at": "2026-06-22T01:14:16.000Z",
+        "bpm": 129.76,
+        "genre": null,
+        "camelot_key": "10A",
+        "in_library": true
+      },
+      {
+        "position": 115,
+        "title": null,
+        "artist": "Tiya’s Dance team Dance\n",
+        "started_at": "2026-06-22T01:14:22.000Z",
+        "bpm": 129.76,
+        "genre": null,
+        "camelot_key": "10A",
+        "in_library": true
+      },
+      {
+        "position": 116,
+        "title": "Where Are U Now (Extended Intro)",
+        "artist": "Jack U ft Justin Bieber",
+        "started_at": "2026-06-22T01:17:43.000Z",
+        "bpm": 69.99,
+        "genre": {
+          "raw": "Electronic / Dance",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "9B",
+        "in_library": true
+      },
+      {
+        "position": 117,
+        "title": null,
+        "artist": "Anika, Swara, and Tiyas dance\n",
+        "started_at": "2026-06-22T01:20:53.000Z",
+        "bpm": 105.28,
+        "genre": null,
+        "camelot_key": "2A",
+        "in_library": true
+      },
+      {
+        "position": 118,
+        "title": "Bridesmaids Sangeet Dance  Bollywood Wedding Mashup  Badtameez Dil x Mi Gente x Barso Re-[AudioTrimmer.com]",
+        "artist": "Anika, Swara, and Tiyas dance\n",
+        "started_at": "2026-06-22T01:22:35.000Z",
+        "bpm": 105.28,
+        "genre": null,
+        "camelot_key": "2A",
+        "in_library": true
+      },
+      {
+        "position": 119,
+        "title": "Right Now (Na Na Na) (Cesar Castilla 'Better Off Alone' EDC Vegas Edit) (Clean)",
+        "artist": "Akon ",
+        "started_at": "2026-06-22T01:23:18.000Z",
+        "bpm": 132,
+        "genre": {
+          "raw": "Electro House",
+          "normalized": "House",
+          "taxonomy_version": 2,
+          "subgenre": "Electro House"
+        },
+        "camelot_key": "1A",
+        "in_library": true
+      },
+      {
+        "position": 120,
+        "title": null,
+        "artist": "Jiya and Tiya’s Dance\n",
+        "started_at": "2026-06-22T01:25:14.000Z",
+        "bpm": 97.03,
+        "genre": null,
+        "camelot_key": "7A",
+        "in_library": true
+      },
+      {
+        "position": 121,
+        "title": "Nights Like This (HH Clean Short)",
+        "artist": "Loud Luxury & CID",
+        "started_at": "2026-06-22T01:28:17.000Z",
+        "bpm": 126,
+        "genre": {
+          "raw": "Electronic / Dance",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "5B",
+        "in_library": true
+      },
+      {
+        "position": 122,
+        "title": "Kala Chasma parents of groom",
+        "artist": "Amar Arshi, Badshah & Neha Kakkar",
+        "started_at": "2026-06-22T01:30:07.000Z",
+        "bpm": 105.76,
+        "genre": {
+          "raw": "Bollywood Music",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "8A",
+        "in_library": true
+      },
+      {
+        "position": 123,
+        "title": "Rooftop Party  Mickey Singh  Amar Sandhu  LYRICS VIDEO",
+        "artist": null,
+        "started_at": "2026-06-22T01:31:24.000Z",
+        "bpm": 106.01,
+        "genre": null,
+        "camelot_key": "1A",
+        "in_library": true
+      },
+      {
+        "position": 124,
+        "title": "Mimosas_Volcanoes_Live_Mix_KLICKAUD",
+        "artist": null,
+        "started_at": "2026-06-22T01:32:16.000Z",
+        "bpm": null,
+        "genre": null,
+        "camelot_key": "9A",
+        "in_library": true
+      },
+      {
+        "position": 125,
+        "title": "Bolly-Afro-Wood - @its_DoubleJ - #5inFiveV3",
+        "artist": null,
+        "started_at": "2026-06-22T01:33:14.000Z",
+        "bpm": null,
+        "genre": null,
+        "camelot_key": "9A",
+        "in_library": true
+      },
+      {
+        "position": 126,
+        "title": "family ties",
+        "artist": "Baby Keem, Kendrick Lamar",
+        "started_at": "2026-06-22T01:52:54.000Z",
+        "bpm": 116,
+        "genre": null,
+        "camelot_key": "1A",
+        "in_library": true
+      },
+      {
+        "position": 127,
+        "title": "Dynamite (HH Clean Intro)",
+        "artist": "Taio Cruz",
+        "started_at": "2026-06-22T01:53:29.000Z",
+        "bpm": 120,
+        "genre": {
+          "raw": "Pop / Top 40",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "12B",
+        "in_library": true
+      },
+      {
+        "position": 128,
+        "title": "SADI GALI TANU WEDS MANU  DJ ROHIT ",
+        "artist": "3rd intro cue 2",
+        "started_at": "2026-06-22T01:54:51.000Z",
+        "bpm": 130,
+        "genre": null,
+        "camelot_key": "4A",
+        "in_library": true
+      },
+      {
+        "position": 129,
+        "title": "Party In the U.S.A. - BVRNOUT Remix",
+        "artist": "Miley Cyrus",
+        "started_at": "2026-06-22T01:56:38.000Z",
+        "bpm": 126,
+        "genre": {
+          "raw": "Dance",
+          "normalized": "Electronica",
+          "taxonomy_version": 2,
+          "subgenre": "Dance"
+        },
+        "camelot_key": "2A",
+        "in_library": true
+      },
+      {
+        "position": 130,
+        "title": "Deewangi (Rainbow Mix)",
+        "artist": "1st intro",
+        "started_at": "2026-06-22T01:58:15.000Z",
+        "bpm": 122.01,
+        "genre": {
+          "raw": "Hindi",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "9A",
+        "in_library": true
+      },
+      {
+        "position": 131,
+        "title": "All I Do Is Win (DJ G-Kidd Raise Your Hands Bootleg) (Extended)",
+        "artist": "DJ Khaled",
+        "started_at": "2026-06-22T01:59:58.000Z",
+        "bpm": 127.99,
+        "genre": {
+          "raw": "Electro House",
+          "normalized": "House",
+          "taxonomy_version": 2,
+          "subgenre": "Electro House"
+        },
+        "camelot_key": "9A",
+        "in_library": true
+      },
+      {
+        "position": 132,
+        "title": "Temperature (DJ N9NE 'Fogo' Bootleg) (Clean)",
+        "artist": "Sean Paul vs. Garmiani",
+        "started_at": "2026-06-22T02:00:22.000Z",
+        "bpm": 128,
+        "genre": {
+          "raw": "Blues",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "1A",
+        "in_library": true
+      },
+      {
+        "position": 133,
+        "title": "Panjabi MC - Mundian To Bach (Parah Dice Edit) [DropUnited Exclusive]",
+        "artist": null,
+        "started_at": "2026-06-22T02:01:15.000Z",
+        "bpm": 128,
+        "genre": null,
+        "camelot_key": "2A",
+        "in_library": true
+      },
+      {
+        "position": 134,
+        "title": "Sean Kingston - Fire Burning (Gin and Sonic x Sell Out MC Remix)",
+        "artist": "Sean Kingston, Gin and Sonic, Sell Out MC",
+        "started_at": "2026-06-22T02:02:51.000Z",
+        "bpm": 128,
+        "genre": {
+          "raw": "Wall Slappers",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "3A",
+        "in_library": true
+      },
+      {
+        "position": 135,
+        "title": "Low (DJ N9NE 'Drop That Low' Frankenstein Edit)",
+        "artist": "Flo Rida x Tujamo",
+        "started_at": "2026-06-22T02:04:13.000Z",
+        "bpm": 127.98,
+        "genre": {
+          "raw": "Blues",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "2A",
+        "in_library": true
+      },
+      {
+        "position": 136,
+        "title": "Desi Girl Dance",
+        "artist": null,
+        "started_at": "2026-06-22T02:05:36.000Z",
+        "bpm": 130,
+        "genre": null,
+        "camelot_key": "5B",
+        "in_library": true
+      },
+      {
+        "position": 137,
+        "title": "DJ Got Us Fallin' In Love (BPM Supreme Edit) (Clean)",
+        "artist": "Usher ft Pitbull vs Dj Snake",
+        "started_at": "2026-06-22T02:08:57.000Z",
+        "bpm": 120,
+        "genre": {
+          "raw": "Pop",
+          "normalized": "Pop",
+          "taxonomy_version": 2,
+          "subgenre": "Pop"
+        },
+        "camelot_key": "6A",
+        "in_library": true
+      },
+      {
+        "position": 138,
+        "title": "All I Do Is Win (DJ G-Kidd Raise Your Hands Bootleg) (Extended)",
+        "artist": "DJ Khaled",
+        "started_at": "2026-06-22T02:17:00.000Z",
+        "bpm": 127.99,
+        "genre": {
+          "raw": "Electro House",
+          "normalized": "House",
+          "taxonomy_version": 2,
+          "subgenre": "Electro House"
+        },
+        "camelot_key": "9A",
+        "in_library": true
+      },
+      {
+        "position": 139,
+        "title": "Pepas (Intro Dirty)",
+        "artist": "Farruko",
+        "started_at": "2026-06-22T02:23:02.000Z",
+        "bpm": 130,
+        "genre": {
+          "raw": "Latin Pop",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "9A",
+        "in_library": true
+      },
+      {
+        "position": 140,
+        "title": "Only Girl In The World (Mike Fresh Redux Edit) (Clean)",
+        "artist": "Rihanna",
+        "started_at": "2026-06-22T02:24:12.000Z",
+        "bpm": 127,
+        "genre": {
+          "raw": "Electronic / Dance",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "10A",
+        "in_library": true
+      },
+      {
+        "position": 141,
+        "title": "Chammak Chalo (SJ BH2 Edit) Clean",
+        "artist": "Akon, Hamsika Iyer",
+        "started_at": "2026-06-22T02:25:53.000Z",
+        "bpm": 129.98,
+        "genre": {
+          "raw": "Bollywood, India",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "5A",
+        "in_library": true
+      },
+      {
+        "position": 142,
+        "title": "Break Free (Even Steve VIP Chorus First Edit) Clean",
+        "artist": "Ariana Grande ft Zedd",
+        "started_at": "2026-06-22T02:27:31.000Z",
+        "bpm": 130,
+        "genre": {
+          "raw": "Pop / EDM",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "6B",
+        "in_library": true
+      },
+      {
+        "position": 143,
+        "title": "AANKH MARE-MM_Drum Mix",
+        "artist": null,
+        "started_at": "2026-06-22T02:28:47.000Z",
+        "bpm": 132,
+        "genre": null,
+        "camelot_key": "5A",
+        "in_library": true
+      },
+      {
+        "position": 144,
+        "title": "O Saki Saki",
+        "artist": "Neha Kakkar, Tulsi Kumar & B. Praak",
+        "started_at": "2026-06-22T02:31:57.000Z",
+        "bpm": 108.01,
+        "genre": {
+          "raw": "Other",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "3A",
+        "in_library": true
+      },
+      {
+        "position": 145,
+        "title": "Umbrella - Robin Roij Remix",
+        "artist": "Rihanna",
+        "started_at": "2026-06-22T02:32:31.000Z",
+        "bpm": 100,
+        "genre": {
+          "raw": "Pop",
+          "normalized": "Pop",
+          "taxonomy_version": 2,
+          "subgenre": "Pop"
+        },
+        "camelot_key": "2A",
+        "in_library": true
+      },
+      {
+        "position": 146,
+        "title": "illegal weapon Dance Mix",
+        "artist": null,
+        "started_at": "2026-06-22T02:33:02.000Z",
+        "bpm": 101,
+        "genre": null,
+        "camelot_key": "1A",
+        "in_library": true
+      },
+      {
+        "position": 147,
+        "title": "Kala Chasma parents of groom",
+        "artist": "Amar Arshi, Badshah & Neha Kakkar",
+        "started_at": "2026-06-22T02:34:05.000Z",
+        "bpm": 105.76,
+        "genre": {
+          "raw": "Bollywood Music",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "8A",
+        "in_library": true
+      },
+      {
+        "position": 148,
+        "title": "Unwritten (Dennett Remix)",
+        "artist": "Natasha Bedingfield - ",
+        "started_at": "2026-06-22T02:35:30.000Z",
+        "bpm": 115,
+        "genre": null,
+        "camelot_key": "7A",
+        "in_library": true
+      },
+      {
+        "position": 149,
+        "title": "Usher_Yeah",
+        "artist": null,
+        "started_at": "2026-06-22T02:35:46.000Z",
+        "bpm": 106.87,
+        "genre": {
+          "raw": "Other",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "6A",
+        "in_library": true
+      },
+      {
+        "position": 150,
+        "title": "9_45 (Desi Mix)  DJ Nick Dhillon  Prabh Gill  Latest Punjabi Songs Mix 2023",
+        "artist": null,
+        "started_at": "2026-06-22T02:37:44.000Z",
+        "bpm": 100,
+        "genre": null,
+        "camelot_key": "6A",
+        "in_library": true
+      },
+      {
+        "position": 151,
+        "title": "Gasolina",
+        "artist": null,
+        "started_at": "2026-06-22T02:38:10.000Z",
+        "bpm": 96,
+        "genre": null,
+        "camelot_key": "9A",
+        "in_library": true
+      },
+      {
+        "position": 152,
+        "title": "Beauty And A Beat - MARROW 2025 Remix",
+        "artist": "Justin Bieber ft. Nicki Minaj",
+        "started_at": "2026-06-22T02:44:19.000Z",
+        "bpm": 128,
+        "genre": null,
+        "camelot_key": "7A",
+        "in_library": true
+      },
+      {
+        "position": 153,
+        "title": "Ran To Atlanta (Intro Clean)",
+        "artist": "Drake ft Future & Molly Santana",
+        "started_at": "2026-06-22T02:48:00.000Z",
+        "bpm": 67.5,
+        "genre": {
+          "raw": "Hip Hop",
+          "normalized": "Hip-Hop",
+          "taxonomy_version": 2,
+          "subgenre": "Hip-Hop"
+        },
+        "camelot_key": "5A",
+        "in_library": true
+      },
+      {
+        "position": 154,
+        "title": "Dancing Queen - Waltry Remix",
+        "artist": "ABBA",
+        "started_at": "2026-06-22T02:52:04.000Z",
+        "bpm": 128,
+        "genre": {
+          "raw": "Dance",
+          "normalized": "Electronica",
+          "taxonomy_version": 2,
+          "subgenre": "Dance"
+        },
+        "camelot_key": "11B",
+        "in_library": true
+      },
+      {
+        "position": 155,
+        "title": null,
+        "artist": null,
+        "started_at": "2026-06-22T02:56:21.000Z",
+        "bpm": null,
+        "genre": null,
+        "camelot_key": null,
+        "in_library": true
+      },
+      {
+        "position": 156,
+        "title": "High Fives (Intro Clean)",
+        "artist": "Drake",
+        "started_at": "2026-06-22T02:59:13.000Z",
+        "bpm": 71.5,
+        "genre": {
+          "raw": "R&B",
+          "normalized": "R&B",
+          "taxonomy_version": 2,
+          "subgenre": "R&B"
+        },
+        "camelot_key": "3A",
+        "in_library": true
+      },
+      {
+        "position": 157,
+        "title": "Travis Scott - FE!N (Clean - Lyrics) feat. Playboi Carti",
+        "artist": null,
+        "started_at": "2026-06-22T03:00:28.000Z",
+        "bpm": 74,
+        "genre": null,
+        "camelot_key": "2A",
+        "in_library": true
+      },
+      {
+        "position": 158,
+        "title": "Just Wanna Rock (Intro Dirty)",
+        "artist": "Lil Uzi Vert",
+        "started_at": "2026-06-22T03:01:10.000Z",
+        "bpm": 75.04,
+        "genre": {
+          "raw": "Hip Hop",
+          "normalized": "Hip-Hop",
+          "taxonomy_version": 2,
+          "subgenre": "Hip-Hop"
+        },
+        "camelot_key": "2A",
+        "in_library": true
+      },
+      {
+        "position": 159,
+        "title": "SICKO MODE - KidCutUp pt. 3 Club Edit (Clean)",
+        "artist": "Travis Scott ft. Drake",
+        "started_at": "2026-06-22T03:02:15.000Z",
+        "bpm": 77.5,
+        "genre": null,
+        "camelot_key": "3A",
+        "in_library": true
+      },
+      {
+        "position": 160,
+        "title": "Trap Queen (Mike Fresh Shockwave Edit) (Clean)",
+        "artist": "Fetty Wap",
+        "started_at": "2026-06-22T03:03:19.000Z",
+        "bpm": 82,
+        "genre": {
+          "raw": "Electronic / Dance",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "8A",
+        "in_library": true
+      },
+      {
+        "position": 161,
+        "title": "679 (HH Clean Intro)",
+        "artist": "Fetty Wap ft Remy Boyz",
+        "started_at": "2026-06-22T03:04:35.000Z",
+        "bpm": 95,
+        "genre": {
+          "raw": "Hip-Hop / R&B",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "10A",
+        "in_library": true
+      },
+      {
+        "position": 162,
+        "title": "9_45 (Desi Mix)  DJ Nick Dhillon  Prabh Gill  Latest Punjabi Songs Mix 2023",
+        "artist": null,
+        "started_at": "2026-06-22T03:05:32.000Z",
+        "bpm": 100,
+        "genre": null,
+        "camelot_key": "6A",
+        "in_library": true
+      },
+      {
+        "position": 163,
+        "title": "Bole Chudiyan (The remix that started it all)",
+        "artist": "Dj Insomnia",
+        "started_at": "2026-06-22T03:06:36.000Z",
+        "bpm": 101.03,
+        "genre": {
+          "raw": "Hip - Hop",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "1A",
+        "in_library": true
+      },
+      {
+        "position": 164,
+        "title": "Love Story x Bad (Thicc Edit)",
+        "artist": "Taylor Swift x Dillon Francis",
+        "started_at": "2026-06-22T03:08:51.000Z",
+        "bpm": 128.01,
+        "genre": {
+          "raw": "Other",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "10A",
+        "in_library": true
+      },
+      {
+        "position": 165,
+        "title": "Bala_Ry_Remix",
+        "artist": null,
+        "started_at": "2026-06-22T03:09:33.000Z",
+        "bpm": 108,
+        "genre": null,
+        "camelot_key": "6A",
+        "in_library": true
+      },
+      {
+        "position": 166,
+        "title": "Mauja Hi Mauja",
+        "artist": "Dhol Beat International",
+        "started_at": "2026-06-22T03:09:44.000Z",
+        "bpm": 107.22,
+        "genre": {
+          "raw": "Hindi Remix",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "8A",
+        "in_library": true
+      },
+      {
+        "position": 167,
+        "title": "Mauja Hi Mauja",
+        "artist": "Dhol Beat International",
+        "started_at": "2026-06-22T03:11:06.000Z",
+        "bpm": 107.22,
+        "genre": {
+          "raw": "Hindi Remix",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "8A",
+        "in_library": true
+      },
+      {
+        "position": 168,
+        "title": "Beautiful Now (Clean) (Short Edit)",
+        "artist": "Zedd ft Bellion",
+        "started_at": "2026-06-22T03:13:35.000Z",
+        "bpm": 128,
+        "genre": {
+          "raw": "Progressive House",
+          "normalized": "House",
+          "taxonomy_version": 2,
+          "subgenre": "Progressive House"
+        },
+        "camelot_key": "10A",
+        "in_library": true
+      },
+      {
+        "position": 169,
+        "title": "Beautiful Now (Clean) (Short Edit)",
+        "artist": "Zedd ft Bellion",
+        "started_at": "2026-06-22T03:13:35.000Z",
+        "bpm": 128,
+        "genre": {
+          "raw": "Progressive House",
+          "normalized": "House",
+          "taxonomy_version": 2,
+          "subgenre": "Progressive House"
+        },
+        "camelot_key": "10A",
+        "in_library": true
+      },
+      {
+        "position": 170,
+        "title": "Clarity (Original)",
+        "artist": "Zedd feat Foxes",
+        "started_at": "2026-06-22T03:15:10.000Z",
+        "bpm": 128,
+        "genre": {
+          "raw": "House",
+          "normalized": "House",
+          "taxonomy_version": 2,
+          "subgenre": "House"
+        },
+        "camelot_key": "4A",
+        "in_library": true
+      },
+      {
+        "position": 171,
+        "title": "Don't Stop The Music (Jean Philippe Edit - Greg Lassierra Hype Intro ) (Clean)",
+        "artist": "Rihanna",
+        "started_at": "2026-06-22T03:16:51.000Z",
+        "bpm": 125,
+        "genre": {
+          "raw": "Electronic / Dance",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "11A",
+        "in_library": true
+      },
+      {
+        "position": 172,
+        "title": "Down x Feel My Love (Thicc Edit)",
+        "artist": "Jay Sean ft Lil Wayne x Lucas & Steve x DubVision",
+        "started_at": "2026-06-22T03:18:20.000Z",
+        "bpm": 128,
+        "genre": {
+          "raw": "Other",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "10A",
+        "in_library": true
+      },
+      {
+        "position": 173,
+        "title": "Love Story x Bad (Thicc Edit)",
+        "artist": "Taylor Swift x Dillon Francis",
+        "started_at": "2026-06-22T03:19:03.000Z",
+        "bpm": 128.01,
+        "genre": {
+          "raw": "Other",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "10A",
+        "in_library": true
+      },
+      {
+        "position": 174,
+        "title": "Love Story Disco Lines Remix",
+        "artist": "Disco Lines ft. Cassidi",
+        "started_at": "2026-06-22T03:19:09.000Z",
+        "bpm": 128,
+        "genre": {
+          "raw": "House",
+          "normalized": "House",
+          "taxonomy_version": 2,
+          "subgenre": "House"
+        },
+        "camelot_key": "9A",
+        "in_library": true
+      },
+      {
+        "position": 175,
+        "title": "Baby (Intro Clean)",
+        "artist": "Justin Bieber ft Ludacris",
+        "started_at": "2026-06-22T03:20:20.000Z",
+        "bpm": 130,
+        "genre": {
+          "raw": "Pop",
+          "normalized": "Pop",
+          "taxonomy_version": 2,
+          "subgenre": "Pop"
+        },
+        "camelot_key": "5A",
+        "in_library": true
+      },
+      {
+        "position": 176,
+        "title": "Starships (HH Clean Intro)",
+        "artist": "Nicki Minaj",
+        "started_at": "2026-06-22T03:21:22.000Z",
+        "bpm": 125,
+        "genre": {
+          "raw": "Pop / Top 40",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "10A",
+        "in_library": true
+      },
+      {
+        "position": 177,
+        "title": "Unwritten (Dennett Remix)",
+        "artist": "Natasha Bedingfield - ",
+        "started_at": "2026-06-22T03:22:07.000Z",
+        "bpm": 115,
+        "genre": null,
+        "camelot_key": "7A",
+        "in_library": true
+      },
+      {
+        "position": 178,
+        "title": "DANCE_Pitbull Feat. Ne-Yo, Afrojack & Nayer - Give Me Everything Tonight",
+        "artist": "DJ Ravish & DJ Chico",
+        "started_at": "2026-06-22T03:22:44.000Z",
+        "bpm": 130,
+        "genre": {
+          "raw": "Other",
+          "normalized": "Other",
+          "taxonomy_version": 2,
+          "subgenre": "Other"
+        },
+        "camelot_key": "5A",
+        "in_library": true
+      }
+    ],
+    "derived": {
+      "most_played_tracks": [
+        {
+          "title": "Janice STFU (Quick Hit Clean)",
+          "artist": "Drake",
+          "play_count": 4
+        },
+        {
+          "title": "Chaleya - Jawan (Remix) - Deejay Money Tag",
+          "artist": "Deejay Money",
+          "play_count": 3
+        },
+        {
+          "title": "Like A G6 (HH Clean Intro)",
+          "artist": "Far East Movement ft The Cataracs",
+          "play_count": 3
+        },
+        {
+          "title": "I Need Your Love (DJ N9NE 'Dont Wake Me Up' Edit) ",
+          "artist": "Ellie Goulding x James Hype",
+          "play_count": 3
+        },
+        {
+          "title": "Don't Stop The Music (Jean Philippe Edit - Greg Lassierra Hype Intro ) (Clean)",
+          "artist": "Rihanna",
+          "play_count": 3
+        },
+        {
+          "title": null,
+          "artist": "Boys Court and the parents Sanjay and Rupal\n",
+          "play_count": 3
+        },
+        {
+          "title": null,
+          "artist": "Boys Court Dance\n",
+          "play_count": 3
+        },
+        {
+          "title": "2 Hard 4 The Radio (PT 1) (DJ Nasa Club ReWork) (Clean)",
+          "artist": "Drake",
+          "play_count": 2
+        },
+        {
+          "title": "Bad (feat. Vassy) (Radio Edit)",
+          "artist": "David Guetta, Showtek",
+          "play_count": 2
+        },
+        {
+          "title": "Dr Zeus - Kangna (ZEEMUFFIN & Refilled Remix)",
+          "artist": "ZEEMUFFIN",
+          "play_count": 2
+        },
+        {
+          "title": "Outside (DJ N9NE 'Hilyte' Edit) 128",
+          "artist": "Ellie Goulding x Calvin Harris x Hilyte",
+          "play_count": 2
+        },
+        {
+          "title": "Pursuit Of Happiness (Steve Aoki Remix) (Clean Extended)",
+          "artist": "Kid Cudi ft Ratatat & MGMT",
+          "play_count": 2
+        },
+        {
+          "title": "Rosary (CK Intro - Dirty)",
+          "artist": "Don Toliver & Travis Scott",
+          "play_count": 2
+        },
+        {
+          "title": "Sexy Chick (Clean Short Edit)",
+          "artist": "David Guetta ft Akon",
+          "play_count": 2
+        },
+        {
+          "title": "Paramore - Still Into You (NETTED Remix)",
+          "artist": "NETTED",
+          "play_count": 2
+        },
+        {
+          "title": "On The Floor - Anthem Kingz In & Out Of My Life Edit",
+          "artist": "Jennifer Lopez ft. Pitbull",
+          "play_count": 2
+        },
+        {
+          "title": "Mimosas_Volcanoes_Live_Mix_KLICKAUD",
+          "artist": null,
+          "play_count": 2
+        },
+        {
+          "title": "Forever-[AudioTrimmer.com]",
+          "artist": "Ent The birthday girl Tiya  ",
+          "play_count": 2
+        },
+        {
+          "title": "High Fives (Intro Clean)",
+          "artist": "Drake",
+          "play_count": 2
+        },
+        {
+          "title": "Britney Spears - I Wanna Go (John Summit Remix)",
+          "artist": "John Summit, Britney Spears",
+          "play_count": 2
+        },
+        {
+          "title": "Sean Kingston - Fire Burning (Gin and Sonic x Sell Out MC Remix)",
+          "artist": "Sean Kingston, Gin and Sonic, Sell Out MC",
+          "play_count": 2
+        },
+        {
+          "title": "DJ HUFFY - Jaanu Meri Jaan (Remix)",
+          "artist": "DJ HUFFY",
+          "play_count": 2
+        },
+        {
+          "title": "I Gotta Feeling (HH Clean Intro)",
+          "artist": "The Black Eyed Peas",
+          "play_count": 2
+        },
+        {
+          "title": "RITMO (Steve Aoki Remix) (HH Dirty Intro)",
+          "artist": "The Black Eyed Peas & J Balvin",
+          "play_count": 2
+        },
+        {
+          "title": "Coca Cola - Lyrics- Tony Kakkar Neha Kakkar",
+          "artist": null,
+          "play_count": 2
+        },
+        {
+          "title": "Sweet Sixteen-",
+          "artist": "Hillary Duff",
+          "play_count": 2
+        },
+        {
+          "title": null,
+          "artist": "Girls Court Dance\n",
+          "play_count": 2
+        },
+        {
+          "title": null,
+          "artist": "Vrishtii and Tiya’s Dance\n",
+          "play_count": 2
+        },
+        {
+          "title": null,
+          "artist": null,
+          "play_count": 2
+        },
+        {
+          "title": null,
+          "artist": "Tiya’s Dance team Dance\n",
+          "play_count": 2
+        },
+        {
+          "title": "Kala Chasma parents of groom",
+          "artist": "Amar Arshi, Badshah & Neha Kakkar",
+          "play_count": 2
+        },
+        {
+          "title": "All I Do Is Win (DJ G-Kidd Raise Your Hands Bootleg) (Extended)",
+          "artist": "DJ Khaled",
+          "play_count": 2
+        },
+        {
+          "title": "Unwritten (Dennett Remix)",
+          "artist": "Natasha Bedingfield - ",
+          "play_count": 2
+        },
+        {
+          "title": "9_45 (Desi Mix)  DJ Nick Dhillon  Prabh Gill  Latest Punjabi Songs Mix 2023",
+          "artist": null,
+          "play_count": 2
+        },
+        {
+          "title": "Love Story x Bad (Thicc Edit)",
+          "artist": "Taylor Swift x Dillon Francis",
+          "play_count": 2
+        },
+        {
+          "title": "Mauja Hi Mauja",
+          "artist": "Dhol Beat International",
+          "play_count": 2
+        },
+        {
+          "title": "Beautiful Now (Clean) (Short Edit)",
+          "artist": "Zedd ft Bellion",
+          "play_count": 2
+        },
+        {
+          "title": "WHERES THE PARTY TONIGHT ( Remix ) - DJ AD RELOADED",
+          "artist": "DJ AD RELOADED",
+          "play_count": 1
+        },
+        {
+          "title": "130 - OBSESSED x AFROJACK ( MASHUP EDIT )",
+          "artist": "RAUL MUSIC",
+          "play_count": 1
+        },
+        {
+          "title": "03 - Soni De Nakhre (Partner) - Dj Chani",
+          "artist": "Desi Junction Djs",
+          "play_count": 1
+        },
+        {
+          "title": "Peelings",
+          "artist": "Devi Sri Prasad",
+          "play_count": 1
+        },
+        {
+          "title": "Party Rock Anthem (HH Clean Mixshow)",
+          "artist": "LMFAO",
+          "play_count": 1
+        },
+        {
+          "title": "Lemonade - Anthem Kingz Levels Edit (Dirty)",
+          "artist": "Internet Money & Gunna ft. Don Toliver & NAV",
+          "play_count": 1
+        },
+        {
+          "title": "Talkin Body (DJ N9NE 'Deceiver' Edit)",
+          "artist": "Tove Lo, Chris Lake, Max Styler",
+          "play_count": 1
+        },
+        {
+          "title": "Tiramisu (CK Intro - Clean)",
+          "artist": "Don Toliver",
+          "play_count": 1
+        },
+        {
+          "title": "Like A G6 - J Medina Click Edit",
+          "artist": "Far East Movement",
+          "play_count": 1
+        },
+        {
+          "title": "I Gotta Feeling (DJ Transit Edit) (Clean)",
+          "artist": "The Black Eyed Peas",
+          "play_count": 1
+        },
+        {
+          "title": "Break Free (Clean Short Edit)",
+          "artist": "Ariana Grande ft Zedd",
+          "play_count": 1
+        },
+        {
+          "title": "Pitbull - Fireball (Lyrics) ft. John Ryan",
+          "artist": null,
+          "play_count": 1
+        },
+        {
+          "title": "Fireball (Mintz House Edit)",
+          "artist": "Pitbull feat. John Ryan",
+          "play_count": 1
+        },
+        {
+          "title": "True Bestie (Intro Clean)",
+          "artist": "Drake ft Iconic Savvy",
+          "play_count": 1
+        },
+        {
+          "title": "Fire Burning Papi (DJ N9NE Mashup)",
+          "artist": "Sean Kingston, Kaaze, DJ N9NE",
+          "play_count": 1
+        },
+        {
+          "title": "Fire Burning (Priz Remix)",
+          "artist": "Sean Kingston",
+          "play_count": 1
+        },
+        {
+          "title": "Stay The Night (Even Steve Always Edit) Clean",
+          "artist": "Zedd & Hayley Williams vs jeonghyeon",
+          "play_count": 1
+        },
+        {
+          "title": "Let Me Love You - Sharkk Remix",
+          "artist": "Ne-Yo",
+          "play_count": 1
+        },
+        {
+          "title": "Justin Bieber - YUKON (Gravagerz REMIX)",
+          "artist": "gravagerz",
+          "play_count": 1
+        },
+        {
+          "title": "If U Had My Love (Extended Mix) Clean",
+          "artist": "Ian Asher",
+          "play_count": 1
+        },
+        {
+          "title": "Road Trips (Intro Clean)",
+          "artist": "Drake",
+          "play_count": 1
+        },
+        {
+          "title": "RATHER LIE (DJ Nasa Remix) (Clean Extended)",
+          "artist": "Playboi Carti ft The Weeknd",
+          "play_count": 1
+        },
+        {
+          "title": "Ferrari vs Just Dance (Anthem Kingz VIP Party Break) (Clean Extended)",
+          "artist": "James Hype vs Lady Gaga vs David Guetta",
+          "play_count": 1
+        },
+        {
+          "title": "S&M (DJ N9NE 'Wont Be Possible' Edit)",
+          "artist": "Rihanna x Tiesto, Odd Mob & Goodboys",
+          "play_count": 1
+        },
+        {
+          "title": "Boys A Liar x When It Rains (Dollar Cub Blend / Clean)",
+          "artist": " Pink Pantheress x Ice Spice x Bad Boy Chiller Crew",
+          "play_count": 1
+        },
+        {
+          "title": "Pal Pal - Dj Vishal x ESDY",
+          "artist": "DJ VISHAL X DJ ESDY",
+          "play_count": 1
+        },
+        {
+          "title": "That's What I Like (Alan Walker Remix) (Main)",
+          "artist": "Bruno Mars",
+          "play_count": 1
+        },
+        {
+          "title": "Ye Toh Sach Hai Ke Bhagwan-[AudioTrimmer.com]",
+          "artist": "Urvashi Baa (Tiya’s Baa)\n",
+          "play_count": 1
+        },
+        {
+          "title": null,
+          "artist": "Girls Court and the sister Jiya\n",
+          "play_count": 1
+        },
+        {
+          "title": "Waka Flocka Flame - No Hands (feat. Roscoe Dash and Wale)  Lyrics-[AudioTrimmer.com]",
+          "artist": "Girls Court and the sister Jiya\n",
+          "play_count": 1
+        },
+        {
+          "title": "Tauba Tauba X Aaye Haaye (Mashup)",
+          "artist": "Dj H Kudos Music",
+          "play_count": 1
+        },
+        {
+          "title": "Dil Le Gayee - DJ Sitanshu DJ Swati Bouncy Dhol Edit",
+          "artist": "Jasbir Jassi",
+          "play_count": 1
+        },
+        {
+          "title": "Kesariya (Dance Mix) - Brahmāstra | Amitabh B | Ranbir | Alia | Pritam | Shashwat | Antara",
+          "artist": "Sony Music India",
+          "play_count": 1
+        },
+        {
+          "title": "PAAGAL BADSHAH SONG ",
+          "artist": null,
+          "play_count": 1
+        },
+        {
+          "title": "Players",
+          "artist": "Badshah & Karan Aujla ft. Devika Badyal",
+          "play_count": 1
+        },
+        {
+          "title": "Beautiful (HH Clean Intro)",
+          "artist": "Akon ft Colby O'Donis & Kardinal Offishall",
+          "play_count": 1
+        },
+        {
+          "title": "Glad You Came [Funk3d Club Mix]",
+          "artist": "The Wanted",
+          "play_count": 1
+        },
+        {
+          "title": "No Broke Boys (Intro - Clean)",
+          "artist": "Disco Lines & Tinashe",
+          "play_count": 1
+        },
+        {
+          "title": "Rich Baby Daddy (Intro Clean)",
+          "artist": "Drake ft Sexyy Red & SZA",
+          "play_count": 1
+        },
+        {
+          "title": "Calling [Lose My Mind] (Extended Club Mix) ft. Ryan Tedder ",
+          "artist": "Sebastian Ingrosso and Alesso ",
+          "play_count": 1
+        },
+        {
+          "title": null,
+          "artist": "Father Daughter Dance\n",
+          "play_count": 1
+        },
+        {
+          "title": "0620-[AudioTrimmer.com]",
+          "artist": "Father Daughter Dance\n",
+          "play_count": 1
+        },
+        {
+          "title": "Ones You Miss (Radio Edit)",
+          "artist": "R3HAB",
+          "play_count": 1
+        },
+        {
+          "title": null,
+          "artist": "Surprise dance",
+          "play_count": 1
+        },
+        {
+          "title": "Stay (Festival Mix) (HH Clean Short)",
+          "artist": "Nicky Romero",
+          "play_count": 1
+        },
+        {
+          "title": "Be Kind (Joy Club Remix) (Clean Extended)",
+          "artist": "Marshmello & Halsey",
+          "play_count": 1
+        },
+        {
+          "title": null,
+          "artist": "paretns surprise",
+          "play_count": 1
+        },
+        {
+          "title": "Roses (Imanbek Remix) (HH Dirty Short)",
+          "artist": "SAINt JHN",
+          "play_count": 1
+        },
+        {
+          "title": null,
+          "artist": "tt",
+          "play_count": 1
+        },
+        {
+          "title": "Nice For What (HH Dirty Intro)",
+          "artist": "Drake",
+          "play_count": 1
+        },
+        {
+          "title": "Work (BPM Supreme Bootleg) (Clean)",
+          "artist": "Rihanna ft Drake vs DJ Otto",
+          "play_count": 1
+        },
+        {
+          "title": "E85 (Intro Dirty)",
+          "artist": "Don Toliver",
+          "play_count": 1
+        },
+        {
+          "title": "Where Are U Now (Extended Intro)",
+          "artist": "Jack U ft Justin Bieber",
+          "play_count": 1
+        },
+        {
+          "title": null,
+          "artist": "Anika, Swara, and Tiyas dance\n",
+          "play_count": 1
+        },
+        {
+          "title": "Bridesmaids Sangeet Dance  Bollywood Wedding Mashup  Badtameez Dil x Mi Gente x Barso Re-[AudioTrimmer.com]",
+          "artist": "Anika, Swara, and Tiyas dance\n",
+          "play_count": 1
+        },
+        {
+          "title": "Right Now (Na Na Na) (Cesar Castilla 'Better Off Alone' EDC Vegas Edit) (Clean)",
+          "artist": "Akon ",
+          "play_count": 1
+        },
+        {
+          "title": null,
+          "artist": "Jiya and Tiya’s Dance\n",
+          "play_count": 1
+        },
+        {
+          "title": "Nights Like This (HH Clean Short)",
+          "artist": "Loud Luxury & CID",
+          "play_count": 1
+        },
+        {
+          "title": "Rooftop Party  Mickey Singh  Amar Sandhu  LYRICS VIDEO",
+          "artist": null,
+          "play_count": 1
+        },
+        {
+          "title": "Bolly-Afro-Wood - @its_DoubleJ - #5inFiveV3",
+          "artist": null,
+          "play_count": 1
+        },
+        {
+          "title": "family ties",
+          "artist": "Baby Keem, Kendrick Lamar",
+          "play_count": 1
+        },
+        {
+          "title": "Dynamite (HH Clean Intro)",
+          "artist": "Taio Cruz",
+          "play_count": 1
+        },
+        {
+          "title": "SADI GALI TANU WEDS MANU  DJ ROHIT ",
+          "artist": "3rd intro cue 2",
+          "play_count": 1
+        },
+        {
+          "title": "Party In the U.S.A. - BVRNOUT Remix",
+          "artist": "Miley Cyrus",
+          "play_count": 1
+        },
+        {
+          "title": "Deewangi (Rainbow Mix)",
+          "artist": "1st intro",
+          "play_count": 1
+        },
+        {
+          "title": "Temperature (DJ N9NE 'Fogo' Bootleg) (Clean)",
+          "artist": "Sean Paul vs. Garmiani",
+          "play_count": 1
+        },
+        {
+          "title": "Panjabi MC - Mundian To Bach (Parah Dice Edit) [DropUnited Exclusive]",
+          "artist": null,
+          "play_count": 1
+        },
+        {
+          "title": "Low (DJ N9NE 'Drop That Low' Frankenstein Edit)",
+          "artist": "Flo Rida x Tujamo",
+          "play_count": 1
+        },
+        {
+          "title": "Desi Girl Dance",
+          "artist": null,
+          "play_count": 1
+        },
+        {
+          "title": "DJ Got Us Fallin' In Love (BPM Supreme Edit) (Clean)",
+          "artist": "Usher ft Pitbull vs Dj Snake",
+          "play_count": 1
+        },
+        {
+          "title": "Pepas (Intro Dirty)",
+          "artist": "Farruko",
+          "play_count": 1
+        },
+        {
+          "title": "Only Girl In The World (Mike Fresh Redux Edit) (Clean)",
+          "artist": "Rihanna",
+          "play_count": 1
+        },
+        {
+          "title": "Chammak Chalo (SJ BH2 Edit) Clean",
+          "artist": "Akon, Hamsika Iyer",
+          "play_count": 1
+        },
+        {
+          "title": "Break Free (Even Steve VIP Chorus First Edit) Clean",
+          "artist": "Ariana Grande ft Zedd",
+          "play_count": 1
+        },
+        {
+          "title": "AANKH MARE-MM_Drum Mix",
+          "artist": null,
+          "play_count": 1
+        },
+        {
+          "title": "O Saki Saki",
+          "artist": "Neha Kakkar, Tulsi Kumar & B. Praak",
+          "play_count": 1
+        },
+        {
+          "title": "Umbrella - Robin Roij Remix",
+          "artist": "Rihanna",
+          "play_count": 1
+        },
+        {
+          "title": "illegal weapon Dance Mix",
+          "artist": null,
+          "play_count": 1
+        },
+        {
+          "title": "Usher_Yeah",
+          "artist": null,
+          "play_count": 1
+        },
+        {
+          "title": "Gasolina",
+          "artist": null,
+          "play_count": 1
+        },
+        {
+          "title": "Beauty And A Beat - MARROW 2025 Remix",
+          "artist": "Justin Bieber ft. Nicki Minaj",
+          "play_count": 1
+        },
+        {
+          "title": "Ran To Atlanta (Intro Clean)",
+          "artist": "Drake ft Future & Molly Santana",
+          "play_count": 1
+        },
+        {
+          "title": "Dancing Queen - Waltry Remix",
+          "artist": "ABBA",
+          "play_count": 1
+        },
+        {
+          "title": "Travis Scott - FE!N (Clean - Lyrics) feat. Playboi Carti",
+          "artist": null,
+          "play_count": 1
+        },
+        {
+          "title": "Just Wanna Rock (Intro Dirty)",
+          "artist": "Lil Uzi Vert",
+          "play_count": 1
+        },
+        {
+          "title": "SICKO MODE - KidCutUp pt. 3 Club Edit (Clean)",
+          "artist": "Travis Scott ft. Drake",
+          "play_count": 1
+        },
+        {
+          "title": "Trap Queen (Mike Fresh Shockwave Edit) (Clean)",
+          "artist": "Fetty Wap",
+          "play_count": 1
+        },
+        {
+          "title": "679 (HH Clean Intro)",
+          "artist": "Fetty Wap ft Remy Boyz",
+          "play_count": 1
+        },
+        {
+          "title": "Bole Chudiyan (The remix that started it all)",
+          "artist": "Dj Insomnia",
+          "play_count": 1
+        },
+        {
+          "title": "Bala_Ry_Remix",
+          "artist": null,
+          "play_count": 1
+        },
+        {
+          "title": "Clarity (Original)",
+          "artist": "Zedd feat Foxes",
+          "play_count": 1
+        },
+        {
+          "title": "Down x Feel My Love (Thicc Edit)",
+          "artist": "Jay Sean ft Lil Wayne x Lucas & Steve x DubVision",
+          "play_count": 1
+        },
+        {
+          "title": "Love Story Disco Lines Remix",
+          "artist": "Disco Lines ft. Cassidi",
+          "play_count": 1
+        },
+        {
+          "title": "Baby (Intro Clean)",
+          "artist": "Justin Bieber ft Ludacris",
+          "play_count": 1
+        },
+        {
+          "title": "Starships (HH Clean Intro)",
+          "artist": "Nicki Minaj",
+          "play_count": 1
+        },
+        {
+          "title": "DANCE_Pitbull Feat. Ne-Yo, Afrojack & Nayer - Give Me Everything Tonight",
+          "artist": "DJ Ravish & DJ Chico",
+          "play_count": 1
+        }
+      ],
+      "most_played_artists": [
+        {
+          "artist": "Drake",
+          "play_count": 10
+        },
+        {
+          "artist": "Rihanna",
+          "play_count": 5
+        },
+        {
+          "artist": "Deejay Money",
+          "play_count": 3
+        },
+        {
+          "artist": "Far East Movement ft The Cataracs",
+          "play_count": 3
+        },
+        {
+          "artist": "The Black Eyed Peas",
+          "play_count": 3
+        },
+        {
+          "artist": "Ellie Goulding x James Hype",
+          "play_count": 3
+        },
+        {
+          "artist": "Boys Court and the parents Sanjay and Rupal\n",
+          "play_count": 3
+        },
+        {
+          "artist": "Boys Court Dance\n",
+          "play_count": 3
+        },
+        {
+          "artist": "David Guetta, Showtek",
+          "play_count": 2
+        },
+        {
+          "artist": "ZEEMUFFIN",
+          "play_count": 2
+        },
+        {
+          "artist": "Ellie Goulding x Calvin Harris x Hilyte",
+          "play_count": 2
+        },
+        {
+          "artist": "Kid Cudi ft Ratatat & MGMT",
+          "play_count": 2
+        },
+        {
+          "artist": "Don Toliver",
+          "play_count": 2
+        },
+        {
+          "artist": "Don Toliver & Travis Scott",
+          "play_count": 2
+        },
+        {
+          "artist": "David Guetta ft Akon",
+          "play_count": 2
+        },
+        {
+          "artist": "NETTED",
+          "play_count": 2
+        },
+        {
+          "artist": "Ariana Grande ft Zedd",
+          "play_count": 2
+        },
+        {
+          "artist": "Jennifer Lopez ft. Pitbull",
+          "play_count": 2
+        },
+        {
+          "artist": "Ent The birthday girl Tiya  ",
+          "play_count": 2
+        },
+        {
+          "artist": "John Summit, Britney Spears",
+          "play_count": 2
+        },
+        {
+          "artist": "Sean Kingston, Gin and Sonic, Sell Out MC",
+          "play_count": 2
+        },
+        {
+          "artist": "DJ HUFFY",
+          "play_count": 2
+        },
+        {
+          "artist": "Girls Court and the sister Jiya\n",
+          "play_count": 2
+        },
+        {
+          "artist": "The Black Eyed Peas & J Balvin",
+          "play_count": 2
+        },
+        {
+          "artist": "Hillary Duff",
+          "play_count": 2
+        },
+        {
+          "artist": "Father Daughter Dance\n",
+          "play_count": 2
+        },
+        {
+          "artist": "Girls Court Dance\n",
+          "play_count": 2
+        },
+        {
+          "artist": "Vrishtii and Tiya’s Dance\n",
+          "play_count": 2
+        },
+        {
+          "artist": "Tiya’s Dance team Dance\n",
+          "play_count": 2
+        },
+        {
+          "artist": "Anika, Swara, and Tiyas dance\n",
+          "play_count": 2
+        },
+        {
+          "artist": "Amar Arshi, Badshah & Neha Kakkar",
+          "play_count": 2
+        },
+        {
+          "artist": "DJ Khaled",
+          "play_count": 2
+        },
+        {
+          "artist": "Natasha Bedingfield - ",
+          "play_count": 2
+        },
+        {
+          "artist": "Taylor Swift x Dillon Francis",
+          "play_count": 2
+        },
+        {
+          "artist": "Dhol Beat International",
+          "play_count": 2
+        },
+        {
+          "artist": "Zedd ft Bellion",
+          "play_count": 2
+        },
+        {
+          "artist": "DJ AD RELOADED",
+          "play_count": 1
+        },
+        {
+          "artist": "RAUL MUSIC",
+          "play_count": 1
+        },
+        {
+          "artist": "Desi Junction Djs",
+          "play_count": 1
+        },
+        {
+          "artist": "Devi Sri Prasad",
+          "play_count": 1
+        },
+        {
+          "artist": "LMFAO",
+          "play_count": 1
+        },
+        {
+          "artist": "Internet Money & Gunna ft. Don Toliver & NAV",
+          "play_count": 1
+        },
+        {
+          "artist": "Tove Lo, Chris Lake, Max Styler",
+          "play_count": 1
+        },
+        {
+          "artist": "Far East Movement",
+          "play_count": 1
+        },
+        {
+          "artist": "Pitbull feat. John Ryan",
+          "play_count": 1
+        },
+        {
+          "artist": "Drake ft Iconic Savvy",
+          "play_count": 1
+        },
+        {
+          "artist": "Sean Kingston, Kaaze, DJ N9NE",
+          "play_count": 1
+        },
+        {
+          "artist": "Sean Kingston",
+          "play_count": 1
+        },
+        {
+          "artist": "Zedd & Hayley Williams vs jeonghyeon",
+          "play_count": 1
+        },
+        {
+          "artist": "Ne-Yo",
+          "play_count": 1
+        },
+        {
+          "artist": "gravagerz",
+          "play_count": 1
+        },
+        {
+          "artist": "Ian Asher",
+          "play_count": 1
+        },
+        {
+          "artist": "Playboi Carti ft The Weeknd",
+          "play_count": 1
+        },
+        {
+          "artist": "James Hype vs Lady Gaga vs David Guetta",
+          "play_count": 1
+        },
+        {
+          "artist": "Rihanna x Tiesto, Odd Mob & Goodboys",
+          "play_count": 1
+        },
+        {
+          "artist": " Pink Pantheress x Ice Spice x Bad Boy Chiller Crew",
+          "play_count": 1
+        },
+        {
+          "artist": "DJ VISHAL X DJ ESDY",
+          "play_count": 1
+        },
+        {
+          "artist": "Bruno Mars",
+          "play_count": 1
+        },
+        {
+          "artist": "Urvashi Baa (Tiya’s Baa)\n",
+          "play_count": 1
+        },
+        {
+          "artist": "Dj H Kudos Music",
+          "play_count": 1
+        },
+        {
+          "artist": "Jasbir Jassi",
+          "play_count": 1
+        },
+        {
+          "artist": "Sony Music India",
+          "play_count": 1
+        },
+        {
+          "artist": "Badshah & Karan Aujla ft. Devika Badyal",
+          "play_count": 1
+        },
+        {
+          "artist": "Akon ft Colby O'Donis & Kardinal Offishall",
+          "play_count": 1
+        },
+        {
+          "artist": "The Wanted",
+          "play_count": 1
+        },
+        {
+          "artist": "Disco Lines & Tinashe",
+          "play_count": 1
+        },
+        {
+          "artist": "Drake ft Sexyy Red & SZA",
+          "play_count": 1
+        },
+        {
+          "artist": "Sebastian Ingrosso and Alesso ",
+          "play_count": 1
+        },
+        {
+          "artist": "R3HAB",
+          "play_count": 1
+        },
+        {
+          "artist": "Surprise dance",
+          "play_count": 1
+        },
+        {
+          "artist": "Nicky Romero",
+          "play_count": 1
+        },
+        {
+          "artist": "Marshmello & Halsey",
+          "play_count": 1
+        },
+        {
+          "artist": "paretns surprise",
+          "play_count": 1
+        },
+        {
+          "artist": "SAINt JHN",
+          "play_count": 1
+        },
+        {
+          "artist": "tt",
+          "play_count": 1
+        },
+        {
+          "artist": "Rihanna ft Drake vs DJ Otto",
+          "play_count": 1
+        },
+        {
+          "artist": "Jack U ft Justin Bieber",
+          "play_count": 1
+        },
+        {
+          "artist": "Akon ",
+          "play_count": 1
+        },
+        {
+          "artist": "Jiya and Tiya’s Dance\n",
+          "play_count": 1
+        },
+        {
+          "artist": "Loud Luxury & CID",
+          "play_count": 1
+        },
+        {
+          "artist": "Baby Keem, Kendrick Lamar",
+          "play_count": 1
+        },
+        {
+          "artist": "Taio Cruz",
+          "play_count": 1
+        },
+        {
+          "artist": "3rd intro cue 2",
+          "play_count": 1
+        },
+        {
+          "artist": "Miley Cyrus",
+          "play_count": 1
+        },
+        {
+          "artist": "1st intro",
+          "play_count": 1
+        },
+        {
+          "artist": "Sean Paul vs. Garmiani",
+          "play_count": 1
+        },
+        {
+          "artist": "Flo Rida x Tujamo",
+          "play_count": 1
+        },
+        {
+          "artist": "Usher ft Pitbull vs Dj Snake",
+          "play_count": 1
+        },
+        {
+          "artist": "Farruko",
+          "play_count": 1
+        },
+        {
+          "artist": "Akon, Hamsika Iyer",
+          "play_count": 1
+        },
+        {
+          "artist": "Neha Kakkar, Tulsi Kumar & B. Praak",
+          "play_count": 1
+        },
+        {
+          "artist": "Justin Bieber ft. Nicki Minaj",
+          "play_count": 1
+        },
+        {
+          "artist": "Drake ft Future & Molly Santana",
+          "play_count": 1
+        },
+        {
+          "artist": "ABBA",
+          "play_count": 1
+        },
+        {
+          "artist": "Lil Uzi Vert",
+          "play_count": 1
+        },
+        {
+          "artist": "Travis Scott ft. Drake",
+          "play_count": 1
+        },
+        {
+          "artist": "Fetty Wap",
+          "play_count": 1
+        },
+        {
+          "artist": "Fetty Wap ft Remy Boyz",
+          "play_count": 1
+        },
+        {
+          "artist": "Dj Insomnia",
+          "play_count": 1
+        },
+        {
+          "artist": "Zedd feat Foxes",
+          "play_count": 1
+        },
+        {
+          "artist": "Jay Sean ft Lil Wayne x Lucas & Steve x DubVision",
+          "play_count": 1
+        },
+        {
+          "artist": "Disco Lines ft. Cassidi",
+          "play_count": 1
+        },
+        {
+          "artist": "Justin Bieber ft Ludacris",
+          "play_count": 1
+        },
+        {
+          "artist": "Nicki Minaj",
+          "play_count": 1
+        },
+        {
+          "artist": "DJ Ravish & DJ Chico",
+          "play_count": 1
+        }
+      ],
+      "genre_breakdown": {
+        "buckets": [
+          {
+            "genre": "Hip-Hop",
+            "play_count": 17
+          },
+          {
+            "genre": "Bollywood",
+            "play_count": 1
+          },
+          {
+            "genre": "Other",
+            "play_count": 49
+          },
+          {
+            "genre": "House",
+            "play_count": 15
+          },
+          {
+            "genre": "Electronica",
+            "play_count": 6
+          },
+          {
+            "genre": "Pop",
+            "play_count": 6
+          },
+          {
+            "genre": "R&B",
+            "play_count": 2
+          }
+        ],
+        "no_genre_count": 82
+      },
+      "subgenre_breakdown": {
+        "buckets": [
+          {
+            "subgenre": "Hip-Hop",
+            "genre": "Hip-Hop",
+            "play_count": 17
+          },
+          {
+            "subgenre": "Bollywood",
+            "genre": "Bollywood",
+            "play_count": 1
+          },
+          {
+            "subgenre": "Other",
+            "genre": "Other",
+            "play_count": 49
+          },
+          {
+            "subgenre": "House",
+            "genre": "House",
+            "play_count": 7
+          },
+          {
+            "subgenre": "Electro House",
+            "genre": "House",
+            "play_count": 6
+          },
+          {
+            "subgenre": "Dance",
+            "genre": "Electronica",
+            "play_count": 6
+          },
+          {
+            "subgenre": "Pop",
+            "genre": "Pop",
+            "play_count": 4
+          },
+          {
+            "subgenre": "R&B",
+            "genre": "R&B",
+            "play_count": 2
+          },
+          {
+            "subgenre": "Dance Pop",
+            "genre": "Pop",
+            "play_count": 2
+          },
+          {
+            "subgenre": "Progressive House",
+            "genre": "House",
+            "play_count": 2
+          }
+        ],
+        "no_genre_count": 82
+      },
+      "bpm_distribution": {
+        "count": 174,
+        "min": 63,
+        "max": 146,
+        "mean": 114.49068965517242,
+        "median": 125.005
+      },
+      "camelot_mixing_stats": {
+        "compatible_transitions": 49,
+        "incompatible_transitions": 126,
+        "excluded_no_key": 2
+      },
+      "set_length_sec": 21359,
+      "track_count": 178,
+      "energy_arc": [
+        {
+          "started_at": "2026-06-21T21:26:45.000Z",
+          "bpm": 105
+        },
+        {
+          "started_at": "2026-06-21T21:27:12.000Z",
+          "bpm": 128.02
+        },
+        {
+          "started_at": "2026-06-21T21:36:26.000Z",
+          "bpm": 105
+        },
+        {
+          "started_at": "2026-06-21T21:38:03.000Z",
+          "bpm": 129.99
+        },
+        {
+          "started_at": "2026-06-21T21:38:53.000Z",
+          "bpm": 130
+        },
+        {
+          "started_at": "2026-06-21T21:39:02.000Z",
+          "bpm": 130
+        },
+        {
+          "started_at": "2026-06-21T21:39:51.000Z",
+          "bpm": 132.83
+        },
+        {
+          "started_at": "2026-06-21T21:40:21.000Z",
+          "bpm": 138
+        },
+        {
+          "started_at": "2026-06-21T21:41:14.000Z",
+          "bpm": 128
+        },
+        {
+          "started_at": "2026-06-21T21:43:13.000Z",
+          "bpm": 130
+        },
+        {
+          "started_at": "2026-06-21T21:43:22.000Z",
+          "bpm": 128
+        },
+        {
+          "started_at": "2026-06-21T21:43:40.000Z",
+          "bpm": 128
+        },
+        {
+          "started_at": "2026-06-21T21:43:53.000Z",
+          "bpm": 128
+        },
+        {
+          "started_at": "2026-06-21T21:44:26.000Z",
+          "bpm": 66.5
+        },
+        {
+          "started_at": "2026-06-21T21:44:38.000Z",
+          "bpm": 74
+        },
+        {
+          "started_at": "2026-06-21T21:46:01.000Z",
+          "bpm": 130
+        },
+        {
+          "started_at": "2026-06-21T21:47:56.000Z",
+          "bpm": 127
+        },
+        {
+          "started_at": "2026-06-21T21:48:11.000Z",
+          "bpm": 125
+        },
+        {
+          "started_at": "2026-06-21T21:50:44.000Z",
+          "bpm": 128
+        },
+        {
+          "started_at": "2026-06-21T21:51:36.000Z",
+          "bpm": 105
+        },
+        {
+          "started_at": "2026-06-21T21:51:59.000Z",
+          "bpm": 132
+        },
+        {
+          "started_at": "2026-06-21T21:52:44.000Z",
+          "bpm": 130
+        },
+        {
+          "started_at": "2026-06-21T21:52:59.000Z",
+          "bpm": 130
+        },
+        {
+          "started_at": "2026-06-21T21:53:49.000Z",
+          "bpm": 125
+        },
+        {
+          "started_at": "2026-06-21T21:54:12.000Z",
+          "bpm": 126
+        },
+        {
+          "started_at": "2026-06-21T21:54:31.000Z",
+          "bpm": 123
+        },
+        {
+          "started_at": "2026-06-21T21:54:33.000Z",
+          "bpm": 126
+        },
+        {
+          "started_at": "2026-06-21T21:55:17.000Z",
+          "bpm": 125
+        },
+        {
+          "started_at": "2026-06-21T23:03:51.000Z",
+          "bpm": 79.03
+        },
+        {
+          "started_at": "2026-06-21T23:05:07.000Z",
+          "bpm": 77.48
+        },
+        {
+          "started_at": "2026-06-21T23:05:13.000Z",
+          "bpm": 63
+        },
+        {
+          "started_at": "2026-06-21T23:06:19.000Z",
+          "bpm": 71.5
+        },
+        {
+          "started_at": "2026-06-21T23:07:13.000Z",
+          "bpm": 63
+        },
+        {
+          "started_at": "2026-06-21T23:08:28.000Z",
+          "bpm": 138.01
+        },
+        {
+          "started_at": "2026-06-21T23:10:07.000Z",
+          "bpm": 130.01
+        },
+        {
+          "started_at": "2026-06-21T23:10:22.000Z",
+          "bpm": 128
+        },
+        {
+          "started_at": "2026-06-21T23:10:45.000Z",
+          "bpm": 128
+        },
+        {
+          "started_at": "2026-06-21T23:12:28.000Z",
+          "bpm": 138.01
+        },
+        {
+          "started_at": "2026-06-21T23:14:15.000Z",
+          "bpm": 130
+        },
+        {
+          "started_at": "2026-06-21T23:17:22.000Z",
+          "bpm": 123
+        },
+        {
+          "started_at": "2026-06-21T23:17:40.000Z",
+          "bpm": 137.99
+        },
+        {
+          "started_at": "2026-06-21T23:19:46.000Z",
+          "bpm": 124
+        },
+        {
+          "started_at": "2026-06-21T23:22:53.000Z",
+          "bpm": 126
+        },
+        {
+          "started_at": "2026-06-21T23:25:23.000Z",
+          "bpm": 130
+        },
+        {
+          "started_at": "2026-06-21T23:28:43.000Z",
+          "bpm": 132
+        },
+        {
+          "started_at": "2026-06-21T23:31:53.000Z",
+          "bpm": 132
+        },
+        {
+          "started_at": "2026-06-21T23:33:25.000Z",
+          "bpm": 130
+        },
+        {
+          "started_at": "2026-06-21T23:33:47.000Z",
+          "bpm": 130
+        },
+        {
+          "started_at": "2026-06-21T23:33:54.000Z",
+          "bpm": 130
+        },
+        {
+          "started_at": "2026-06-21T23:36:07.000Z",
+          "bpm": 133
+        },
+        {
+          "started_at": "2026-06-21T23:37:52.000Z",
+          "bpm": 128
+        },
+        {
+          "started_at": "2026-06-21T23:40:07.000Z",
+          "bpm": 128
+        },
+        {
+          "started_at": "2026-06-21T23:40:42.000Z",
+          "bpm": 134
+        },
+        {
+          "started_at": "2026-06-21T23:40:45.000Z",
+          "bpm": 128
+        },
+        {
+          "started_at": "2026-06-21T23:41:06.000Z",
+          "bpm": 128.02
+        },
+        {
+          "started_at": "2026-06-21T23:44:20.000Z",
+          "bpm": 94.86
+        },
+        {
+          "started_at": "2026-06-21T23:44:49.000Z",
+          "bpm": 131.5
+        },
+        {
+          "started_at": "2026-06-21T23:45:39.000Z",
+          "bpm": 102
+        },
+        {
+          "started_at": "2026-06-21T23:45:47.000Z",
+          "bpm": 102
+        },
+        {
+          "started_at": "2026-06-21T23:45:47.000Z",
+          "bpm": 131.5
+        },
+        {
+          "started_at": "2026-06-21T23:46:11.000Z",
+          "bpm": 102
+        },
+        {
+          "started_at": "2026-06-21T23:46:41.000Z",
+          "bpm": 132
+        },
+        {
+          "started_at": "2026-06-21T23:48:11.000Z",
+          "bpm": 130
+        },
+        {
+          "started_at": "2026-06-21T23:49:53.000Z",
+          "bpm": 79.03
+        },
+        {
+          "started_at": "2026-06-21T23:51:44.000Z",
+          "bpm": 126
+        },
+        {
+          "started_at": "2026-06-21T23:54:22.000Z",
+          "bpm": 112
+        },
+        {
+          "started_at": "2026-06-21T23:55:31.000Z",
+          "bpm": 105
+        },
+        {
+          "started_at": "2026-06-21T23:56:20.000Z",
+          "bpm": 112
+        },
+        {
+          "started_at": "2026-06-21T23:56:41.000Z",
+          "bpm": 105
+        },
+        {
+          "started_at": "2026-06-21T23:59:14.000Z",
+          "bpm": 104.99
+        },
+        {
+          "started_at": "2026-06-22T00:00:20.000Z",
+          "bpm": 101.95
+        },
+        {
+          "started_at": "2026-06-22T00:00:34.000Z",
+          "bpm": 100
+        },
+        {
+          "started_at": "2026-06-22T00:00:48.000Z",
+          "bpm": 128
+        },
+        {
+          "started_at": "2026-06-22T00:02:13.000Z",
+          "bpm": 101.95
+        },
+        {
+          "started_at": "2026-06-22T00:03:13.000Z",
+          "bpm": 100
+        },
+        {
+          "started_at": "2026-06-22T00:04:46.000Z",
+          "bpm": 107
+        },
+        {
+          "started_at": "2026-06-22T00:08:23.000Z",
+          "bpm": 110
+        },
+        {
+          "started_at": "2026-06-22T00:11:09.000Z",
+          "bpm": 130
+        },
+        {
+          "started_at": "2026-06-22T00:12:07.000Z",
+          "bpm": 130
+        },
+        {
+          "started_at": "2026-06-22T00:15:53.000Z",
+          "bpm": 128
+        },
+        {
+          "started_at": "2026-06-22T00:17:11.000Z",
+          "bpm": 128
+        },
+        {
+          "started_at": "2026-06-22T00:18:19.000Z",
+          "bpm": 131
+        },
+        {
+          "started_at": "2026-06-22T00:19:12.000Z",
+          "bpm": 146
+        },
+        {
+          "started_at": "2026-06-22T00:20:37.000Z",
+          "bpm": 74
+        },
+        {
+          "started_at": "2026-06-22T00:22:18.000Z",
+          "bpm": 130
+        },
+        {
+          "started_at": "2026-06-22T00:24:33.000Z",
+          "bpm": 126.99
+        },
+        {
+          "started_at": "2026-06-22T00:26:25.000Z",
+          "bpm": 125
+        },
+        {
+          "started_at": "2026-06-22T00:26:49.000Z",
+          "bpm": 126.99
+        },
+        {
+          "started_at": "2026-06-22T00:30:56.000Z",
+          "bpm": 125
+        },
+        {
+          "started_at": "2026-06-22T00:33:26.000Z",
+          "bpm": 93.48
+        },
+        {
+          "started_at": "2026-06-22T00:33:34.000Z",
+          "bpm": 93.48
+        },
+        {
+          "started_at": "2026-06-22T00:37:25.000Z",
+          "bpm": 124
+        },
+        {
+          "started_at": "2026-06-22T00:38:05.000Z",
+          "bpm": 90.01
+        },
+        {
+          "started_at": "2026-06-22T00:41:16.000Z",
+          "bpm": 126
+        },
+        {
+          "started_at": "2026-06-22T00:50:23.000Z",
+          "bpm": 123
+        },
+        {
+          "started_at": "2026-06-22T00:52:57.000Z",
+          "bpm": 93
+        },
+        {
+          "started_at": "2026-06-22T00:55:15.000Z",
+          "bpm": 122
+        },
+        {
+          "started_at": "2026-06-22T00:56:56.000Z",
+          "bpm": 98.14
+        },
+        {
+          "started_at": "2026-06-22T00:58:53.000Z",
+          "bpm": 93.03
+        },
+        {
+          "started_at": "2026-06-22T00:58:57.000Z",
+          "bpm": 93.03
+        },
+        {
+          "started_at": "2026-06-22T00:59:11.000Z",
+          "bpm": 93.03
+        },
+        {
+          "started_at": "2026-06-22T01:00:36.000Z",
+          "bpm": 93.5
+        },
+        {
+          "started_at": "2026-06-22T01:01:17.000Z",
+          "bpm": 112
+        },
+        {
+          "started_at": "2026-06-22T01:02:37.000Z",
+          "bpm": 76.02
+        },
+        {
+          "started_at": "2026-06-22T01:03:55.000Z",
+          "bpm": 131.98
+        },
+        {
+          "started_at": "2026-06-22T01:06:23.000Z",
+          "bpm": 63
+        },
+        {
+          "started_at": "2026-06-22T01:06:33.000Z",
+          "bpm": 76.02
+        },
+        {
+          "started_at": "2026-06-22T01:06:48.000Z",
+          "bpm": 63
+        },
+        {
+          "started_at": "2026-06-22T01:09:22.000Z",
+          "bpm": 125
+        },
+        {
+          "started_at": "2026-06-22T01:11:18.000Z",
+          "bpm": 125.01
+        },
+        {
+          "started_at": "2026-06-22T01:11:18.000Z",
+          "bpm": 125.01
+        },
+        {
+          "started_at": "2026-06-22T01:12:10.000Z",
+          "bpm": 72
+        },
+        {
+          "started_at": "2026-06-22T01:14:16.000Z",
+          "bpm": 129.76
+        },
+        {
+          "started_at": "2026-06-22T01:14:22.000Z",
+          "bpm": 129.76
+        },
+        {
+          "started_at": "2026-06-22T01:17:43.000Z",
+          "bpm": 69.99
+        },
+        {
+          "started_at": "2026-06-22T01:20:53.000Z",
+          "bpm": 105.28
+        },
+        {
+          "started_at": "2026-06-22T01:22:35.000Z",
+          "bpm": 105.28
+        },
+        {
+          "started_at": "2026-06-22T01:23:18.000Z",
+          "bpm": 132
+        },
+        {
+          "started_at": "2026-06-22T01:25:14.000Z",
+          "bpm": 97.03
+        },
+        {
+          "started_at": "2026-06-22T01:28:17.000Z",
+          "bpm": 126
+        },
+        {
+          "started_at": "2026-06-22T01:30:07.000Z",
+          "bpm": 105.76
+        },
+        {
+          "started_at": "2026-06-22T01:31:24.000Z",
+          "bpm": 106.01
+        },
+        {
+          "started_at": "2026-06-22T01:52:54.000Z",
+          "bpm": 116
+        },
+        {
+          "started_at": "2026-06-22T01:53:29.000Z",
+          "bpm": 120
+        },
+        {
+          "started_at": "2026-06-22T01:54:51.000Z",
+          "bpm": 130
+        },
+        {
+          "started_at": "2026-06-22T01:56:38.000Z",
+          "bpm": 126
+        },
+        {
+          "started_at": "2026-06-22T01:58:15.000Z",
+          "bpm": 122.01
+        },
+        {
+          "started_at": "2026-06-22T01:59:58.000Z",
+          "bpm": 127.99
+        },
+        {
+          "started_at": "2026-06-22T02:00:22.000Z",
+          "bpm": 128
+        },
+        {
+          "started_at": "2026-06-22T02:01:15.000Z",
+          "bpm": 128
+        },
+        {
+          "started_at": "2026-06-22T02:02:51.000Z",
+          "bpm": 128
+        },
+        {
+          "started_at": "2026-06-22T02:04:13.000Z",
+          "bpm": 127.98
+        },
+        {
+          "started_at": "2026-06-22T02:05:36.000Z",
+          "bpm": 130
+        },
+        {
+          "started_at": "2026-06-22T02:08:57.000Z",
+          "bpm": 120
+        },
+        {
+          "started_at": "2026-06-22T02:17:00.000Z",
+          "bpm": 127.99
+        },
+        {
+          "started_at": "2026-06-22T02:23:02.000Z",
+          "bpm": 130
+        },
+        {
+          "started_at": "2026-06-22T02:24:12.000Z",
+          "bpm": 127
+        },
+        {
+          "started_at": "2026-06-22T02:25:53.000Z",
+          "bpm": 129.98
+        },
+        {
+          "started_at": "2026-06-22T02:27:31.000Z",
+          "bpm": 130
+        },
+        {
+          "started_at": "2026-06-22T02:28:47.000Z",
+          "bpm": 132
+        },
+        {
+          "started_at": "2026-06-22T02:31:57.000Z",
+          "bpm": 108.01
+        },
+        {
+          "started_at": "2026-06-22T02:32:31.000Z",
+          "bpm": 100
+        },
+        {
+          "started_at": "2026-06-22T02:33:02.000Z",
+          "bpm": 101
+        },
+        {
+          "started_at": "2026-06-22T02:34:05.000Z",
+          "bpm": 105.76
+        },
+        {
+          "started_at": "2026-06-22T02:35:30.000Z",
+          "bpm": 115
+        },
+        {
+          "started_at": "2026-06-22T02:35:46.000Z",
+          "bpm": 106.87
+        },
+        {
+          "started_at": "2026-06-22T02:37:44.000Z",
+          "bpm": 100
+        },
+        {
+          "started_at": "2026-06-22T02:38:10.000Z",
+          "bpm": 96
+        },
+        {
+          "started_at": "2026-06-22T02:44:19.000Z",
+          "bpm": 128
+        },
+        {
+          "started_at": "2026-06-22T02:48:00.000Z",
+          "bpm": 67.5
+        },
+        {
+          "started_at": "2026-06-22T02:52:04.000Z",
+          "bpm": 128
+        },
+        {
+          "started_at": "2026-06-22T02:59:13.000Z",
+          "bpm": 71.5
+        },
+        {
+          "started_at": "2026-06-22T03:00:28.000Z",
+          "bpm": 74
+        },
+        {
+          "started_at": "2026-06-22T03:01:10.000Z",
+          "bpm": 75.04
+        },
+        {
+          "started_at": "2026-06-22T03:02:15.000Z",
+          "bpm": 77.5
+        },
+        {
+          "started_at": "2026-06-22T03:03:19.000Z",
+          "bpm": 82
+        },
+        {
+          "started_at": "2026-06-22T03:04:35.000Z",
+          "bpm": 95
+        },
+        {
+          "started_at": "2026-06-22T03:05:32.000Z",
+          "bpm": 100
+        },
+        {
+          "started_at": "2026-06-22T03:06:36.000Z",
+          "bpm": 101.03
+        },
+        {
+          "started_at": "2026-06-22T03:08:51.000Z",
+          "bpm": 128.01
+        },
+        {
+          "started_at": "2026-06-22T03:09:33.000Z",
+          "bpm": 108
+        },
+        {
+          "started_at": "2026-06-22T03:09:44.000Z",
+          "bpm": 107.22
+        },
+        {
+          "started_at": "2026-06-22T03:11:06.000Z",
+          "bpm": 107.22
+        },
+        {
+          "started_at": "2026-06-22T03:13:35.000Z",
+          "bpm": 128
+        },
+        {
+          "started_at": "2026-06-22T03:13:35.000Z",
+          "bpm": 128
+        },
+        {
+          "started_at": "2026-06-22T03:15:10.000Z",
+          "bpm": 128
+        },
+        {
+          "started_at": "2026-06-22T03:16:51.000Z",
+          "bpm": 125
+        },
+        {
+          "started_at": "2026-06-22T03:18:20.000Z",
+          "bpm": 128
+        },
+        {
+          "started_at": "2026-06-22T03:19:03.000Z",
+          "bpm": 128.01
+        },
+        {
+          "started_at": "2026-06-22T03:19:09.000Z",
+          "bpm": 128
+        },
+        {
+          "started_at": "2026-06-22T03:20:20.000Z",
+          "bpm": 130
+        },
+        {
+          "started_at": "2026-06-22T03:21:22.000Z",
+          "bpm": 125
+        },
+        {
+          "started_at": "2026-06-22T03:22:07.000Z",
+          "bpm": 115
+        },
+        {
+          "started_at": "2026-06-22T03:22:44.000Z",
+          "bpm": 130
+        }
+      ],
+      "confidence": {
+        "value": 1,
+        "track_count": 178,
+        "long_gap_count": 8
+      }
+    }
+  }
+]

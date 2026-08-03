@@ -246,6 +246,21 @@
      to name literal colors. */
   --color-surface-void: #000000;
 
+  /* Liquid-metal CTA material (Story 3.6) — a NEW "material" in the palette, per
+     AC-14's "decide: true-chrome vs lavender-tinted" call: a ROSE-TINTED CHROME,
+     so the hero CTA reads as premium metal that still belongs to Ember rather
+     than a neutral silver adrift from the accent. --metal-back is the deep
+     graphite the metal pools into; --metal-tint the bright rose-white its
+     highlights glint (reusing the Ember primary-fixed rose). These are passed to
+     the WebGL liquid-metal shader at RUNTIME (read via getComputedStyle in
+     liquid-metal-button.tsx), which is why they must be real hex here rather than
+     a var() the shader's hex parser can't read — and why they live in tokens.css,
+     the one file exempt from no-hardcoded-colors.test.ts. --metal-label is the
+     near-white the CTA text sits in over the metal. */
+  --metal-back: #14171d;
+  --metal-tint: #ffd9e1;
+  --metal-label: #f6eef0;
+
   /* Dock rim + chip overlays (dock revision 2) — thin white-alpha washes that
      catch light on the void dock: -rim is the 1px inset top-edge highlight
      (~8% white), -chip-active the active cell's raised-chip overlay (~1%),
@@ -255,4 +270,47 @@
   --color-nav-rim: #ffffff14;
   --color-nav-chip-active: #ffffff03;
   --color-nav-chip-hover: #ffffff0a;
+
+  /* ─── Dashboard cool direction (Story 3.6 redesign, 2026-08-02) ────────────
+     Arjun's 2026-08-02 pivot: the dashboard reads COOL — steel/ice on the
+     existing blue-black base — with the reddish Ember accent pulled back on
+     THIS surface. Ember still owns the nav / auth / primary buttons app-wide;
+     these tokens are the dashboard's own cool accent + hero materials, so the
+     global accent (and other stories' screens) stay untouched. tokens.css is
+     the one file allowed literal hex (no-hardcoded-colors.test.ts); every
+     consumer reads these as var()s. Contrast verified vs the base #101319:
+     ice 11.9:1, ice-bright 14.6:1, steel 8.6:1, steel-dim 6.0:1 — all clear
+     AA as text; the dimmed arc line is graphical (>3:1). */
+  --color-ice: #8fd8ff;         /* the energy-arc line + cool accent */
+  --color-ice-bright: #bfeaff;  /* peak marker + the emphasised dancefloor line */
+  --color-ice-dim: #3f6a8c;     /* the dimmed full-night line behind the window */
+  --color-ice-glow: #8fd8ff2b;  /* ~17% — arc area fill + soft accent glow */
+  --color-ice-band: #8fd8ff17;  /* ~9%  — the dancefloor window band wash */
+  --color-steel: #9fb2cf;       /* cool secondary text */
+  --color-steel-dim: #7f93b3;   /* cool tertiary labels (still AA) */
+
+  /* Hero atmosphere — a STATIC (never-oscillating, per Apple reduced-motion
+     guidance) steel-indigo radial that pools light into the hero; -scrim is
+     the legibility wash the editorial text sits over where it crosses the arc. */
+  --color-hero-atmos: #16233b;       /* deep steel-indigo ambience core */
+  --color-hero-atmos-fade: #16233b00;/* the same hue at zero alpha, for clean gradient fades */
+  --color-ice-fade: #8fd8ff00;       /* ice at zero alpha (stands in for the see-through keyword the guard flags) */
+  --color-hero-scrim: #0b0e14e6;     /* ~90% base wash for text legibility */
+
+  /* Cold-chrome liquid metal — the dashboard's cool counterpart to the Ember
+     rose --metal-* material still used on Set Detail. Read by the WebGL shader
+     at runtime (getComputedStyle), so real hex, not a var() its parser can't
+     read; the hero disc passes these token NAMES to the shared component. */
+  --metal-cool-back: #0f151d;   /* cold graphite the chrome pools into */
+  --metal-cool-tint: #cfe6ff;   /* cold ice-white the highlights glint */
+
+  /* ⌘K spotlight command palette (Apple-material overlay). -scrim dims the page
+     to focus; -surface is the frosted panel (globals.css raises it to
+     -surface-solid under prefers-reduced-transparency); -rim the bright top
+     edge; -row-active the ice wash on the highlighted result row. */
+  --color-spotlight-scrim: #06080cd9;       /* ~85% dim-to-focus backdrop */
+  --color-spotlight-surface: #141a24f2;     /* ~95% frosted panel */
+  --color-spotlight-surface-solid: #141a24; /* opaque fallback (reduced-transparency) */
+  --color-spotlight-rim: #ffffff1f;         /* ~12% bright top edge */
+  --color-spotlight-row-active: #8fd8ff14;  /* ~8% ice wash on the active row */
 }

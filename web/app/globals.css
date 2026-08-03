@@ -47,6 +47,27 @@
   --color-border: var(--color-outline-variant);
   --color-input: var(--color-outline-variant);
   --color-ring: var(--color-primary);
+
+  /* Story 3.6 additions — aliased additively as this story's dashboard needs
+     them (globals.css comment: "extend additively as later stories need more").
+     primary-glow is --color-primary at ~20% alpha, the NEW-marker border;
+     surface-container-low is the card's hover lift; spark the rare amber pole. */
+  --color-primary-glow: var(--color-primary-glow);
+  --color-surface-container-low: var(--color-surface-container-low);
+  --color-surface-container-lowest: var(--color-surface-container-lowest);
+  --color-spark: var(--color-spark);
+  --color-on-surface-variant: var(--color-on-surface-variant);
+
+  /* Story 3.6 dashboard redesign (cool direction) — aliased so the arc's
+     stroke and fill utilities, and the shell's text, bg, and border utilities,
+     resolve to the cool tokens. See tokens.css for the values + AA notes. */
+  --color-ice: var(--color-ice);
+  --color-ice-bright: var(--color-ice-bright);
+  --color-ice-dim: var(--color-ice-dim);
+  --color-ice-glow: var(--color-ice-glow);
+  --color-ice-band: var(--color-ice-band);
+  --color-steel: var(--color-steel);
+  --color-steel-dim: var(--color-steel-dim);
 }
 
 html {
@@ -198,6 +219,18 @@ a {
 }
 
 /* Obsidian type scale (UX-DR1 / Story 2.2 AC-2) */
+
+/* Hero display (Story 3.6 redesign) — the one oversized, cinematic headline.
+   Fluid clamp so it scales phone→desktop without a breakpoint switch; tight
+   leading + negative tracking as the type grows (Apple optical-sizing guidance). */
+.text-display-xl {
+  font-family: var(--font-hanken-grotesk);
+  font-size: clamp(2.5rem, 5.5vw, 4.5rem);
+  font-weight: 600;
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
 
 .text-display-lg {
   font-family: var(--font-hanken-grotesk);
@@ -490,7 +523,1108 @@ a {
   .auth-button:focus-visible,
   .auth-biometric-anchor:focus-visible,
   .auth-oauth-button:focus-visible,
-  .floating-nav-link:focus-visible {
+  .floating-nav-link:focus-visible,
+  .set-card:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
+}
+
+/* ─── Dashboard (Story 3.6) ───────────────────────────────────────────────
+   Card-Reflection set cards + the passive NEW marker. Token-only (see
+   no-hardcoded-colors.test.ts); all motion respects prefers-reduced-motion. */
+
+/* Fixed app shell (AC-4): the page is locked to the viewport — 100dvh, not
+   100vh, so mobile browser chrome never clips the frame — and does NOT scroll.
+   Only .dashboard-scroll scrolls; the header and the floating nav stay put. */
+.dashboard-shell {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dashboard-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  width: 100%;
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: max(var(--space-lg), env(safe-area-inset-top)) var(--space-gutter) var(--space-md);
+  color: var(--color-on-surface-variant);
+}
+
+/* Masthead — brand wordmark + tagline, with a calm capture-status line. */
+.masthead-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.masthead-wordmark {
+  font-family: var(--font-geist-mono);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.42em;
+  line-height: 1;
+  color: var(--color-on-surface);
+  /* the tracking adds trailing space on the right; pull the box back so the
+     glyphs align to the gutter */
+  margin-right: -0.42em;
+}
+
+.masthead-tagline {
+  color: var(--color-steel-dim);
+}
+
+.masthead-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--color-steel-dim);
+  text-wrap: nowrap;
+}
+
+.masthead-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--color-ice);
+  box-shadow: 0 0 8px 0 var(--color-ice-glow);
+  animation: masthead-pulse 3.2s var(--motion-ease-in-out) infinite;
+}
+
+@keyframes masthead-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .masthead-status-dot {
+    animation: none;
+  }
+}
+
+/* The one scroll container. Bounded region between header and nav. */
+.dashboard-scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+
+.dashboard-inner {
+  width: 100%;
+  max-width: var(--container-max);
+  margin: 0 auto;
+  /* Bottom padding clears the floating nav (bottom-6 dock, ~44px tall) plus the
+     device safe-area, so the last card is never trapped behind either. */
+  padding: 0 var(--space-gutter) calc(var(--space-xxl) + var(--space-lg) + env(safe-area-inset-bottom));
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--space-md);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Cold state (AC-2): the day-one experience, centered, positive, no error tone —
+   now cinematic, with a static ice-glow atmosphere behind the console line. */
+.dashboard-cold {
+  position: relative;
+  min-height: 72dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-md);
+  text-align: center;
+  max-width: 56ch;
+  margin: 0 auto;
+  padding: var(--space-xl) 0;
+}
+
+/* A soft, STATIC pool of ice light (never oscillating — reduced-motion safe). */
+.dashboard-cold-atmos {
+  position: absolute;
+  top: 38%;
+  left: 50%;
+  width: min(680px, 90vw);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle, var(--color-ice-glow), var(--color-hero-scrim) 62%);
+  filter: blur(20px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.dashboard-cold > *:not(.dashboard-cold-atmos) {
+  position: relative;
+  z-index: 1;
+}
+
+.dashboard-cold-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--color-steel);
+}
+
+.dashboard-cold-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-full);
+  background: var(--color-ice);
+  box-shadow: 0 0 10px 1px var(--color-ice-glow);
+  animation: masthead-pulse 3.2s var(--motion-ease-in-out) infinite;
+}
+
+.dashboard-cold-title {
+  text-wrap: balance;
+}
+
+.dashboard-cold-body {
+  color: var(--color-steel);
+  text-wrap: pretty;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-cold-dot {
+    animation: none;
+  }
+}
+
+
+/* Archive rows (Story 3.6 redesign) — the lighter register below the hero. Each
+   set is a full-width row (a grid), so ANY count fills the width cleanly rather
+   than stranding a lone card in dead space. The whole row is one link; hover
+   warms the border to ice + lifts a hair; an unopened set warms to ice. */
+.archive-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.set-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 14rem) minmax(0, 1fr) auto minmax(7rem, auto);
+  align-items: center;
+  gap: var(--space-md) var(--space-xl);
+  padding: var(--space-md) var(--space-lg);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface-container-lowest);
+  color: var(--color-on-surface);
+  touch-action: manipulation;
+  transition:
+    border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    transform var(--motion-duration-instant) var(--motion-ease-standard);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .set-row:hover {
+    border-color: var(--color-ice-dim);
+    background: var(--color-surface-container-low);
+  }
+  .set-row:hover .set-row-chevron {
+    transform: translateX(3px);
+    color: var(--color-ice);
+  }
+}
+
+.set-row:focus-visible {
+  outline: none;
+  border-color: var(--color-ice);
+  box-shadow: 0 0 0 2px var(--color-ice-glow);
+}
+
+/* Unopened set: a passive ice warm on the border (UX-DR5 revision — never a
+   button or modal), consistent with the hero's cool direction. */
+.set-row--new {
+  border-color: var(--color-ice-glow);
+  box-shadow: inset 0 0 28px -14px var(--color-ice-glow);
+}
+
+.set-row-when {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.set-row-date {
+  color: var(--color-on-surface);
+}
+
+.set-row-session {
+  color: var(--color-steel-dim);
+}
+
+/* NEW marker takes the session's slot while unopened (they never coexist). */
+.set-row-new {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--color-ice);
+  text-wrap: nowrap;
+}
+
+.set-row-new-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--color-ice);
+  box-shadow: 0 0 8px 0 var(--color-ice-glow);
+  animation: set-row-pulse 2s var(--motion-ease-in-out) infinite;
+}
+
+.set-row-arc {
+  width: 100%;
+  height: 40px;
+  opacity: 0.9;
+}
+
+.set-row-genres {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  justify-content: flex-end;
+}
+
+.set-row-chip {
+  padding: 2px var(--space-sm);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-container-high);
+  color: var(--color-steel);
+  text-wrap: nowrap;
+}
+
+.set-row-tail {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-md);
+  justify-content: flex-end;
+  color: var(--color-steel);
+}
+
+.set-row-stats {
+  text-wrap: nowrap;
+}
+
+.set-row-chevron {
+  color: var(--color-steel-dim);
+  transition:
+    transform var(--motion-duration-fast) var(--motion-ease-out),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+@keyframes set-row-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.72);
+  }
+}
+
+/* One restrained staggered entrance (fade + rise). Not celebratory. */
+.set-row-enter {
+  animation: set-row-enter var(--motion-duration-base) var(--motion-ease-out) both;
+  animation-delay: var(--enter-delay, 0ms);
+}
+
+@keyframes set-row-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Stack the row on narrow screens: date/label → arc → genres → stats. */
+@media (max-width: 680px) {
+  .set-row {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-sm);
+  }
+  .set-row-genres {
+    justify-content: flex-start;
+  }
+  .set-row-tail {
+    justify-content: space-between;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .set-row,
+  .set-row-enter {
+    transition: none;
+    animation: none;
+  }
+  .set-row-new-dot {
+    animation: none;
+  }
+  .set-row:hover .set-row-chevron {
+    transform: none;
+  }
+}
+
+/* ─── Liquid-metal hero CTA (Story 3.6, AC-14) ────────────────────────────
+   Styles moved here from the reference component's runtime document.head
+   <style> injection. Token-only. The WebGL shader fills behind the label; an
+   Ember gradient is the fallback until it mounts (or where WebGL is off). */
+.liquid-metal-button {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: var(--space-sm) var(--space-lg);
+  border: 1px solid var(--btn-gradient-border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  touch-action: manipulation;
+  font-family: var(--font-geist-mono);
+  color: var(--metal-label);
+  background: radial-gradient(
+    circle at 30% 20%,
+    var(--btn-gradient-1),
+    var(--btn-gradient-2) 55%,
+    var(--btn-gradient-3)
+  );
+  transition: transform var(--motion-duration-instant) var(--motion-ease-standard);
+}
+
+.liquid-metal-button:active {
+  transform: scale(0.985);
+}
+
+.liquid-metal-button:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-primary),
+    0 0 0 6px var(--color-primary-glow);
+}
+
+.liquid-metal-fill {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+}
+
+.liquid-metal-fill > * {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.liquid-metal-ripple-host {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.liquid-metal-label {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.liquid-metal-ripple {
+  position: absolute;
+  border-radius: var(--radius-full);
+  background: var(--color-nav-rim);
+  transform: scale(0);
+  animation: liquid-metal-ripple var(--motion-duration-slow) var(--motion-ease-out);
+  pointer-events: none;
+}
+
+@keyframes liquid-metal-ripple {
+  to {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liquid-metal-button {
+    transition: none;
+  }
+  .liquid-metal-button:active {
+    transform: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .liquid-metal-button:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
+}
+
+/* ═══ Dashboard redesign — cool cinematic direction (Story 3.6, 2026-08-02) ═══
+   Feature-first hero + lighter archive + ⌘K spotlight. Token-only throughout
+   (no-hardcoded-colors.test.ts); all motion is reduced-motion-safe; overlays
+   carry forced-colors + reduced-transparency fallbacks. */
+
+/* Soft ice glow shared by the arc lines. */
+.energy-arc-glow {
+  filter: drop-shadow(0 0 3px var(--color-ice-glow));
+}
+
+/* ─── Hero ─────────────────────────────────────────────────────────────── */
+.hero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  padding: clamp(var(--space-md), 3vw, var(--space-xl)) 0 var(--space-lg);
+  isolation: isolate;
+}
+
+/* A STATIC steel-indigo pool of light — never animated (Apple reduced-motion
+   guidance against slow full-surface oscillation). Sits behind the hero. */
+.hero-atmos {
+  position: absolute;
+  inset: -10% -20% 20%;
+  z-index: -1;
+  background:
+    radial-gradient(60% 80% at 72% 20%, var(--color-hero-atmos), var(--color-hero-atmos-fade) 70%),
+    radial-gradient(50% 70% at 20% 40%, var(--color-ice-band), var(--color-ice-fade) 72%);
+  filter: blur(8px);
+  pointer-events: none;
+}
+
+.hero-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-xl);
+}
+
+.hero-editorial {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-md);
+  max-width: 34ch;
+}
+
+.hero-eyebrow {
+  color: var(--color-steel);
+  letter-spacing: 0.14em;
+}
+
+.hero-headline {
+  color: var(--color-on-background);
+  margin: 0;
+}
+
+.hero-dek {
+  color: var(--color-steel);
+  max-width: 42ch;
+  text-wrap: pretty;
+}
+
+.hero-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-lg) var(--space-xl);
+  margin: var(--space-xs) 0 var(--space-sm);
+}
+
+.hero-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hero-stat-label {
+  color: var(--color-steel-dim);
+}
+
+.hero-stat-value {
+  font-family: var(--font-hanken-grotesk);
+  font-size: clamp(1.35rem, 2.4vw, 1.9rem);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: var(--color-on-background);
+}
+
+/* CTA — a cool steel ghost button (the bold liquid metal is the disc, so the
+   CTA stays crisp + keyboard-clear rather than a second WebGL context). */
+.hero-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-lg);
+  border: 1px solid var(--color-ice-dim);
+  border-radius: var(--radius-lg);
+  background: var(--color-ice-band);
+  color: var(--color-on-background);
+  font-family: var(--font-geist-mono);
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  touch-action: manipulation;
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    transform var(--motion-duration-instant) var(--motion-ease-standard);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .hero-cta:hover {
+    background: var(--color-ice-glow);
+    border-color: var(--color-ice);
+  }
+  .hero-cta:hover .hero-cta-arrow {
+    transform: translateX(3px);
+  }
+}
+
+.hero-cta:active {
+  transform: scale(0.985);
+}
+
+.hero-cta:focus-visible {
+  outline: none;
+  border-color: var(--color-ice);
+  box-shadow:
+    0 0 0 2px var(--color-ice),
+    0 0 0 6px var(--color-ice-glow);
+}
+
+.hero-cta-arrow {
+  transition: transform var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+/* ─── Hero liquid-metal disc ───────────────────────────────────────────── */
+.hero-disc-slot {
+  flex-shrink: 0;
+}
+
+.hero-disc {
+  position: relative;
+  width: clamp(180px, 26vw, 340px);
+  aspect-ratio: 1;
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  /* Fallback material (before the shader mounts / where WebGL is off) — never a
+     bare circle. Token-driven cold-chrome radial. */
+  background: radial-gradient(circle at 34% 28%, var(--metal-cool-tint), var(--metal-cool-back) 62%);
+  box-shadow:
+    0 30px 80px -30px var(--color-shadow-soft),
+    0 0 60px -20px var(--color-ice-glow);
+}
+
+.hero-disc-shader {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.hero-disc-shader canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+/* Rim light + inner shading so the disc reads as a physical sphere. */
+.hero-disc-rim {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-full);
+  box-shadow:
+    inset 0 1px 1px 0 var(--color-nav-rim),
+    inset 0 -24px 48px -24px var(--color-surface-void);
+  pointer-events: none;
+}
+
+/* ─── Hero energy arc (the centerpiece visual) ─────────────────────────── */
+.hero-arc-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.hero-arc {
+  position: relative;
+  width: 100%;
+  height: clamp(160px, 22vw, 240px);
+  margin: 0;
+}
+
+.hero-arc-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+
+.hero-arc-window {
+  filter: drop-shadow(0 0 6px var(--color-ice-glow));
+}
+
+/* Draw-on: pathLength="1" makes the dash length-independent. */
+.hero-arc-line {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: hero-arc-draw 1.4s var(--motion-ease-out) forwards;
+}
+
+.hero-arc-window.hero-arc-line {
+  animation-delay: 0.15s;
+}
+
+@keyframes hero-arc-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.hero-arc-area,
+.hero-arc-band {
+  opacity: 0;
+  animation: hero-arc-fade 0.9s var(--motion-ease-out) 0.25s forwards;
+}
+
+@keyframes hero-arc-fade {
+  to {
+    opacity: 1;
+  }
+}
+
+.hero-arc-annotations {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.hero-arc-peak {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+
+.hero-arc-peak-dot {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+  background: var(--color-ice-bright);
+  box-shadow:
+    0 0 0 4px var(--color-ice-band),
+    0 0 14px 2px var(--color-ice-glow);
+}
+
+.hero-arc-window-label {
+  position: absolute;
+  bottom: -6px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  text-align: center;
+  text-wrap: nowrap;
+}
+
+.hero-arc-window-label .text-label-sm {
+  color: var(--color-ice);
+  letter-spacing: 0.16em;
+}
+
+.hero-arc-window-time {
+  font-family: var(--font-geist-mono);
+  font-size: 11px;
+  color: var(--color-steel);
+}
+
+.hero-arc-axis {
+  position: absolute;
+  bottom: 2px;
+  color: var(--color-steel-dim);
+  display: inline-flex;
+  gap: var(--space-sm);
+  align-items: baseline;
+}
+
+.hero-arc-axis--start {
+  left: 0;
+}
+
+.hero-arc-axis--end {
+  right: 0;
+}
+
+.hero-arc-axis-time {
+  color: var(--color-steel);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-arc-line {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .hero-arc-area,
+  .hero-arc-band {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+/* Hero responsive — stack the disc above the editorial on narrow screens. */
+@media (max-width: 720px) {
+  .hero-top {
+    flex-direction: column-reverse;
+    align-items: flex-start;
+    gap: var(--space-lg);
+  }
+  .hero-editorial {
+    max-width: none;
+  }
+  .hero-disc {
+    width: clamp(120px, 40vw, 180px);
+  }
+  .hero-arc-window-label {
+    font-size: 10px;
+  }
+  /* The centered PEAK WINDOW annotation can sit near the right edge and collide
+     with LAST CALL on a phone; the DOORS/LAST CALL context is secondary here
+     (the dek already states the floor window), so drop it below the hero break. */
+  .hero-arc-axis {
+    display: none;
+  }
+}
+
+/* ─── Archive ──────────────────────────────────────────────────────────── */
+.archive {
+  margin-top: var(--space-xl);
+}
+
+.archive-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-md) 0 var(--space-lg);
+  border-top: 1px solid var(--color-outline-variant);
+  padding-top: var(--space-lg);
+}
+
+.archive-head-left {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.archive-title {
+  color: var(--color-steel-dim);
+  letter-spacing: 0.2em;
+}
+
+.archive-count {
+  color: var(--color-on-surface-variant);
+}
+
+.archive-count-new {
+  color: var(--color-ice);
+}
+
+.archive-search {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-container-low);
+  color: var(--color-steel);
+  font-family: var(--font-geist-mono);
+  font-size: 13px;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .archive-search:hover {
+    border-color: var(--color-ice-dim);
+    color: var(--color-on-surface);
+    background: var(--color-surface-container);
+  }
+}
+
+.archive-search:focus-visible {
+  outline: none;
+  border-color: var(--color-ice);
+  box-shadow: 0 0 0 3px var(--color-ice-glow);
+}
+
+.archive-search-kbd {
+  font-family: var(--font-geist-mono);
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-outline-variant);
+  color: var(--color-steel-dim);
+}
+
+.archive-empty {
+  color: var(--color-steel);
+  max-width: 52ch;
+  padding: var(--space-md) 0 var(--space-lg);
+}
+
+/* ─── ⌘K spotlight command palette ─────────────────────────────────────── */
+/* z-index sits one defined step above the floating nav (z-50). */
+.cmdk-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 14vh var(--space-md) var(--space-md);
+  background: var(--color-spotlight-scrim);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  opacity: 1;
+  transition: opacity var(--motion-duration-base) var(--motion-ease-out);
+}
+
+.cmdk-scrim[data-state="closed"] {
+  opacity: 0;
+}
+
+.cmdk-panel {
+  width: min(640px, 100%);
+  max-height: min(70vh, 560px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--color-spotlight-rim);
+  background: var(--color-spotlight-surface);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  box-shadow:
+    inset 0 1px 0 0 var(--color-spotlight-rim),
+    0 40px 90px -30px var(--color-surface-void);
+  transform-origin: center top;
+  transform: translateY(0) scale(1);
+  opacity: 1;
+  transition:
+    transform var(--motion-duration-base) var(--motion-ease-out),
+    opacity var(--motion-duration-base) var(--motion-ease-out);
+}
+
+.cmdk-panel[data-state="closed"] {
+  transform: translateY(-8px) scale(0.98);
+  opacity: 0;
+}
+
+.cmdk-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  border-bottom: 1px solid var(--color-outline-variant);
+}
+
+.cmdk-field-icon {
+  color: var(--color-steel);
+  flex-shrink: 0;
+}
+
+.cmdk-input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--color-on-surface);
+  font-family: var(--font-inter);
+  font-size: 16px;
+}
+
+.cmdk-input::placeholder {
+  color: var(--color-steel-dim);
+}
+
+.cmdk-esc {
+  font-family: var(--font-geist-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-outline-variant);
+  color: var(--color-steel-dim);
+  flex-shrink: 0;
+}
+
+.cmdk-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-sm);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.cmdk-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+}
+
+.cmdk-row[data-active="true"] {
+  background: var(--color-spotlight-row-active);
+}
+
+.cmdk-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.cmdk-row-title {
+  font-family: var(--font-geist-mono);
+  font-size: 14px;
+  color: var(--color-on-surface);
+}
+
+.cmdk-row[data-active="true"] .cmdk-row-title {
+  color: var(--color-ice-bright);
+}
+
+.cmdk-row-meta {
+  color: var(--color-steel-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-wrap: nowrap;
+}
+
+.cmdk-row-date {
+  color: var(--color-steel);
+  flex-shrink: 0;
+}
+
+.cmdk-empty {
+  padding: var(--space-xl) var(--space-lg);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.cmdk-empty-title {
+  font-family: var(--font-hanken-grotesk);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--color-on-surface);
+}
+
+.cmdk-empty-hint {
+  color: var(--color-steel);
+}
+
+.cmdk-foot {
+  display: flex;
+  gap: var(--space-lg);
+  padding: var(--space-sm) var(--space-md);
+  border-top: 1px solid var(--color-outline-variant);
+  color: var(--color-steel-dim);
+}
+
+.cmdk-foot span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cmdk-foot kbd,
+.cmdk-foot .cmdk-foot-kbd {
+  font-family: var(--font-geist-mono);
+  font-size: 10px;
+  min-width: 16px;
+  text-align: center;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-outline-variant);
+  color: var(--color-steel);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cmdk-scrim,
+  .cmdk-panel {
+    transition: opacity var(--motion-duration-fast) var(--motion-ease-standard);
+  }
+  .cmdk-panel,
+  .cmdk-panel[data-state="closed"] {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .cmdk-scrim {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .cmdk-panel {
+    background: var(--color-spotlight-surface-solid);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .cmdk-panel {
+    border: 1px solid CanvasText;
+  }
+  .cmdk-row[data-active="true"] {
+    outline: 2px solid Highlight;
+  }
+  .hero-cta:focus-visible,
+  .archive-search:focus-visible {
     outline: 2px solid CanvasText;
     outline-offset: 2px;
   }
