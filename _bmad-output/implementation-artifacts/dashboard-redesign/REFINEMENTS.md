@@ -193,6 +193,22 @@ NOT built.
     (GlassCalendar tabs; reuse the dz-sheet/gblur motion values, honoring
     reduced-motion).
 
+17. **Confidence tile: reword.** Current copy: "100%" / "dancefloor
+    detection · latest set" / "Sharpens as you correct the floor's edges."
+    Arjun's direction: title along the lines of **"Dancefloor detection
+    engine confidence"**, subline **"improves as you correct the sets
+    edges"**. Dev session: apply his wording (light microcopy polish
+    allowed — e.g. "Improves as you correct set edges" — run through
+    writing-guidelines, but keep his phrasing intent; "engine confidence"
+    is the point). Knob: ConfidenceTile.tsx.
+
+18. **Equalize the confidence/odometer pair heights** (screenshot 11:56):
+    the YOUR ARCHIVE odometer tile is visibly shorter than the confidence
+    tile beside it; Arjun wants them the same size. Knob: `.dz-right-pair`
+    (dashboard.css) — stretch both tiles to equal height (grid/flex
+    stretch), re-balance the odometer's inner spacing so its content
+    doesn't float in the extra room.
+
 ### Approved as-built (no change needed)
 
 - Wordmark size on the rail spine ("the word mark size is good").
@@ -200,6 +216,9 @@ NOT built.
 - Shell translucency level (~88% glass) — approved 2026-08-03 ("i like the
   translucency the way it is"); item 6's palette shift must not change the
   alpha.
+- Most Played card's Week/Month toggle — switch behavior approved as-is
+  ("isn't bad. its fine to keep as is"); do NOT give it the calendar's new
+  view-switch motion (item 16) unless Arjun asks later.
 
 ### Fixed live this session (bugs in committed work, not design changes)
 
