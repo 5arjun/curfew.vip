@@ -305,6 +305,15 @@ NOT built.
     progressive-blur pop transition language for the calendar view change
     (GlassCalendar tabs; reuse the dz-sheet/gblur motion values, honoring
     reduced-motion).
+    > ✅ Landed 2026-08-03 (dev): the view conditional is wrapped in framer
+    > `AnimatePresence mode="wait" initial={false}` with a `motion.div`
+    > keyed on `view` that pops with the sheet's language — `scale .97→1` +
+    > `filter blur(8px)→0` + fade on the liquid ease `[0.17,1,0.33,1]` at the
+    > sheet's 310ms. `MotionConfig reducedMotion="user"` (already on the card)
+    > honours the pref. Verified both directions, no console errors. OPEN for
+    > Arjun's feel: monthly↔weekly genuinely resize, so the card height changes
+    > at the swap — can add a `layout` height-grow (fuller sheet feel) if the
+    > snap reads wrong.
 
 17. **Confidence tile: reword.** Current copy: "100%" / "dancefloor
     detection · latest set" / "Sharpens as you correct the floor's edges."

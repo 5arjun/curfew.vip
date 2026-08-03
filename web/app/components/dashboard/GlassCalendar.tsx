@@ -198,32 +198,48 @@ export function GlassCalendar({ marks }: { marks: DayMarks }) {
         </div>
       </div>
 
-      {view === "monthly" ? (
-        <div className="cal-grid">
-          {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
-            <span key={`${d}-${i}`} className="cal-dow">
-              {d}
-            </span>
-          ))}
-          {Array.from({ length: getDay(startOfMonth(currentMonth)) }, (_, i) => (
-            <span key={`pad-${i}`} />
-          ))}
-          {monthDays.map((day) => (
-            <span key={day.key} className="cal-cell">
-              {dayButton(day)}
-            </span>
-          ))}
-        </div>
-      ) : (
-        <div className="cal-strip">
-          {monthDays.map((day) => (
-            <div key={day.key} className="cal-strip-day">
-              <span className="cal-dow">{format(day.date, "E").charAt(0)}</span>
-              {dayButton(day)}
+      {/* Item 16: the Weekly↔Monthly swap pops with the expanded-set-card's
+          language (scale + progressive blur + fade, liquid ease, matching the
+          sheet's 310ms) instead of a hard cut. mode="wait" so the old view
+          clears first; initial={false} so it doesn't fire on page load.
+          MotionConfig reducedMotion="user" (on the card) honours the pref. */}
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={view}
+          className="cal-view"
+          initial={{ opacity: 0, scale: 0.97, filter: "blur(8px)" }}
+          animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+          exit={{ opacity: 0, scale: 0.98, filter: "blur(8px)" }}
+          transition={{ duration: 0.31, ease: [0.17, 1, 0.33, 1] }}
+        >
+          {view === "monthly" ? (
+            <div className="cal-grid">
+              {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
+                <span key={`${d}-${i}`} className="cal-dow">
+                  {d}
+                </span>
+              ))}
+              {Array.from({ length: getDay(startOfMonth(currentMonth)) }, (_, i) => (
+                <span key={`pad-${i}`} />
+              ))}
+              {monthDays.map((day) => (
+                <span key={day.key} className="cal-cell">
+                  {dayButton(day)}
+                </span>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          ) : (
+            <div className="cal-strip">
+              {monthDays.map((day) => (
+                <div key={day.key} className="cal-strip-day">
+                  <span className="cal-dow">{format(day.date, "E").charAt(0)}</span>
+                  {dayButton(day)}
+                </div>
+              ))}
+            </div>
+          )}
+        </motion.div>
+      </AnimatePresence>
 
       <div className="cal-divider" />
       <p className="cal-summary">{monthSummary}</p>
