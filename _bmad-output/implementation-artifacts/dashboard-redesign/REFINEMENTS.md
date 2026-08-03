@@ -262,6 +262,14 @@ NOT built.
     (or bias toward card center) when near the right edge. Knobs:
     GlassCalendar.tsx chip positioning (chipRef mousemove writer, ~line
     216) + `.cal-chip` (dashboard.css ~1428).
+    > ✅ Landed 2026-08-03 (dev): the rAF chip writer now measures card +
+    > chip (`offsetWidth/Height`) and FLIPS the chip to the cursor's left when
+    > the default up-right placement would overrun the card's right edge, then
+    > clamps X and Y inside the card (10px inset) so top-row / edge days can't
+    > push it out either. Verified: Aug 1 (right column) chip was 1394→1514
+    > (past the 1416 card edge), now 1238→1358 fully inside, flipped left, no
+    > mid-text clip. (Layout reads are cheap — transform writes don't dirty
+    > layout, so `offsetWidth` stays cached.)
 
 14. **Right-column quiet-scroll hard-clips the shells** (same screenshot).
     Scrolled down, the calendar's top is a dead-straight cut — the tabs get

@@ -75,8 +75,23 @@ export function GlassCalendar({ marks }: { marks: DayMarks }) {
         y: smoothPos.current.y + (targetPos.current.y - smoothPos.current.y) * LERP_FACTOR,
       };
       const chip = chipRef.current;
-      if (chip) {
-        chip.style.transform = `translate3d(${smoothPos.current.x + 18}px, ${smoothPos.current.y - 72}px, 0)`;
+      const card = cardRef.current;
+      if (chip && card) {
+        // Item 13: keep the chip inside the card. Default up-and-right of the
+        // cursor; FLIP to its left when it would overrun the right edge (the
+        // bug: right-column days cut the chip off mid-text), then clamp on both
+        // axes so top-row / edge days can't push it outside the shell either.
+        const pad = 10;
+        const cw = card.offsetWidth;
+        const ch = card.offsetHeight;
+        const chipW = chip.offsetWidth;
+        const chipH = chip.offsetHeight;
+        let x = smoothPos.current.x + 18;
+        if (x + chipW > cw - pad) x = smoothPos.current.x - 18 - chipW;
+        x = Math.max(pad, Math.min(x, cw - chipW - pad));
+        let y = smoothPos.current.y - 72;
+        y = Math.max(pad, Math.min(y, ch - chipH - pad));
+        chip.style.transform = `translate3d(${x}px, ${y}px, 0)`;
       }
       raf.current = requestAnimationFrame(animate);
     };
