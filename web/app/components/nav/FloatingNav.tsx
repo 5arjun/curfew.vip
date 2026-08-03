@@ -1,10 +1,32 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Fragment, useEffect, useRef, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { House, TrendUp, VinylRecord, UserCircle, type Icon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import {
+  useMediaQuery,
+  useMetalColors,
+  usePrefersReducedMotion,
+} from "@/app/components/ui/metal-hooks";
+
+// Desktop = the vertical liquid-metal rail on the left (Arjun, 2026-08-03:
+// the bottom dock overlapped dashboard content); below it, the original
+// bottom dock. 900.02px mirrors dashboard.css's 900px viewport-lock release
+// so the rail and the dashboard's rail-clearance padding switch together.
+const RAIL_QUERY = "(min-width: 900.02px)";
+
+// The rail wears the same liquid-metal material as the hero arrow / Enter Set
+// pill (Arjun's ask: "same border animation") — shader ring behind a dark
+// plate inset 2px, the ref's exact shader params, state-reactive speed
+// (idle 0.6 → hover 1.0). Third sanctioned placement of the WebGL material,
+// alongside MetalButton's two; still never mapped over a list.
+const LiquidMetal = dynamic(
+  () => import("@paper-design/shaders-react").then((m) => m.LiquidMetal),
+  { ssr: false },
+);
 
 type NavItem = {
   href: string;
@@ -59,7 +81,7 @@ export function isActiveNavItem(pathname: string, href: string): boolean {
 // 60fps, matching the reference's transition beat). 1 = snap (reduced-motion).
 const GLOW_EASE = 0.2;
 
-function prefersReducedMotion() {
+function prefersReducedMotionNow() {
   return (
     typeof window !== "undefined" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -93,7 +115,7 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
   }
 
   function tick() {
-    const ease = prefersReducedMotion() ? 1 : GLOW_EASE;
+    const ease = prefersReducedMotionNow() ? 1 : GLOW_EASE;
     const t = target.current;
     const p = pos.current;
     p.x += (t.x - p.x) * ease;
@@ -146,8 +168,10 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
       aria-label={item.label}
       className={cn(
         // Cell radius stays concentric with the dock's --radius-2xl outer
-        // radius: inner = outer − the container's 2px padding.
-        "floating-nav-link group relative flex min-h-11 min-w-11 shrink-0 items-center justify-center overflow-hidden rounded-[calc(var(--radius-2xl)-2px)] px-3 outline-none",
+        // radius: inner = outer − the container's 2px padding. (No
+        // overflow-hidden: the glow span clips itself via its own inherited
+        // radius, and the rail's tooltip must escape the cell.)
+        "floating-nav-link group relative flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-[calc(var(--radius-2xl)-2px)] px-3 outline-none",
         // colour/scale transitions + the glow follow-lag live in globals.css
         // (.floating-nav-link) so one rule owns the transition list.
         "active:scale-[0.97] motion-reduce:active:scale-100",
@@ -167,7 +191,7 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
     >
       <span
         aria-hidden
-        className="pointer-events-none absolute inset-0 rounded-[inherit] opacity-0 transition-opacity [transition-duration:var(--motion-duration-base)] [transition-timing-function:var(--motion-ease-standard)] group-hover:opacity-100"
+        className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit] opacity-0 transition-opacity [transition-duration:var(--motion-duration-base)] [transition-timing-function:var(--motion-ease-standard)] group-hover:opacity-100"
         style={{
           background:
             "radial-gradient(90px circle at var(--gx, 50%) var(--gy, 50%), var(--color-nav-glow-strong) 0%, var(--color-nav-glow-mid) 38%, var(--color-nav-glow-fade) 78%)",
@@ -179,16 +203,15 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
           unlayered .floating-nav-link colour rules; the icon inherits it. See
           the note there for why the Tailwind text-* utility route doesn't win. */}
       <ItemIcon size={20} weight={active ? "fill" : "bold"} className="relative" />
-      {/* Active-item label reveal: only the current route's label is shown,
-          keeping the pill compact at every viewport (the prior all-labels
-          layout overflowed phones — see Story 3.5 Task 4 notes). The 0fr→1fr
-          grid-column transition animates the reveal without measuring text
-          width. Hidden below sm entirely (icon-only mobile); aria-label above
-          carries the accessible name in both cases. */}
+      {/* Active-item label reveal — the bottom DOCK's treatment (≥sm, <rail):
+          only the current route's label is shown, keeping the pill compact at
+          every viewport. The 0fr→1fr grid-column transition animates the
+          reveal without measuring text width. The rail hides this entirely
+          (labels become the hover tooltip below). */}
       <span
         aria-hidden
         className={cn(
-          "relative hidden sm:grid",
+          "nav-label-reveal relative hidden sm:grid",
           "transition-[grid-template-columns] [transition-duration:var(--motion-duration-base)] [transition-timing-function:var(--motion-ease-out)]",
           "motion-reduce:transition-none",
           active ? "grid-cols-[1fr]" : "grid-cols-[0fr]",
@@ -206,33 +229,85 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
           </span>
         </span>
       </span>
+      {/* Rail-only hover/focus tooltip carrying the label (the rail is
+          icon-only; aria-label above is the accessible name, so this stays
+          aria-hidden). Hidden below the rail breakpoint in globals.css. */}
+      <span aria-hidden className="nav-tip">
+        {item.label}
+      </span>
     </Link>
   );
 }
 
 export function FloatingNav() {
   const pathname = usePathname();
+  const rail = useMediaQuery(RAIL_QUERY);
+  const reduced = usePrefersReducedMotion();
+  const colors = useMetalColors();
+  const [hovered, setHovered] = useState(false);
+
+  // MetalButton's speed state machine, minus the click burst (a nav rail has
+  // no single "the" click): idle 0.6 → hover 1.0; frozen for reduced motion.
+  const speed = reduced ? 0 : hovered ? 1 : 0.6;
+
+  const destinations = NAV_ITEMS.slice(0, -1);
+  const settings = NAV_ITEMS[NAV_ITEMS.length - 1];
 
   return (
     <nav
       aria-label="Primary"
-      // Dock revision (Arjun, 2026-08-01): squarer rounded-rect + opaque
-      // surface + conic border shine, all carried by .floating-nav-dock in
-      // globals.css (the backdrop-blur glass treatment went with the 90%-
-      // alpha background — an opaque dock has nothing to blur).
+      // Base classes are the bottom dock (kept, unchanged, below the rail
+      // breakpoint); globals.css's rail block re-lays this exact element as
+      // the left rail — unlayered CSS overrides the layered Tailwind utilities.
       className="floating-nav-dock fixed bottom-6 left-1/2 z-50 flex w-max -translate-x-1/2 items-center gap-0.5 p-0.2"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
-      {NAV_ITEMS.map((item, index) => (
-        <Fragment key={item.href}>
-          {/* Hairline divider between the three destinations and
-              Profile/Settings — the dock reference's grouping, matching the
-              IA where Settings is the avatar's own row, not a destination. */}
-          {index === NAV_ITEMS.length - 1 && (
-            <span aria-hidden className="bg-outline-variant mx-1 h-6 w-px shrink-0" />
-          )}
-          <NavLink item={item} active={isActiveNavItem(pathname, item.href)} />
-        </Fragment>
-      ))}
+      {/* Liquid-metal rim (rail only): shader ring under a dark plate inset
+          2px — the .mtl layer sandwich, flattened (no 3D press physics; the
+          rail is a surface, not a button). Mounted only at rail widths so the
+          dock never pays a WebGL context. */}
+      {rail && colors && (
+        <span aria-hidden className="nav-rail-rim">
+          <LiquidMetal
+            style={{ width: "100%", height: "100%" }}
+            colorBack={colors.back}
+            colorTint={colors.tint}
+            speed={speed}
+            repetition={6}
+            softness={0.5}
+            shiftRed={0.3}
+            shiftBlue={0.3}
+            distortion={0}
+            contour={0}
+            angle={45}
+            scale={1}
+            offsetX={0}
+            offsetY={0}
+            shape="none"
+          />
+        </span>
+      )}
+      <span aria-hidden className="nav-rail-plate" />
+
+      {/* Brand (rail only): the CURFEW wordmark as a book-spine at the rail's
+          top — masked and filled with the cold-chrome gradient so the metal
+          IS the branding. Links home per convention. */}
+      <Link href="/dashboard" aria-label="Curfew" className="nav-brand">
+        <span aria-hidden className="nav-brand-mark" />
+      </Link>
+
+      <div className="nav-rail-items">
+        {destinations.map((item) => (
+          <NavLink key={item.href} item={item} active={isActiveNavItem(pathname, item.href)} />
+        ))}
+      </div>
+
+      {/* Hairline divider between the three destinations and Profile/Settings
+          — the dock reference's grouping, matching the IA where Settings is
+          the avatar's own row, not a destination. */}
+      <span aria-hidden className="nav-divider" />
+      <NavLink item={settings} active={isActiveNavItem(pathname, settings.href)} />
     </nav>
   );
 }

@@ -133,6 +133,13 @@
   --space-gutter: 24px;
   --container-max: 1100px;
 
+  /* Nav rail geometry (Arjun, 2026-08-03: dock → left vertical rail at
+     desktop widths). Shared by globals.css (the rail itself) and
+     dashboard.css (the page's rail clearance) so they can never drift. */
+  --nav-rail-inset: 20px;
+  --nav-rail-width: 68px;
+  --nav-rail-radius: 34px;
+
   /* Radius: soft-industrial. sm/lg/xl for structural elements (buttons,
      inputs, cards, chips) — no pill buttons. `full` is reserved EXCLUSIVELY
      for the floating nav (Story 3.5, not built here), avatar, and status

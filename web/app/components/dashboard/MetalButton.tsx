@@ -3,7 +3,8 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useMetalColors, usePrefersReducedMotion } from "@/app/components/ui/metal-hooks";
 
 // The dashboard's liquid-metal material (D8/D9) — a full-fidelity port of the
 // inspo liquid-metal button, with ALL its physics preserved: the ref's exact
@@ -22,9 +23,10 @@ import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } fro
 // (.mtl-*), token-only; reduced motion freezes the shader (speed 0) and
 // drops the ripple.
 //
-// ⚠️ WebGL-context-limited, same rule as ui/liquid-metal-button.tsx: the two
-// sanctioned dashboard placements are the hero arrow (icon mode) and the
-// expanded set card's "Enter Set" pill (text mode). Never map it over a list.
+// ⚠️ WebGL-context-limited, same rule as ui/liquid-metal-button.tsx: the
+// sanctioned placements are the hero arrow (icon mode), the expanded set
+// card's "Enter Set" pill (text mode), and the nav rail's rim (FloatingNav,
+// Arjun 2026-08-03). Never map it over a list.
 const LiquidMetal = dynamic(
   () => import("@paper-design/shaders-react").then((m) => m.LiquidMetal),
   { ssr: false },
@@ -37,34 +39,6 @@ export interface MetalButtonProps {
   href?: string;
   onClick?: () => void;
   className?: string;
-}
-
-const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
-
-function usePrefersReducedMotion(): boolean {
-  return useSyncExternalStore(
-    (onChange) => {
-      const mq = window.matchMedia(REDUCED_MOTION_QUERY);
-      mq.addEventListener("change", onChange);
-      return () => mq.removeEventListener("change", onChange);
-    },
-    () => window.matchMedia(REDUCED_MOTION_QUERY).matches,
-    () => false,
-  );
-}
-
-/** Reads the cold-chrome material tokens from :root at runtime (see tokens.css). */
-function useMetalColors(): { back: string; tint: string } | null {
-  const snapshot = useSyncExternalStore(
-    () => () => {},
-    () => {
-      const cs = getComputedStyle(document.documentElement);
-      return `${cs.getPropertyValue("--metal-abyss-back").trim()}|${cs.getPropertyValue("--metal-abyss-tint").trim()}`;
-    },
-    () => "|",
-  );
-  const [back, tint] = snapshot.split("|");
-  return back && tint ? { back, tint } : null;
 }
 
 interface Ripple {

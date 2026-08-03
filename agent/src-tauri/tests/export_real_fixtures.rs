@@ -36,6 +36,15 @@ const SETS: &[(i64, &str)] = &[
     // A 1-play soundcheck: id 17577 / serato4:491 — the sparse / low-confidence
     // state the dashboard must handle.
     (491, "17577"),
+    // Dashboard-population pass (Arjun, 2026-08-03): the other substantial real
+    // gigs in history, so the dashboard reads as lived-in. external_ids are the
+    // real captured_sessions.id values from the agent's local store.
+    (489, "977"), // Jun 26 — 75 plays
+    (486, "971"), // Jun 20 — 154 plays
+    (484, "967"), // Jun 13 — 184 plays
+    (482, "963"), // Apr 30 — 49 plays
+    (479, "957"), // Mar 13 — 164 plays
+    (477, "953"), // Feb 16 — 49 plays
 ];
 
 #[derive(Serialize)]

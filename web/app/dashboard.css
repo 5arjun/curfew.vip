@@ -33,6 +33,20 @@
   color: var(--color-abyss-text);
 }
 
+/* Rail clearance (Arjun, 2026-08-03): with the nav standing at the left edge,
+   the page drops the centered --container-max cap and spans the space right
+   of the rail — the hero reaches further both ways, and the left gutter
+   mirrors the rail's own inset. Same 900.02px flip as the rail itself
+   (globals.css); below it the bottom dock returns and the base padding above
+   governs. No upper cap yet — revisit if this ever meets an ultrawide. */
+@media (min-width: 900.02px) {
+  .dz {
+    max-width: none;
+    padding-left: calc(var(--nav-rail-inset) + var(--nav-rail-width) + var(--space-gutter));
+    padding-right: var(--space-gutter);
+  }
+}
+
 /* ─── Silk backdrop (D2) ─────────────────────────────────────────────────
    Fixed full-bleed WebGL silk behind everything; the base token paints
    beneath it while the canvas mounts (and wherever WebGL is off). */
