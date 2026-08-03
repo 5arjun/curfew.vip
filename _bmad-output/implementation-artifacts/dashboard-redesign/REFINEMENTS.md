@@ -177,6 +177,13 @@ NOT built.
    filter/sort buttons right of the search field carry the cursor-tracking
    hover glow; `.dz-list-search` should get the identical treatment
    (SetListPanel.tsx, gooey-spotlight D6/D12 block).
+   > ✅ Landed 2026-08-03 (dev): the chips' glow is `box-shadow: 0 0 18px
+   > var(--color-abyss-accent-glow)` on `:hover` (a static halo, not literally
+   > cursor-tracking). `.spot-pill` now takes the same glow on `:hover` AND
+   > `:focus-within` (kept over its inset shell-glow, with a box-shadow
+   > transition) — the focus case doubles as the focus cue the bare
+   > `outline:none` input was missing. Survives the `#dz-blob` goo filter
+   > (feBlend re-lays SourceGraphic on top). Verified live.
 
 9. **Expanded set card (.dz-sheet) is not contained by the panel** (Arjun's
    screenshots, 11:32/11:38): the sheet layers OVER the `.dz-list` shell's
