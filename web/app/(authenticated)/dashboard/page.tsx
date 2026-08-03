@@ -1,9 +1,14 @@
 import { getRecentSets } from "@/lib/sets";
 import { splitSets } from "@/lib/sets/hero";
 import { buildSetRows } from "@/lib/sets/listModel";
+import { buildRightColumn } from "@/lib/sets/rightColumn";
 import { createClient } from "@/lib/supabase/server";
+import { ConfidenceTile } from "@/app/components/dashboard/ConfidenceTile";
+import { GlassCalendar } from "@/app/components/dashboard/GlassCalendar";
 import { Greeting } from "@/app/components/dashboard/Greeting";
 import { HeroBand } from "@/app/components/dashboard/HeroBand";
+import { MostPlayedCard } from "@/app/components/dashboard/MostPlayedCard";
+import { OdometerCard } from "@/app/components/dashboard/OdometerCard";
 import { SetListPanel } from "@/app/components/dashboard/SetListPanel";
 import { SilkBackdrop } from "@/app/components/dashboard/SilkBackdrop";
 
@@ -37,6 +42,7 @@ export default async function DashboardPage() {
   // D9: the archive is complete, the hero is a spotlight.
   const { hero } = splitSets(sets);
   const rows = buildSetRows(sets);
+  const right = buildRightColumn(sets);
 
   return (
     <main className="dz">
@@ -55,7 +61,14 @@ export default async function DashboardPage() {
         <SetListPanel rows={rows} />
 
         <aside className="dz-right" aria-label="Stats">
-          {/* Step 6: calendar, most played, confidence, archive odometer (D5/D10) */}
+          <GlassCalendar marks={right.marks} />
+          <MostPlayedCard week={right.mostPlayed.week} month={right.mostPlayed.month} />
+          <ConfidenceTile pct={right.confidencePct} />
+          <OdometerCard
+            sets={right.odometer.sets}
+            hours={right.odometer.hours}
+            tracks={right.odometer.tracks}
+          />
         </aside>
       </div>
     </main>

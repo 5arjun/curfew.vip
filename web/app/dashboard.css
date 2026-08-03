@@ -22,8 +22,11 @@
   width: 100%;
   max-width: var(--container-max);
   margin: 0 auto;
+  /* Bottom clearance stays tight: the floating nav is a small centered dock
+     and glass-over-glass overlap at the panel edges reads fine — the list's
+     own bottom edge-fade melts rows before the dock anyway. */
   padding: var(--space-lg) var(--space-gutter)
-    calc(var(--space-xxl) + env(safe-area-inset-bottom));
+    calc(var(--space-lg) + env(safe-area-inset-bottom));
   overflow: hidden;
   /* The refs' voice (Hanken Grotesk — already Curfew's display font, D4). */
   font-family: var(--font-hanken-grotesk);
@@ -85,7 +88,7 @@
    Hero band (top ~33%) above a two-column split: set list left, right
    column (calendar → most played → confidence → odometer). */
 .dz-hero {
-  flex: 0 0 clamp(220px, 32vh, 360px);
+  flex: 0 0 clamp(200px, 30vh, 340px);
   min-height: 0;
 }
 
@@ -1160,4 +1163,418 @@
   width: 22px;
   height: 22px;
   stroke-width: 1.5;
+}
+
+/* ─── Right column (D5/D10): shared card chrome ─────────────────────────── */
+.dz-card {
+  padding: 16px 20px;
+  border-radius: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dz-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.dz-card-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-abyss-text-45);
+}
+
+/* ─── Calendar ──────────────────────────────────────────────────────────── */
+.cal {
+  gap: var(--space-sm);
+}
+
+.cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cal-tabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--color-abyss-base);
+}
+
+.cal-tab {
+  border: none;
+  border-radius: 9px;
+  padding: 4px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  background: none;
+  color: var(--color-abyss-text-45);
+  cursor: pointer;
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.cal-tab:hover {
+  color: var(--color-abyss-text);
+}
+
+.cal-tab[data-active] {
+  background: var(--color-abyss-text);
+  color: var(--color-abyss-base);
+  box-shadow: 0 2px 10px var(--shadow-ink-30);
+}
+
+.cal-tab:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 5px var(--color-abyss-accent-glow);
+}
+
+.cal-month-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 2px;
+}
+
+.cal-month {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--color-abyss-text);
+}
+
+.cal-nav {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.cal-nav button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 100px;
+  background: none;
+  color: var(--color-abyss-text-45);
+  cursor: pointer;
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.cal-nav button:hover {
+  background: var(--color-abyss-base);
+  color: var(--color-abyss-text);
+}
+
+.cal-nav button:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 5px var(--color-abyss-accent-glow);
+}
+
+.cal-nav svg {
+  width: 18px;
+  height: 18px;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  row-gap: 2px;
+  justify-items: center;
+}
+
+.cal-dow {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-abyss-text-22);
+}
+
+.cal-cell {
+  display: flex;
+  justify-content: center;
+}
+
+.cal-day {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 100px;
+  background: none;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-abyss-text-72);
+  cursor: pointer;
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.cal-day:hover {
+  background: var(--color-abyss-row-hover);
+}
+
+.cal-day:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 5px var(--color-abyss-accent-glow);
+}
+
+/* Selected: the ref's gradient fill, re-tinted accent-soft → accent. */
+.cal-day[data-selected] {
+  background: linear-gradient(135deg, var(--color-abyss-accent-soft), var(--color-abyss-accent));
+  color: var(--color-abyss-on-accent);
+  box-shadow: 0 4px 14px var(--color-abyss-accent-glow);
+}
+
+/* Today: hairline ring (accent-soft), D10. */
+.cal-day[data-today] {
+  box-shadow: inset 0 0 0 1px var(--color-abyss-accent-soft);
+}
+
+/* Set-day blips: the ref's today-dot, repurposed (1–3, glow past 3). */
+.cal-blips {
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 2px;
+}
+
+.cal-blip {
+  width: 4px;
+  height: 4px;
+  border-radius: 100px;
+  background: var(--color-abyss-accent);
+}
+
+.cal-blips[data-glow] .cal-blip {
+  box-shadow: 0 0 6px 1px var(--color-abyss-accent-glow);
+}
+
+/* Weekly: the ref's horizontal strip, hidden scrollbar. */
+.cal-strip {
+  display: flex;
+  gap: var(--space-md);
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: 0 -22px;
+  padding: 0 22px 4px;
+}
+
+.cal-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.cal-strip-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.cal-divider {
+  height: 1px;
+  background: var(--color-abyss-hairline);
+  margin-top: var(--space-xs);
+}
+
+.cal-summary {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-abyss-text-45);
+}
+
+/* Cursor-follow hover chip (project-showcase mechanics; auto-sized text). */
+.cal-chip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 0;
+  scale: 0.8;
+  transition:
+    opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    scale 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.cal-chip[data-visible] {
+  opacity: 1;
+  scale: 1;
+}
+
+.cal-chip-body {
+  min-width: 120px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  background: var(--color-abyss-raised);
+  border: 1px solid var(--color-abyss-hairline);
+  box-shadow: 0 16px 40px -12px var(--shadow-ink-50);
+}
+
+.cal-chip-count {
+  margin: 0 0 2px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-abyss-text);
+}
+
+.cal-chip-line {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-abyss-text-45);
+  text-wrap: nowrap;
+}
+
+/* ─── Most played ───────────────────────────────────────────────────────── */
+.mp-toggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--color-abyss-base);
+}
+
+.mp-toggle button {
+  border: none;
+  border-radius: 8px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  background: none;
+  color: var(--color-abyss-text-45);
+  cursor: pointer;
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.mp-toggle button[data-active] {
+  background: var(--color-abyss-text);
+  color: var(--color-abyss-base);
+}
+
+.mp-toggle button:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 5px var(--color-abyss-accent-glow);
+}
+
+.mp-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.mp-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mp-label {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-abyss-text-22);
+}
+
+.mp-value {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-abyss-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-wrap: nowrap;
+}
+
+.mp-value--empty {
+  color: var(--color-abyss-text-45);
+}
+
+.mp-sub {
+  font-weight: 400;
+  font-size: 13px;
+  color: var(--color-abyss-text-45);
+}
+
+.mp-quiet {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--color-abyss-text-45);
+}
+
+/* ─── Confidence tile ───────────────────────────────────────────────────── */
+.conf {
+  gap: 4px;
+}
+
+.conf-value {
+  margin: 0;
+  font-size: clamp(28px, 2.6vw, 38px);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--color-abyss-text);
+}
+
+.conf-label {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-abyss-text-45);
+}
+
+.conf-hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--color-abyss-text-22);
+}
+
+/* ─── Odometer ──────────────────────────────────────────────────────────── */
+.odo-row {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-sm);
+}
+
+.odo-stat dd {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--color-abyss-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.odo-stat dt {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--color-abyss-text-45);
 }
