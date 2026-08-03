@@ -1615,8 +1615,15 @@
   font-size: clamp(26px, 2.2vw, 32px);
 }
 
+/* Equalise the pair's heights (item 18): stretch both tiles to the taller
+   one, then centre the odometer's content so it doesn't float at the top of
+   the extra room the confidence tile's copy creates. */
 .dz-right-pair {
-  align-items: start;
+  align-items: stretch;
+}
+
+.dz-right-pair .odo {
+  justify-content: center;
 }
 
 /* Odometer keeps D10's 3-across at half width — compact numerals. */

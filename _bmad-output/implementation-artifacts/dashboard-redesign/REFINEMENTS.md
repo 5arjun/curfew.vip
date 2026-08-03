@@ -289,6 +289,10 @@ NOT built.
     allowed — e.g. "Improves as you correct set edges" — run through
     writing-guidelines, but keep his phrasing intent; "engine confidence"
     is the point). Knob: ConfidenceTile.tsx.
+    > ✅ Landed 2026-08-03 (dev): label → "Dancefloor detection engine
+    > confidence" (his title; drops the old "· latest set"); hint → "Improves
+    > as you correct set edges." (his "improves…sets edges" polished to active
+    > voice / singular per writing-guidelines). Value "100%" unchanged.
 
 18. **Equalize the confidence/odometer pair heights** (screenshot 11:56):
     the YOUR ARCHIVE odometer tile is visibly shorter than the confidence
@@ -296,6 +300,10 @@ NOT built.
     (dashboard.css) — stretch both tiles to equal height (grid/flex
     stretch), re-balance the odometer's inner spacing so its content
     doesn't float in the extra room.
+    > ✅ Landed 2026-08-03 (dev): `.dz-right-pair` `align-items: start` →
+    > `stretch` (both tiles now 167px, verified equal); the odometer
+    > (`.dz-right-pair .odo`) gets `justify-content: center` so its title +
+    > 3-stat row centre in the taller room instead of clumping at the top.
 
 ### Approved as-built (no change needed)
 
