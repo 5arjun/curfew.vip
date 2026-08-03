@@ -1,6 +1,8 @@
 import { getRecentSets } from "@/lib/sets";
+import { splitSets } from "@/lib/sets/hero";
 import { createClient } from "@/lib/supabase/server";
 import { Greeting } from "@/app/components/dashboard/Greeting";
+import { HeroBand } from "@/app/components/dashboard/HeroBand";
 import { SilkBackdrop } from "@/app/components/dashboard/SilkBackdrop";
 
 // Dashboard home (Story 3.6 v2 redesign — PLAN.md D1–D14). A viewport-locked
@@ -28,16 +30,23 @@ async function getFirstName(): Promise<string | null> {
 
 export default async function DashboardPage() {
   const [sets, firstName] = await Promise.all([getRecentSets(), getFirstName()]);
-  void sets; // consumed by the hero/list/right zones as they land (steps 3–6)
+  // The hero is the most recent SUBSTANTIAL set (a one-track soundcheck never
+  // takes the slot); the LIST still shows every set including the hero's —
+  // D9: the archive is complete, the hero is a spotlight.
+  const { hero } = splitSets(sets);
 
   return (
     <main className="dz">
       <SilkBackdrop />
       <Greeting name={firstName} />
 
-      <section className="dz-hero dz-shell" aria-label="Most recent set">
-        {/* Step 3: dancefloor-highlighted BPM arc, stats, liquid-metal arrow (D8) */}
-      </section>
+      {hero ? (
+        <HeroBand set={hero} />
+      ) : (
+        <section className="dz-hero dz-shell" aria-label="Most recent set">
+          {/* Step 7: awaiting-first-set cold state (D13) */}
+        </section>
+      )}
 
       <div className="dz-columns">
         <section className="dz-list dz-shell" aria-label="Set archive">

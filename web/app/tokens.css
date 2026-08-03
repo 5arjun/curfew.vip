@@ -362,4 +362,25 @@
      ice-white the highlights glint, -back the steel the metal pools into. */
   --metal-abyss-tint: #d2e4ec;
   --metal-abyss-back: #7a96a8;
+  --metal-abyss-label: #8fa3b0;  /* steel the icon/label reads in on the dark pill face
+                                    (the ref's #666-on-black register, cooled + lifted; ~6.6:1 on the pill) */
+
+  /* Black-alpha shadow ramp — the liquid-metal ref's multi-layer stacked drop
+     shadows (rest → hover tighten → press), preserved stop-for-stop (D8 "ALL
+     its physics"). 8-digit hex, not rgba() (guard flags the function name).
+     Shared vocabulary for any dashboard depth work. */
+  --shadow-ink-2: #00000005;
+  --shadow-ink-5: #0000000d;
+  --shadow-ink-8: #00000014;
+  --shadow-ink-10: #0000001a;
+  --shadow-ink-12: #0000001f;
+  --shadow-ink-15: #00000026;
+  --shadow-ink-20: #00000033;
+  --shadow-ink-30: #0000004d;
+  --shadow-ink-40: #00000066;
+  --shadow-ink-50: #00000080;
+
+  /* The ref's click ripple: white 40% → clear radial. */
+  --color-metal-ripple: #ffffff66;
+  --color-metal-ripple-fade: #ffffff00;
 }

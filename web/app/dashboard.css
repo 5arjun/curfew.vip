@@ -138,3 +138,319 @@
     overflow-y: visible;
   }
 }
+
+/* ─── Hero band (D8): chart-as-canvas ────────────────────────────────────
+   The arc SVG fills the whole shell; date/time, stats, and the metal arrow
+   float above it. The dancefloor window's bright stroke is the SAME path
+   clipped to the band, so dim and glowing stretches stay continuous. */
+.dz-hero {
+  overflow: hidden;
+}
+
+.dz-hero-arc {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.dz-hero-line {
+  fill: none;
+  stroke-width: 2.5px;
+  stroke-linecap: round;
+}
+
+.dz-hero-line--dim {
+  opacity: 0.38;
+}
+
+.dz-hero-line--floor {
+  stroke-width: 3px;
+  filter: drop-shadow(0 0 8px var(--color-abyss-accent-glow));
+}
+
+.dz-hero-fill {
+  opacity: 0.5;
+}
+
+.dz-hero-solo {
+  fill: var(--color-abyss-accent);
+  filter: drop-shadow(0 0 8px var(--color-abyss-accent-glow));
+}
+
+.dz-hero-content {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: clamp(20px, 3vh, 32px) clamp(24px, 3vw, 40px);
+}
+
+.dz-hero-when {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dz-hero-date {
+  font-size: clamp(20px, 2vw, 26px);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  color: var(--color-abyss-text);
+}
+
+.dz-hero-time {
+  font-size: 15px;
+  color: var(--color-abyss-text-45);
+}
+
+.dz-hero-stats {
+  margin: 0;
+  display: flex;
+  gap: clamp(var(--space-lg), 4vw, var(--space-xxl));
+}
+
+.dz-hero-stat dd {
+  margin: 0;
+  font-size: clamp(24px, 2.6vw, 34px);
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--color-abyss-text);
+}
+
+.dz-hero-stat dt {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--color-abyss-text-45);
+}
+
+.dz-hero-enter {
+  position: absolute;
+  right: clamp(24px, 3vw, 40px);
+  top: 50%;
+  translate: 0 -50%;
+}
+
+/* ─── Liquid-metal button (D8/D9) — the ref's physics, ported verbatim ───
+   Layer stack (bottom→top): shadow layer + shader ring (translateZ 0) →
+   dark pill inset 2px forming the metal rim (Z 10) → label/icon (Z 20) →
+   hitbox (Z 25). The 0.8s overshoot bezier is the ref's own — identical to
+   --motion-ease-spark; widths ride unregistered --mtl-* vars. Pill radius is
+   the ref's literal 100px (this surface's refs are pill-native; the old
+   no-pill-buttons radius rule doesn't govern the redesign). */
+.mtl {
+  position: relative;
+  display: inline-block;
+}
+
+.mtl--icon {
+  --mtl-w: 46px;
+  --mtl-h: 46px;
+  --mtl-iw: 42px;
+  --mtl-ih: 42px;
+}
+
+.mtl--text {
+  --mtl-w: 142px;
+  --mtl-h: 46px;
+  --mtl-iw: 138px;
+  --mtl-ih: 42px;
+}
+
+.mtl-persp {
+  perspective: 1000px;
+  perspective-origin: 50% 50%;
+}
+
+.mtl-stack {
+  position: relative;
+  width: var(--mtl-w);
+  height: var(--mtl-h);
+  transform-style: preserve-3d;
+  transition:
+    all 0.8s var(--motion-ease-spark),
+    width 0.4s ease,
+    height 0.4s ease;
+}
+
+.mtl-face {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--mtl-w);
+  height: var(--mtl-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transform-style: preserve-3d;
+  transform: translateZ(20px);
+  z-index: 30;
+  pointer-events: none;
+  color: var(--metal-abyss-label);
+  filter: drop-shadow(0 1px 2px var(--shadow-ink-50));
+  font-size: 14px;
+  font-weight: 400;
+  text-wrap: nowrap;
+  transition: all 0.8s var(--motion-ease-spark);
+}
+
+.mtl-pill-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--mtl-w);
+  height: var(--mtl-h);
+  transform-style: preserve-3d;
+  transform: translateZ(10px);
+  z-index: 20;
+  transition: all 0.8s var(--motion-ease-spark);
+}
+
+.mtl-stack[data-pressed] .mtl-pill-layer {
+  transform: translateZ(10px) translateY(1px) scale(0.98);
+}
+
+.mtl-pill {
+  width: var(--mtl-iw);
+  height: var(--mtl-ih);
+  margin: 2px;
+  border-radius: 100px;
+  background: linear-gradient(180deg, var(--color-abyss-raised) 0%, var(--color-abyss-base) 100%);
+  transition:
+    all 0.8s var(--motion-ease-spark),
+    box-shadow 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mtl-stack[data-pressed] .mtl-pill {
+  box-shadow:
+    inset 0 2px 4px var(--shadow-ink-40),
+    inset 0 1px 2px var(--shadow-ink-30);
+}
+
+/* The ref's stacked drop shadows: loose at rest, tighter on hover, tightest
+   pressed — stop-for-stop through the shadow ramp tokens. */
+.mtl-shadow-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--mtl-w);
+  height: var(--mtl-h);
+  transform-style: preserve-3d;
+  transform: translateZ(0);
+  z-index: 10;
+  border-radius: 100px;
+  box-shadow:
+    0 0 0 1px var(--shadow-ink-30),
+    0 36px 14px 0 var(--shadow-ink-2),
+    0 20px 12px 0 var(--shadow-ink-8),
+    0 9px 9px 0 var(--shadow-ink-12),
+    0 2px 5px 0 var(--shadow-ink-15);
+  transition:
+    all 0.8s var(--motion-ease-spark),
+    box-shadow 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mtl-stack[data-hover] .mtl-shadow-layer {
+  box-shadow:
+    0 0 0 1px var(--shadow-ink-40),
+    0 12px 6px 0 var(--shadow-ink-5),
+    0 8px 5px 0 var(--shadow-ink-10),
+    0 4px 4px 0 var(--shadow-ink-15),
+    0 1px 2px 0 var(--shadow-ink-20);
+}
+
+.mtl-stack[data-pressed] .mtl-shadow-layer {
+  transform: translateZ(0) translateY(1px) scale(0.98);
+  box-shadow:
+    0 0 0 1px var(--shadow-ink-50),
+    0 1px 2px 0 var(--shadow-ink-30);
+}
+
+.mtl-shader {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 100px;
+  overflow: hidden;
+}
+
+.mtl-shader canvas {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 100px !important;
+}
+
+.mtl-hit {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--mtl-w);
+  height: var(--mtl-h);
+  background: none;
+  border: none;
+  cursor: pointer;
+  z-index: 40;
+  transform-style: preserve-3d;
+  transform: translateZ(25px);
+  overflow: hidden;
+  border-radius: 100px;
+  display: block;
+}
+
+.mtl-hit:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 6px var(--color-abyss-accent-glow);
+}
+
+.mtl-ripple {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-radius: 100px;
+  background: radial-gradient(circle, var(--color-metal-ripple) 0%, var(--color-metal-ripple-fade) 70%);
+  transform: translate(-50%, -50%) scale(0);
+  pointer-events: none;
+  animation: mtl-ripple 0.6s ease-out;
+}
+
+@keyframes mtl-ripple {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0.6;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(4);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mtl-stack,
+  .mtl-face,
+  .mtl-pill-layer,
+  .mtl-pill,
+  .mtl-shadow-layer {
+    transition: none;
+  }
+  .mtl-ripple {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+@media (forced-colors: active) {
+  .mtl-hit:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
+}

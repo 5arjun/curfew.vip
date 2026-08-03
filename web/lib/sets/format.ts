@@ -39,6 +39,39 @@ export function formatTrackCount(count: number): string {
   return `${count} ${count === 1 ? "track" : "tracks"}`;
 }
 
+/* ── Dashboard-redesign registers (Story 3.6 v2, D8/D9) — the liquid-glass
+   surfaces speak title-case Hanken, not the console voice above. Same
+   locale/timezone discipline: a gig's date and clock are the DJ's local ones. */
+
+/** Row/hero date, e.g. "Fri, Aug 1". `null`/garbage → "—". */
+export function formatDayDate(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+}
+
+/** Local clock time, e.g. "10:14 PM". `null`/garbage → "—". */
+export function formatClock(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+/** Start AND end (D8: duration implied), e.g. "10:14 PM – 1:52 AM". */
+export function formatTimeRange(startIso: string | null, endIso: string | null): string {
+  const start = formatClock(startIso);
+  const end = formatClock(endIso);
+  if (start === "—" && end === "—") return "—";
+  return `${start} – ${end}`;
+}
+
+/** Whole-number BPM for stat rows, e.g. "125". `null`/non-finite → "—". */
+export function formatBpm(bpm: number | null | undefined): string {
+  return typeof bpm === "number" && Number.isFinite(bpm) ? `${Math.round(bpm)}` : "—";
+}
+
 /**
  * The top genre chips for the card (AC-5: 2–3 chips), ranked by play count
  * descending with a stable first-seen tie-break. Returns bare normalized genre
