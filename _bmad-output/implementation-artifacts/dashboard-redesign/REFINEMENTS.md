@@ -191,6 +191,13 @@ NOT built.
     darker ground — after that lands, sweep the dimmer text tokens (row
     meta, stat labels, teaser artists) against the new surfaces and lift
     contrast where still muddy.
+    > ✅ Landed 2026-08-03 (dev): all three flagged texts share one token,
+    > `--color-abyss-text-45`. Measured live on the item-6 ground: row meta
+    > 4.16:1, hero/stat labels 3.84:1 (worst case = the lighter hero-atmosphere
+    > shell) — below AA 4.5 for normal text (the darker ground alone barely
+    > moved semi-transparent white, ~+0.05). Lifted 45% → 52% (`#eaf3f873` →
+    > `#eaf3f885`): now hero 4.63:1, rows 5.18:1, still the de-emphasized tier
+    > below text-72. text-22 left as-is (decorative, not copy).
 
 13. **Calendar hover chip clips at the card edge** (screenshot 11:47). The
     cursor-follow `.cal-chip` sits to the right of the cursor, so days in

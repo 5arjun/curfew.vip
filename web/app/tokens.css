@@ -361,7 +361,12 @@
   --color-abyss-row-line: #ffffff0a;     /* 4% — the ref's rgba(255,255,255,0.04) row hairline, verbatim */
   --color-abyss-text: #eaf3f8;       /* text ramp 100% */
   --color-abyss-text-72: #eaf3f8b8;  /* 72% — the ref's .bold register */
-  --color-abyss-text-45: #eaf3f873;  /* 45% — the ref's .light register (meta/labels only) */
+  --color-abyss-text-45: #eaf3f885;  /* 52% — the ref's .light register (meta/labels only), lifted from
+                                        45% (item 12 readability): row meta / stat + hero labels / track
+                                        artists measured 3.84–4.16:1 on the surfaces (worst case the
+                                        lighter hero-atmosphere shell), below AA 4.5 for normal text; 52%
+                                        clears it (hero 4.63, rows 5.18) while staying the de-emphasized tier
+                                        below text-72. Measured live in-browser against the item-6 ground. */
   --color-abyss-text-22: #eaf3f838;  /* 22% — decorative only */
   --color-abyss-scrim-fade: #04070c00;   /* base at zero alpha for edge-fade gradients (guard-safe) */
 
