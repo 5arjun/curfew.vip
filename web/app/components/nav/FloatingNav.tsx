@@ -146,8 +146,8 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
       aria-label={item.label}
       className={cn(
         // Cell radius stays concentric with the dock's --radius-2xl outer
-        // radius: inner = outer − the container's 6px padding.
-        "floating-nav-link group relative flex min-h-11 min-w-11 shrink-0 items-center justify-center overflow-hidden rounded-[calc(var(--radius-2xl)-6px)] px-3 outline-none",
+        // radius: inner = outer − the container's 2px padding.
+        "floating-nav-link group relative flex min-h-11 min-w-11 shrink-0 items-center justify-center overflow-hidden rounded-[calc(var(--radius-2xl)-2px)] px-3 outline-none",
         // colour/scale transitions + the glow follow-lag live in globals.css
         // (.floating-nav-link) so one rule owns the transition list.
         "active:scale-[0.97] motion-reduce:active:scale-100",
@@ -170,7 +170,7 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
         className="pointer-events-none absolute inset-0 rounded-[inherit] opacity-0 transition-opacity [transition-duration:var(--motion-duration-base)] [transition-timing-function:var(--motion-ease-standard)] group-hover:opacity-100"
         style={{
           background:
-            "radial-gradient(52px circle at var(--gx, 50%) var(--gy, 50%), var(--color-nav-glow-strong) 0%, var(--color-nav-glow-mid) 34%, var(--color-nav-glow-fade) 58%)",
+            "radial-gradient(90px circle at var(--gx, 50%) var(--gy, 50%), var(--color-nav-glow-strong) 0%, var(--color-nav-glow-mid) 38%, var(--color-nav-glow-fade) 78%)",
         }}
       />
       {/* weight="bold" (was "regular") per Arjun's dock revision — a heavier
@@ -220,7 +220,7 @@ export function FloatingNav() {
       // surface + conic border shine, all carried by .floating-nav-dock in
       // globals.css (the backdrop-blur glass treatment went with the 90%-
       // alpha background — an opaque dock has nothing to blur).
-      className="floating-nav-dock fixed bottom-6 left-1/2 z-50 flex w-max -translate-x-1/2 items-center gap-1 p-1.5"
+      className="floating-nav-dock fixed bottom-6 left-1/2 z-50 flex w-max -translate-x-1/2 items-center gap-0.5 p-0.2"
     >
       {NAV_ITEMS.map((item, index) => (
         <Fragment key={item.href}>
