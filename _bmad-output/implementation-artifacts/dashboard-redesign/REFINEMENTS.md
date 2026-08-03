@@ -86,6 +86,10 @@ NOT built.
    (tokens.css, currently 34px = full pill for the 68px rail). Try 20–24px;
    the plate follows automatically at −2px. Check the brand spine and
    top/bottom item clearances still breathe after the change.
+   > ✅ Landed 2026-08-03 (dev): `--nav-rail-radius` 34px → **22px** (plate
+   > auto-follows to 20px, rim to 22px — verified live). Rail now reads as a
+   > squarer dock/rounded-rect matching the shells, not a pill/oval. CURFEW
+   > spine + nav icons + bottom avatar still breathe.
 
 3. **Shell border glint: dimmer as well as slower** (Arjun, after seeing it
    live). The sweep/arc colour stops are `--color-abyss-accent` /

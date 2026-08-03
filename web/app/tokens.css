@@ -138,7 +138,7 @@
      dashboard.css (the page's rail clearance) so they can never drift. */
   --nav-rail-inset: 20px;
   --nav-rail-width: 68px;
-  --nav-rail-radius: 34px;
+  --nav-rail-radius: 22px;
 
   /* Radius: soft-industrial. sm/lg/xl for structural elements (buttons,
      inputs, cards, chips) — no pill buttons. `full` is reserved EXCLUSIVELY
