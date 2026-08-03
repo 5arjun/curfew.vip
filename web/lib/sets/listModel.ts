@@ -65,10 +65,21 @@ export function buildSetRows(sets: SetRecord[]): SetRowModel[] {
     const dateLabel = formatDayDate(set.started_at);
     const startedAtMs = set.started_at ? new Date(set.started_at).getTime() : 0;
 
+    // Searchable date: dateLabel is the ABBREVIATED "Fri, Jun 26", so typing a
+    // full month ("june"/"august") or the year matched nothing. Add the long
+    // form so both abbreviated and full names (and the year, full weekday) hit.
+    const startDate = set.started_at ? new Date(set.started_at) : null;
+    const searchDate =
+      startDate && !Number.isNaN(startDate.getTime())
+        ? startDate.toLocaleDateString([], {
+            weekday: "long",
+            month: "long",
+            day: "numeric",
+            year: "numeric",
+          })
+        : "";
     const names = set.plays.flatMap((p) => [p.title ?? "", p.artist ?? ""]);
-    const haystack = [dateLabel, formatDayDate(set.started_at), ...names]
-      .join(" ")
-      .toLowerCase();
+    const haystack = [dateLabel, searchDate, ...names].join(" ").toLowerCase();
 
     return {
       id: set.external_id,

@@ -2,7 +2,18 @@
 
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { addMonths, format, getDate, getDay, getDaysInMonth, isToday, startOfMonth, subMonths } from "date-fns";
+import {
+  addDays,
+  addMonths,
+  format,
+  getDate,
+  getDay,
+  getDaysInMonth,
+  isToday,
+  startOfMonth,
+  startOfWeek,
+  subMonths,
+} from "date-fns";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DayMarks } from "@/lib/sets/rightColumn";
 import { formatDuration } from "@/lib/sets/format";
@@ -35,6 +46,9 @@ const LERP_FACTOR = 0.15;
 export function GlassCalendar({ marks }: { marks: DayMarks }) {
   const [view, setView] = useState<"monthly" | "weekly">("monthly");
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
+  // Weekly view navigates a real 7-day window (Sun-start), not the whole month
+  // (Arjun: the arrows advanced a month + it only ever showed days 1–7).
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
 
@@ -65,6 +79,27 @@ export function GlassCalendar({ marks }: { marks: DayMarks }) {
     if (nights === 0) return `${name} · no sets yet`;
     return `${name} · ${nights} ${nights === 1 ? "night" : "nights"} · ${formatDuration(totalSec)}`;
   }, [marks, currentMonth]);
+
+  const weekDays = useMemo<Day[]>(() => {
+    return Array.from({ length: 7 }, (_, i) => {
+      const date = addDays(weekStart, i);
+      return { date, key: format(date, "yyyy-MM-dd"), isToday: isToday(date) };
+    });
+  }, [weekStart]);
+
+  const weekSummary = useMemo(() => {
+    const keys = new Set(weekDays.map((d) => d.key));
+    let nights = 0;
+    let totalSec = 0;
+    for (const [key, mark] of Object.entries(marks)) {
+      if (!keys.has(key)) continue;
+      nights += 1;
+      totalSec += mark.totalSec;
+    }
+    const range = `${format(weekStart, "MMM d")} – ${format(addDays(weekStart, 6), "MMM d")}`;
+    if (nights === 0) return `${range} · no sets`;
+    return `${range} · ${nights} ${nights === 1 ? "night" : "nights"} · ${formatDuration(totalSec)}`;
+  }, [marks, weekDays, weekStart]);
 
   // The ref's rAF-lerp cursor follow, writing the chip's inline transform
   // directly (no per-frame React state, no registered @property vars).
@@ -161,7 +196,12 @@ export function GlassCalendar({ marks }: { marks: DayMarks }) {
               aria-selected={view === v}
               className="cal-tab"
               data-active={view === v || undefined}
-              onClick={() => setView(v)}
+              onClick={() => {
+                // Keep the two views on the same date when swapping.
+                if (v === "weekly") setWeekStart(startOfWeek(startOfMonth(currentMonth)));
+                else setCurrentMonth(weekStart);
+                setView(v);
+              }}
             >
               {v === "weekly" ? "Weekly" : "Monthly"}
             </button>
@@ -172,26 +212,34 @@ export function GlassCalendar({ marks }: { marks: DayMarks }) {
       {/* Month name (ref's fade/slide key swap) + chevrons. */}
       <div className="cal-month-row">
         <motion.p
-          key={format(currentMonth, "yyyy-MMMM")}
+          key={view === "weekly" ? format(weekStart, "yyyy-MM-dd") : format(currentMonth, "yyyy-MMMM")}
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
           className="cal-month"
         >
-          {format(currentMonth, "MMMM")}
+          {view === "weekly" ? format(weekStart, "MMMM") : format(currentMonth, "MMMM")}
         </motion.p>
         <div className="cal-nav">
           <button
             type="button"
-            onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-            aria-label="Previous month"
+            onClick={() =>
+              view === "weekly"
+                ? setWeekStart(addDays(weekStart, -7))
+                : setCurrentMonth(subMonths(currentMonth, 1))
+            }
+            aria-label={view === "weekly" ? "Previous week" : "Previous month"}
           >
             <ChevronLeft aria-hidden="true" />
           </button>
           <button
             type="button"
-            onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-            aria-label="Next month"
+            onClick={() =>
+              view === "weekly"
+                ? setWeekStart(addDays(weekStart, 7))
+                : setCurrentMonth(addMonths(currentMonth, 1))
+            }
+            aria-label={view === "weekly" ? "Next week" : "Next month"}
           >
             <ChevronRight aria-hidden="true" />
           </button>
@@ -210,7 +258,7 @@ export function GlassCalendar({ marks }: { marks: DayMarks }) {
           initial={{ opacity: 0, scale: 0.97, filter: "blur(8px)" }}
           animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
           exit={{ opacity: 0, scale: 0.98, filter: "blur(8px)" }}
-          transition={{ duration: 0.31, ease: [0.17, 1, 0.33, 1] }}
+          transition={{ duration: 0.16, ease: [0.17, 1, 0.33, 1] }}
         >
           {view === "monthly" ? (
             <div className="cal-grid">
@@ -230,7 +278,7 @@ export function GlassCalendar({ marks }: { marks: DayMarks }) {
             </div>
           ) : (
             <div className="cal-strip">
-              {monthDays.map((day) => (
+              {weekDays.map((day) => (
                 <div key={day.key} className="cal-strip-day">
                   <span className="cal-dow">{format(day.date, "E").charAt(0)}</span>
                   {dayButton(day)}
@@ -242,7 +290,7 @@ export function GlassCalendar({ marks }: { marks: DayMarks }) {
       </AnimatePresence>
 
       <div className="cal-divider" />
-      <p className="cal-summary">{monthSummary}</p>
+      <p className="cal-summary">{view === "weekly" ? weekSummary : monthSummary}</p>
 
       {/* Cursor-follow hover chip (project-showcase mechanics, text content). */}
       <div ref={chipRef} className="cal-chip" data-visible={!!hoveredMark || undefined} aria-hidden="true">
