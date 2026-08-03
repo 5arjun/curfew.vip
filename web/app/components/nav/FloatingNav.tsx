@@ -256,10 +256,14 @@ export function FloatingNav() {
   return (
     <nav
       aria-label="Primary"
-      // Base classes are the bottom dock (kept, unchanged, below the rail
-      // breakpoint); globals.css's rail block re-lays this exact element as
-      // the left rail — unlayered CSS overrides the layered Tailwind utilities.
-      className="floating-nav-dock fixed bottom-6 left-1/2 z-50 flex w-max -translate-x-1/2 items-center gap-0.5 p-0.2"
+      // Base classes are the bottom dock (kept below the rail breakpoint);
+      // globals.css's rail block re-lays this exact element as the left rail.
+      // Positioning (bottom-6 / left-1/2 / -translate-x-1/2) moved into
+      // globals.css: Lightning CSS folds a rail-side `translate: none` into
+      // the transform shorthand and DELETES it, so the utility's -50% could
+      // never be cancelled — the dock's centering is scoped to the non-rail
+      // media range instead (see the dock-positioning note there).
+      className="floating-nav-dock fixed z-50 flex w-max items-center gap-0.5 p-0.2"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >

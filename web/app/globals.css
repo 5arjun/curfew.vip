@@ -249,14 +249,36 @@ a {
   display: none;
 }
 
+/* In dock mode the destinations wrapper vanishes from layout entirely so the
+   dock stays the same flat flex row it always was; the rail re-styles it into
+   the centered column group. */
+.nav-rail-items {
+  display: contents;
+}
+
+/* Dock positioning — CSS-owned, not Tailwind utilities, and scoped to the
+   exact complement of the rail range. Why: with the utilities in place the
+   rail block must cancel `translate: -50%`, and Lightning CSS folds a
+   `translate: none` declaration into the transform shorthand and silently
+   DELETES it (served as `transform: translate3d(0,0,0)`), so the cancel can
+   never win and the rail rides 34px off-screen. Same silently-rewritten-
+   modern-CSS family as the @property/setProperty bug (FloatingNav.tsx).
+   `(width < 900.02px)` is the true complement of the rail's
+   `(min-width: 900.02px)` — no gap, no overlap width. */
+@media (width < 900.02px) {
+  .floating-nav-dock {
+    bottom: 24px; /* the old Tailwind bottom-6 */
+    left: 50%;
+    translate: -50% 0;
+  }
+}
+
 @media (min-width: 900.02px) {
   .floating-nav-dock {
     top: var(--nav-rail-inset);
     bottom: var(--nav-rail-inset);
     left: var(--nav-rail-inset);
     width: var(--nav-rail-width);
-    transform: none;
-    translate: none;
     flex-direction: column;
     align-items: center;
     gap: 0;
