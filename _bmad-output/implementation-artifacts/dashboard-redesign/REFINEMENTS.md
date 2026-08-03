@@ -269,6 +269,16 @@ NOT built.
     no edge treatment. Arjun: "doesn't look natural". Fix direction: top +
     bottom edge-melt fade masks on the scroll region (same language as the
     list panel's bottom edge-fade) so shells dissolve instead of slicing.
+    > ✅ Landed 2026-08-03 (dev): top + bottom fade mask on `.dz-right`, but
+    > CONDITIONAL — a new thin client wrapper (`RightColumn.tsx`) tracks scroll
+    > state (scroll + ResizeObserver) and sets `data-fade-top`/`-fade-bottom`,
+    > which drive `--dz-fade-top`/`--dz-fade-bottom` (0 → 22px) on the mask. So
+    > an edge melts only when there's content to scroll past it: at rest the
+    > calendar tabs (top) and odometer (bottom) stay full; scrolled, the edges
+    > dissolve. Verified: top=off/bottom=on at scrollTop 0, both on when
+    > scrolled. (Static mask was rejected — it dimmed the tabs at rest, itself
+    > "unnatural." The fixed `.cal-chip`'s right-edge clip is pre-existing
+    > item 13, unchanged by this mask — confirmed by toggling the mask off.)
 
 15. **Weekly view: 8th day cell overflows the container** (screenshot
     11:48): weekly mode renders a cell ("8") outside the card's right

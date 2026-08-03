@@ -9,6 +9,7 @@ import { Greeting } from "@/app/components/dashboard/Greeting";
 import { HeroBand } from "@/app/components/dashboard/HeroBand";
 import { MostPlayedCard } from "@/app/components/dashboard/MostPlayedCard";
 import { OdometerCard } from "@/app/components/dashboard/OdometerCard";
+import { RightColumn } from "@/app/components/dashboard/RightColumn";
 import { SetListPanel } from "@/app/components/dashboard/SetListPanel";
 import { SilkBackdrop } from "@/app/components/dashboard/SilkBackdrop";
 
@@ -68,7 +69,7 @@ export default async function DashboardPage() {
       <div className="dz-columns">
         <SetListPanel rows={rows} />
 
-        <aside className="dz-right" aria-label="Stats">
+        <RightColumn>
           <GlassCalendar marks={right.marks} />
           <MostPlayedCard week={right.mostPlayed.week} month={right.mostPlayed.month} />
           {/* Confidence + odometer as a half-width pair (Arjun's ruling at the
@@ -82,7 +83,7 @@ export default async function DashboardPage() {
               tracks={right.odometer.tracks}
             />
           </div>
-        </aside>
+        </RightColumn>
       </div>
     </main>
   );

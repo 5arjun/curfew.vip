@@ -129,6 +129,35 @@
      scroll itself; the scrollbar stays hidden (ref convention). */
   overflow-y: auto;
   scrollbar-width: none;
+  /* Item 14: top + bottom edge-melt so shells dissolve at the scroll bounds
+     instead of hard-slicing (Arjun: "doesn't look natural"). CONDITIONAL — an
+     edge fades only when RightColumn (client) reports content to scroll past
+     it (data-fade-top / -bottom), so a column that fits, or is scrolled to an
+     end, never dims the natural top/bottom of its cards. */
+  --dz-fade-top: 0px;
+  --dz-fade-bottom: 0px;
+  -webkit-mask: linear-gradient(
+    to bottom,
+    var(--shadow-ink-0) 0,
+    var(--color-surface-void) var(--dz-fade-top),
+    var(--color-surface-void) calc(100% - var(--dz-fade-bottom)),
+    var(--shadow-ink-0) 100%
+  );
+  mask: linear-gradient(
+    to bottom,
+    var(--shadow-ink-0) 0,
+    var(--color-surface-void) var(--dz-fade-top),
+    var(--color-surface-void) calc(100% - var(--dz-fade-bottom)),
+    var(--shadow-ink-0) 100%
+  );
+}
+
+.dz-right[data-fade-top] {
+  --dz-fade-top: 22px;
+}
+
+.dz-right[data-fade-bottom] {
+  --dz-fade-bottom: 22px;
 }
 
 .dz-right::-webkit-scrollbar {
