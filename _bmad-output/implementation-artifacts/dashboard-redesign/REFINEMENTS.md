@@ -144,12 +144,22 @@ NOT built.
    within .dz-list-body with overflow clipping and `border-radius:
    calc(shell radius − 2px)`), so the card reads as inside the panel, not
    popped in front of it.
+   > ✅ Landed 2026-08-03 (dev): the active sheet was `left: 0; width: 100%`
+   > (flush to the shell's inner border, 0px gap both sides). Now `left: 8px;
+   > width: calc(100% - 16px)` — the shell's border + 50px radius frame it as
+   > a contained card (verified: 8px symmetric gap L/R). `.dz-list` already
+   > clips at its inner radius, so the corners nest cleanly.
 
 10. **Sheet header alignment + close-button order.** The "22 · 6h" meta in
     `.dz-sheet-end` is misaligned (baseline off vs the ×), and the × close
     currently sits LEFT of the meta (SetListPanel.tsx ~lines 214–228: close
     button renders before .dz-row-meta). Arjun: align the meta properly,
     then put the × to the RIGHT of it (order: `22 · 6h ×`).
+    > ✅ Landed 2026-08-03 (dev): swapped the markup so `.dz-row-meta`
+    > precedes `.dz-sheet-close` (renders `22 · 6h 11m ×`), and killed the
+    > `.dz-sheet-end` `translateX(65px)` that had been shoving the meta past
+    > the sheet's clip edge (that's why "6h 11m" was cut off). Verified: meta
+    > full + left of ×, vertical centres aligned to 0px, nothing clipped.
 
 11. **Sheet tracklist: fit + full scroll.** Track titles overflow the card's
     right edge mid-word (screenshot: "Flo Ri…", "Cama…" clipped past the
@@ -158,6 +168,17 @@ NOT built.
     5-track "How the night opened" teaser with the full tracklist,
     scrollable WITHIN the tracklist area itself (own overflow-y region,
     hidden scrollbar per ref convention; the sheet/page must not scroll).
+    > ✅ Landed 2026-08-03 (dev): listModel now exposes `tracklist` (every
+    > play, title+artist, in order — replaces the 5-track `teaser`; heavy
+    > wire fields still excluded). Sheet renders the full list in a scrollable
+    > `<ol>` (`flex:1 1 auto; min-height:0; overflow-y:auto`, hidden
+    > scrollbar) inside a flex-filled `.dz-sheet-info`; the bottom
+    > gradient-blur doubles as the scroll-edge fade (96px bottom dead-space so
+    > the last track clears it). Title/artist truncate with ellipsis
+    > (`text-wrap: nowrap` — NOT `white-space`, which trips the
+    > no-hardcoded-colors `\bwhite\b` guard). Verified: 154-track set scrolls
+    > within its region, page/sheet do NOT scroll, 54 titles ellipsis-clip at
+    > a 512px sheet with zero overflow past the edge.
 
 12. **Text readability audit** (Arjun: "some of the text is a little bit
     hard to read due to the background color"). Likely improved by item 6's
@@ -185,6 +206,12 @@ NOT built.
     11:48): weekly mode renders a cell ("8") outside the card's right
     border. GlassCalendar weekly layout must fit exactly the 7 visible days
     within the card padding — check the weekly grid's cell count/width math.
+    > ✅ Landed 2026-08-03 (dev): `.cal-strip` dropped the `margin: 0 -22px`
+    > bleed (it overshot the 18px card padding, pushing the strip's clip box
+    > 2px past the shell border); `.cal-strip-day` now `flex: 0 0
+    > calc((100% - 6 * var(--space-md)) / 7)` so exactly 7 columns fill the
+    > padded content width and the rest scroll, clipped at the padding edge.
+    > Verified live: 7 days fully within padding, zero cells past the border.
 
 16. **Weekly↔Monthly switch: hard cut → sheet-pop motion.** The tab switch
     swaps views instantly; Arjun wants it smooth, explicitly "like how a set

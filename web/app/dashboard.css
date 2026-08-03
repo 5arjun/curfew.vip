@@ -700,8 +700,8 @@
 
 .dz-sheet[data-active] {
   opacity: 1;
-  left: 0;
-  width: 100%;
+  left: 8px;
+  width: calc(100% - 16px);
   padding: 0 10px;
   pointer-events: all;
   transition:
@@ -748,13 +748,15 @@
 .dz-sheet-end {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 16px;
   transform: translateX(0);
   transition: transform 0.4s ease;
 }
 
+/* Order is `meta ×` (item 10): the whole group stays inside the sheet's right
+   padding — no rightward slide that pushed the meta past the clip edge. */
 .dz-sheet[data-active] .dz-sheet-end {
-  transform: translateX(65px);
+  transform: translateX(0);
   transition: transform 0.2s ease;
 }
 
@@ -794,6 +796,8 @@
 .dz-sheet-info {
   position: relative;
   z-index: 1;
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-lg);
@@ -828,11 +832,19 @@
   color: var(--color-abyss-text-45);
 }
 
-.dz-sheet-teaser {
+/* Full tracklist (item 11): fills the sheet's remaining height and scrolls
+   within its OWN region (hidden scrollbar, ref convention) — the sheet and the
+   page never scroll. The bottom gradient-blur doubles as the scroll-edge fade,
+   so the list dissolves toward the edge instead of hard-cutting. */
+.dz-sheet-tracklist {
+  flex: 1 1 auto;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
-.dz-sheet-teaser-label {
+.dz-sheet-tracklist-label {
+  flex-shrink: 0;
   margin: 0 0 var(--space-sm);
   font-size: 12px;
   letter-spacing: 0.08em;
@@ -840,35 +852,60 @@
   color: var(--color-abyss-text-45);
 }
 
-.dz-sheet-teaser ol {
+.dz-sheet-tracklist ol {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
   list-style: none;
   margin: 0;
-  padding: 0;
+  /* dead space so the final track can scroll clear of the bottom blur ramp. */
+  padding: 0 0 96px;
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
-  counter-reset: teaser;
+  counter-reset: track;
 }
 
-.dz-sheet-teaser li {
+.dz-sheet-tracklist ol::-webkit-scrollbar {
+  display: none;
+}
+
+.dz-sheet-tracklist li {
   display: flex;
   align-items: baseline;
   gap: var(--space-sm);
-  counter-increment: teaser;
+  min-width: 0;
+  counter-increment: track;
   font-size: 15px;
 }
 
-.dz-sheet-teaser li::before {
-  content: counter(teaser, decimal-leading-zero);
+.dz-sheet-tracklist li::before {
+  content: counter(track, decimal-leading-zero);
+  flex-shrink: 0;
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
   color: var(--color-abyss-text-22);
 }
 
+/* Title/artist share the row and truncate with an ellipsis inside the card's
+   padding — no more mid-word hard-clips past the right edge (item 11). */
 .dz-sheet-track {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-wrap: nowrap;
   color: var(--color-abyss-text-72);
 }
 
 .dz-sheet-artist {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-wrap: nowrap;
   color: var(--color-abyss-text-45);
 }
 
@@ -1391,14 +1428,15 @@
   box-shadow: 0 0 6px 1px var(--color-abyss-accent-glow);
 }
 
-/* Weekly: the ref's horizontal strip, hidden scrollbar. */
+/* Weekly: the ref's horizontal strip, hidden scrollbar. Exactly 7 day-columns
+   fill the card's padded content width (item 15) — the rest scroll within the
+   strip, clipped at the padding edge so no cell bleeds past the shell border. */
 .cal-strip {
   display: flex;
   gap: var(--space-md);
   overflow-x: auto;
   scrollbar-width: none;
-  margin: 0 -22px;
-  padding: 0 22px 4px;
+  padding-bottom: 4px;
 }
 
 .cal-strip::-webkit-scrollbar {
@@ -1410,7 +1448,7 @@
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  flex-shrink: 0;
+  flex: 0 0 calc((100% - 6 * var(--space-md)) / 7);
 }
 
 .cal-divider {

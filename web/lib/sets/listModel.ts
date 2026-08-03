@@ -7,7 +7,7 @@ import { detectDancefloor, segmentStats } from "./dancefloor";
 import { formatBpm, formatClock, formatDayDate, formatDuration, formatTimeRange } from "./format";
 import type { SetRecord, SyncPlay } from "./types";
 
-export interface TeaserTrack {
+export interface SetTrack {
   title: string;
   artist: string;
 }
@@ -26,8 +26,8 @@ export interface SetRowModel {
   durationLabel: string;
   avgBpm: string;
   medianBpm: string;
-  /** Opening stretch of the detected dancefloor — "how the night opened" (D9). */
-  teaser: TeaserTrack[];
+  /** Every track played, in play order — the expanded card's full tracklist (item 11). */
+  tracklist: SetTrack[];
   /** Local day key "2026-06-21" — calendar cross-linking (D10). */
   dayKey: string;
   /** Epoch ms of started_at — sort by date (D12 filters). */
@@ -38,8 +38,6 @@ export interface SetRowModel {
   haystack: string;
 }
 
-const TEASER_LENGTH = 5;
-
 /** Local-date key for calendar linking; "" when the set has no timestamp. */
 export function localDayKey(iso: string | null): string {
   if (!iso) return "";
@@ -49,16 +47,11 @@ export function localDayKey(iso: string | null): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function teaserTracks(plays: SyncPlay[], floorStartIso: string | null): TeaserTrack[] {
-  // The first tracks of the detected dancefloor segment; when detection fell
-  // back to the whole set, the night's opening stretch is the honest teaser.
-  const startIdx = floorStartIso
-    ? Math.max(
-        0,
-        plays.findIndex((p) => p.started_at != null && p.started_at >= floorStartIso),
-      )
-    : 0;
-  return plays.slice(startIdx, startIdx + TEASER_LENGTH).map((p) => ({
+function setTracklist(plays: SyncPlay[]): SetTrack[] {
+  // Every play, in order — the expanded card lists the whole night (item 11),
+  // scrollable within its own region. Title/artist only; the heavy per-play
+  // wire fields stay out of the serialised row model.
+  return plays.map((p) => ({
     title: p.title ?? "Unknown",
     artist: p.artist ?? "Unknown",
   }));
@@ -86,7 +79,7 @@ export function buildSetRows(sets: SetRecord[]): SetRowModel[] {
       durationLabel: formatDuration(set.derived.set_length_sec),
       avgBpm: formatBpm(bpm.count > 0 ? bpm.mean : null),
       medianBpm: formatBpm(bpm.count > 0 ? bpm.median : null),
-      teaser: teaserTracks(set.plays, segment?.start ?? null),
+      tracklist: setTracklist(set.plays),
       dayKey: localDayKey(set.started_at),
       startedAtMs: Number.isNaN(startedAtMs) ? 0 : startedAtMs,
       lengthSec: set.derived.set_length_sec ?? 0,

@@ -212,6 +212,9 @@ export function SetListPanel({ rows }: { rows: SetRowModel[] }) {
             <div className="dz-sheet-row">
               <p className="dz-sheet-title">{sheetRow.dateLabel}</p>
               <span className="dz-sheet-end">
+                <span className="dz-row-meta">
+                  {sheetRow.floorCount} · {sheetRow.durationLabel}
+                </span>
                 <button
                   type="button"
                   className="dz-sheet-close"
@@ -220,9 +223,6 @@ export function SetListPanel({ rows }: { rows: SetRowModel[] }) {
                 >
                   <Plus size={20} strokeWidth={2} />
                 </button>
-                <span className="dz-row-meta">
-                  {sheetRow.floorCount} · {sheetRow.durationLabel}
-                </span>
               </span>
             </div>
 
@@ -246,11 +246,11 @@ export function SetListPanel({ rows }: { rows: SetRowModel[] }) {
                 </div>
               </dl>
 
-              {sheetRow.teaser.length > 0 && (
-                <div className="dz-sheet-teaser">
-                  <p className="dz-sheet-teaser-label">How the night opened</p>
+              {sheetRow.tracklist.length > 0 && (
+                <div className="dz-sheet-tracklist">
+                  <p className="dz-sheet-tracklist-label">Tracklist</p>
                   <ol>
-                    {sheetRow.teaser.map((t, i) => (
+                    {sheetRow.tracklist.map((t, i) => (
                       <li key={i}>
                         <span className="dz-sheet-track">{t.title}</span>
                         <span className="dz-sheet-artist">{t.artist}</span>
