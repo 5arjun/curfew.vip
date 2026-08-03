@@ -108,7 +108,7 @@ Unified across BPM / Harmonic / Genre:
 - **Skip until a story needs them:** album, year, bitrate, comments.
 - **Backfill** the 491 local sets via the retained-raw mechanism (same as the 3.6 Camelot key-fix).
 
-**Verification owed (5 min, not a build risk):** confirm Serato 4+ `master.sqlite` `history_entry` carries the duration + date-added columns (Serato computes both; research confirmed them in the legacy `.session` format — need to confirm the serato4 column names). Bundle with the duration check.
+**✅ Verification DONE (2026-08-03, live master.sqlite, 23,259 plays — see `serato-capture-completeness.md`):** Played-duration = `end_time − start_time` (98% coverage), `played` flag + `deck` present, `portable_id` = full path (100%). **BUT library date-added is NOT reachable via the serato4 `asset` join (only 4.6% — tracks live on the Samsung USB, not the laptop asset table).** Reliable date-added = `portable_id` path → **`database V2` `tadd`** (~94%, agent already parses database V2). So **"New tracks played" carries a database-V2-lookup dependency** (small cross-path task) and a ~94% coverage ceiling; Longest/Shortest + per-row length are unaffected/solid.
 
 **TODO:** draft a standalone "Serato capture completeness" plan artifact (field-by-field source→EnrichedPlay→SyncPlay→consumer map) so future field needs are a conscious inventory, not a trickle. (Arjun asked, 2026-08-03.)
 
