@@ -112,10 +112,66 @@ NOT built.
    existing "arc rolling-median smoothing" open item together with this —
    same subsystem.
 
+6. **Palette: ever-so-slightly more black, less blue** (Arjun; conditional on
+   it still looking right). The Abyss surfaces read blue-heavy; nudge the
+   base/raised/shell-glass tokens (`--color-abyss-base`, `--color-abyss-raised`,
+   `--color-abyss-shell-glass`, tokens.css) a few points darker and less
+   saturated — the silk backdrop and cyan accents keep the identity; the
+   TRANSLUCENCY itself is approved as-is, don't touch the alpha. Pairs with
+   item 11 (readability): re-check the texts he flagged after the shift.
+   Claude's take, for the dev session: agree — a deeper, more neutral ground
+   should improve both the "lot of blue" feel and text contrast without
+   losing the look.
+
+7. **Add the shiny-ref dot-matrix layer to the shells.** Arjun overrules the
+   polish-checkpoint omission ("lets add the dot matrix. i liked the buttons
+   how they were in the reference"). Port the reference's dots pattern onto
+   the `.dz-shell` surface (D3 block comment in dashboard.css records what
+   was left out and why). Keep the original worry in view — dots over real
+   content risked reading as noise — so build it, then review live at a low
+   intensity first.
+
+8. **Search bar: same hover glow as the sort chips beside it.** The two
+   filter/sort buttons right of the search field carry the cursor-tracking
+   hover glow; `.dz-list-search` should get the identical treatment
+   (SetListPanel.tsx, gooey-spotlight D6/D12 block).
+
+9. **Expanded set card (.dz-sheet) is not contained by the panel** (Arjun's
+   screenshots, 11:32/11:38): the sheet layers OVER the `.dz-list` shell's
+   2px border and rounded corner — visible along the right side; the back
+   arrow floats outside the card. Fix direction: clip/inset the sheet inside
+   the shell (respect the shell's border inset + radius — e.g. contain
+   within .dz-list-body with overflow clipping and `border-radius:
+   calc(shell radius − 2px)`), so the card reads as inside the panel, not
+   popped in front of it.
+
+10. **Sheet header alignment + close-button order.** The "22 · 6h" meta in
+    `.dz-sheet-end` is misaligned (baseline off vs the ×), and the × close
+    currently sits LEFT of the meta (SetListPanel.tsx ~lines 214–228: close
+    button renders before .dz-row-meta). Arjun: align the meta properly,
+    then put the × to the RIGHT of it (order: `22 · 6h ×`).
+
+11. **Sheet tracklist: fit + full scroll.** Track titles overflow the card's
+    right edge mid-word (screenshot: "Flo Ri…", "Cama…" clipped past the
+    container) — `.dz-sheet-track/.dz-sheet-artist` need real width
+    constraints + ellipsis inside the card's padding. AND: replace the
+    5-track "How the night opened" teaser with the full tracklist,
+    scrollable WITHIN the tracklist area itself (own overflow-y region,
+    hidden scrollbar per ref convention; the sheet/page must not scroll).
+
+12. **Text readability audit** (Arjun: "some of the text is a little bit
+    hard to read due to the background color"). Likely improved by item 6's
+    darker ground — after that lands, sweep the dimmer text tokens (row
+    meta, stat labels, teaser artists) against the new surfaces and lift
+    contrast where still muddy.
+
 ### Approved as-built (no change needed)
 
 - Wordmark size on the rail spine ("the word mark size is good").
 - Hero height at 25vh (confirmed first session); hero span rail→gutter.
+- Shell translucency level (~88% glass) — approved 2026-08-03 ("i like the
+  translucency the way it is"); item 6's palette shift must not change the
+  alpha.
 
 ### Fixed live this session (bugs in committed work, not design changes)
 
