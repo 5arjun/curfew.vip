@@ -165,6 +165,34 @@ NOT built.
     meta, stat labels, teaser artists) against the new surfaces and lift
     contrast where still muddy.
 
+13. **Calendar hover chip clips at the card edge** (screenshot 11:47). The
+    cursor-follow `.cal-chip` sits to the right of the cursor, so days in
+    the right-hand columns cut it off mid-text at the shell edge. Arjun:
+    "make it popup towards the center or something". Fix direction: clamp
+    the chip inside the card bounds and/or flip it to the cursor's left
+    (or bias toward card center) when near the right edge. Knobs:
+    GlassCalendar.tsx chip positioning (chipRef mousemove writer, ~line
+    216) + `.cal-chip` (dashboard.css ~1428).
+
+14. **Right-column quiet-scroll hard-clips the shells** (same screenshot).
+    Scrolled down, the calendar's top is a dead-straight cut — the tabs get
+    sliced in half — because `.dz-right` (dashboard.css ~109–122) clips with
+    no edge treatment. Arjun: "doesn't look natural". Fix direction: top +
+    bottom edge-melt fade masks on the scroll region (same language as the
+    list panel's bottom edge-fade) so shells dissolve instead of slicing.
+
+15. **Weekly view: 8th day cell overflows the container** (screenshot
+    11:48): weekly mode renders a cell ("8") outside the card's right
+    border. GlassCalendar weekly layout must fit exactly the 7 visible days
+    within the card padding — check the weekly grid's cell count/width math.
+
+16. **Weekly↔Monthly switch: hard cut → sheet-pop motion.** The tab switch
+    swaps views instantly; Arjun wants it smooth, explicitly "like how a set
+    pops up when i click on it" — adopt the expanded-set-card's
+    progressive-blur pop transition language for the calendar view change
+    (GlassCalendar tabs; reuse the dz-sheet/gblur motion values, honoring
+    reduced-motion).
+
 ### Approved as-built (no change needed)
 
 - Wordmark size on the rail spine ("the word mark size is good").
