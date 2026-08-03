@@ -384,6 +384,23 @@ pub fn mark_superseded(conn: &Connection, session_identity: &str) -> Result<(), 
     Ok(())
 }
 
+/// Clears `synced_at` on a `captured` row so the sync-queue drain loop
+/// ([`rows_pending_sync`] selects `status = 'captured' AND synced_at IS NULL`)
+/// picks it up again and re-pushes it to the cloud. Used by the Story 3.6
+/// captured-set backfill when a re-derivation actually *changed* a row's derived
+/// data (e.g. the Camelot key recovery): the cloud copy must be corrected too, so
+/// the dashboard reads the same on every device (Arjun 2026-08-02). Idempotent
+/// via the set's `external_id` on the cloud side (Story 3.2), so a re-sync
+/// updates the existing cloud row rather than duplicating it. A no-op (not an
+/// error) if the row is not currently `captured`.
+pub fn mark_for_resync(conn: &Connection, session_identity: &str) -> Result<(), StoreError> {
+    conn.execute(
+        "UPDATE captured_sessions SET synced_at = NULL WHERE session_identity = ?1 AND status = 'captured'",
+        [session_identity],
+    )?;
+    Ok(())
+}
+
 /// Reads one row by its dedup key, if it exists.
 pub fn get_by_identity(
     conn: &Connection,

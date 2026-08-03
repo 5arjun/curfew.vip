@@ -1407,7 +1407,7 @@ mod tests {
         conn.execute_batch(
             r#"CREATE TABLE history_entry (
                    id INTEGER PRIMARY KEY, session_id INTEGER, name TEXT, artist TEXT,
-                   genre TEXT, "key" TEXT, bpm REAL, start_time INTEGER, deck TEXT
+                   genre TEXT, key_value INTEGER, "key" TEXT, bpm REAL, start_time INTEGER, deck TEXT
                );"#,
         )
         .unwrap();

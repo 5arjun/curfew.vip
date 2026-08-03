@@ -37,6 +37,13 @@ use super::Play;
 ///   (Stories 1.4/1.5), never the play-log, for both formats alike. Adding it here would
 ///   break the one-contract-two-sources guarantee AC-1 requires. A caller that wants
 ///   BPM for a Serato 4+ play still calls `joiner::serato4::join_session` for it.
+/// - `key` stays `None` here for the same reason (Story 3.6). The free-text `"key"`
+///   column stores mixed, mostly-*musical* notation (`Em`, `G#m`) that
+///   `stats::camelot::parse` rejects; the authoritative source is Serato's canonical
+///   `key_value` INTEGER, mapped to Camelot by `joiner::serato4::join_session`. Reading
+///   the free-text column here would only shadow that joined key (`stats::enrich`
+///   prefers `Play.key` when present), which is exactly the ~88%-key-loss bug the fix
+///   retired — so, like BPM, key comes from the join, not the play-log.
 /// - No filter on `history_entry.played` — symmetric with the legacy path's unfiltered
 ///   handling of its own low-confidence "played" flag (Story 1.2 findings §3).
 ///
@@ -149,7 +156,7 @@ pub fn session_by_id(conn: &Connection, id: i64) -> rusqlite::Result<Option<Sess
 
 pub fn read_session(conn: &Connection, session_id: i64) -> rusqlite::Result<Vec<Play>> {
     let mut stmt = conn.prepare(
-        r#"SELECT name, artist, genre, "key", start_time, deck
+        r#"SELECT name, artist, genre, start_time, deck
            FROM history_entry
            WHERE session_id = ?1
            ORDER BY start_time ASC, id ASC"#,
@@ -165,13 +172,22 @@ pub fn read_session(conn: &Connection, session_id: i64) -> rusqlite::Result<Vec<
             grouping: None,
             year: None,
             start_time: row
-                .get::<_, Option<i64>>(4)?
+                .get::<_, Option<i64>>(3)?
                 .and_then(|t| u32::try_from(t).ok()),
             deck: row
-                .get::<_, Option<String>>(5)?
+                .get::<_, Option<String>>(4)?
                 .and_then(|d| d.parse().ok()),
             duration_sec: None,
-            key: row.get::<_, Option<String>>(3)?.and_then(non_empty),
+            // Key is deliberately NOT read from `history_entry` here — for the same
+            // reason `bpm` isn't (see the field-mapping doc above): for Serato 4+ the
+            // musical key comes from the library join, not the play-log. The free-text
+            // `"key"` column stores mixed, mostly-musical notation (`Em`, `G#m`) that
+            // `stats::camelot::parse` rejects, silently dropping ~88% of keys (Story
+            // 3.6 incident); the authoritative source is `key_value`, read by
+            // `joiner::serato4::join_session`. Leaving this `None` lets `stats::enrich`
+            // fall through to that joined key rather than shadowing it with the broken
+            // free-text one (`enrich` prefers `Play.key` when present).
+            key: None,
         })
     })?;
 
@@ -266,8 +282,11 @@ mod tests {
     }
 
     /// AC-1: a fully-populated row maps onto exactly the fields it should — asserting
-    /// the whole struct so an accidental future field addition (e.g. wiring in `bpm`)
-    /// fails this test immediately.
+    /// the whole struct so an accidental future field addition (e.g. wiring in `bpm`,
+    /// or re-wiring the free-text `key`) fails this test immediately. `key` is `None`
+    /// even though the row carries a free-text `"key"`: Story 3.6 moved key to the
+    /// library join (`key_value`), so the play-log parser deliberately no longer reads
+    /// it — the free-text column here is present but intentionally ignored.
     #[test]
     fn full_row_maps_to_play_with_untouched_fields_none() {
         let conn = in_memory_history();
@@ -297,8 +316,36 @@ mod tests {
                 start_time: Some(1_000),
                 deck: Some(1),
                 duration_sec: None,
-                key: Some("1A".to_string()),
+                // Story 3.6: key comes from the joiner (`key_value`), not the play-log.
+                key: None,
             }]
+        );
+    }
+
+    /// Story 3.6: even a row whose free-text `"key"` is a perfectly valid Camelot
+    /// string (`8A`) is ignored by the play-log reader — key now comes exclusively
+    /// from the library join. This pins the deliberate omission so a well-meaning
+    /// future edit re-adding the `"key"` read (and re-introducing the ~88%-loss bug for
+    /// musically-notated rows) fails here.
+    #[test]
+    fn free_text_key_is_ignored_even_when_it_is_valid_camelot() {
+        let conn = in_memory_history();
+        insert_entry(
+            &conn,
+            7,
+            Some("Track A"),
+            None,
+            None,
+            Some("8A"),
+            Some(1_000),
+            None,
+        );
+
+        let plays = read_session(&conn, 7).expect("query succeeds");
+
+        assert_eq!(
+            plays[0].key, None,
+            "the play-log parser must not read `key`"
         );
     }
 

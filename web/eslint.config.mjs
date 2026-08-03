@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored verbatim from the React Bits shadcn registry (dashboard
+    // redesign D2 — "references are law"): its useMemo-uniforms mutation is
+    // the standard react-three-fiber pattern, not ours to rewrite.
+    "app/components/Silk.jsx",
   ]),
 ]);
 

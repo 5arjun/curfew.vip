@@ -85,12 +85,16 @@ fn non_blank(s: &str) -> Option<&str> {
 ///   blank/whitespace-only** (a "cleared" tag stored as `""`/`" "` is not a real
 ///   value). Whichever raw string wins is fed into [`genre::normalize`]; the two are
 ///   never merged or concatenated.
-/// - **key**: prefer `play.key` (confirmed Camelot notation at the source for both
-///   formats) and fall back to `joined.key` (not guaranteed Camelot notation when it
-///   came from an embedded-tag fallback) when `play.key` is `None` **or
-///   blank/whitespace-only**. Whichever raw string wins is validated by
-///   [`camelot::parse`]; an unparseable key becomes `camelot: None`, never a
-///   fabricated position.
+/// - **key**: prefer `play.key`, falling back to `joined.key` when `play.key` is
+///   `None` **or blank/whitespace-only**. The two formats populate these differently,
+///   and the precedence is correct for both: the **legacy** play-log carries a genuine
+///   Camelot key on the play row (`.session` field 51), so `play.key` is authoritative
+///   there; the **Serato 4+** play-log parser deliberately leaves `play.key` `None`
+///   (Story 3.6 — its free-text `"key"` is mixed *musical* notation that must not
+///   shadow the real key), so serato4 always falls through to `joined.key`, which the
+///   joiner derives from the canonical `key_value` INTEGER. Whichever raw string wins
+///   is validated by [`camelot::parse`]; an unparseable key becomes `camelot: None`,
+///   never a fabricated position.
 ///
 /// `bpm` is `joined.bpm` directly (`Play` has no `bpm` field by design — BPM is
 /// scoped to the library join for both formats). `title`/`artist`/`path`/`start_time`

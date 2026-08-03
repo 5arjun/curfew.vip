@@ -852,6 +852,7 @@ mod tests {
                    name       TEXT,
                    artist     TEXT,
                    genre      TEXT,
+                   key_value  INTEGER,
                    "key"      TEXT,
                    bpm        REAL,
                    start_time INTEGER,
@@ -951,7 +952,7 @@ mod tests {
             seed.execute_batch(
                 r#"CREATE TABLE history_entry (
                        id INTEGER PRIMARY KEY, session_id INTEGER, name TEXT, artist TEXT,
-                       genre TEXT, "key" TEXT, bpm REAL, start_time INTEGER, deck TEXT
+                       genre TEXT, key_value INTEGER, "key" TEXT, bpm REAL, start_time INTEGER, deck TEXT
                    );"#,
             )
             .unwrap();
@@ -992,7 +993,7 @@ mod tests {
             seed.execute_batch(
                 r#"CREATE TABLE history_entry (
                        id INTEGER PRIMARY KEY, session_id INTEGER, name TEXT, artist TEXT,
-                       genre TEXT, "key" TEXT, bpm REAL, start_time INTEGER, deck TEXT
+                       genre TEXT, key_value INTEGER, "key" TEXT, bpm REAL, start_time INTEGER, deck TEXT
                    );"#,
             )
             .unwrap();
@@ -1019,7 +1020,7 @@ mod tests {
             seed.execute_batch(
                 r#"CREATE TABLE history_entry (
                        id INTEGER PRIMARY KEY, session_id INTEGER, name TEXT, artist TEXT,
-                       genre TEXT, "key" TEXT, bpm REAL, start_time INTEGER, deck TEXT
+                       genre TEXT, key_value INTEGER, "key" TEXT, bpm REAL, start_time INTEGER, deck TEXT
                    );"#,
             )
             .unwrap();
@@ -1040,6 +1041,72 @@ mod tests {
             Some("DJ A")
         );
         assert_eq!(derived.most_played_tracks[0].play_count, 2);
+    }
+
+    /// Story 3.6 capture-path regression (layer 1) — the reference incident. A
+    /// musically-notated Serato library (`G#m`, `Am`, `Em`, `Ebm`, plus a `-1` no-key
+    /// row) yields **populated, correct Camelot keys** through the full `build_serato4`
+    /// path (parser → joiner → enrich → assemble), not the `None`s the old
+    /// `camelot::parse("Em")` produced. `key_value` is the source of truth; the
+    /// free-text `"key"` here is the exact mixed/musical notation that silently dropped
+    /// ~88% of real keys before the fix. This is the test that would have caught it.
+    #[test]
+    fn build_serato4_recovers_camelot_keys_from_key_value_not_free_text() {
+        let dir = std::env::temp_dir().join(format!(
+            "curfew_capture_serato4_camelot_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("temp dir creates");
+        let db_path = dir.join("master.sqlite");
+        {
+            let seed = Connection::open(&db_path).expect("seed db creates");
+            seed.execute_batch(
+                r#"CREATE TABLE history_entry (
+                       id INTEGER PRIMARY KEY, session_id INTEGER, name TEXT, artist TEXT,
+                       genre TEXT, key_value INTEGER, "key" TEXT, bpm REAL, start_time INTEGER, deck TEXT
+                   );"#,
+            )
+            .unwrap();
+            // (key_value, free-text musical notation the OLD path dropped, start_time)
+            let rows: &[(i64, &str, i64)] = &[
+                (0, "G#m", 1_000),  // -> 1A
+                (7, "Am", 1_100),   // -> 8A
+                (8, "Em", 1_200),   // -> 9A
+                (16, "Ebm", 1_300), // -> 5B
+                (-1, "", 1_400),    // -> None (no key)
+            ];
+            for (i, (key_value, free_text, start)) in rows.iter().enumerate() {
+                seed.execute(
+                    r#"INSERT INTO history_entry
+                           (session_id, name, artist, genre, key_value, "key", bpm, start_time, deck)
+                       VALUES (7, ?1, 'Artist', 'House', ?2, ?3, 128.0, ?4, '1')"#,
+                    rusqlite::params![format!("Track {i}"), key_value, free_text, start],
+                )
+                .unwrap();
+            }
+        }
+
+        let (plays, derived) = build_serato4(&dir, &db_path, 7).expect("build_serato4 succeeds");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let keys: Vec<Option<String>> = plays.iter().map(|p| p.camelot_key.clone()).collect();
+        assert_eq!(
+            keys,
+            vec![
+                Some("1A".to_string()),
+                Some("8A".to_string()),
+                Some("9A".to_string()),
+                Some("5B".to_string()),
+                None,
+            ],
+            "musically-notated rows must recover Camelot keys via key_value, not drop to None"
+        );
+        // 4 of 5 plays carry a key, so the mixing stats see real transitions rather
+        // than excluding every pair as "no key" — the downstream proof the keys landed.
+        assert_eq!(
+            derived.camelot_mixing_stats.excluded_no_key, 1,
+            "only the single -1 no-key transition should be excluded"
+        );
     }
 
     #[test]

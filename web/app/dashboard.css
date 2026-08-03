@@ -1,0 +1,1980 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Dashboard redesign (Story 3.6 v2) — liquid metal + liquid glass on Abyss
+   Cyan (PLAN.md D1–D14). All classes are prefixed `dz-` (dashboard zone) so
+   they can't collide with the Set-Detail-retained `.dashboard-*` shell in
+   globals.css. Token-only (no-hardcoded-colors.test.ts scans this file);
+   every ref hex renders through the Abyss tokens.
+
+   The page is a viewport-locked app shell (D9 hard requirement: the page,
+   hero, and right column never move — only the set list scrolls, within its
+   own panel). Below 900px the lock is released: a phone can't hold three
+   stacked zones in one viewport, so the page scrolls and the set list caps
+   its own height instead (deviation from the desktop zone map, not from any
+   ref mechanic).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.dz {
+  position: relative;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: var(--container-max);
+  margin: 0 auto;
+  /* Bottom clearance stays tight: the floating nav is a small centered dock
+     and glass-over-glass overlap at the panel edges reads fine — the list's
+     own bottom edge-fade melts rows before the dock anyway. */
+  padding: var(--space-md) var(--space-gutter)
+    calc(var(--space-md) + env(safe-area-inset-bottom));
+  /* clip, NOT hidden: a hidden box is still a programmatically-scrollable
+     container, and scrollIntoView (calendar → list, D10) spills leftover
+     travel into it, silently shifting the whole shell's content up and
+     clipping it at the border (the "expanded sheet top is cut" bug). A clip
+     box can never scroll. */
+  overflow: clip;
+  /* The refs' voice (Hanken Grotesk — already Curfew's display font, D4). */
+  font-family: var(--font-hanken-grotesk);
+  color: var(--color-abyss-text);
+}
+
+/* Rail clearance (Arjun, 2026-08-03): with the nav standing at the left edge,
+   the page drops the centered --container-max cap and spans the space right
+   of the rail — the hero reaches further both ways, and the left gutter
+   mirrors the rail's own inset. Same 900.02px flip as the rail itself
+   (globals.css); below it the bottom dock returns and the base padding above
+   governs. No upper cap yet — revisit if this ever meets an ultrawide. */
+@media (min-width: 900.02px) {
+  .dz {
+    max-width: none;
+    padding-left: calc(var(--nav-rail-inset) + var(--nav-rail-width) + var(--space-gutter));
+    padding-right: var(--space-gutter);
+  }
+}
+
+/* ─── Silk backdrop (D2) ─────────────────────────────────────────────────
+   Fixed full-bleed WebGL silk behind everything; the base token paints
+   beneath it while the canvas mounts (and wherever WebGL is off). */
+.dz-silk {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: var(--color-abyss-base);
+}
+
+.dz-silk > div,
+.dz-silk canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* ─── Shell language (D8: the music player's .content treatment, re-tinted;
+   translucent per D1's liquid-glass material so the Silk breathes through) ── */
+.dz-shell {
+  position: relative;
+  background: var(--color-abyss-shell-glass);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+  border: 2px solid var(--color-abyss-hairline);
+  border-radius: 50px;
+  box-shadow: inset 0 0 150px var(--color-abyss-shell-glow);
+  will-change: box-shadow;
+  transition:
+    box-shadow var(--motion-duration-liquid-grand) var(--motion-ease-liquid),
+    background-color var(--motion-duration-liquid-grand) var(--motion-ease-liquid);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .dz-shell {
+    background: var(--color-abyss-shell);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* ─── Greeting (D14: time-aware text only, nothing beside it) ──────────── */
+.dz-greeting {
+  flex-shrink: 0;
+  margin: 0;
+  font-size: clamp(24px, 3vw, 34px);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+  color: var(--color-abyss-text);
+}
+
+/* ─── Zone map (D7) ──────────────────────────────────────────────────────
+   Hero band (top ~33%) above a two-column split: set list left, right
+   column (calendar → most played → confidence → odometer). */
+.dz-hero {
+  flex: 0 0 clamp(200px, 25vh, 300px);
+  min-height: 0;
+}
+
+.dz-columns {
+  flex: 1 1 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
+  gap: var(--space-md);
+}
+
+.dz-list {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dz-right {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  /* Graceful degradation on short-but-wide viewports: the column may quietly
+     scroll itself; the scrollbar stays hidden (ref convention). */
+  overflow-y: auto;
+  scrollbar-width: none;
+  /* Item 14: top + bottom edge-melt so shells dissolve at the scroll bounds
+     instead of hard-slicing (Arjun: "doesn't look natural"). CONDITIONAL — an
+     edge fades only when RightColumn (client) reports content to scroll past
+     it (data-fade-top / -bottom), so a column that fits, or is scrolled to an
+     end, never dims the natural top/bottom of its cards. */
+  --dz-fade-top: 0px;
+  --dz-fade-bottom: 0px;
+  -webkit-mask: linear-gradient(
+    to bottom,
+    var(--shadow-ink-0) 0,
+    var(--color-surface-void) var(--dz-fade-top),
+    var(--color-surface-void) calc(100% - var(--dz-fade-bottom)),
+    var(--shadow-ink-0) 100%
+  );
+  mask: linear-gradient(
+    to bottom,
+    var(--shadow-ink-0) 0,
+    var(--color-surface-void) var(--dz-fade-top),
+    var(--color-surface-void) calc(100% - var(--dz-fade-bottom)),
+    var(--shadow-ink-0) 100%
+  );
+}
+
+.dz-right[data-fade-top] {
+  --dz-fade-top: 22px;
+}
+
+.dz-right[data-fade-bottom] {
+  --dz-fade-bottom: 22px;
+}
+
+.dz-right::-webkit-scrollbar {
+  display: none;
+}
+
+/* ─── Responsive: release the viewport lock on narrow screens ──────────── */
+@media (max-width: 900px) {
+  .dz {
+    height: auto;
+    overflow: visible;
+  }
+  .dz-hero {
+    flex-basis: auto;
+    min-height: 240px;
+  }
+  /* flex: none — the desktop `flex: 1 1 0` collapses to zero height once the
+     shell's viewport lock is released (auto-height parent, basis 0). */
+  .dz-columns {
+    flex: none;
+    grid-template-columns: 1fr;
+  }
+  .dz-list {
+    height: 70dvh;
+  }
+  .dz-right {
+    overflow-y: visible;
+    min-height: auto;
+  }
+}
+
+/* ─── Hero band (D8): chart-as-canvas ────────────────────────────────────
+   The arc SVG fills the whole shell; date/time, stats, and the metal arrow
+   float above it. The dancefloor window's bright stroke is the SAME path
+   clipped to the band, so dim and glowing stretches stay continuous. */
+.dz-hero {
+  overflow: hidden;
+}
+
+.dz-hero-arc {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.dz-hero-line {
+  fill: none;
+  stroke-width: 2.5px;
+  stroke-linecap: round;
+}
+
+.dz-hero-line--dim {
+  opacity: 0.38;
+}
+
+.dz-hero-line--floor {
+  stroke-width: 3px;
+  filter: drop-shadow(0 0 8px var(--color-abyss-accent-glow));
+}
+
+.dz-hero-fill {
+  opacity: 0.5;
+}
+
+.dz-hero-solo {
+  fill: var(--color-abyss-accent);
+  filter: drop-shadow(0 0 8px var(--color-abyss-accent-glow));
+}
+
+.dz-hero-content {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: clamp(20px, 3vh, 32px) clamp(24px, 3vw, 40px);
+}
+
+.dz-hero-when {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dz-hero-date {
+  font-size: clamp(20px, 2vw, 26px);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  color: var(--color-abyss-text);
+}
+
+.dz-hero-time {
+  font-size: 15px;
+  color: var(--color-abyss-text-45);
+}
+
+.dz-hero-stats {
+  margin: 0;
+  display: flex;
+  gap: clamp(var(--space-lg), 4vw, var(--space-xxl));
+}
+
+.dz-hero-stat dd {
+  margin: 0;
+  font-size: clamp(24px, 2.6vw, 34px);
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--color-abyss-text);
+}
+
+.dz-hero-stat dt {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--color-abyss-text-45);
+}
+
+.dz-hero-enter {
+  position: absolute;
+  right: clamp(24px, 3vw, 40px);
+  top: 50%;
+  translate: 0 -50%;
+}
+
+/* ─── Liquid-metal button (D8/D9) — the ref's physics, ported verbatim ───
+   Layer stack (bottom→top): shadow layer + shader ring (translateZ 0) →
+   dark pill inset 2px forming the metal rim (Z 10) → label/icon (Z 20) →
+   hitbox (Z 25). The 0.8s overshoot bezier is the ref's own — identical to
+   --motion-ease-spark; widths ride unregistered --mtl-* vars. Pill radius is
+   the ref's literal 100px (this surface's refs are pill-native; the old
+   no-pill-buttons radius rule doesn't govern the redesign). */
+.mtl {
+  position: relative;
+  display: inline-block;
+}
+
+.mtl--icon {
+  --mtl-w: 46px;
+  --mtl-h: 46px;
+  --mtl-iw: 42px;
+  --mtl-ih: 42px;
+}
+
+.mtl--text {
+  --mtl-w: 142px;
+  --mtl-h: 46px;
+  --mtl-iw: 138px;
+  --mtl-ih: 42px;
+}
+
+.mtl-persp {
+  perspective: 1000px;
+  perspective-origin: 50% 50%;
+}
+
+.mtl-stack {
+  position: relative;
+  width: var(--mtl-w);
+  height: var(--mtl-h);
+  transform-style: preserve-3d;
+  transition:
+    all 0.8s var(--motion-ease-spark),
+    width 0.4s ease,
+    height 0.4s ease;
+}
+
+.mtl-face {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--mtl-w);
+  height: var(--mtl-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transform-style: preserve-3d;
+  transform: translateZ(20px);
+  z-index: 30;
+  pointer-events: none;
+  color: var(--metal-abyss-label);
+  filter: drop-shadow(0 1px 2px var(--shadow-ink-50));
+  font-size: 14px;
+  font-weight: 400;
+  text-wrap: nowrap;
+  transition: all 0.8s var(--motion-ease-spark);
+}
+
+.mtl-pill-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--mtl-w);
+  height: var(--mtl-h);
+  transform-style: preserve-3d;
+  transform: translateZ(10px);
+  z-index: 20;
+  transition: all 0.8s var(--motion-ease-spark);
+}
+
+.mtl-stack[data-pressed] .mtl-pill-layer {
+  transform: translateZ(10px) translateY(1px) scale(0.98);
+}
+
+.mtl-pill {
+  width: var(--mtl-iw);
+  height: var(--mtl-ih);
+  margin: 2px;
+  border-radius: 100px;
+  background: linear-gradient(180deg, var(--color-abyss-raised) 0%, var(--color-abyss-base) 100%);
+  transition:
+    all 0.8s var(--motion-ease-spark),
+    box-shadow 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mtl-stack[data-pressed] .mtl-pill {
+  box-shadow:
+    inset 0 2px 4px var(--shadow-ink-40),
+    inset 0 1px 2px var(--shadow-ink-30);
+}
+
+/* The ref's stacked drop shadows: loose at rest, tighter on hover, tightest
+   pressed — stop-for-stop through the shadow ramp tokens. */
+.mtl-shadow-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--mtl-w);
+  height: var(--mtl-h);
+  transform-style: preserve-3d;
+  transform: translateZ(0);
+  z-index: 10;
+  border-radius: 100px;
+  box-shadow:
+    0 0 0 1px var(--shadow-ink-30),
+    0 36px 14px 0 var(--shadow-ink-2),
+    0 20px 12px 0 var(--shadow-ink-8),
+    0 9px 9px 0 var(--shadow-ink-12),
+    0 2px 5px 0 var(--shadow-ink-15);
+  transition:
+    all 0.8s var(--motion-ease-spark),
+    box-shadow 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mtl-stack[data-hover] .mtl-shadow-layer {
+  box-shadow:
+    0 0 0 1px var(--shadow-ink-40),
+    0 12px 6px 0 var(--shadow-ink-5),
+    0 8px 5px 0 var(--shadow-ink-10),
+    0 4px 4px 0 var(--shadow-ink-15),
+    0 1px 2px 0 var(--shadow-ink-20);
+}
+
+.mtl-stack[data-pressed] .mtl-shadow-layer {
+  transform: translateZ(0) translateY(1px) scale(0.98);
+  box-shadow:
+    0 0 0 1px var(--shadow-ink-50),
+    0 1px 2px 0 var(--shadow-ink-30);
+}
+
+.mtl-shader {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 100px;
+  overflow: hidden;
+}
+
+.mtl-shader canvas {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 100px !important;
+}
+
+.mtl-hit {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--mtl-w);
+  height: var(--mtl-h);
+  background: none;
+  border: none;
+  cursor: pointer;
+  z-index: 40;
+  transform-style: preserve-3d;
+  transform: translateZ(25px);
+  overflow: hidden;
+  border-radius: 100px;
+  display: block;
+}
+
+.mtl-hit:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 6px var(--color-abyss-accent-glow);
+}
+
+.mtl-ripple {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-radius: 100px;
+  background: radial-gradient(circle, var(--color-metal-ripple) 0%, var(--color-metal-ripple-fade) 70%);
+  transform: translate(-50%, -50%) scale(0);
+  pointer-events: none;
+  animation: mtl-ripple 0.6s ease-out;
+}
+
+@keyframes mtl-ripple {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0.6;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(4);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mtl-stack,
+  .mtl-face,
+  .mtl-pill-layer,
+  .mtl-pill,
+  .mtl-shadow-layer {
+    transition: none;
+  }
+  .mtl-ripple {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+@media (forced-colors: active) {
+  .mtl-hit:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
+}
+
+/* ─── Set-list panel (D4/D9): the progressive-blur ref's mechanics ───────
+   Panel = the ref's .content; .dz-list-main = its .main-content (recedes
+   when a sheet is open); .dz-sheet = the song modal (in-place expansion).
+   All timings/easings are the ref's, via the liquid motion tokens. */
+.dz-list {
+  /* clip, NOT hidden — same reason as .dz: scrollIntoView on a deep row was
+     scrolling this section itself (scrollTop 34 measured), dragging the
+     action bar + sheet frame up under the shell border. */
+  overflow: clip;
+}
+
+.dz-list[data-modal] {
+  background: var(--color-abyss-base);
+  box-shadow: inset 0 0 150px var(--color-abyss-shell-glow-dim);
+}
+
+.dz-list-top {
+  flex-shrink: 0;
+  min-height: 68px;
+  display: flex;
+  align-items: center;
+  padding: 12px 16px 4px;
+}
+
+.dz-list-search {
+  width: 100%;
+}
+
+.dz-list-actions {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  opacity: 0;
+  transition: opacity var(--motion-duration-liquid-close) var(--motion-ease-liquid);
+}
+
+.dz-list-actions[data-active] {
+  opacity: 1;
+  /* Lands with the (now-faster) sheet pop instead of trailing it. */
+  transition: opacity 220ms var(--motion-ease-liquid) 60ms;
+}
+
+.dz-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 100px;
+  background: var(--color-abyss-row-line);
+  color: var(--color-abyss-text-72);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.dz-back:hover {
+  background: var(--color-abyss-row-hover);
+  color: var(--color-abyss-text);
+}
+
+.dz-back:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 6px var(--color-abyss-accent-glow);
+}
+
+/* Back arrow + the set's identity, grouped at the left of the action bar
+   (Arjun 2026-08-03): the sheet dropped its own big header row, so date +
+   count·duration now ride here between the back arrow and Enter Set, and the
+   × close is gone (the back arrow closes). The tracklist gains that height. */
+.dz-actions-lead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  min-width: 0;
+}
+
+.dz-actions-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.dz-actions-date {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--color-abyss-text);
+  text-wrap: nowrap;
+}
+
+.dz-list-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* The receding background — the ref's .content.active .main-content. */
+.dz-list-main {
+  position: absolute;
+  inset: 0;
+  transform: translate3d(0, 0, 0) scale(1);
+  filter: blur(0px) brightness(1);
+  will-change: transform, filter;
+  transition: var(--motion-duration-liquid-open) var(--motion-ease-liquid);
+}
+
+.dz-list[data-modal] .dz-list-main {
+  transform: translate3d(0, 0, 0) scale(0.9);
+  filter: blur(16px) brightness(0.7);
+  transition: 0.3s ease-out;
+}
+
+/* The ONLY scroll region on the page (D9 hard requirement). */
+.dz-list-scroll {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  padding: 6px 16px 28px;
+}
+
+.dz-list-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.dz-list-empty {
+  margin: var(--space-xl) auto 0;
+  max-width: 34ch;
+  text-align: center;
+  color: var(--color-abyss-text-45);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+/* ─── Rows: the ref's 72px song rows, re-tinted ─────────────────────────── */
+.dz-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dz-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 72px;
+  border-radius: 32px;
+  border: 2px solid var(--color-abyss-row-line);
+  background: none;
+  padding: 0 22px;
+  box-shadow: inset 0 0 0 0 var(--color-abyss-row-hover);
+  transition: 0.2s ease;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 16px;
+  text-align: left;
+}
+
+.dz-row:hover {
+  box-shadow: inset 0 0 64px 0 var(--color-abyss-row-hover);
+}
+
+.dz-row:focus-visible {
+  outline: none;
+  border-color: var(--color-abyss-accent-soft);
+  box-shadow: inset 0 0 64px 0 var(--color-abyss-row-hover);
+}
+
+.dz-row-when {
+  color: var(--color-abyss-text-72);
+}
+
+.dz-row-clock {
+  color: var(--color-abyss-text-45);
+}
+
+.dz-row-end {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.dz-row-meta {
+  color: var(--color-abyss-text-45);
+}
+
+/* The ref's hover-reveal icon: hidden at rest, 0.5 on row hover, 1 on its own. */
+.dz-row-icon {
+  opacity: 0;
+  color: var(--color-abyss-text);
+  transition: 0.2s ease;
+}
+
+.dz-row:hover .dz-row-icon {
+  opacity: 0.5;
+}
+
+/* Calendar cross-link pulse (D10): two soft beats of the hover glow. */
+.dz-row[data-pulse] {
+  animation: dz-row-pulse 1.2s var(--motion-ease-in-out) 2;
+}
+
+@keyframes dz-row-pulse {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 0 var(--color-abyss-row-hover);
+    border-color: var(--color-abyss-row-line);
+  }
+  50% {
+    box-shadow: inset 0 0 64px 0 var(--color-abyss-row-hover);
+    border-color: var(--color-abyss-accent-soft);
+  }
+}
+
+/* ─── The sheet: the ref's song modal, verbatim choreography ────────────
+   Collapsed twin of a row (72px, invisible) at the clicked row's position;
+   active = full width, ~430px tall, slid to the top of the panel body on
+   the 0.6s house easing (0.4s out), opacity snapping per the ref's timing. */
+.dz-sheet {
+  position: absolute;
+  z-index: 99;
+  left: 10px;
+  width: calc(100% - 20px);
+  height: 72px;
+  opacity: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  overflow: hidden;
+  border-radius: 32px;
+  background: var(--color-abyss-raised);
+  pointer-events: none;
+  will-change: width, height, transform;
+  transition:
+    all var(--motion-duration-liquid-close) var(--motion-ease-liquid),
+    top 0s,
+    opacity 0.2s 0.4s;
+}
+
+.dz-sheet[data-active] {
+  opacity: 1;
+  left: 8px;
+  width: calc(100% - 16px);
+  padding: 0 10px;
+  pointer-events: all;
+  /* Snappier pop (Arjun 2026-08-03: the 600ms liquid-open read laggy — the
+     easeOutExpo tail crawled; runs a steady 60fps, so it was perceptual not
+     jank). 310ms keeps the liquid ease but cuts the crawl. */
+  transition:
+    all 310ms var(--motion-ease-liquid),
+    top 0s,
+    opacity 0s;
+}
+
+.dz-sheet-info {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  padding: 24px;
+  overflow: hidden;
+}
+
+.dz-sheet-stats {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md) var(--space-xl);
+}
+
+.dz-sheet-stats dd {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--color-abyss-text);
+}
+
+.dz-sheet-stats dd.dz-sheet-range {
+  font-size: 20px;
+  padding-top: 3px;
+}
+
+.dz-sheet-stats dt {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--color-abyss-text-45);
+}
+
+/* Full tracklist (item 11): fills the sheet's remaining height and scrolls
+   within its OWN region (hidden scrollbar, ref convention) — the sheet and the
+   page never scroll. The bottom gradient-blur doubles as the scroll-edge fade,
+   so the list dissolves toward the edge instead of hard-cutting. */
+.dz-sheet-tracklist {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dz-sheet-tracklist-label {
+  flex-shrink: 0;
+  margin: 0 0 var(--space-sm);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-abyss-text-45);
+}
+
+.dz-sheet-tracklist ol {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  list-style: none;
+  margin: 0;
+  /* dead space so the final track can scroll clear of the bottom blur ramp. */
+  padding: 0 0 96px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  counter-reset: track;
+}
+
+.dz-sheet-tracklist ol::-webkit-scrollbar {
+  display: none;
+}
+
+.dz-sheet-tracklist li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  min-width: 0;
+  counter-increment: track;
+  font-size: 15px;
+}
+
+.dz-sheet-tracklist li::before {
+  content: counter(track, decimal-leading-zero);
+  flex-shrink: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-abyss-text-22);
+}
+
+/* Title/artist share the row and truncate with an ellipsis inside the card's
+   padding — no more mid-word hard-clips past the right edge (item 11). */
+.dz-sheet-track {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-wrap: nowrap;
+  color: var(--color-abyss-text-72);
+}
+
+.dz-sheet-artist {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-wrap: nowrap;
+  color: var(--color-abyss-text-45);
+}
+
+/* ─── The ref's 8-layer progressive blur (GradientBlur), verbatim ramp —
+   bottom-anchored inside the sheet so the teaser melts toward the edge. */
+.dz-gblur {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 55%;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 2;
+}
+
+.dz-gblur > div {
+  position: absolute;
+  inset: 0;
+  transition: 0.4s ease-out;
+}
+
+.dz-gblur > div:nth-of-type(1) {
+  z-index: 1;
+  backdrop-filter: blur(0.5px);
+  -webkit-backdrop-filter: blur(0.5px);
+  mask: linear-gradient(var(--shadow-ink-0) 21%, var(--color-surface-void) 29%);
+  -webkit-mask: linear-gradient(var(--shadow-ink-0) 21%, var(--color-surface-void) 29%);
+}
+
+.dz-gblur > div:nth-of-type(2) {
+  z-index: 2;
+  backdrop-filter: blur(1px);
+  -webkit-backdrop-filter: blur(1px);
+  mask: linear-gradient(var(--shadow-ink-0) 29%, var(--color-surface-void) 37%);
+  -webkit-mask: linear-gradient(var(--shadow-ink-0) 29%, var(--color-surface-void) 37%);
+}
+
+.dz-gblur > div:nth-of-type(3) {
+  z-index: 3;
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  mask: linear-gradient(var(--shadow-ink-0) 37%, var(--color-surface-void) 45%);
+  -webkit-mask: linear-gradient(var(--shadow-ink-0) 37%, var(--color-surface-void) 45%);
+}
+
+.dz-gblur > div:nth-of-type(4) {
+  z-index: 4;
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+  mask: linear-gradient(var(--shadow-ink-0) 45%, var(--color-surface-void) 53%);
+  -webkit-mask: linear-gradient(var(--shadow-ink-0) 45%, var(--color-surface-void) 53%);
+}
+
+.dz-gblur > div:nth-of-type(5) {
+  z-index: 5;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  mask: linear-gradient(var(--shadow-ink-0) 53%, var(--color-surface-void) 61%);
+  -webkit-mask: linear-gradient(var(--shadow-ink-0) 53%, var(--color-surface-void) 61%);
+}
+
+.dz-gblur > div:nth-of-type(6) {
+  z-index: 6;
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  mask: linear-gradient(var(--shadow-ink-0) 61%, var(--color-surface-void) 69%);
+  -webkit-mask: linear-gradient(var(--shadow-ink-0) 61%, var(--color-surface-void) 69%);
+}
+
+.dz-gblur > div:nth-of-type(7) {
+  z-index: 7;
+  backdrop-filter: blur(64px);
+  -webkit-backdrop-filter: blur(64px);
+  mask: linear-gradient(var(--shadow-ink-0) 69%, var(--color-surface-void) 77%);
+  -webkit-mask: linear-gradient(var(--shadow-ink-0) 69%, var(--color-surface-void) 77%);
+}
+
+.dz-gblur > div:nth-of-type(8) {
+  z-index: 8;
+  backdrop-filter: blur(128px);
+  -webkit-backdrop-filter: blur(128px);
+  mask: linear-gradient(var(--shadow-ink-0) 77%, var(--color-surface-void) 85%);
+  -webkit-mask: linear-gradient(var(--shadow-ink-0) 77%, var(--color-surface-void) 85%);
+}
+
+/* ─── Scroll-edge softening (D9): rows melt out at the panel bounds ─────── */
+.dz-efade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 34px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.dz-efade--top {
+  top: 0;
+}
+
+.dz-efade--bottom {
+  bottom: 0;
+}
+
+.dz-efade > div {
+  position: absolute;
+  inset: 0;
+  transition: 0.4s ease-out;
+}
+
+.dz-efade--top > div:nth-of-type(1) {
+  backdrop-filter: blur(1px);
+  -webkit-backdrop-filter: blur(1px);
+  mask: linear-gradient(var(--color-surface-void) 30%, var(--shadow-ink-0) 75%);
+  -webkit-mask: linear-gradient(var(--color-surface-void) 30%, var(--shadow-ink-0) 75%);
+}
+
+.dz-efade--top > div:nth-of-type(2) {
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  mask: linear-gradient(var(--color-surface-void) 12%, var(--shadow-ink-0) 45%);
+  -webkit-mask: linear-gradient(var(--color-surface-void) 12%, var(--shadow-ink-0) 45%);
+}
+
+.dz-efade--top > div:nth-of-type(3) {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  mask: linear-gradient(var(--color-surface-void) 0%, var(--shadow-ink-0) 25%);
+  -webkit-mask: linear-gradient(var(--color-surface-void) 0%, var(--shadow-ink-0) 25%);
+}
+
+.dz-efade--bottom > div:nth-of-type(1) {
+  backdrop-filter: blur(1px);
+  -webkit-backdrop-filter: blur(1px);
+  mask: linear-gradient(var(--shadow-ink-0) 25%, var(--color-surface-void) 70%);
+  -webkit-mask: linear-gradient(var(--shadow-ink-0) 25%, var(--color-surface-void) 70%);
+}
+
+.dz-efade--bottom > div:nth-of-type(2) {
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  mask: linear-gradient(var(--shadow-ink-0) 55%, var(--color-surface-void) 88%);
+  -webkit-mask: linear-gradient(var(--shadow-ink-0) 55%, var(--color-surface-void) 88%);
+}
+
+.dz-efade--bottom > div:nth-of-type(3) {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  mask: linear-gradient(var(--shadow-ink-0) 75%, var(--color-surface-void) 100%);
+  -webkit-mask: linear-gradient(var(--shadow-ink-0) 75%, var(--color-surface-void) 100%);
+}
+
+/* When a sheet is open the edge blur releases (the ref's .content.active
+   .gradient-blur behaviour: fade to blur 0, 0.5s ease-out after 0.3s). */
+.dz-list[data-modal] .dz-efade > div {
+  backdrop-filter: blur(0px);
+  -webkit-backdrop-filter: blur(0px);
+  transition: 0.5s ease-out 0.3s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dz-list-main,
+  .dz-list[data-modal] .dz-list-main {
+    transition: none;
+    transform: none;
+    filter: none;
+  }
+  .dz-sheet,
+  .dz-sheet[data-active] {
+    transition: opacity var(--motion-duration-fast) var(--motion-ease-standard) !important;
+  }
+  .dz-row[data-pulse] {
+    animation: none;
+    border-color: var(--color-abyss-accent-soft);
+  }
+}
+
+@media (forced-colors: active) {
+  .dz-row,
+  .dz-sheet {
+    border: 1px solid CanvasText;
+  }
+  .dz-row:focus-visible,
+  .dz-back:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
+}
+
+/* ─── Spotlight search (D6): gooey pill + sort chips ─────────────────────
+   Dark liquid-glass reskin of the apple-spotlight ref; the goo container
+   carries the blob filter so the pill and chips merge like droplets. Solid
+   raised fills inside the goo (the alpha-curve filter crushes translucency). */
+.spot {
+  width: 100%;
+}
+
+.spot-goo {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  filter: url(#dz-blob);
+}
+
+.spot-pill {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 20px;
+  border-radius: 30px;
+  background: var(--color-abyss-raised);
+  box-shadow: inset 0 0 24px var(--color-abyss-shell-glow);
+  overflow: hidden;
+  cursor: text;
+  transition: box-shadow 0.2s ease;
+}
+
+/* Item 8: the search field carries the sort chips' hover glow (their
+   `0 0 18px accent-glow`), kept over the pill's own inset glow. On
+   focus-within it doubles as the focus cue the bare input otherwise lacked. */
+.spot-pill:hover,
+.spot-pill:focus-within {
+  box-shadow:
+    inset 0 0 24px var(--color-abyss-shell-glow),
+    0 0 18px var(--color-abyss-accent-glow);
+}
+
+.spot-search-icon {
+  display: inline-flex;
+  color: var(--color-abyss-text-45);
+  flex-shrink: 0;
+}
+
+.spot-search-icon svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 1.6;
+}
+
+.spot-field {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+}
+
+.spot-field input {
+  width: 100%;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--color-abyss-text);
+  font: inherit;
+}
+
+.spot-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  z-index: 1;
+  color: var(--color-abyss-text-45);
+}
+
+.spot-placeholder p {
+  margin: 0;
+  text-wrap: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.spot-chip {
+  flex-shrink: 0;
+  border-radius: 100px;
+}
+
+.spot-chip button {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 100px;
+  background: var(--color-abyss-raised);
+  color: var(--color-abyss-text);
+  opacity: 0.45;
+  cursor: pointer;
+  transition: opacity 0.2s ease, box-shadow 0.2s ease;
+}
+
+.spot-chip button:hover {
+  opacity: 1;
+  box-shadow: 0 0 18px var(--color-abyss-accent-glow);
+}
+
+.spot-chip button:focus-visible {
+  outline: none;
+  opacity: 1;
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 6px var(--color-abyss-accent-glow);
+}
+
+.spot-chip svg {
+  width: 22px;
+  height: 22px;
+  stroke-width: 1.5;
+}
+
+/* ─── Right column (D5/D10): shared card chrome ─────────────────────────── */
+.dz-card {
+  padding: 12px 18px;
+  border-radius: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dz-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.dz-card-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-abyss-text-45);
+}
+
+/* ─── Calendar ──────────────────────────────────────────────────────────── */
+.cal {
+  gap: 6px;
+}
+
+.cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cal-tabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--color-abyss-base);
+}
+
+.cal-tab {
+  border: none;
+  border-radius: 9px;
+  padding: 3px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  background: none;
+  color: var(--color-abyss-text-45);
+  cursor: pointer;
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.cal-tab:hover {
+  color: var(--color-abyss-text);
+}
+
+.cal-tab[data-active] {
+  background: var(--color-abyss-text);
+  color: var(--color-abyss-base);
+  box-shadow: 0 2px 10px var(--shadow-ink-30);
+}
+
+.cal-tab:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 5px var(--color-abyss-accent-glow);
+}
+
+.cal-month-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 2px;
+}
+
+.cal-month {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--color-abyss-text);
+}
+
+.cal-nav {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.cal-nav button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 25px;
+  height: 25px;
+  border: none;
+  border-radius: 100px;
+  background: none;
+  color: var(--color-abyss-text-45);
+  cursor: pointer;
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.cal-nav button:hover {
+  background: var(--color-abyss-base);
+  color: var(--color-abyss-text);
+}
+
+.cal-nav button:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 5px var(--color-abyss-accent-glow);
+}
+
+.cal-nav svg {
+  width: 18px;
+  height: 18px;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  row-gap: 1px;
+  justify-items: center;
+}
+
+.cal-dow {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-abyss-text-22);
+}
+
+.cal-cell {
+  display: flex;
+  justify-content: center;
+}
+
+.cal-day {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 100px;
+  background: none;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-abyss-text-72);
+  cursor: pointer;
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.cal-day:hover {
+  background: var(--color-abyss-row-hover);
+}
+
+.cal-day:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 5px var(--color-abyss-accent-glow);
+}
+
+/* Selected: the ref's gradient fill, re-tinted accent-soft → accent. */
+.cal-day[data-selected] {
+  background: linear-gradient(135deg, var(--color-abyss-accent-soft), var(--color-abyss-accent));
+  color: var(--color-abyss-on-accent);
+  box-shadow: 0 4px 14px var(--color-abyss-accent-glow);
+}
+
+/* Today: hairline ring (accent-soft), D10. */
+.cal-day[data-today] {
+  box-shadow: inset 0 0 0 1px var(--color-abyss-accent-soft);
+}
+
+/* Set-day blips: the ref's today-dot, repurposed (1–3, glow past 3). */
+.cal-blips {
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 2px;
+}
+
+.cal-blip {
+  width: 4px;
+  height: 4px;
+  border-radius: 100px;
+  background: var(--color-abyss-accent);
+}
+
+.cal-blips[data-glow] .cal-blip {
+  box-shadow: 0 0 6px 1px var(--color-abyss-accent-glow);
+}
+
+/* Weekly: the ref's horizontal strip, hidden scrollbar. Exactly 7 day-columns
+   fill the card's padded content width (item 15) — the rest scroll within the
+   strip, clipped at the padding edge so no cell bleeds past the shell border. */
+.cal-strip {
+  display: flex;
+  gap: var(--space-md);
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 4px;
+}
+
+.cal-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.cal-strip-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 calc((100% - 6 * var(--space-md)) / 7);
+}
+
+.cal-divider {
+  height: 1px;
+  background: var(--color-abyss-hairline);
+}
+
+.cal-summary {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-abyss-text-45);
+}
+
+/* Cursor-follow chip — SHARED primitive (ui/CursorChip.tsx; REFINEMENTS
+   item 4). Wearers: the calendar's day-hover preview (clamped to its card)
+   and the nav rail's label tooltips (viewport-clamped). Portaled to
+   document.body, so these are true viewport-fixed coords — no containing-
+   block trickery. project-showcase mechanics; auto-sized text. */
+.cursor-chip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 0;
+  scale: 0.8;
+  transition:
+    opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    scale 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.cursor-chip[data-visible] {
+  opacity: 1;
+  scale: 1;
+}
+
+.cursor-chip-body {
+  min-width: 120px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  background: var(--color-abyss-raised);
+  border: 1px solid var(--color-abyss-hairline);
+  box-shadow: 0 16px 40px -12px var(--shadow-ink-50);
+}
+
+.cursor-chip-title {
+  margin: 0 0 2px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-abyss-text);
+}
+
+.cursor-chip-line {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-abyss-text-45);
+  text-wrap: nowrap;
+}
+
+/* ─── Most played ───────────────────────────────────────────────────────── */
+.mp-toggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--color-abyss-base);
+}
+
+.mp-toggle button {
+  border: none;
+  border-radius: 8px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  background: none;
+  color: var(--color-abyss-text-45);
+  cursor: pointer;
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.mp-toggle button[data-active] {
+  background: var(--color-abyss-text);
+  color: var(--color-abyss-base);
+}
+
+.mp-toggle button:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 5px var(--color-abyss-accent-glow);
+}
+
+.mp-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mp-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mp-label {
+  margin: 0;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-abyss-text-22);
+}
+
+.mp-value {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-abyss-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-wrap: nowrap;
+}
+
+.mp-value--empty {
+  color: var(--color-abyss-text-45);
+}
+
+.mp-sub {
+  font-weight: 400;
+  font-size: 13px;
+  color: var(--color-abyss-text-45);
+}
+
+.mp-quiet {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--color-abyss-text-45);
+}
+
+/* ─── Confidence tile ───────────────────────────────────────────────────── */
+.conf {
+  gap: 4px;
+}
+
+.conf-value {
+  margin: 0;
+  font-size: clamp(28px, 2.6vw, 38px);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--color-abyss-text);
+}
+
+.conf-label {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-abyss-text-45);
+}
+
+.conf-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--color-abyss-text-22);
+}
+
+/* ─── Odometer ──────────────────────────────────────────────────────────── */
+.odo-row {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-sm);
+}
+
+.odo-stat dd {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--color-abyss-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.odo-stat dt {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--color-abyss-text-45);
+}
+
+/* ─── Cold hero (D13): the real shell, awaiting the first set ───────────── */
+.dz-hero-cold {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  text-align: center;
+  padding: var(--space-lg);
+}
+
+.dz-hero-cold-title {
+  margin: 0;
+  font-size: clamp(22px, 2.4vw, 30px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--color-abyss-text);
+}
+
+.dz-hero-cold-body {
+  margin: 0;
+  max-width: 44ch;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-abyss-text-45);
+  text-wrap: pretty;
+}
+
+/* ─── Polish pass ────────────────────────────────────────────────────────── */
+
+/* Half-width tile pair (Arjun's checkpoint ruling): confidence | odometer. */
+.dz-right-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-md);
+}
+
+.dz-right-pair .conf-value {
+  font-size: clamp(26px, 2.2vw, 32px);
+}
+
+/* Equalise the pair's heights (item 18): stretch both tiles to the taller
+   one, then centre the odometer's content so it doesn't float at the top of
+   the extra room the confidence tile's copy creates. */
+.dz-right-pair {
+  align-items: stretch;
+}
+
+.dz-right-pair .odo {
+  justify-content: center;
+}
+
+/* Odometer keeps D10's 3-across at half width — compact numerals. */
+.dz-right-pair .odo-row {
+  gap: 6px;
+}
+
+.dz-right-pair .odo-stat dd {
+  font-size: 18px;
+}
+
+.dz-right-pair .odo-stat dt {
+  font-size: 10px;
+}
+
+/* ─── D3: conic border glint — the shiny-button ref as the hover language
+   for boxes/sections, composed with the liquid-glass shell. The sweep lives
+   on a ring-masked ::before confined to the 2px border area (the ref painted
+   its conic on an OPAQUE host's border-box; on translucent glass that bleeds
+   through the fill, so the ring is masked out explicitly), and its spin
+   animates on the pseudo so the shells' entrance animation can't clobber the
+   shorthand. Angle/offset/percent are REGISTERED @property vars — sanctioned,
+   they animate via CSS keyframes/transitions only, never runtime setProperty.
+   Ref re-tints: highlight and shine stops become accent / accent-soft. The
+   ref's dots pattern is deliberately not carried onto the shells: over a
+   translucent panel's real content it reads as noise, not texture (deviation
+   flagged at the polish checkpoint). */
+@property --dz-glint-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: true;
+}
+
+@property --dz-glint-offset {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: true;
+}
+
+@property --dz-glint-percent {
+  syntax: "<percentage>";
+  initial-value: 5%;
+  inherits: true;
+}
+
+.dz-shell {
+  isolation: isolate;
+  /* Unregistered on purpose: the hover shine swap is accent -> accent-soft,
+     two near-identical cyans — a discrete flip is imperceptible, and a
+     registered <color> initial-value would need a literal the color guard
+     forbids outside tokens.css. */
+  --dz-glint-shine: var(--color-abyss-glint);
+  transition:
+    box-shadow var(--motion-duration-liquid-grand) var(--motion-ease-liquid),
+    background-color var(--motion-duration-liquid-grand) var(--motion-ease-liquid),
+    --dz-glint-offset 800ms cubic-bezier(0.25, 1, 0.5, 1),
+    --dz-glint-percent 800ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* The border sweep: a conic ring exactly over the 2px border. At rest the
+   slice sits static (paused, like the ref); hover/focus runs the sweep and
+   widens it (5% → 20%) on the ref's 800ms ease. */
+.dz-shell::before {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  padding: 2px;
+  border-radius: inherit;
+  background: conic-gradient(
+      from calc(var(--dz-glint-angle) - var(--dz-glint-offset)),
+      var(--color-abyss-hairline),
+      var(--color-abyss-glint) var(--dz-glint-percent),
+      var(--dz-glint-shine) calc(var(--dz-glint-percent) * 2),
+      var(--color-abyss-glint) calc(var(--dz-glint-percent) * 3),
+      var(--color-abyss-hairline) calc(var(--dz-glint-percent) * 4)
+    )
+    border-box;
+  mask:
+    linear-gradient(var(--color-surface-void) 0 0) content-box,
+    linear-gradient(var(--color-surface-void) 0 0);
+  mask-composite: exclude;
+  -webkit-mask-composite: xor;
+  animation: dz-glint-spin 5s linear infinite paused;
+}
+
+/* The ref's inner shimmer: a rotating soft highlight, bottom-weighted,
+   fading in on hover. */
+.dz-shell::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+  width: 100%;
+  aspect-ratio: 1;
+  z-index: -1;
+  background: linear-gradient(
+    -50deg,
+    var(--color-abyss-scrim-fade),
+    var(--color-abyss-accent-glow),
+    var(--color-abyss-scrim-fade)
+  );
+  mask-image: radial-gradient(circle at bottom, var(--shadow-ink-0) 40%, var(--color-surface-void));
+  opacity: 0;
+  transition: opacity 800ms cubic-bezier(0.25, 1, 0.5, 1);
+  animation: dz-shimmer-rotate 12.5s linear infinite paused;
+}
+
+/* ─── D3 dots (item 7): the shiny-button ref's dot-matrix, finally carried onto
+   the shells — Arjun overruled the polish-checkpoint omission ("i liked the
+   buttons how they were in the reference"). The ref's exact tile (0.5px dot /
+   4px space) sits behind content on its OWN layer (both shell pseudos are taken
+   by the glint ring + shimmer), confined to the ref's masked conic slice (top-
+   biased) and dialled to a faint specular grain — LOW intensity per the "review
+   live first, dots-over-content risk noise" note. The whole layer is one knob:
+   --dz-dot-opacity (start low). */
+.dz-shell {
+  --dz-dot-opacity: 0.22;
+}
+
+.dz-dots {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: inherit;
+  background: radial-gradient(
+      circle at 1px 1px,
+      var(--color-abyss-text) 0.5px,
+      var(--shadow-ink-0) 0
+    )
+    0 0 / 5px 5px;
+  /* Soft radial fade keeps the grain toward the shell's edges and off the
+     central content — the ref's masked-slice idea, adapted to large panels. */
+  -webkit-mask: radial-gradient(130% 105% at 50% 42%, var(--shadow-ink-0) 40%, var(--color-surface-void) 92%);
+  mask: radial-gradient(130% 105% at 50% 42%, var(--shadow-ink-0) 40%, var(--color-surface-void) 92%);
+  opacity: var(--dz-dot-opacity);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .dz-shell:hover,
+  .dz-shell:focus-within {
+    --dz-glint-percent: 20%;
+    --dz-glint-offset: 95deg;
+    --dz-glint-shine: var(--color-abyss-accent-soft);
+  }
+
+  .dz-shell:hover::before,
+  .dz-shell:hover::after,
+  .dz-shell:focus-within::before,
+  .dz-shell:focus-within::after {
+    animation-play-state: running;
+  }
+
+  .dz-shell:hover::after,
+  .dz-shell:focus-within::after {
+    opacity: 0.6;
+  }
+}
+
+@keyframes dz-glint-spin {
+  to {
+    --dz-glint-angle: 360deg;
+  }
+}
+
+@keyframes dz-shimmer-rotate {
+  to {
+    rotate: 360deg;
+  }
+}
+
+/* ─── Entrance choreography: one staggered rise on load, never again. */
+@keyframes dz-enter {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.dz-greeting {
+  animation: dz-enter 0.7s var(--motion-ease-liquid) both;
+}
+
+.dz-hero {
+  animation: dz-enter 0.7s var(--motion-ease-liquid) 0.06s both;
+}
+
+.dz-columns > .dz-list {
+  animation: dz-enter 0.7s var(--motion-ease-liquid) 0.12s both;
+}
+
+.dz-right > * {
+  animation: dz-enter 0.7s var(--motion-ease-liquid) both;
+}
+
+.dz-right > *:nth-child(1) {
+  animation-delay: 0.16s;
+}
+
+.dz-right > *:nth-child(2) {
+  animation-delay: 0.22s;
+}
+
+.dz-right > *:nth-child(3) {
+  animation-delay: 0.28s;
+}
+
+/* ─── Hero arc draw-on: the line traces the night once on load. */
+.dz-hero-line {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: dz-arc-draw 1.4s var(--motion-ease-out) 0.35s forwards;
+}
+
+@keyframes dz-arc-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.dz-hero-fill {
+  opacity: 0;
+  animation: dz-arc-fill 0.9s var(--motion-ease-out) 1.1s forwards;
+}
+
+@keyframes dz-arc-fill {
+  to {
+    opacity: 0.5;
+  }
+}
+
+/* ─── Compaction so the full column holds a ~1000px viewport. */
+.dz-card {
+  gap: 8px;
+}
+
+
+
+.cal-month-row {
+  margin-top: 0;
+}
+
+.cal-day {
+  width: 28px;
+  height: 28px;
+}
+
+.mp-rows {
+  gap: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dz-greeting,
+  .dz-hero,
+  .dz-columns > .dz-list,
+  .dz-right > * {
+    animation: none;
+  }
+  .dz-shell,
+  .dz-shell::before,
+  .dz-shell::after {
+    animation: none;
+    transition: none;
+  }
+  .dz-shell:hover::after,
+  .dz-shell:focus-within::after {
+    opacity: 0;
+  }
+  .dz-hero-line {
+    animation: none;
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
+  }
+  .dz-hero-fill {
+    animation: none;
+    opacity: 0.5;
+  }
+}
+
+/* Windows forced-colors/high-contrast: box-shadow focus rings vanish there,
+   so every new interactive element gets a real outline (same pattern as the
+   auth components in globals.css). */
+@media (forced-colors: active) {
+  .spot-chip button:focus-visible,
+  .cal-tab:focus-visible,
+  .cal-nav button:focus-visible,
+  .cal-day:focus-visible,
+  .mp-toggle button:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
+  .dz-shell {
+    border: 1px solid CanvasText;
+  }
+}

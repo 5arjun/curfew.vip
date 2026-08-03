@@ -132,13 +132,26 @@ pub fn join_session(
     session_id: i64,
 ) -> rusqlite::Result<Vec<(i64, JoinedMetadata)>> {
     let mut stmt = conn.prepare(
-        r#"SELECT id, bpm, "key", genre
+        r#"SELECT id, bpm, key_value, "key", genre
            FROM history_entry
            WHERE session_id = ?1
            ORDER BY start_time ASC, id ASC"#,
     )?;
 
     let rows = stmt.query_map([session_id], |row| {
+        // Key source of truth is Serato's canonical `key_value` INTEGER, not the
+        // free-text `"key"` column. The free-text column stores *mixed* notation —
+        // mostly musical (`Em`, `Ebm`, `G#m`) with only a few already-Camelot — so
+        // parsing it dropped ~88% of keys on real data (Story 3.6 incident). The
+        // integer is unambiguous (Serato folds enharmonic spellings to one value)
+        // and maps deterministically to Camelot, satisfying AD-11 "never guess"
+        // better than parsing the text ever could. The free-text column is kept
+        // only as a fallback for a source that has no `key_value` at all (a NULL —
+        // schema variance; real Serato 4+ uses `-1` for "no key", never NULL).
+        let key = match row.get::<_, Option<i64>>(2)? {
+            Some(key_value) => camelot_from_key_value(key_value),
+            None => row.get::<_, Option<String>>(3)?.and_then(non_empty),
+        };
         Ok((
             row.get::<_, i64>(0)?,
             JoinedMetadata {
@@ -146,13 +159,33 @@ pub fn join_session(
                 // A NULL column reads as `None` rather than erroring or defaulting —
                 // the same "absent, never guessed" contract the legacy path holds to.
                 bpm: row.get::<_, Option<f64>>(1)?.and_then(sane_bpm),
-                key: row.get::<_, Option<String>>(2)?.and_then(non_empty),
-                genre: row.get::<_, Option<String>>(3)?.and_then(non_empty),
+                key,
+                genre: row.get::<_, Option<String>>(4)?.and_then(non_empty),
             },
         ))
     })?;
 
     rows.collect()
+}
+
+/// Maps Serato's canonical `history_entry.key_value` INTEGER to a Camelot-notation
+/// string, or `None` for "no key".
+///
+/// Verified 24/24 against real data (Story 3.6, cross-tabbed `key_value` ↔ `key_norm`
+/// over 20k+ rows): `0..=11` are the minor / Camelot **A** ring, `12..=23` the major /
+/// **B** ring, with `number = (v % 12) + 1`. Spot checks: `0 → 1A`, `7 → 8A`,
+/// `8 → 9A`, `16 → 5B`, `23 → 12B`.
+///
+/// `-1` is Serato's "no key" sentinel and returns `None`. Anything outside `0..=23`
+/// (including `-1`, other negatives, or an unexpectedly large value) also returns
+/// `None` rather than a fabricated position — "never guess" (AD-11): a value the
+/// verified mapping does not cover is absent, not invented.
+fn camelot_from_key_value(key_value: i64) -> Option<String> {
+    (0..=23).contains(&key_value).then(|| {
+        let number = (key_value % 12) + 1;
+        let letter = if key_value < 12 { 'A' } else { 'B' };
+        format!("{number}{letter}")
+    })
 }
 
 #[cfg(test)]
@@ -172,6 +205,7 @@ mod tests {
                    id         INTEGER PRIMARY KEY,
                    session_id INTEGER NOT NULL,
                    bpm        REAL,
+                   key_value  INTEGER,
                    "key"      TEXT,
                    genre      TEXT,
                    start_time INTEGER NOT NULL
@@ -182,6 +216,10 @@ mod tests {
     }
 
     /// Inserts one row and returns its `id` — the key callers must correlate on.
+    ///
+    /// Leaves `key_value` `NULL`, so these rows exercise the **free-text fallback**
+    /// path (`key_value` absent → the `"key"` column is read). The real-data source of
+    /// truth (`key_value` present) is exercised by [`insert_entry_with_key_value`].
     fn insert_entry(
         conn: &Connection,
         session_id: i64,
@@ -194,6 +232,25 @@ mod tests {
             r#"INSERT INTO history_entry (session_id, bpm, "key", genre, start_time)
                VALUES (?1, ?2, ?3, ?4, ?5)"#,
             rusqlite::params![session_id, bpm, key, genre, start_time],
+        )
+        .expect("fixture row inserts");
+        conn.last_insert_rowid()
+    }
+
+    /// Inserts a row carrying both a `key_value` INTEGER (Serato's source of truth) and
+    /// a `"key"` free-text string, so a test can prove which one the join actually
+    /// reads — the whole point of the Story 3.6 fix is that `key_value` wins.
+    fn insert_entry_with_key_value(
+        conn: &Connection,
+        session_id: i64,
+        key_value: i64,
+        free_text_key: &str,
+        start_time: i64,
+    ) -> i64 {
+        conn.execute(
+            r#"INSERT INTO history_entry (session_id, key_value, "key", start_time)
+               VALUES (?1, ?2, ?3, ?4)"#,
+            rusqlite::params![session_id, key_value, free_text_key, start_time],
         )
         .expect("fixture row inserts");
         conn.last_insert_rowid()
@@ -225,6 +282,69 @@ mod tests {
                 }
             )]
         );
+    }
+
+    /// Story 3.6 (the incident regression): `key_value` is the source of truth, and a
+    /// musically-notated free-text `"key"` (`Em`, `Ebm`, `G#m`, `E`) does **not** cost
+    /// the row its Camelot key — the integer wins. `-1` is "no key" → `None`. This is
+    /// the mapping that, before the fix, silently dropped ~88% of real keys because
+    /// `camelot::parse("Em")` is `None`.
+    #[test]
+    fn key_value_is_the_source_of_truth_over_free_text_key() {
+        let conn = in_memory_history();
+        // (key_value, free-text musical notation the OLD path would have dropped)
+        insert_entry_with_key_value(&conn, 7, 0, "G#m", 1_000); // -> 1A
+        insert_entry_with_key_value(&conn, 7, 7, "Am", 1_100); // -> 8A
+        insert_entry_with_key_value(&conn, 7, 8, "Em", 1_200); // -> 9A
+        insert_entry_with_key_value(&conn, 7, 16, "Ebm", 1_300); // -> 5B (free text intentionally wrong-notation)
+        insert_entry_with_key_value(&conn, 7, 23, "E", 1_400); // -> 12B
+        insert_entry_with_key_value(&conn, 7, -1, "", 1_500); // -> None (no key)
+
+        let keys: Vec<Option<String>> = join_session(&conn, 7)
+            .expect("query succeeds")
+            .into_iter()
+            .map(|(_, m)| m.key)
+            .collect();
+
+        assert_eq!(
+            keys,
+            vec![
+                Some("1A".to_string()),
+                Some("8A".to_string()),
+                Some("9A".to_string()),
+                Some("5B".to_string()),
+                Some("12B".to_string()),
+                None,
+            ],
+            "key_value must win over the free-text `key`, and -1 must be no key"
+        );
+    }
+
+    /// The full 24-value `key_value` → Camelot mapping, plus the sentinels — the
+    /// exhaustive form of the "24/24 verified" claim in the Story 3.6 Dev Notes.
+    #[test]
+    fn camelot_from_key_value_covers_the_whole_ring_and_rejects_sentinels() {
+        // A ring (minor): 0..=11 -> 1A..12A
+        for v in 0..=11 {
+            assert_eq!(
+                camelot_from_key_value(v),
+                Some(format!("{}A", v + 1)),
+                "key_value {v} is the minor/A ring"
+            );
+        }
+        // B ring (major): 12..=23 -> 1B..12B
+        for v in 12..=23 {
+            assert_eq!(
+                camelot_from_key_value(v),
+                Some(format!("{}B", v - 11)),
+                "key_value {v} is the major/B ring"
+            );
+        }
+        // Sentinels / out of range: never a fabricated position.
+        assert_eq!(camelot_from_key_value(-1), None, "-1 is Serato's no-key");
+        assert_eq!(camelot_from_key_value(-2), None);
+        assert_eq!(camelot_from_key_value(24), None);
+        assert_eq!(camelot_from_key_value(999), None);
     }
 
     /// AC-4: a `NULL` column reports that field absent — routed to Story 1.5's fallback
@@ -390,9 +510,10 @@ mod tests {
             seed.execute_batch(
                 r#"CREATE TABLE history_entry (
                        id INTEGER PRIMARY KEY, session_id INTEGER, bpm REAL,
-                       "key" TEXT, genre TEXT, start_time INTEGER
+                       key_value INTEGER, "key" TEXT, genre TEXT, start_time INTEGER
                    );
-                   INSERT INTO history_entry VALUES (1, 7, 128.0, '1A', 'House', 1000);"#,
+                   INSERT INTO history_entry (id, session_id, bpm, key_value, "key", genre, start_time)
+                   VALUES (1, 7, 128.0, 0, '1A', 'House', 1000);"#,
             )
             .expect("seed data writes");
         }
@@ -428,7 +549,7 @@ mod tests {
             .execute_batch(
                 r#"CREATE TABLE history_entry (
                        id INTEGER PRIMARY KEY, session_id INTEGER, bpm REAL,
-                       "key" TEXT, genre TEXT, start_time INTEGER
+                       key_value INTEGER, "key" TEXT, genre TEXT, start_time INTEGER
                    );"#,
             )
             .expect("seed schema writes");
@@ -475,7 +596,7 @@ mod tests {
             .execute_batch(
                 r#"CREATE TABLE history_entry (
                        id INTEGER PRIMARY KEY, session_id INTEGER, bpm REAL,
-                       "key" TEXT, genre TEXT, start_time INTEGER
+                       key_value INTEGER, "key" TEXT, genre TEXT, start_time INTEGER
                    );"#,
             )
             .expect("seed schema writes");
