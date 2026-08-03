@@ -59,10 +59,12 @@ export function OdometerCard({
   const h = useCountUp(hours, reduced);
   const t = useCountUp(tracks, reduced);
 
+  // D10's own labeling: 3-across numerals over "sets · hours · tracks"; the
+  // full phrasing rides the accessible name.
   const stats = [
-    { value: s, target: sets, label: "sets archived" },
-    { value: h, target: hours, label: "hours on decks" },
-    { value: t, target: tracks, label: "tracks played" },
+    { value: s, target: sets, label: "sets", full: "sets archived" },
+    { value: h, target: hours, label: "hours", full: "hours on decks" },
+    { value: t, target: tracks, label: "tracks", full: "tracks played" },
   ];
 
   return (
@@ -72,7 +74,7 @@ export function OdometerCard({
         {stats.map((stat) => (
           <div key={stat.label} className="odo-stat">
             <dd>{stat.target === 0 ? "—" : stat.value}</dd>
-            <dt>{stat.label}</dt>
+            <dt aria-label={stat.full}>{stat.label}</dt>
           </div>
         ))}
       </dl>

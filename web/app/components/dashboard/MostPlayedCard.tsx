@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import { useState } from "react";
 import type { MostPlayedWindow } from "@/lib/sets/rightColumn";
 
@@ -19,6 +19,7 @@ export function MostPlayedCard({
   const empty = !data.track && !data.artist;
 
   return (
+    <MotionConfig reducedMotion="user">
     <section className="dz-shell dz-card mp" aria-label="Most played">
       <div className="dz-card-head">
         <h2 className="dz-card-title">Most played</h2>
@@ -75,5 +76,6 @@ export function MostPlayedCard({
         </motion.div>
       </AnimatePresence>
     </section>
+    </MotionConfig>
   );
 }

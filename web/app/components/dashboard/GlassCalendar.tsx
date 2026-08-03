@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { addMonths, format, getDate, getDay, getDaysInMonth, isToday, startOfMonth, subMonths } from "date-fns";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -127,6 +127,7 @@ export function GlassCalendar({ marks }: { marks: DayMarks }) {
   };
 
   return (
+    <MotionConfig reducedMotion="user">
     <div
       ref={cardRef}
       className="dz-shell dz-card cal"
@@ -236,5 +237,6 @@ export function GlassCalendar({ marks }: { marks: DayMarks }) {
         </AnimatePresence>
       </div>
     </div>
+    </MotionConfig>
   );
 }

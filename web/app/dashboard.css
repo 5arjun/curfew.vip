@@ -18,15 +18,15 @@
   height: 100dvh;
   display: flex;
   flex-direction: column;
-  gap: var(--space-md);
+  gap: 10px;
   width: 100%;
   max-width: var(--container-max);
   margin: 0 auto;
   /* Bottom clearance stays tight: the floating nav is a small centered dock
      and glass-over-glass overlap at the panel edges reads fine — the list's
      own bottom edge-fade melts rows before the dock anyway. */
-  padding: var(--space-lg) var(--space-gutter)
-    calc(var(--space-lg) + env(safe-area-inset-bottom));
+  padding: var(--space-md) var(--space-gutter)
+    calc(var(--space-md) + env(safe-area-inset-bottom));
   overflow: hidden;
   /* The refs' voice (Hanken Grotesk — already Curfew's display font, D4). */
   font-family: var(--font-hanken-grotesk);
@@ -88,7 +88,7 @@
    Hero band (top ~33%) above a two-column split: set list left, right
    column (calendar → most played → confidence → odometer). */
 .dz-hero {
-  flex: 0 0 clamp(200px, 30vh, 340px);
+  flex: 0 0 clamp(200px, 25vh, 300px);
   min-height: 0;
 }
 
@@ -110,7 +110,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-md);
+  gap: 10px;
   /* Graceful degradation on short-but-wide viewports: the column may quietly
      scroll itself; the scrollbar stays hidden (ref convention). */
   overflow-y: auto;
@@ -131,7 +131,10 @@
     flex-basis: auto;
     min-height: 240px;
   }
+  /* flex: none — the desktop `flex: 1 1 0` collapses to zero height once the
+     shell's viewport lock is released (auto-height parent, basis 0). */
   .dz-columns {
+    flex: none;
     grid-template-columns: 1fr;
   }
   .dz-list {
@@ -139,6 +142,7 @@
   }
   .dz-right {
     overflow-y: visible;
+    min-height: auto;
   }
 }
 
@@ -1167,7 +1171,7 @@
 
 /* ─── Right column (D5/D10): shared card chrome ─────────────────────────── */
 .dz-card {
-  padding: 16px 20px;
+  padding: 12px 18px;
   border-radius: 30px;
   display: flex;
   flex-direction: column;
@@ -1192,7 +1196,7 @@
 
 /* ─── Calendar ──────────────────────────────────────────────────────────── */
 .cal {
-  gap: var(--space-sm);
+  gap: 6px;
 }
 
 .cal-head {
@@ -1204,7 +1208,7 @@
 .cal-tabs {
   display: inline-flex;
   gap: 4px;
-  padding: 4px;
+  padding: 3px;
   border-radius: 12px;
   background: var(--color-abyss-base);
 }
@@ -1212,7 +1216,7 @@
 .cal-tab {
   border: none;
   border-radius: 9px;
-  padding: 4px 14px;
+  padding: 3px 12px;
   font-size: 12px;
   font-weight: 600;
   font-family: inherit;
@@ -1249,8 +1253,9 @@
 
 .cal-month {
   margin: 0;
-  font-size: 24px;
+  font-size: 19px;
   font-weight: 700;
+  line-height: 1;
   letter-spacing: -0.02em;
   color: var(--color-abyss-text);
 }
@@ -1264,8 +1269,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 25px;
+  height: 25px;
   border: none;
   border-radius: 100px;
   background: none;
@@ -1295,12 +1300,12 @@
 .cal-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  row-gap: 2px;
+  row-gap: 1px;
   justify-items: center;
 }
 
 .cal-dow {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   color: var(--color-abyss-text-22);
 }
@@ -1397,12 +1402,11 @@
 .cal-divider {
   height: 1px;
   background: var(--color-abyss-hairline);
-  margin-top: var(--space-xs);
 }
 
 .cal-summary {
   margin: 0;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--color-abyss-text-45);
 }
 
@@ -1486,7 +1490,7 @@
 .mp-rows {
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
+  gap: 4px;
 }
 
 .mp-row {
@@ -1497,7 +1501,7 @@
 
 .mp-label {
   margin: 0;
-  font-size: 11px;
+  font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-abyss-text-22);
@@ -1505,7 +1509,7 @@
 
 .mp-value {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--color-abyss-text);
   overflow: hidden;
@@ -1550,8 +1554,8 @@
 }
 
 .conf-hint {
-  margin: 4px 0 0;
-  font-size: 12px;
+  margin: 0;
+  font-size: 11px;
   color: var(--color-abyss-text-22);
 }
 
@@ -1605,4 +1609,291 @@
   line-height: 1.5;
   color: var(--color-abyss-text-45);
   text-wrap: pretty;
+}
+
+/* ─── Polish pass ────────────────────────────────────────────────────────── */
+
+/* Half-width tile pair (Arjun's checkpoint ruling): confidence | odometer. */
+.dz-right-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-md);
+}
+
+.dz-right-pair .conf-value {
+  font-size: clamp(26px, 2.2vw, 32px);
+}
+
+.dz-right-pair {
+  align-items: start;
+}
+
+/* Odometer keeps D10's 3-across at half width — compact numerals. */
+.dz-right-pair .odo-row {
+  gap: 6px;
+}
+
+.dz-right-pair .odo-stat dd {
+  font-size: 18px;
+}
+
+.dz-right-pair .odo-stat dt {
+  font-size: 10px;
+}
+
+/* ─── D3: conic border glint — the shiny-button ref as the hover language
+   for boxes/sections, composed with the liquid-glass shell. The sweep lives
+   on a ring-masked ::before confined to the 2px border area (the ref painted
+   its conic on an OPAQUE host's border-box; on translucent glass that bleeds
+   through the fill, so the ring is masked out explicitly), and its spin
+   animates on the pseudo so the shells' entrance animation can't clobber the
+   shorthand. Angle/offset/percent are REGISTERED @property vars — sanctioned,
+   they animate via CSS keyframes/transitions only, never runtime setProperty.
+   Ref re-tints: highlight and shine stops become accent / accent-soft. The
+   ref's dots pattern is deliberately not carried onto the shells: over a
+   translucent panel's real content it reads as noise, not texture (deviation
+   flagged at the polish checkpoint). */
+@property --dz-glint-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: true;
+}
+
+@property --dz-glint-offset {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: true;
+}
+
+@property --dz-glint-percent {
+  syntax: "<percentage>";
+  initial-value: 5%;
+  inherits: true;
+}
+
+.dz-shell {
+  isolation: isolate;
+  /* Unregistered on purpose: the hover shine swap is accent -> accent-soft,
+     two near-identical cyans — a discrete flip is imperceptible, and a
+     registered <color> initial-value would need a literal the color guard
+     forbids outside tokens.css. */
+  --dz-glint-shine: var(--color-abyss-accent);
+  transition:
+    box-shadow var(--motion-duration-liquid-grand) var(--motion-ease-liquid),
+    background-color var(--motion-duration-liquid-grand) var(--motion-ease-liquid),
+    --dz-glint-offset 800ms cubic-bezier(0.25, 1, 0.5, 1),
+    --dz-glint-percent 800ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* The border sweep: a conic ring exactly over the 2px border. At rest the
+   slice sits static (paused, like the ref); hover/focus runs the sweep and
+   widens it (5% → 20%) on the ref's 800ms ease. */
+.dz-shell::before {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  padding: 2px;
+  border-radius: inherit;
+  background: conic-gradient(
+      from calc(var(--dz-glint-angle) - var(--dz-glint-offset)),
+      var(--color-abyss-hairline),
+      var(--color-abyss-accent) var(--dz-glint-percent),
+      var(--dz-glint-shine) calc(var(--dz-glint-percent) * 2),
+      var(--color-abyss-accent) calc(var(--dz-glint-percent) * 3),
+      var(--color-abyss-hairline) calc(var(--dz-glint-percent) * 4)
+    )
+    border-box;
+  mask:
+    linear-gradient(var(--color-surface-void) 0 0) content-box,
+    linear-gradient(var(--color-surface-void) 0 0);
+  mask-composite: exclude;
+  -webkit-mask-composite: xor;
+  animation: dz-glint-spin 3s linear infinite paused;
+}
+
+/* The ref's inner shimmer: a rotating soft highlight, bottom-weighted,
+   fading in on hover. */
+.dz-shell::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+  width: 100%;
+  aspect-ratio: 1;
+  z-index: -1;
+  background: linear-gradient(
+    -50deg,
+    var(--color-abyss-scrim-fade),
+    var(--color-abyss-accent-glow),
+    var(--color-abyss-scrim-fade)
+  );
+  mask-image: radial-gradient(circle at bottom, var(--shadow-ink-0) 40%, var(--color-surface-void));
+  opacity: 0;
+  transition: opacity 800ms cubic-bezier(0.25, 1, 0.5, 1);
+  animation: dz-shimmer-rotate 7.5s linear infinite paused;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .dz-shell:hover,
+  .dz-shell:focus-within {
+    --dz-glint-percent: 20%;
+    --dz-glint-offset: 95deg;
+    --dz-glint-shine: var(--color-abyss-accent-soft);
+  }
+
+  .dz-shell:hover::before,
+  .dz-shell:hover::after,
+  .dz-shell:focus-within::before,
+  .dz-shell:focus-within::after {
+    animation-play-state: running;
+  }
+
+  .dz-shell:hover::after,
+  .dz-shell:focus-within::after {
+    opacity: 0.6;
+  }
+}
+
+@keyframes dz-glint-spin {
+  to {
+    --dz-glint-angle: 360deg;
+  }
+}
+
+@keyframes dz-shimmer-rotate {
+  to {
+    rotate: 360deg;
+  }
+}
+
+/* ─── Entrance choreography: one staggered rise on load, never again. */
+@keyframes dz-enter {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.dz-greeting {
+  animation: dz-enter 0.7s var(--motion-ease-liquid) both;
+}
+
+.dz-hero {
+  animation: dz-enter 0.7s var(--motion-ease-liquid) 0.06s both;
+}
+
+.dz-columns > .dz-list {
+  animation: dz-enter 0.7s var(--motion-ease-liquid) 0.12s both;
+}
+
+.dz-right > * {
+  animation: dz-enter 0.7s var(--motion-ease-liquid) both;
+}
+
+.dz-right > *:nth-child(1) {
+  animation-delay: 0.16s;
+}
+
+.dz-right > *:nth-child(2) {
+  animation-delay: 0.22s;
+}
+
+.dz-right > *:nth-child(3) {
+  animation-delay: 0.28s;
+}
+
+/* ─── Hero arc draw-on: the line traces the night once on load. */
+.dz-hero-line {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: dz-arc-draw 1.4s var(--motion-ease-out) 0.35s forwards;
+}
+
+@keyframes dz-arc-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.dz-hero-fill {
+  opacity: 0;
+  animation: dz-arc-fill 0.9s var(--motion-ease-out) 1.1s forwards;
+}
+
+@keyframes dz-arc-fill {
+  to {
+    opacity: 0.5;
+  }
+}
+
+/* ─── Compaction so the full column holds a ~1000px viewport. */
+.dz-card {
+  gap: 8px;
+}
+
+
+
+.cal-month-row {
+  margin-top: 0;
+}
+
+.cal-day {
+  width: 28px;
+  height: 28px;
+}
+
+.mp-rows {
+  gap: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dz-greeting,
+  .dz-hero,
+  .dz-columns > .dz-list,
+  .dz-right > * {
+    animation: none;
+  }
+  .dz-shell,
+  .dz-shell::before,
+  .dz-shell::after {
+    animation: none;
+    transition: none;
+  }
+  .dz-shell:hover::after,
+  .dz-shell:focus-within::after {
+    opacity: 0;
+  }
+  .dz-hero-line {
+    animation: none;
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
+  }
+  .dz-hero-fill {
+    animation: none;
+    opacity: 0.5;
+  }
+}
+
+/* Windows forced-colors/high-contrast: box-shadow focus rings vanish there,
+   so every new interactive element gets a real outline (same pattern as the
+   auth components in globals.css). */
+@media (forced-colors: active) {
+  .spot-chip button:focus-visible,
+  .cal-tab:focus-visible,
+  .cal-nav button:focus-visible,
+  .cal-day:focus-visible,
+  .mp-toggle button:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
+  .dz-shell {
+    border: 1px solid CanvasText;
+  }
 }

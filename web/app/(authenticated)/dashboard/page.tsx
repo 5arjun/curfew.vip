@@ -70,12 +70,17 @@ export default async function DashboardPage() {
         <aside className="dz-right" aria-label="Stats">
           <GlassCalendar marks={right.marks} />
           <MostPlayedCard week={right.mostPlayed.week} month={right.mostPlayed.month} />
-          <ConfidenceTile pct={right.confidencePct} />
-          <OdometerCard
-            sets={right.odometer.sets}
-            hours={right.odometer.hours}
-            tracks={right.odometer.tracks}
-          />
+          {/* Confidence + odometer as a half-width pair (Arjun's ruling at the
+              functional checkpoint) so the whole column holds a 900px viewport
+              without scrolling. */}
+          <div className="dz-right-pair">
+            <ConfidenceTile pct={right.confidencePct} />
+            <OdometerCard
+              sets={right.odometer.sets}
+              hours={right.odometer.hours}
+              tracks={right.odometer.tracks}
+            />
+          </div>
         </aside>
       </div>
     </main>

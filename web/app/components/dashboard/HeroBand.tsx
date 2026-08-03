@@ -51,9 +51,26 @@ export function HeroBand({ set }: { set: SetRecord }) {
             <stop offset="1" stopColor="var(--color-abyss-scrim-fade)" />
           </linearGradient>
           {geo.band && (
-            <clipPath id="hero-floor-clip">
-              <rect x={geo.band.x} y="0" width={geo.band.width} height={VIEW.height} />
-            </clipPath>
+            <>
+              {/* Soft-edged band mask (polish pass): the glow segment fades in
+                  over the band's outer ~7% instead of cutting hard — an alpha
+                  mask so the ramp is real opacity, not luminance. */}
+              <linearGradient id="hero-floor-soft" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0" stopColor="var(--color-abyss-text)" stopOpacity="0" />
+                <stop offset="0.07" stopColor="var(--color-abyss-text)" stopOpacity="1" />
+                <stop offset="0.93" stopColor="var(--color-abyss-text)" stopOpacity="1" />
+                <stop offset="1" stopColor="var(--color-abyss-text)" stopOpacity="0" />
+              </linearGradient>
+              <mask id="hero-floor-mask" maskUnits="userSpaceOnUse" style={{ maskType: "alpha" }}>
+                <rect
+                  x={geo.band.x}
+                  y="0"
+                  width={geo.band.width}
+                  height={VIEW.height}
+                  fill="url(#hero-floor-soft)"
+                />
+              </mask>
+            </>
           )}
         </defs>
 
@@ -64,15 +81,17 @@ export function HeroBand({ set }: { set: SetRecord }) {
               className="dz-hero-line dz-hero-line--dim"
               stroke="url(#hero-chrome)"
               vectorEffect="non-scaling-stroke"
+              pathLength={1}
             />
             {geo.band && (
-              <g clipPath="url(#hero-floor-clip)">
+              <g mask="url(#hero-floor-mask)">
                 <path d={geo.area} className="dz-hero-fill" fill="url(#hero-floor-fill)" />
                 <path
                   d={geo.path}
                   className="dz-hero-line dz-hero-line--floor"
                   stroke="url(#hero-glow-stroke)"
                   vectorEffect="non-scaling-stroke"
+                  pathLength={1}
                 />
               </g>
             )}

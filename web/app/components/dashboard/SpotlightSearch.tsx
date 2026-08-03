@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import { CalendarArrowDown, CalendarArrowUp, Hourglass, Search } from "lucide-react";
 import { useRef, useState } from "react";
 
@@ -108,6 +108,7 @@ export function SpotlightSearch({
   ];
 
   return (
+    <MotionConfig reducedMotion="user">
     <div
       className="spot"
       onMouseEnter={() => setHovered(true)}
@@ -176,5 +177,6 @@ export function SpotlightSearch({
         </AnimatePresence>
       </div>
     </div>
+    </MotionConfig>
   );
 }
