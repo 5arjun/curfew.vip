@@ -52,9 +52,7 @@ export default async function DashboardPage() {
       )}
 
       <div className="dz-columns">
-        <SetListPanel rows={rows}>
-          {/* Step 5: the gooey spotlight search (D6/D12) mounts here */}
-        </SetListPanel>
+        <SetListPanel rows={rows} />
 
         <aside className="dz-right" aria-label="Stats">
           {/* Step 6: calendar, most played, confidence, archive odometer (D5/D10) */}

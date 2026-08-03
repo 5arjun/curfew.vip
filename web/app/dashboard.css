@@ -1044,3 +1044,120 @@
     outline-offset: 2px;
   }
 }
+
+/* ─── Spotlight search (D6): gooey pill + sort chips ─────────────────────
+   Dark liquid-glass reskin of the apple-spotlight ref; the goo container
+   carries the blob filter so the pill and chips merge like droplets. Solid
+   raised fills inside the goo (the alpha-curve filter crushes translucency). */
+.spot {
+  width: 100%;
+}
+
+.spot-goo {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  filter: url(#dz-blob);
+}
+
+.spot-pill {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 20px;
+  border-radius: 30px;
+  background: var(--color-abyss-raised);
+  box-shadow: inset 0 0 24px var(--color-abyss-shell-glow);
+  overflow: hidden;
+  cursor: text;
+}
+
+.spot-search-icon {
+  display: inline-flex;
+  color: var(--color-abyss-text-45);
+  flex-shrink: 0;
+}
+
+.spot-search-icon svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 1.6;
+}
+
+.spot-field {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+}
+
+.spot-field input {
+  width: 100%;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--color-abyss-text);
+  font: inherit;
+}
+
+.spot-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  z-index: 1;
+  color: var(--color-abyss-text-45);
+}
+
+.spot-placeholder p {
+  margin: 0;
+  text-wrap: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.spot-chip {
+  flex-shrink: 0;
+  border-radius: 100px;
+}
+
+.spot-chip button {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 100px;
+  background: var(--color-abyss-raised);
+  color: var(--color-abyss-text);
+  opacity: 0.45;
+  cursor: pointer;
+  transition: opacity 0.2s ease, box-shadow 0.2s ease;
+}
+
+.spot-chip button:hover {
+  opacity: 1;
+  box-shadow: 0 0 18px var(--color-abyss-accent-glow);
+}
+
+.spot-chip button:focus-visible {
+  outline: none;
+  opacity: 1;
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 6px var(--color-abyss-accent-glow);
+}
+
+.spot-chip svg {
+  width: 22px;
+  height: 22px;
+  stroke-width: 1.5;
+}

@@ -1,15 +1,10 @@
 "use client";
 
 import { ArrowLeft, Plus } from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SetRowModel } from "@/lib/sets/listModel";
 import { MetalButton } from "@/app/components/dashboard/MetalButton";
+import { SpotlightSearch, type SpotlightSort } from "@/app/components/dashboard/SpotlightSearch";
 
 // Set-list panel (D4/D9) — the progressive-blur music player's mechanics,
 // re-tinted: 72px rows with the ref's hover inset-glow + hover-reveal icon;
@@ -54,18 +49,27 @@ function EdgeFade({ side }: { side: "top" | "bottom" }) {
   );
 }
 
-export function SetListPanel({
-  rows,
-  children,
-}: {
-  rows: SetRowModel[];
-  /** The spotlight search (D6) — rendered into the top slot while no sheet is open. */
-  children?: ReactNode;
-}) {
+export function SetListPanel({ rows }: { rows: SetRowModel[] }) {
   const [sheetRow, setSheetRow] = useState<SetRowModel | null>(null);
   const [sheetGeo, setSheetGeo] = useState<SheetGeometry | null>(null);
   const [active, setActive] = useState(false);
   const [pulseDay, setPulseDay] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<SpotlightSort>({ key: "date", dir: "desc" });
+
+  // Live filtering (D12): the archive IS the results surface. Every token must
+  // hit the haystack (dates + every play's title/artist); sort per the chips.
+  const visibleRows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const tokens = q === "" ? [] : q.split(/\s+/);
+    const filtered =
+      tokens.length === 0 ? rows : rows.filter((r) => tokens.every((t) => r.haystack.includes(t)));
+    const sorted = [...filtered].sort((a, b) =>
+      sort.key === "date" ? a.startedAtMs - b.startedAtMs : a.lengthSec - b.lengthSec,
+    );
+    if (sort.dir === "desc") sorted.reverse();
+    return sorted;
+  }, [rows, query, sort]);
 
   const bodyRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -143,7 +147,9 @@ export function SetListPanel({
             <MetalButton mode="text" label="Enter Set" href={`/set/${sheetRow.id}`} />
           </div>
         ) : (
-          <div className="dz-list-search">{children}</div>
+          <div className="dz-list-search">
+            <SpotlightSearch query={query} onQueryChange={setQuery} sort={sort} onSortChange={setSort} />
+          </div>
         )}
       </div>
 
@@ -154,9 +160,11 @@ export function SetListPanel({
               <p className="dz-list-empty">
                 Your archive opens with your first captured set — every night lands here, searchable.
               </p>
+            ) : visibleRows.length === 0 ? (
+              <p className="dz-list-empty">No sets match — try a date, a song, or an artist.</p>
             ) : (
               <ul className="dz-rows">
-                {rows.map((row) => (
+                {visibleRows.map((row) => (
                   <li
                     key={row.id}
                     ref={(el) => {
