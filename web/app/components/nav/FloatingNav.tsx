@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type FocusEvent, type MouseEvent } from "react";
 import { House, TrendUp, VinylRecord, UserCircle, type Icon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import {
@@ -11,6 +11,7 @@ import {
   useMetalColors,
   usePrefersReducedMotion,
 } from "@/app/components/ui/metal-hooks";
+import { CursorChip, useCursorChipTarget } from "@/app/components/ui/CursorChip";
 
 // Desktop = the vertical liquid-metal rail on the left (Arjun, 2026-08-03:
 // the bottom dock overlapped dashboard content); below it, the original
@@ -88,7 +89,18 @@ function prefersReducedMotionNow() {
   );
 }
 
-function NavLink({ item, active }: { item: NavItem; active: boolean }) {
+function NavLink({
+  item,
+  active,
+  onChip,
+}: {
+  item: NavItem;
+  active: boolean;
+  /** Rail label chip (item 4): report hover/focus so the nav can float the
+      shared CursorChip with this item's label; `at` pins it for keyboard
+      focus, where there's no cursor to follow. */
+  onChip?: (label: string | null, at?: { x: number; y: number }) => void;
+}) {
   const ItemIcon = item.icon;
 
   // Glow follow-lag state (see handleGlowMove note above for why this is a JS
@@ -144,6 +156,7 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
     write(pt.x, pt.y);
     hovering.current = true;
     if (raf.current == null) raf.current = requestAnimationFrame(tick);
+    onChip?.(item.label);
   }
 
   function handleMove(event: MouseEvent<HTMLAnchorElement>) {
@@ -155,6 +168,27 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
     // Stop tracking; the loop eases to a rest and cancels itself while the
     // glow's opacity fades out via group-hover.
     hovering.current = false;
+    onChip?.(null);
+  }
+
+  const focusChip = useRef(false);
+
+  function handleFocus(event: FocusEvent<HTMLAnchorElement>) {
+    // Keyboard parity for the label chip: no cursor to follow, so pin it off
+    // the item's right edge (only for :focus-visible — a click focus already
+    // has the hover chip up and would double-fire).
+    if (!event.currentTarget.matches(":focus-visible")) return;
+    const r = event.currentTarget.getBoundingClientRect();
+    focusChip.current = true;
+    onChip?.(item.label, { x: r.right, y: r.top + r.height / 2 });
+  }
+
+  function handleBlur() {
+    // Only clear what focus showed — a click's blur must not kill the hover
+    // chip that's legitimately up on the newly hovered item.
+    if (!focusChip.current) return;
+    focusChip.current = false;
+    onChip?.(null);
   }
 
   return (
@@ -164,13 +198,15 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
       onMouseEnter={handleEnter}
       onMouseMove={handleMove}
       onMouseLeave={handleLeave}
+      onFocus={handleFocus}
+      onBlur={handleBlur}
       aria-current={active ? "page" : undefined}
       aria-label={item.label}
       className={cn(
         // Cell radius stays concentric with the dock's --radius-2xl outer
         // radius: inner = outer − the container's 2px padding. (No
         // overflow-hidden: the glow span clips itself via its own inherited
-        // radius, and the rail's tooltip must escape the cell.)
+        // radius.)
         "floating-nav-link group relative flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-[calc(var(--radius-2xl)-2px)] px-3 outline-none",
         // colour/scale transitions + the glow follow-lag live in globals.css
         // (.floating-nav-link) so one rule owns the transition list.
@@ -229,12 +265,6 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
           </span>
         </span>
       </span>
-      {/* Rail-only hover/focus tooltip carrying the label (the rail is
-          icon-only; aria-label above is the accessible name, so this stays
-          aria-hidden). Hidden below the rail breakpoint in globals.css. */}
-      <span aria-hidden className="nav-tip">
-        {item.label}
-      </span>
     </Link>
   );
 }
@@ -245,6 +275,19 @@ export function FloatingNav() {
   const reduced = usePrefersReducedMotion();
   const colors = useMetalColors();
   const [hovered, setHovered] = useState(false);
+
+  // Rail labels ride the shared CursorChip (item 4 — the calendar day-chip
+  // treatment, exactly): ONE chip follows the cursor across the rail, its body
+  // crossfading between item labels. Cursor coords come from nav-level
+  // mousemove (moves over items bubble here); NavLink's onChip sets which
+  // label is up. Rail-only, like the shader — the dock keeps its inline
+  // active-label reveal and never mounts the chip.
+  const chipTargetRef = useCursorChipTarget();
+  const [chipLabel, setChipLabel] = useState<string | null>(null);
+  const handleChip = (label: string | null, at?: { x: number; y: number }) => {
+    if (at) chipTargetRef.current = at;
+    setChipLabel(label);
+  };
 
   // MetalButton's speed state machine, minus the click burst (a nav rail has
   // no single "the" click): idle 0.6 → hover 1.0; frozen for reduced motion.
@@ -266,6 +309,13 @@ export function FloatingNav() {
       className="floating-nav-dock fixed z-50 flex w-max items-center gap-0.5 p-0.2"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onMouseMove={
+        rail
+          ? (e) => {
+              chipTargetRef.current = { x: e.clientX, y: e.clientY };
+            }
+          : undefined
+      }
     >
       {/* Liquid-metal rim (rail only): shader ring under a dark plate inset
           2px — the .mtl layer sandwich, flattened (no 3D press physics; the
@@ -303,7 +353,12 @@ export function FloatingNav() {
 
       <div className="nav-rail-items">
         {destinations.map((item) => (
-          <NavLink key={item.href} item={item} active={isActiveNavItem(pathname, item.href)} />
+          <NavLink
+            key={item.href}
+            item={item}
+            active={isActiveNavItem(pathname, item.href)}
+            onChip={rail ? handleChip : undefined}
+          />
         ))}
       </div>
 
@@ -311,7 +366,25 @@ export function FloatingNav() {
           — the dock reference's grouping, matching the IA where Settings is
           the avatar's own row, not a destination. */}
       <span aria-hidden className="nav-divider" />
-      <NavLink item={settings} active={isActiveNavItem(pathname, settings.href)} />
+      <NavLink
+        item={settings}
+        active={isActiveNavItem(pathname, settings.href)}
+        onChip={rail ? handleChip : undefined}
+      />
+
+      {/* The label chip (rail only; single-line body, so a shallower rise than
+          the calendar's default -72). Viewport-clamped — the rail hugs the
+          left edge, so up-and-right always has room. */}
+      {rail && (
+        <CursorChip
+          target={chipTargetRef}
+          visible={chipLabel != null}
+          contentKey={chipLabel}
+          offsetY={-56}
+        >
+          {chipLabel && <p className="cursor-chip-title">{chipLabel}</p>}
+        </CursorChip>
+      )}
     </nav>
   );
 }

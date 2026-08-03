@@ -1441,8 +1441,12 @@
   color: var(--color-abyss-text-45);
 }
 
-/* Cursor-follow hover chip (project-showcase mechanics; auto-sized text). */
-.cal-chip {
+/* Cursor-follow chip — SHARED primitive (ui/CursorChip.tsx; REFINEMENTS
+   item 4). Wearers: the calendar's day-hover preview (clamped to its card)
+   and the nav rail's label tooltips (viewport-clamped). Portaled to
+   document.body, so these are true viewport-fixed coords — no containing-
+   block trickery. project-showcase mechanics; auto-sized text. */
+.cursor-chip {
   position: fixed;
   top: 0;
   left: 0;
@@ -1455,12 +1459,12 @@
     scale 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.cal-chip[data-visible] {
+.cursor-chip[data-visible] {
   opacity: 1;
   scale: 1;
 }
 
-.cal-chip-body {
+.cursor-chip-body {
   min-width: 120px;
   padding: 10px 14px;
   border-radius: 16px;
@@ -1469,14 +1473,14 @@
   box-shadow: 0 16px 40px -12px var(--shadow-ink-50);
 }
 
-.cal-chip-count {
+.cursor-chip-title {
   margin: 0 0 2px;
   font-size: 14px;
   font-weight: 600;
   color: var(--color-abyss-text);
 }
 
-.cal-chip-line {
+.cursor-chip-line {
   margin: 0;
   font-size: 12px;
   color: var(--color-abyss-text-45);

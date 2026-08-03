@@ -14,10 +14,11 @@ import {
   startOfWeek,
   subMonths,
 } from "date-fns";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { DayMarks } from "@/lib/sets/rightColumn";
 import { formatDuration } from "@/lib/sets/format";
 import { dispatchSelectDay } from "@/app/components/dashboard/SetListPanel";
+import { CursorChip, useCursorChipTarget } from "@/app/components/ui/CursorChip";
 
 // Glass calendar (D5/D10) — the GlassCalendar ref with the locked adaptations:
 // both view modes REAL with Monthly (compact 7-column grid) as default and the
@@ -27,21 +28,19 @@ import { dispatchSelectDay } from "@/app/components/dashboard/SetListPanel";
 // and footer buttons replaced by the month-summary line ("August · 3 nights ·
 // 8h 40m"). Month name keeps the ref's fade/slide key-swap; chevrons as-is.
 //
-// Day-hover preview (new ref: project-showcase): a floating chip follows the
-// cursor via rAF lerp (factor 0.15) — the sanctioned unregistered-vars/inline-
-// style pattern from the @property bug — with scale+fade in/out and a content
-// crossfade between days. Text only: "N sets" + one quiet start · duration
-// line per set. Cursor-only by construction (mouse events don't fire on touch).
-// Clicking a set-day scrolls + pulses that day's rows in the archive; a
-// single-set day auto-expands it (D10, via dz:select-day).
+// Day-hover preview (new ref: project-showcase): the shared CursorChip
+// primitive (ui/CursorChip.tsx — extracted from here, REFINEMENTS item 4)
+// follows the cursor, clamped inside the card via boundsRef (item 13), with a
+// content crossfade between days. Text only: "N sets" + one quiet start ·
+// duration line per set. Cursor-only by construction (mouse events don't fire
+// on touch). Clicking a set-day scrolls + pulses that day's rows in the
+// archive; a single-set day auto-expands it (D10, via dz:select-day).
 
 interface Day {
   date: Date;
   key: string;
   isToday: boolean;
 }
-
-const LERP_FACTOR = 0.15;
 
 export function GlassCalendar({ marks }: { marks: DayMarks }) {
   const [view, setView] = useState<"monthly" | "weekly">("monthly");
@@ -53,10 +52,7 @@ export function GlassCalendar({ marks }: { marks: DayMarks }) {
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
 
   const cardRef = useRef<HTMLDivElement>(null);
-  const chipRef = useRef<HTMLDivElement>(null);
-  const targetPos = useRef({ x: 0, y: 0 });
-  const smoothPos = useRef({ x: 0, y: 0 });
-  const raf = useRef<number | null>(null);
+  const chipTargetRef = useCursorChipTarget();
 
   const monthDays = useMemo<Day[]>(() => {
     const start = startOfMonth(currentMonth);
@@ -101,45 +97,8 @@ export function GlassCalendar({ marks }: { marks: DayMarks }) {
     return `${range} · ${nights} ${nights === 1 ? "night" : "nights"} · ${formatDuration(totalSec)}`;
   }, [marks, weekDays, weekStart]);
 
-  // The ref's rAF-lerp cursor follow, writing the chip's inline transform
-  // directly (no per-frame React state, no registered @property vars).
-  useEffect(() => {
-    const animate = () => {
-      smoothPos.current = {
-        x: smoothPos.current.x + (targetPos.current.x - smoothPos.current.x) * LERP_FACTOR,
-        y: smoothPos.current.y + (targetPos.current.y - smoothPos.current.y) * LERP_FACTOR,
-      };
-      const chip = chipRef.current;
-      const card = cardRef.current;
-      if (chip && card) {
-        // Item 13: keep the chip inside the card. Default up-and-right of the
-        // cursor; FLIP to its left when it would overrun the right edge (the
-        // bug: right-column days cut the chip off mid-text), then clamp on both
-        // axes so top-row / edge days can't push it outside the shell either.
-        const pad = 10;
-        const cw = card.offsetWidth;
-        const ch = card.offsetHeight;
-        const chipW = chip.offsetWidth;
-        const chipH = chip.offsetHeight;
-        let x = smoothPos.current.x + 18;
-        if (x + chipW > cw - pad) x = smoothPos.current.x - 18 - chipW;
-        x = Math.max(pad, Math.min(x, cw - chipW - pad));
-        let y = smoothPos.current.y - 72;
-        y = Math.max(pad, Math.min(y, ch - chipH - pad));
-        chip.style.transform = `translate3d(${x}px, ${y}px, 0)`;
-      }
-      raf.current = requestAnimationFrame(animate);
-    };
-    raf.current = requestAnimationFrame(animate);
-    return () => {
-      if (raf.current) cancelAnimationFrame(raf.current);
-    };
-  }, []);
-
   const onMouseMove = (e: React.MouseEvent) => {
-    const rect = cardRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    targetPos.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    chipTargetRef.current = { x: e.clientX, y: e.clientY };
   };
 
   const handleDayClick = (day: Day) => {
@@ -292,30 +251,26 @@ export function GlassCalendar({ marks }: { marks: DayMarks }) {
       <div className="cal-divider" />
       <p className="cal-summary">{view === "weekly" ? weekSummary : monthSummary}</p>
 
-      {/* Cursor-follow hover chip (project-showcase mechanics, text content). */}
-      <div ref={chipRef} className="cal-chip" data-visible={!!hoveredMark || undefined} aria-hidden="true">
-        <AnimatePresence mode="popLayout">
-          {hoveredMark && (
-            <motion.div
-              key={hoveredKey}
-              initial={{ opacity: 0, scale: 1.06, filter: "blur(6px)" }}
-              animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-              exit={{ opacity: 0, scale: 0.98, filter: "blur(6px)" }}
-              transition={{ duration: 0.35, ease: "easeOut" }}
-              className="cal-chip-body"
-            >
-              <p className="cal-chip-count">
-                {hoveredMark.count} {hoveredMark.count === 1 ? "set" : "sets"}
+      {/* Cursor-follow hover chip (shared primitive; clamped to the card). */}
+      <CursorChip
+        target={chipTargetRef}
+        visible={!!hoveredMark}
+        contentKey={hoveredKey}
+        boundsRef={cardRef}
+      >
+        {hoveredMark && (
+          <>
+            <p className="cursor-chip-title">
+              {hoveredMark.count} {hoveredMark.count === 1 ? "set" : "sets"}
+            </p>
+            {hoveredMark.sets.map((s, i) => (
+              <p key={i} className="cursor-chip-line">
+                {s.start} · {s.duration}
               </p>
-              {hoveredMark.sets.map((s, i) => (
-                <p key={i} className="cal-chip-line">
-                  {s.start} · {s.duration}
-                </p>
-              ))}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+            ))}
+          </>
+        )}
+      </CursorChip>
     </div>
     </MotionConfig>
   );

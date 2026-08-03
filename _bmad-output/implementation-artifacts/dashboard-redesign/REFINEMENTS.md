@@ -113,6 +113,23 @@ NOT built.
    enter animation, cursor-follow) and render nav labels through it,
    replacing the current bespoke `.nav-tip` (globals.css). Note `.nav-tip`
    was a placeholder; delete its styles when swapping.
+   > ✅ Landed 2026-08-03 (dev): extracted to the shared **CursorChip**
+   > primitive (ui/CursorChip.tsx; styles `.cal-chip*` → `.cursor-chip*` in
+   > dashboard.css) and PORTALED to document.body on viewport coords — the old
+   > chip's card-relative position:fixed rode an ancestor-filter
+   > containing-block accident (and .dz-right's clip/mask); the card clip is
+   > now an explicit `boundsRef` running item 13's flip+clamp mechanics
+   > (re-verified: Aug 1 right-column chip still flips left + clamps inside
+   > the card; as a side effect the chip no longer dims under item 14's
+   > edge-melt mask — an improvement, it stays readable). The rail renders ONE
+   > chip: nav-level mousemove feeds coords, per-item enter/leave sets the
+   > label, the body crossfades between items (the calendar's popLayout
+   > language); offsetY −56 (vs the calendar's −72) for the single-line body.
+   > Keyboard `:focus-visible` pins it off the item's right edge — parity
+   > with the old focus tooltip. `.nav-tip` deleted (globals.css). Dock mode
+   > unaffected (chip mounts at rail widths only; inline label reveal kept).
+   > New "appear in place" nicety: the smoothed position snaps to the cursor
+   > when the chip turns visible, so first show never lerps in from a corner.
 
 5. **Hero arc: gap handling** (from Arjun's "is the line graph even
    accurate?"). Finding: the DATA is faithful — e.g. the Jun 26 set (977) has
