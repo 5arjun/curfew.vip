@@ -56,6 +56,7 @@ export default async function DashboardPage() {
         // launch experience IS this state. History-as-asset voice; no fake
         // chart, no nagging, never "since you joined".
         <section className="dz-hero dz-shell dz-hero-cold" aria-label="Most recent set">
+          <span className="dz-dots" aria-hidden="true" />
           <p className="dz-hero-cold-title">Your first set lands here.</p>
           <p className="dz-hero-cold-body">
             Play a night and Curfew traces it — the arc of the tempo, the dancefloor it finds, the

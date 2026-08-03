@@ -21,6 +21,7 @@ export function MostPlayedCard({
   return (
     <MotionConfig reducedMotion="user">
     <section className="dz-shell dz-card mp" aria-label="Most played">
+      <span className="dz-dots" aria-hidden="true" />
       <div className="dz-card-head">
         <h2 className="dz-card-title">Most played</h2>
         <div className="mp-toggle" role="tablist" aria-label="Time window">

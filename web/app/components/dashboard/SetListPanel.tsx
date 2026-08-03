@@ -138,12 +138,21 @@ export function SetListPanel({ rows }: { rows: SetRowModel[] }) {
 
   return (
     <section className="dz-list dz-shell" data-modal={active || undefined} aria-label="Set archive">
+      <span className="dz-dots" aria-hidden="true" />
       <div className="dz-list-top">
         {sheetRow ? (
           <div className="dz-list-actions" data-active={active || undefined}>
-            <button type="button" className="dz-back" onClick={close} aria-label="Back to the archive">
-              <ArrowLeft size={18} strokeWidth={2} />
-            </button>
+            <div className="dz-actions-lead">
+              <button type="button" className="dz-back" onClick={close} aria-label="Back to the archive">
+                <ArrowLeft size={18} strokeWidth={2} />
+              </button>
+              <span className="dz-actions-title">
+                <span className="dz-actions-date">{sheetRow.dateLabel}</span>
+                <span className="dz-row-meta">
+                  {sheetRow.floorCount} · {sheetRow.durationLabel}
+                </span>
+              </span>
+            </div>
             <MetalButton mode="text" label="Enter Set" href={`/set/${sheetRow.id}`} />
           </div>
         ) : (
@@ -209,23 +218,6 @@ export function SetListPanel({ rows }: { rows: SetRowModel[] }) {
               transform: `translateY(${active ? sheetGeo.shift : 0}px)`,
             }}
           >
-            <div className="dz-sheet-row">
-              <p className="dz-sheet-title">{sheetRow.dateLabel}</p>
-              <span className="dz-sheet-end">
-                <span className="dz-row-meta">
-                  {sheetRow.floorCount} · {sheetRow.durationLabel}
-                </span>
-                <button
-                  type="button"
-                  className="dz-sheet-close"
-                  onClick={close}
-                  aria-label="Collapse set"
-                >
-                  <Plus size={20} strokeWidth={2} />
-                </button>
-              </span>
-            </div>
-
             <div className="dz-sheet-info">
               <dl className="dz-sheet-stats">
                 <div>

@@ -27,6 +27,7 @@ export function HeroBand({ set }: { set: SetRecord }) {
 
   return (
     <section className="dz-hero dz-shell" aria-label="Most recent set">
+      <span className="dz-dots" aria-hidden="true" />
       <svg
         className="dz-hero-arc"
         viewBox={`0 0 ${VIEW.width} ${VIEW.height}`}

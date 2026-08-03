@@ -513,7 +513,8 @@
 
 .dz-list-actions[data-active] {
   opacity: 1;
-  transition: opacity var(--motion-duration-liquid-open) var(--motion-ease-liquid) 0.15s;
+  /* Lands with the (now-faster) sheet pop instead of trailing it. */
+  transition: opacity 220ms var(--motion-ease-liquid) 60ms;
 }
 
 .dz-back {
@@ -542,6 +543,32 @@
   box-shadow:
     0 0 0 2px var(--color-abyss-accent),
     0 0 0 6px var(--color-abyss-accent-glow);
+}
+
+/* Back arrow + the set's identity, grouped at the left of the action bar
+   (Arjun 2026-08-03): the sheet dropped its own big header row, so date +
+   count·duration now ride here between the back arrow and Enter Set, and the
+   × close is gone (the back arrow closes). The tracklist gains that height. */
+.dz-actions-lead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  min-width: 0;
+}
+
+.dz-actions-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.dz-actions-date {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--color-abyss-text);
+  text-wrap: nowrap;
 }
 
 .dz-list-body {
@@ -704,93 +731,13 @@
   width: calc(100% - 16px);
   padding: 0 10px;
   pointer-events: all;
+  /* Snappier pop (Arjun 2026-08-03: the 600ms liquid-open read laggy — the
+     easeOutExpo tail crawled; runs a steady 60fps, so it was perceptual not
+     jank). 310ms keeps the liquid ease but cuts the crawl. */
   transition:
-    all var(--motion-duration-liquid-open) var(--motion-ease-liquid),
+    all 310ms var(--motion-ease-liquid),
     top 0s,
     opacity 0s;
-}
-
-/* The sheet's header row — the ref's .song-modal .song. */
-.dz-sheet-row {
-  position: relative;
-  z-index: 3;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 72px;
-  padding: 0 22px;
-  border-bottom: 2px solid var(--color-abyss-row-line);
-  transition: all var(--motion-duration-liquid-close) var(--motion-ease-liquid);
-}
-
-.dz-sheet[data-active] .dz-sheet-row {
-  min-height: 88px;
-  transition: all var(--motion-duration-liquid-open) var(--motion-ease-liquid);
-}
-
-/* Title scales 2× from center-left, tightens, brightens (the ref's move). */
-.dz-sheet-title {
-  margin: 0;
-  font-size: 16px;
-  color: var(--color-abyss-text-72);
-  transform: scale(1);
-  transform-origin: center left;
-  transition: all var(--motion-duration-liquid-close) var(--motion-ease-liquid);
-}
-
-.dz-sheet[data-active] .dz-sheet-title {
-  letter-spacing: -0.03em;
-  transform: scale(2);
-  color: var(--color-abyss-text);
-  transition: all var(--motion-duration-liquid-open) var(--motion-ease-liquid);
-}
-
-.dz-sheet-end {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  transform: translateX(0);
-  transition: transform 0.4s ease;
-}
-
-/* Order is `meta ×` (item 10): the whole group stays inside the sheet's right
-   padding — no rightward slide that pushed the meta past the clip edge. */
-.dz-sheet[data-active] .dz-sheet-end {
-  transform: translateX(0);
-  transition: transform 0.2s ease;
-}
-
-/* The + spins −495° over 1.2s on the overshoot bezier and reads as close. */
-.dz-sheet-close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: none;
-  padding: 0;
-  color: var(--color-abyss-text);
-  cursor: pointer;
-  transform: rotateZ(0deg);
-  opacity: 0;
-  transition: transform 1.2s var(--motion-ease-liquid-pop) !important;
-}
-
-.dz-sheet[data-active] .dz-sheet-close {
-  transform: rotateZ(-495deg);
-  opacity: 0.5;
-}
-
-.dz-sheet-close:hover {
-  opacity: 1 !important;
-}
-
-.dz-sheet-close:focus-visible {
-  outline: none;
-  border-radius: 100px;
-  box-shadow:
-    0 0 0 2px var(--color-abyss-accent),
-    0 0 0 6px var(--color-abyss-accent-glow);
-  opacity: 1;
 }
 
 .dz-sheet-info {
@@ -1074,15 +1021,8 @@
     filter: none;
   }
   .dz-sheet,
-  .dz-sheet[data-active],
-  .dz-sheet-row,
-  .dz-sheet-title,
-  .dz-sheet-end,
-  .dz-sheet-close {
+  .dz-sheet[data-active] {
     transition: opacity var(--motion-duration-fast) var(--motion-ease-standard) !important;
-  }
-  .dz-sheet-close {
-    opacity: 0.5;
   }
   .dz-row[data-pulse] {
     animation: none;
@@ -1096,8 +1036,7 @@
     border: 1px solid CanvasText;
   }
   .dz-row:focus-visible,
-  .dz-back:focus-visible,
-  .dz-sheet-close:focus-visible {
+  .dz-back:focus-visible {
     outline: 2px solid CanvasText;
     outline-offset: 2px;
   }
@@ -1786,6 +1725,37 @@
   opacity: 0;
   transition: opacity 800ms cubic-bezier(0.25, 1, 0.5, 1);
   animation: dz-shimmer-rotate 7.5s linear infinite paused;
+}
+
+/* ─── D3 dots (item 7): the shiny-button ref's dot-matrix, finally carried onto
+   the shells — Arjun overruled the polish-checkpoint omission ("i liked the
+   buttons how they were in the reference"). The ref's exact tile (0.5px dot /
+   4px space) sits behind content on its OWN layer (both shell pseudos are taken
+   by the glint ring + shimmer), confined to the ref's masked conic slice (top-
+   biased) and dialled to a faint specular grain — LOW intensity per the "review
+   live first, dots-over-content risk noise" note. The whole layer is one knob:
+   --dz-dot-opacity (start low). */
+.dz-shell {
+  --dz-dot-opacity: 0.22;
+}
+
+.dz-dots {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: inherit;
+  background: radial-gradient(
+      circle at 1px 1px,
+      var(--color-abyss-text) 0.5px,
+      var(--shadow-ink-0) 0
+    )
+    0 0 / 5px 5px;
+  /* Soft radial fade keeps the grain toward the shell's edges and off the
+     central content — the ref's masked-slice idea, adapted to large panels. */
+  -webkit-mask: radial-gradient(130% 105% at 50% 42%, var(--shadow-ink-0) 40%, var(--color-surface-void) 92%);
+  mask: radial-gradient(130% 105% at 50% 42%, var(--shadow-ink-0) 40%, var(--color-surface-void) 92%);
+  opacity: var(--dz-dot-opacity);
 }
 
 @media (hover: hover) and (pointer: fine) {

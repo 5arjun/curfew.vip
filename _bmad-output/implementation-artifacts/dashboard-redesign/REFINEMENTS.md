@@ -136,6 +136,14 @@ NOT built.
    was left out and why). Keep the original worry in view — dots over real
    content risked reading as noise — so build it, then review live at a low
    intensity first.
+   > ✅ Landed 2026-08-03 (dev): the ref's exact dot tile (0.5px dot / ~5px
+   > space, `radius(circle at 2px 2px, text, ink-0)`) rides a decorative
+   > `.dz-dots` child on all 6 shells (both shell pseudos were taken by the
+   > glint ring + shimmer). A radial fade concentrates the grain toward the
+   > shell edges and off the central content (the ref's masked-slice idea, but
+   > the button's conic slice looked wrong on wide panels). All token colours
+   > (guard-safe). Shown to Arjun; he asked "slightly less visible" — dialled
+   > 0.3 → **0.22** (`--dz-dot-opacity` on `.dz-shell`, the single knob).
 
 8. **Search bar: same hover glow as the sort chips beside it.** The two
    filter/sort buttons right of the search field carry the cursor-tracking
@@ -166,6 +174,18 @@ NOT built.
     > `.dz-sheet-end` `translateX(65px)` that had been shoving the meta past
     > the sheet's clip edge (that's why "6h 11m" was cut off). Verified: meta
     > full + left of ×, vertical centres aligned to 0px, nothing clipped.
+    > ↳ SUPERSEDED same session (Arjun live, 2026-08-03): "this is perfect i
+    > like it a lot" — he then reworked the whole header. The sheet's own date
+    > header row (`.dz-sheet-row`/`-title`/`-end`/`-close`, the 2x date scale +
+    > the -495deg close spin) is DELETED; date + `count · duration` now ride
+    > inline in the panel action bar between the back arrow and Enter Set
+    > (`.dz-actions-lead`/`-title`/`-date`). The close x is gone (back arrow
+    > closes). The reclaimed ~88px goes to the tracklist (scroll region 197px
+    > -> 285px, ~7 -> 10 rows). Also the pop read "a little laggy" — the 600ms
+    > `--motion-duration-liquid-open` easeOutExpo crawled (measured a steady
+    > 60fps, so perceptual, not jank); cut `.dz-sheet[data-active]` to 310ms
+    > (liquid ease kept) and resynced the header fade (220ms/60ms) to land with
+    > it.
 
 11. **Sheet tracklist: fit + full scroll.** Track titles overflow the card's
     right edge mid-word (screenshot: "Flo Ri…", "Cama…" clipped past the

@@ -6,6 +6,7 @@
 export function ConfidenceTile({ pct }: { pct: number | null }) {
   return (
     <section className="dz-shell dz-card conf" aria-label="Dancefloor detection confidence">
+      <span className="dz-dots" aria-hidden="true" />
       <p className="conf-value">{pct != null ? `${pct}%` : "—"}</p>
       <p className="conf-label">dancefloor detection · latest set</p>
       <p className="conf-hint">Sharpens as you correct the floor&apos;s edges.</p>

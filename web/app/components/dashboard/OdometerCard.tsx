@@ -69,6 +69,7 @@ export function OdometerCard({
 
   return (
     <section className="dz-shell dz-card odo" aria-label="Your archive">
+      <span className="dz-dots" aria-hidden="true" />
       <h2 className="dz-card-title">Your archive</h2>
       <dl className="odo-row">
         {stats.map((stat) => (

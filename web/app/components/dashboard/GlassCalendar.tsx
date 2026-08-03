@@ -134,6 +134,7 @@ export function GlassCalendar({ marks }: { marks: DayMarks }) {
       onMouseMove={onMouseMove}
       onMouseLeave={() => setHoveredKey(null)}
     >
+      <span className="dz-dots" aria-hidden="true" />
       {/* Header: real Weekly | Monthly tabs (settings icon removed — D10). */}
       <div className="cal-head">
         <div className="cal-tabs" role="tablist" aria-label="Calendar view">
