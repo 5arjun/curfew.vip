@@ -120,16 +120,16 @@ export function MetalButton({ mode, label, href, onClick, className }: MetalButt
                   colorBack={colors.back}
                   colorTint={colors.tint}
                   speed={speed}
-                  repetition={6}
+                  repetition={4}
                   softness={0.5}
                   shiftRed={0.3}
                   shiftBlue={0.3}
                   distortion={0}
                   contour={0}
                   angle={45}
-                  scale={1}
-                  offsetX={0}
-                  offsetY={0}
+                  scale={8}
+                  offsetX={0.1}
+                  offsetY={-0.1}
                   shape="none"
                 />
               )}
