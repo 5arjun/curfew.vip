@@ -25,10 +25,14 @@
 //!   never assumes a filename is valid Unicode (Story 1.2 findings §5/D2).
 //! - **Read-only.** No source file is opened for writing; Serato may hold the same
 //!   files open during a gig.
-//! - **Raw values only.** Genre is returned exactly as the source stores it —
-//!   normalization (FR-8/AD-12, raw + normalized + `taxonomy_version`) is Story 1.6's
-//!   job, and key is already Camelot notation at the source (findings §3) or taken
-//!   raw from the embedded tag.
+//! - **Raw values only, except key.** Genre is returned exactly as the source stores
+//!   it — normalization (FR-8/AD-12, raw + normalized + `taxonomy_version`) is Story
+//!   1.6's job. Key is the one field this filter *derives* rather than passes through:
+//!   for Serato 4+ it is mapped from the canonical `key_value` INTEGER to Camelot
+//!   notation ([`serato4::join_session`], Story 3.6) — the earlier premise that the
+//!   source `"key"` text column is "already Camelot notation (findings §3)" was wrong
+//!   (it stores mixed, mostly-*musical* notation, silently dropping ~88% of keys), and
+//!   is retired. The legacy catalogue and embedded-tag paths still take key raw.
 //!
 //! What this filter deliberately does *not* do: reconcile its result against the play
 //! log's own inline `genre`/`key` ([`crate::parser::Play`] carries those from a
@@ -63,12 +67,17 @@ pub struct JoinedMetadata {
     pub in_library: bool,
     /// Beats per minute, as analysed by Serato.
     pub bpm: Option<f64>,
-    /// Musical key, raw and exactly as stored at the source. When sourced from the
-    /// library join, this is Camelot notation, e.g. `"1A"` (findings §3). When
-    /// sourced from an embedded file tag ([`embedded_tags`]'s fallback), it is
-    /// whatever the tagging tool wrote — `TKEY`/Vorbis `KEY` carry no notation
-    /// guarantee, and nothing on this struct distinguishes which source a value
-    /// came from.
+    /// Musical key in Camelot notation, e.g. `"1A"`, or `None` for no key.
+    ///
+    /// For Serato 4+ this is **derived** from the canonical `key_value` INTEGER, not
+    /// read from the free-text `"key"` column (Story 3.6 — that column stores mixed,
+    /// mostly-*musical* notation and the old "already Camelot at the source (findings
+    /// §3)" premise was wrong). The legacy catalogue join returns whatever notation the
+    /// `database V2` stored; when sourced from an embedded file tag
+    /// ([`embedded_tags`]'s fallback) it is whatever the tagging tool wrote —
+    /// `TKEY`/Vorbis `KEY` carry no notation guarantee. Nothing on this struct
+    /// distinguishes which source a value came from; a non-Camelot string simply fails
+    /// [`crate::stats::camelot::parse`] downstream and becomes no key.
     pub key: Option<String>,
     /// Genre, raw and un-normalized (normalization is Story 1.6's
     /// [`crate::genre::normalize`]).
