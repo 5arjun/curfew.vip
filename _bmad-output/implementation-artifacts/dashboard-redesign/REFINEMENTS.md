@@ -122,6 +122,12 @@ NOT built.
    Claude's take, for the dev session: agree — a deeper, more neutral ground
    should improve both the "lot of blue" feel and text contrast without
    losing the look.
+   > ✅ Landed 2026-08-03 (dev): shown live before commit; Arjun approved
+   > ("looks good — commit it"). base #04070c→#04060a, shell #091018→#0a0e13
+   > (+ shell-glass RGB tracks it), raised #0f1824→#0e131b — each darker + a
+   > lower B:R ratio (less blue), elevation ramp preserved. Alpha FROZEN
+   > (shell-glass stays `…e0`, 88%); cyan accents + Silk untouched. Pairs with
+   > item 12 (readability re-check against the new ground, next).
 
 7. **Add the shiny-ref dot-matrix layer to the shells.** Arjun overrules the
    polish-checkpoint omission ("lets add the dot matrix. i liked the buttons

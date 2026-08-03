@@ -340,9 +340,9 @@
      4.5:1 on base AND shell; -45 clears the 3:1 large-text/secondary floor and is
      reserved for de-emphasized meta (mirrors the ref's 45%-white register); -22
      is decorative only (hairline-adjacent, never copy). */
-  --color-abyss-base: #04070c;       /* page behind the Silk shader */
-  --color-abyss-shell: #091018;      /* liquid-glass card fill (the ref .content re-tint) */
-  --color-abyss-raised: #0f1824;     /* expanded/hover surfaces (ref modal #272322/#342E2D re-tint) */
+  --color-abyss-base: #04060a;       /* page behind the Silk shader (item 6: nudged darker + less blue) */
+  --color-abyss-shell: #0a0e13;      /* liquid-glass card fill (the ref .content re-tint; item 6 less-blue) */
+  --color-abyss-raised: #0e131b;     /* expanded/hover surfaces (ref modal #272322/#342E2D re-tint; item 6 less-blue) */
   --color-abyss-hairline: #16283a;   /* hairline borders (ref #232120 re-tint) */
   --color-abyss-silk: #1b3242;       /* Silk tint — the ONE color prop; read from :root at runtime
                                         by SilkBackdrop (the Silk shader parses hex, not var()) */
@@ -351,8 +351,10 @@
   --color-abyss-accent-soft: #4fb2d6;/* today-ring, secondary accent */
   --color-abyss-accent-glow: #7fd8f280;  /* 50% — glows, dancefloor arc halo */
   --color-abyss-on-accent: #04131c;  /* text on filled accent */
-  --color-abyss-shell-glass: #091018e0;  /* ~88% shell — the liquid-glass fill over the Silk (D1:
-                                            translucent frosted; pairs with backdrop-blur in dashboard.css) */
+  --color-abyss-shell-glass: #0a0e13e0;  /* ~88% shell — the liquid-glass fill over the Silk (D1:
+                                            translucent frosted; pairs with backdrop-blur in dashboard.css).
+                                            item 6: RGB tracks --color-abyss-shell; the e0 alpha is FROZEN
+                                            (translucency approved as-is, Arjun 2026-08-03). */
   --color-abyss-shell-glow: #18344880;   /* 50% — the ref's inset 150px shell glow, re-tinted */
   --color-abyss-shell-glow-dim: #18344859; /* ~35% — shell glow while a modal is active (ref drops to 0.7×) */
   --color-abyss-row-hover: #7fd8f217;    /* ~9% — row hover inset glow (ref white 0.075 re-tint) */
