@@ -323,16 +323,24 @@ export function FloatingNav() {
           dock never pays a WebGL context. */}
       {rail && colors && (
         <span aria-hidden className="nav-rail-rim">
+          {/* Deviation from the reference params (which MetalButton keeps):
+              the ref's repetition={4} distortion={0} was tuned for a ~46px
+              button, and on this ~860px-tall rail its stripe cycles cross the
+              thin rim as visibly periodic beads (Arjun: "looks so repeated").
+              Fewer cycles + a little noise distortion + softer transitions
+              make the highlights run as long, irregular streaks — natural
+              metal — while shiftRed/Blue keep the chromatic identity.
+              Picked live from a 6-variant sweep (metal-A..C3). */}
           <LiquidMetal
             style={{ width: "100%", height: "100%" }}
             colorBack={colors.back}
             colorTint={colors.tint}
             speed={speed}
-            repetition={4}
-            softness={0.5}
+            repetition={1.5}
+            softness={0.6}
             shiftRed={0.3}
             shiftBlue={0.3}
-            distortion={0}
+            distortion={0.2}
             contour={0}
             angle={45}
             scale={8}

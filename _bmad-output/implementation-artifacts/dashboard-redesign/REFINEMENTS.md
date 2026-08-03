@@ -356,6 +356,21 @@ NOT built.
     > (`.dz-right-pair .odo`) gets `justify-content: center` so its title +
     > 3-stat row centre in the taller room instead of clumping at the top.
 
+19. **Rail metal reads "so repeated" — make it naturally metallic** (Arjun,
+    screenshot 16:33, after the queue closed). The 43cb16e reference params
+    (`repetition={4} distortion={0}`) are tuned for a ~46px button; on the
+    ~860px rail the stripe cycles cross the thin 2px rim as a periodic bead
+    train.
+    > ✅ Landed 2026-08-03 (dev): rail-only shader params re-tuned for tall
+    > geometry — `repetition` 4 → **1.5**, `softness` 0.5 → **0.6**,
+    > `distortion` 0 → **0.2** (the noise knob that breaks periodicity);
+    > shiftRed/Blue 0.3 kept so the chromatic fringe identity stays. Picked
+    > live from a 6-variant uniform sweep via `paperShaderMount.setUniforms`
+    > (screenshots metal-A..C3): highlights now run as long irregular streaks
+    > like real lit chrome. MetalButton (Enter Set / hero arrow) keeps the
+    > reference params untouched — this deviation is documented inline in
+    > FloatingNav.tsx.
+
 ### Approved as-built (no change needed)
 
 - Wordmark size on the rail spine ("the word mark size is good").
