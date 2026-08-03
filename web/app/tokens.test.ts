@@ -39,6 +39,25 @@ export function contrastRatio(hexA: string, hexB: string): number {
 }
 
 const AA_NORMAL_TEXT_MIN = 4.5;
+const AA_LARGE_TEXT_MIN = 3;
+
+// Alpha-composites an 8-digit-hex foreground over an opaque background,
+// returning the resulting 6-digit hex — for testing the translucent steps of a
+// text ramp against the surface they actually render on.
+function compositeOver(fgHex8: string, bgHex6: string): string {
+  const clean = fgHex8.replace("#", "");
+  if (clean.length !== 8) throw new Error(`Expected 8-digit hex, got "${fgHex8}"`);
+  const alpha = parseInt(clean.slice(6, 8), 16) / 255;
+  const bg = normalizeHex(bgHex6);
+  const blend = (i: number) => {
+    const fg = parseInt(clean.slice(i, i + 2), 16);
+    const b = parseInt(bg.slice(i, i + 2), 16);
+    return Math.round(alpha * fg + (1 - alpha) * b)
+      .toString(16)
+      .padStart(2, "0");
+  };
+  return blend(0) + blend(2) + blend(4);
+}
 
 describe("Obsidian core-text tokens meet WCAG 2.2 AA (Story 2.2 AC-4)", () => {
   it("on-surface (#e1e3e8) vs surface (#101319) passes AA", () => {
@@ -103,5 +122,58 @@ describe("Story 2.4 focus-ring glow: AA contrast (AC-4 / UX-DR21)", () => {
     // Nowhere near AA (4.5:1) or even the 3:1 non-text-UI minimum — proves the
     // literal "composite the glow, require 4.5:1" reading is unsatisfiable.
     expect(ratio).toBeLessThan(3);
+  });
+});
+
+// ─── Abyss Cyan (Story 3.6 v2 dashboard redesign, D11) ──────────────────────
+// The dev-task contrast verification PLAN.md's D11 mandates. Fixture hexes
+// mirror tokens.css's Abyss block (the regression-check-on-source-of-truth
+// pattern this file already uses). The translucent text-ramp steps are
+// composited over BOTH surfaces they render on (base page + shell cards)
+// before measuring — a translucent color has no contrast ratio of its own.
+// Honest scoping, mirroring the focus-ring finding above: the 45% step
+// measures ~3.9:1, below 4.5:1 — so it is BOUND to the 3:1 large-text/
+// secondary floor and reserved for de-emphasized meta (the same register the
+// music-player ref renders at 45% white on #161616, which measures ~3.5:1);
+// the 22% step is decorative-only and deliberately untested as text.
+describe("Abyss Cyan tokens meet WCAG 2.2 AA (dashboard redesign D11)", () => {
+  const BASE = "#04070c";
+  const SHELL = "#091018";
+  const RAISED = "#0f1824";
+  const TEXT = "#eaf3f8";
+  const TEXT_72 = "#eaf3f8b8";
+  const TEXT_45 = "#eaf3f873";
+  const ACCENT = "#7fd8f2";
+  const ACCENT_SOFT = "#4fb2d6";
+  const ON_ACCENT = "#04131c";
+
+  for (const [name, surface] of [
+    ["base", BASE],
+    ["shell", SHELL],
+    ["raised", RAISED],
+  ] as const) {
+    it(`text-100 passes AA on ${name}`, () => {
+      expect(contrastRatio(TEXT, surface)).toBeGreaterThanOrEqual(AA_NORMAL_TEXT_MIN);
+    });
+    it(`text-72 (composited) passes AA on ${name}`, () => {
+      expect(contrastRatio(compositeOver(TEXT_72, surface), surface)).toBeGreaterThanOrEqual(
+        AA_NORMAL_TEXT_MIN,
+      );
+    });
+    it(`text-45 (composited) clears the 3:1 large/secondary floor on ${name}`, () => {
+      expect(contrastRatio(compositeOver(TEXT_45, surface), surface)).toBeGreaterThanOrEqual(
+        AA_LARGE_TEXT_MIN,
+      );
+    });
+    it(`accent passes AA as text/icon on ${name}`, () => {
+      expect(contrastRatio(ACCENT, surface)).toBeGreaterThanOrEqual(AA_NORMAL_TEXT_MIN);
+    });
+    it(`accent-soft clears 3:1 (non-text UI: today-ring, marks) on ${name}`, () => {
+      expect(contrastRatio(ACCENT_SOFT, surface)).toBeGreaterThanOrEqual(AA_LARGE_TEXT_MIN);
+    });
+  }
+
+  it("on-accent passes AA on the filled accent", () => {
+    expect(contrastRatio(ON_ACCENT, ACCENT)).toBeGreaterThanOrEqual(AA_NORMAL_TEXT_MIN);
   });
 });
