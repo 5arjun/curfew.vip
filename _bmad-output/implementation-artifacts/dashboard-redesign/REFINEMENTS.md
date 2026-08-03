@@ -74,6 +74,12 @@ NOT built.
    the actual source is either the rail shader idle (speed 0.6 in
    FloatingNav.tsx) or the Silk backdrop — confirm with Arjun on the live
    page which layer he means before tuning.
+   > ✅ Landed 2026-08-03 (dev, with item 3): `dz-glint-spin` 3s → **5s**,
+   > companion `dz-shimmer-rotate` 7.5s → **12.5s** (ratio kept). NOTE the
+   > sweep still only *runs* on hover/focus — so this slows the hover sweep;
+   > the always-visible rest arc is unchanged in motion (it's static) but is
+   > now dimmer via item 3. If the "distracting" motion Arjun meant was at
+   > REST, that's the Silk/rail-shader layer, still open — flag on next review.
 
 2. **Nav rail corners: squarer.** "Less rounded corners so it's not an oval",
    to match the dashboard's component shells. Knob: `--nav-rail-radius`
@@ -87,6 +93,12 @@ NOT built.
    brightness there (e.g. swap the accent stops toward `accent-soft` /
    introduce a dimmer glint-specific token in tokens.css) rather than
    opacity-ing the whole ring, so the hairline base stays.
+   > ✅ Landed 2026-08-03 (dev): new `--color-abyss-glint` token (#3a7c96 —
+   > brighter than hairline, dimmer than accent-soft) drives the conic ramp
+   > stops + the rest `--dz-glint-shine`, replacing `--color-abyss-accent`.
+   > The hairline base + hover shine-lift (→ accent-soft) are untouched. The
+   > loud bright-cyan rest arc is now a soft steel-cyan glint (before/after
+   > shown to Arjun). Independent knob for later taste tuning.
 
 4. **Nav rail tooltips → the calendar's day-chip treatment, exactly.** Arjun:
    the nav labels should use "the same exact way" the calendar shows

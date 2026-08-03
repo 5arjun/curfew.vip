@@ -349,6 +349,10 @@
   --color-abyss-silk-2: #122334;     /* secondary lobe — reserved (D11 banks it; Silk takes one color) */
   --color-abyss-accent: #7fd8f2;     /* glacial cyan */
   --color-abyss-accent-soft: #4fb2d6;/* today-ring, secondary accent */
+  --color-abyss-glint: #3a7c96;      /* dimmed cyan for the shell border glint sweep (item 3):
+                                        brighter than the hairline base, dimmer than accent-soft, so
+                                        the sweep reads as a soft glint not a bright band. Independent
+                                        knob — tune here to taste without touching the accent. */
   --color-abyss-accent-glow: #7fd8f280;  /* 50% — glows, dancefloor arc halo */
   --color-abyss-on-accent: #04131c;  /* text on filled accent */
   --color-abyss-shell-glass: #0a0e13e0;  /* ~88% shell — the liquid-glass fill over the Silk (D1:

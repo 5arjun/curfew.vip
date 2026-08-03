@@ -1668,7 +1668,7 @@
      two near-identical cyans — a discrete flip is imperceptible, and a
      registered <color> initial-value would need a literal the color guard
      forbids outside tokens.css. */
-  --dz-glint-shine: var(--color-abyss-accent);
+  --dz-glint-shine: var(--color-abyss-glint);
   transition:
     box-shadow var(--motion-duration-liquid-grand) var(--motion-ease-liquid),
     background-color var(--motion-duration-liquid-grand) var(--motion-ease-liquid),
@@ -1689,9 +1689,9 @@
   background: conic-gradient(
       from calc(var(--dz-glint-angle) - var(--dz-glint-offset)),
       var(--color-abyss-hairline),
-      var(--color-abyss-accent) var(--dz-glint-percent),
+      var(--color-abyss-glint) var(--dz-glint-percent),
       var(--dz-glint-shine) calc(var(--dz-glint-percent) * 2),
-      var(--color-abyss-accent) calc(var(--dz-glint-percent) * 3),
+      var(--color-abyss-glint) calc(var(--dz-glint-percent) * 3),
       var(--color-abyss-hairline) calc(var(--dz-glint-percent) * 4)
     )
     border-box;
@@ -1700,7 +1700,7 @@
     linear-gradient(var(--color-surface-void) 0 0);
   mask-composite: exclude;
   -webkit-mask-composite: xor;
-  animation: dz-glint-spin 3s linear infinite paused;
+  animation: dz-glint-spin 5s linear infinite paused;
 }
 
 /* The ref's inner shimmer: a rotating soft highlight, bottom-weighted,
@@ -1724,7 +1724,7 @@
   mask-image: radial-gradient(circle at bottom, var(--shadow-ink-0) 40%, var(--color-surface-void));
   opacity: 0;
   transition: opacity 800ms cubic-bezier(0.25, 1, 0.5, 1);
-  animation: dz-shimmer-rotate 7.5s linear infinite paused;
+  animation: dz-shimmer-rotate 12.5s linear infinite paused;
 }
 
 /* ─── D3 dots (item 7): the shiny-button ref's dot-matrix, finally carried onto
