@@ -27,7 +27,12 @@
      own bottom edge-fade melts rows before the dock anyway. */
   padding: var(--space-md) var(--space-gutter)
     calc(var(--space-md) + env(safe-area-inset-bottom));
-  overflow: hidden;
+  /* clip, NOT hidden: a hidden box is still a programmatically-scrollable
+     container, and scrollIntoView (calendar → list, D10) spills leftover
+     travel into it, silently shifting the whole shell's content up and
+     clipping it at the border (the "expanded sheet top is cut" bug). A clip
+     box can never scroll. */
+  overflow: clip;
   /* The refs' voice (Hanken Grotesk — already Curfew's display font, D4). */
   font-family: var(--font-hanken-grotesk);
   color: var(--color-abyss-text);
@@ -510,7 +515,10 @@
    when a sheet is open); .dz-sheet = the song modal (in-place expansion).
    All timings/easings are the ref's, via the liquid motion tokens. */
 .dz-list {
-  overflow: hidden;
+  /* clip, NOT hidden — same reason as .dz: scrollIntoView on a deep row was
+     scrolling this section itself (scrollTop 34 measured), dragging the
+     action bar + sheet frame up under the shell border. */
+  overflow: clip;
 }
 
 .dz-list[data-modal] {

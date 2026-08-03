@@ -371,6 +371,25 @@ NOT built.
     > reference params untouched — this deviation is documented inline in
     > FloatingNav.tsx.
 
+20. **Expanded-sheet top "clipped" (review item D) — SOLVED.** Arjun's repro
+    (click a set-day, then ANOTHER set-day) cracked it: the sheet always
+    settles at body+6 (why the box math kept measuring "correct"), but the
+    calendar→list `scrollIntoView({block: 'center'})` scrolls EVERY
+    scrollable ancestor — and an `overflow: hidden` box is still a
+    programmatically-scrollable container. When the target row needed more
+    travel than `.dz-list-scroll` had, the spill scrolled the `.dz-list`
+    SECTION itself (scrollTop 34 measured live), dragging the action bar +
+    the sheet's whole frame up under the shell's border — the "cut off top."
+    Repro-dependent on which date/row, hence the maddening intermittence.
+    > ✅ Landed 2026-08-03 (dev): `.dz` and `.dz-list` `overflow: hidden` →
+    > **`overflow: clip`** (dashboard.css) — a clip box can never scroll, so
+    > scrollIntoView physically can't shift the shells; the inner scroller
+    > still centers the row (measured 97px) and below-900px page scrolling
+    > still works (html isn't touched). Verified served CSS via CSSOM
+    > (computed `clip` on both — Lightning CSS passes it through) + the exact
+    > two-date repro: bar stays put through both opens (was −34px), sheet at
+    > body+6, shell corner + bar fully intact in screenshots.
+
 ### Approved as-built (no change needed)
 
 - Wordmark size on the rail spine ("the word mark size is good").
