@@ -694,6 +694,8 @@ So that I can study exactly what I played and how it landed.
 
 > **⚑ Refinement (Arjun, 2026-08-02).** Set Detail's default view **filters stats to the detected dancefloor segment** (recomputed from `plays[]`), not the whole night — "stats a DJ can actually use, not clouded by unrelated tracks." It shows a **"we detected dancefloor from X–Y"** line with an **edit** affordance; the editor is the **tracklist with two draggable pointers** the DJ moves to bracket the segment (the tracklist-based form of Story 5.3's editor), and that **same Set Detail surface** hosts second-layer enrichment (tags, pics — Story 5.5). **Delete-set** lives here (calm, non-alarm confirm; hard delete, not a visibility flag). Whole-set stats are the honest fallback until a segment is set. Harmonic/**Camelot mixing** is a real ~94%-coverage stat post key-fix and earns a headline slot here.
 
+> **⚑ Dashboard-redesign carry-over (Arjun, 2026-08-03).** During the dashboard hero-chart decision (see `_bmad-output/implementation-artifacts/dashboard-redesign/PLAN.md`, D8), a **key/harmonic timeline** — the set's key progression over time, visualizing Camelot-compatible vs. clashing transitions — was considered for the dashboard hero and deliberately **saved for Set Detail instead**. When this screen is designed, treat it as a candidate companion visualization to the energy arc: AC-1's key/Camelot mixing stats earning a timeline form, in line with the 2026-08-02 refinement's Camelot headline slot.
+
 ### Story 3.8: Energy arc chart + chart summary
 
 As a DJ,
