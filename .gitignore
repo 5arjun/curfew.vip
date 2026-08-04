@@ -29,5 +29,6 @@ supabase/.temp/
 .vercel
 .env*
 
-# --- Playwright MCP verification artifacts ---
+# --- Tool-generated caches / verification artifacts ---
+__pycache__/
 .playwright-mcp/
