@@ -132,7 +132,8 @@ pub fn join_session(
     session_id: i64,
 ) -> rusqlite::Result<Vec<(i64, JoinedMetadata)>> {
     let mut stmt = conn.prepare(
-        r#"SELECT id, bpm, key_value, "key", genre
+        r#"SELECT id, bpm, key_value, "key", genre,
+                  end_time, played, length_ms, length_sec, portable_id
            FROM history_entry
            WHERE session_id = ?1
            ORDER BY start_time ASC, id ASC"#,
@@ -152,6 +153,17 @@ pub fn join_session(
             Some(key_value) => camelot_from_key_value(key_value),
             None => row.get::<_, Option<String>>(3)?.and_then(non_empty),
         };
+        // Full-song total length: prefer the millisecond column, fall back to
+        // seconds ×1000 (both confirmed present on real Serato 4+; either can
+        // still be NULL/0 = "unknown" per AD-11). Read as f64 to absorb either
+        // an INTEGER or REAL storage class, then rounded.
+        let length_ms = row.get::<_, Option<f64>>(7)?.and_then(sane_length_ms);
+        let total_length_ms = match length_ms {
+            Some(ms) => Some(ms),
+            None => row
+                .get::<_, Option<f64>>(8)?
+                .and_then(|s| sane_length_ms(s * 1000.0)),
+        };
         Ok((
             row.get::<_, i64>(0)?,
             JoinedMetadata {
@@ -161,11 +173,33 @@ pub fn join_session(
                 bpm: row.get::<_, Option<f64>>(1)?.and_then(sane_bpm),
                 key,
                 genre: row.get::<_, Option<String>>(4)?.and_then(non_empty),
+                // Serato's `-1` "unset" sentinel (and any other negative) is
+                // absent, never a timestamp (Story 3.7 §3d; verified 98%
+                // populated on real data).
+                ended_at: row.get::<_, Option<i64>>(5)?.filter(|t| *t >= 0),
+                // The "Played" flag: 0 = loaded-but-not-played preview. NULL
+                // (schema variance) stays `None` — unknown, never guessed.
+                played: row.get::<_, Option<i64>>(6)?.map(|p| p != 0),
+                total_length_ms,
+                // Volume-root-relative path (100% populated on real data) —
+                // the `database V2` date-added join key. Empty string = absent.
+                portable_path: row.get::<_, Option<String>>(9)?.and_then(non_empty),
+                // Resolved by the capture stage via `date_added::DateAddedIndex`
+                // (the catalogue is a different file this join never opens).
+                library_added_at: None,
             },
         ))
     })?;
 
     rows.collect()
+}
+
+/// Accepts a track-length value in milliseconds only if it is a real
+/// measurement — mirrors [`super::sane_bpm`]'s rationale: Serato stores an
+/// unanalysed length as `0`/NULL, and zero/negative/non-finite values are
+/// missing data wearing a number.
+fn sane_length_ms(value: f64) -> Option<u64> {
+    (value.is_finite() && value > 0.0).then_some(value.round() as u64)
 }
 
 /// Maps Serato's canonical `history_entry.key_value` INTEGER to a Camelot-notation
@@ -202,13 +236,18 @@ mod tests {
         let conn = Connection::open_in_memory().expect("in-memory database opens");
         conn.execute_batch(
             r#"CREATE TABLE history_entry (
-                   id         INTEGER PRIMARY KEY,
-                   session_id INTEGER NOT NULL,
-                   bpm        REAL,
-                   key_value  INTEGER,
-                   "key"      TEXT,
-                   genre      TEXT,
-                   start_time INTEGER NOT NULL
+                   id          INTEGER PRIMARY KEY,
+                   session_id  INTEGER NOT NULL,
+                   bpm         REAL,
+                   key_value   INTEGER,
+                   "key"       TEXT,
+                   genre       TEXT,
+                   start_time  INTEGER NOT NULL,
+                   end_time    INTEGER,
+                   played      INTEGER,
+                   length_ms   INTEGER,
+                   length_sec  INTEGER,
+                   portable_id TEXT
                );"#,
         )
         .expect("fixture schema creates");
@@ -279,9 +318,55 @@ mod tests {
                     bpm: Some(128.0),
                     key: Some("1A".to_string()),
                     genre: Some("Deep House".to_string()),
+                    ..JoinedMetadata::default()
                 }
             )]
         );
+    }
+
+    /// Story 3.7 (§3d capture pass): the play row's own `end_time`, `played`
+    /// flag, full-song length, and `portable_id` all resolve — and the `-1`
+    /// end_time sentinel reads as absent, never a timestamp.
+    #[test]
+    fn resolves_end_time_played_length_and_portable_path() {
+        let conn = in_memory_history();
+        conn.execute(
+            r#"INSERT INTO history_entry
+                   (session_id, start_time, end_time, played, length_ms, length_sec, portable_id)
+               VALUES (7, 1000, 1381, 1, 372000, 372, 'Users/arjun/Music/a.mp3'),
+                      (7, 1400, -1, 0, NULL, 372, 'A Indian/b.mp3'),
+                      (7, 1800, NULL, NULL, NULL, NULL, '')"#,
+            [],
+        )
+        .expect("fixture rows insert");
+
+        let joined = metadata_of(&join_session(&conn, 7).expect("query succeeds"));
+
+        assert_eq!(joined[0].ended_at, Some(1381));
+        assert_eq!(joined[0].played, Some(true));
+        assert_eq!(joined[0].total_length_ms, Some(372_000));
+        assert_eq!(
+            joined[0].portable_path.as_deref(),
+            Some("Users/arjun/Music/a.mp3")
+        );
+
+        assert_eq!(joined[1].ended_at, None, "-1 is Serato's unset sentinel");
+        assert_eq!(
+            joined[1].played,
+            Some(false),
+            "a preview is knowably unplayed"
+        );
+        assert_eq!(
+            joined[1].total_length_ms,
+            Some(372_000),
+            "length_sec × 1000 fallback when length_ms is NULL"
+        );
+
+        assert_eq!(joined[2].ended_at, None);
+        assert_eq!(joined[2].played, None, "NULL played is unknown, not false");
+        assert_eq!(joined[2].total_length_ms, None);
+        assert_eq!(joined[2].portable_path, None, "empty portable_id is absent");
+        assert_eq!(joined[2].library_added_at, None);
     }
 
     /// Story 3.6 (the incident regression): `key_value` is the source of truth, and a
@@ -363,6 +448,7 @@ mod tests {
                 bpm: Some(124.0),
                 key: Some("8B".to_string()),
                 genre: None,
+                ..JoinedMetadata::default()
             }],
             "a NULL genre must not cost the row its other fields"
         );
@@ -384,6 +470,7 @@ mod tests {
                 bpm: None,
                 key: None,
                 genre: None,
+                ..JoinedMetadata::default()
             }]
         );
     }
@@ -510,7 +597,9 @@ mod tests {
             seed.execute_batch(
                 r#"CREATE TABLE history_entry (
                        id INTEGER PRIMARY KEY, session_id INTEGER, bpm REAL,
-                       key_value INTEGER, "key" TEXT, genre TEXT, start_time INTEGER
+                       key_value INTEGER, "key" TEXT, genre TEXT, start_time INTEGER,
+                       end_time INTEGER, played INTEGER, length_ms INTEGER,
+                       length_sec INTEGER, portable_id TEXT
                    );
                    INSERT INTO history_entry (id, session_id, bpm, key_value, "key", genre, start_time)
                    VALUES (1, 7, 128.0, 0, '1A', 'House', 1000);"#,

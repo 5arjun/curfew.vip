@@ -14,6 +14,7 @@
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+use crate::joiner::date_added::DateAddedIndex;
 use crate::joiner::embedded_tags::fill_gaps;
 use crate::joiner::legacy::LegacyLibrary;
 use crate::joiner::serato4::open_read_only;
@@ -252,7 +253,9 @@ pub fn build_legacy(
         })
         .collect();
 
-    Ok(assemble(&pairs))
+    // Legacy has no session-level end-time record; a final play with no
+    // field-45 duration honestly has no resolvable played length (AD-11).
+    Ok(assemble(&pairs, None))
 }
 
 /// Builds one completed Serato4 session's captured plays + derived stats.
@@ -269,6 +272,7 @@ pub fn build_serato4(
     root: &Path,
     db_path: &Path,
     session_id: i64,
+    dates: &DateAddedIndex,
 ) -> Result<(Vec<CapturedPlay>, CapturedDerived), CaptureError> {
     let conn = open_read_only(root, db_path).map_err(CaptureError::Open)?;
     let plays = crate::parser::read_session(&conn, session_id).map_err(CaptureError::Sqlite)?;
@@ -285,10 +289,32 @@ pub fn build_serato4(
         });
     }
 
+    // The session's own resolved end time (>= 0 once the completion signal has
+    // fired — the state every captured session is in) — the set-end fallback
+    // for a final play whose per-play `end_time` is unset. `history_session`
+    // being absent/unreadable degrades to no fallback, never an error: the
+    // duration simply stays honestly absent for that tail play.
+    let set_end = crate::parser::session_by_id(&conn, session_id)
+        .ok()
+        .flatten()
+        .and_then(|s| s.end_time.filter(|t| *t >= 0));
+
     let pairs: Vec<(Play, JoinedMetadata)> = plays
         .into_iter()
         .zip(joined.into_iter().map(|(_, metadata)| metadata))
-        .map(|(play, joined)| {
+        // Story 3.7 (§3d): honor Serato's own "Played" flag — a loaded-but-
+        // never-played preview (25% of real rows) is not a play and must not
+        // count in any stat, position, or duration bound. `None` (no flag —
+        // schema variance) is kept: unknown is never guessed to be a preview.
+        .filter(|(_, joined)| joined.played != Some(false))
+        .map(|(play, mut joined)| {
+            // Library date-added (§3d): `database V2` `tadd` by portable path —
+            // NOT the serato4 `asset` join (4.6% on real data). Absent when no
+            // reachable catalogue covers the track; disclosed, never guessed.
+            joined.library_added_at = joined
+                .portable_path
+                .as_deref()
+                .and_then(|p| dates.date_added_for(p));
             // Mirrors `build_legacy`'s fallback step for pipeline symmetry.
             // Currently a guaranteed no-op: `read_session` never populates
             // `Play.path` for Serato4 (no path column on `history_entry`),
@@ -300,7 +326,14 @@ pub fn build_serato4(
         })
         .collect();
 
-    Ok(assemble(&pairs))
+    if pairs.is_empty() {
+        // Every row was a loaded-but-never-played preview — nothing was
+        // actually played, so there is no session to capture (same skip-not-
+        // invent rationale as the zero-row case above).
+        return Err(CaptureError::EmptySession);
+    }
+
+    Ok(assemble(&pairs, set_end))
 }
 
 /// The session's time bounds, from its captured plays' `started_at` — the
@@ -314,10 +347,18 @@ pub fn session_bounds(plays: &[CapturedPlay]) -> (Option<i64>, Option<i64>) {
 
 /// The shared per-play assembly logic both source paths converge on: embedded-
 /// tag fallback has already run by the time this is called, so from here it is
-/// `enrich_session` -> every stat function -> `confidence::classify` -> the
-/// local DTOs, written once rather than duplicated per source.
-fn assemble(pairs: &[(Play, JoinedMetadata)]) -> (Vec<CapturedPlay>, CapturedDerived) {
-    let enriched = stats::enrich_session(pairs);
+/// `enrich_session` -> `resolve_played_ms` -> every stat function ->
+/// `confidence::classify` -> the local DTOs, written once rather than
+/// duplicated per source. `set_end` is the session's own resolved end time
+/// (serato4 `history_session.end_time`), the last-resort played-duration bound
+/// for a final play with no per-play end; `None` where the source has no such
+/// record (legacy).
+fn assemble(
+    pairs: &[(Play, JoinedMetadata)],
+    set_end: Option<i64>,
+) -> (Vec<CapturedPlay>, CapturedDerived) {
+    let mut enriched = stats::enrich_session(pairs);
+    stats::resolve_played_ms(&mut enriched, set_end);
 
     let captured_plays: Vec<CapturedPlay> = enriched
         .iter()
@@ -337,6 +378,8 @@ fn assemble(pairs: &[(Play, JoinedMetadata)]) -> (Vec<CapturedPlay>, CapturedDer
             }),
             camelot_key: enriched_play.camelot.map(render_camelot_key),
             in_library: joined.in_library,
+            played_ms: enriched_play.played_ms,
+            library_added_at: enriched_play.library_added_at,
         })
         .collect();
 
@@ -463,6 +506,12 @@ pub fn library_root_from_serato_dir(serato_dir: &Path) -> PathBuf {
 mod tests {
     use super::*;
     use rusqlite::Connection;
+
+    /// A filesystem-free, empty date-added index — the default for capture
+    /// tests that are not about the `database V2` lookup.
+    fn no_dates() -> DateAddedIndex {
+        DateAddedIndex::fixed(std::collections::HashMap::new())
+    }
 
     // ---- Session identity -------------------------------------------------
 
@@ -847,16 +896,21 @@ mod tests {
         let conn = Connection::open_in_memory().expect("in-memory database opens");
         conn.execute_batch(
             r#"CREATE TABLE history_entry (
-                   id         INTEGER PRIMARY KEY,
-                   session_id INTEGER NOT NULL,
-                   name       TEXT,
-                   artist     TEXT,
-                   genre      TEXT,
-                   key_value  INTEGER,
-                   "key"      TEXT,
-                   bpm        REAL,
-                   start_time INTEGER,
-                   deck       TEXT
+                   id          INTEGER PRIMARY KEY,
+                   session_id  INTEGER NOT NULL,
+                   name        TEXT,
+                   artist      TEXT,
+                   genre       TEXT,
+                   key_value   INTEGER,
+                   "key"       TEXT,
+                   bpm         REAL,
+                   start_time  INTEGER,
+                   deck        TEXT,
+                   end_time    INTEGER,
+                   played      INTEGER,
+                   length_ms   INTEGER,
+                   length_sec  INTEGER,
+                   portable_id TEXT
                );
                CREATE TABLE history_session (
                    id         INTEGER PRIMARY KEY,
@@ -952,7 +1006,9 @@ mod tests {
             seed.execute_batch(
                 r#"CREATE TABLE history_entry (
                        id INTEGER PRIMARY KEY, session_id INTEGER, name TEXT, artist TEXT,
-                       genre TEXT, key_value INTEGER, "key" TEXT, bpm REAL, start_time INTEGER, deck TEXT
+                       genre TEXT, key_value INTEGER, "key" TEXT, bpm REAL, start_time INTEGER, deck TEXT,
+                       end_time INTEGER, played INTEGER, length_ms INTEGER, length_sec INTEGER,
+                       portable_id TEXT
                    );"#,
             )
             .unwrap();
@@ -960,7 +1016,8 @@ mod tests {
             insert_entry(&seed, 7, "Second", "A", "Techno", "4A", 140.0, 1_000, "2");
         }
 
-        let (plays, _derived) = build_serato4(&dir, &db_path, 7).expect("build_serato4 succeeds");
+        let (plays, _derived) =
+            build_serato4(&dir, &db_path, 7, &no_dates()).expect("build_serato4 succeeds");
         let _ = std::fs::remove_dir_all(&dir);
 
         let first = plays
@@ -993,13 +1050,15 @@ mod tests {
             seed.execute_batch(
                 r#"CREATE TABLE history_entry (
                        id INTEGER PRIMARY KEY, session_id INTEGER, name TEXT, artist TEXT,
-                       genre TEXT, key_value INTEGER, "key" TEXT, bpm REAL, start_time INTEGER, deck TEXT
+                       genre TEXT, key_value INTEGER, "key" TEXT, bpm REAL, start_time INTEGER, deck TEXT,
+                       end_time INTEGER, played INTEGER, length_ms INTEGER, length_sec INTEGER,
+                       portable_id TEXT
                    );"#,
             )
             .unwrap();
         }
 
-        let result = build_serato4(&dir, &db_path, 999);
+        let result = build_serato4(&dir, &db_path, 999, &no_dates());
         let _ = std::fs::remove_dir_all(&dir);
 
         assert!(matches!(result, Err(CaptureError::EmptySession)));
@@ -1020,7 +1079,9 @@ mod tests {
             seed.execute_batch(
                 r#"CREATE TABLE history_entry (
                        id INTEGER PRIMARY KEY, session_id INTEGER, name TEXT, artist TEXT,
-                       genre TEXT, key_value INTEGER, "key" TEXT, bpm REAL, start_time INTEGER, deck TEXT
+                       genre TEXT, key_value INTEGER, "key" TEXT, bpm REAL, start_time INTEGER, deck TEXT,
+                       end_time INTEGER, played INTEGER, length_ms INTEGER, length_sec INTEGER,
+                       portable_id TEXT
                    );"#,
             )
             .unwrap();
@@ -1029,7 +1090,8 @@ mod tests {
             insert_entry(&seed, 7, "Once", "DJ B", "Techno", "2A", 128.0, 1_200, "1");
         }
 
-        let (_plays, derived) = build_serato4(&dir, &db_path, 7).expect("build_serato4 succeeds");
+        let (_plays, derived) =
+            build_serato4(&dir, &db_path, 7, &no_dates()).expect("build_serato4 succeeds");
         let _ = std::fs::remove_dir_all(&dir);
 
         assert_eq!(
@@ -1063,7 +1125,9 @@ mod tests {
             seed.execute_batch(
                 r#"CREATE TABLE history_entry (
                        id INTEGER PRIMARY KEY, session_id INTEGER, name TEXT, artist TEXT,
-                       genre TEXT, key_value INTEGER, "key" TEXT, bpm REAL, start_time INTEGER, deck TEXT
+                       genre TEXT, key_value INTEGER, "key" TEXT, bpm REAL, start_time INTEGER, deck TEXT,
+                       end_time INTEGER, played INTEGER, length_ms INTEGER, length_sec INTEGER,
+                       portable_id TEXT
                    );"#,
             )
             .unwrap();
@@ -1086,7 +1150,8 @@ mod tests {
             }
         }
 
-        let (plays, derived) = build_serato4(&dir, &db_path, 7).expect("build_serato4 succeeds");
+        let (plays, derived) =
+            build_serato4(&dir, &db_path, 7, &no_dates()).expect("build_serato4 succeeds");
         let _ = std::fs::remove_dir_all(&dir);
 
         let keys: Vec<Option<String>> = plays.iter().map(|p| p.camelot_key.clone()).collect();
@@ -1107,6 +1172,130 @@ mod tests {
             derived.camelot_mixing_stats.excluded_no_key, 1,
             "only the single -1 no-key transition should be excluded"
         );
+    }
+
+    /// Story 3.7 capture-path regression (§3d, the full `build_serato4` path):
+    /// the played-flag filter drops loaded-but-never-played previews from
+    /// plays, positions, and every derived stat; `played_ms` comes from the
+    /// per-play `end_time` where present, the next play's start where unset,
+    /// and the session's own end time for the final play; `library_added_at`
+    /// resolves through the `database V2` date index by portable path.
+    #[test]
+    fn build_serato4_captures_durations_dates_and_honors_the_played_flag() {
+        let dir = std::env::temp_dir().join(format!(
+            "curfew_capture_serato4_durations_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("temp dir creates");
+        let db_path = dir.join("master.sqlite");
+        {
+            let seed = Connection::open(&db_path).expect("seed db creates");
+            seed.execute_batch(
+                r#"CREATE TABLE history_entry (
+                       id INTEGER PRIMARY KEY, session_id INTEGER, name TEXT, artist TEXT,
+                       genre TEXT, key_value INTEGER, "key" TEXT, bpm REAL, start_time INTEGER, deck TEXT,
+                       end_time INTEGER, played INTEGER, length_ms INTEGER, length_sec INTEGER,
+                       portable_id TEXT
+                   );
+                   CREATE TABLE history_session (
+                       id INTEGER PRIMARY KEY, name TEXT, start_time INTEGER, end_time INTEGER
+                   );
+                   INSERT INTO history_session (id, name, start_time, end_time)
+                   VALUES (7, 'Gig', 1000, 2000);
+                   INSERT INTO history_entry
+                       (session_id, name, start_time, end_time, played, portable_id, bpm)
+                   VALUES
+                       -- Measured duration: end_time present -> 200s.
+                       (7, 'Measured', 1000, 1200, 1, 'Users/arjun/Music/a.mp3', 120.0),
+                       -- A loaded-but-never-played preview between two real
+                       -- plays: must vanish entirely, and must NOT bound the
+                       -- previous play's fallback duration.
+                       (7, 'Preview', 1210, -1, 0, 'Users/arjun/Music/preview.mp3', 121.0),
+                       -- end_time unset -> falls back to the next PLAYED
+                       -- play's start (1600 - 1250 = 350s).
+                       (7, 'Fallback', 1250, -1, 1, 'A Indian/b.mp3', 122.0),
+                       -- Final play, end_time unset -> session end (2000 -
+                       -- 1600 = 400s). Not in any date catalogue -> date absent.
+                       (7, 'Tail', 1600, -1, 1, 'A Indian/uncatalogued.mp3', 123.0);"#,
+            )
+            .unwrap();
+        }
+
+        let dates = DateAddedIndex::fixed(std::collections::HashMap::from([
+            ("Users/arjun/Music/a.mp3".to_string(), 1_644_628_114),
+            ("A Indian/b.mp3".to_string(), 1_700_000_000),
+            // The preview's path is deliberately covered too — proving the
+            // filter, not a lookup miss, is what excludes it.
+            ("Users/arjun/Music/preview.mp3".to_string(), 1_650_000_000),
+        ]));
+
+        let (plays, derived) =
+            build_serato4(&dir, &db_path, 7, &dates).expect("build_serato4 succeeds");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let titles: Vec<Option<&str>> = plays.iter().map(|p| p.title.as_deref()).collect();
+        assert_eq!(
+            titles,
+            vec![Some("Measured"), Some("Fallback"), Some("Tail")],
+            "the played=0 preview must not count as a play"
+        );
+        assert_eq!(
+            plays.iter().map(|p| p.position).collect::<Vec<_>>(),
+            vec![1, 2, 3],
+            "positions renumber over played rows only"
+        );
+        assert_eq!(derived.track_count, 3);
+
+        assert_eq!(plays[0].played_ms, Some(200_000), "measured end_time wins");
+        assert_eq!(
+            plays[1].played_ms,
+            Some(350_000),
+            "unset end_time falls back to the next played play's start, skipping the preview"
+        );
+        assert_eq!(
+            plays[2].played_ms,
+            Some(400_000),
+            "the final play falls back to the session's own end time"
+        );
+
+        assert_eq!(plays[0].library_added_at, Some(1_644_628_114));
+        assert_eq!(plays[1].library_added_at, Some(1_700_000_000));
+        assert_eq!(
+            plays[2].library_added_at, None,
+            "an uncatalogued track's date is absent, never guessed"
+        );
+    }
+
+    /// Story 3.7: a session whose every row is a loaded-but-never-played
+    /// preview has nothing actually played — skipped as an empty session, not
+    /// captured with a fabricated identity.
+    #[test]
+    fn build_serato4_all_previews_is_empty_session() {
+        let dir = std::env::temp_dir().join(format!(
+            "curfew_capture_serato4_all_previews_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("temp dir creates");
+        let db_path = dir.join("master.sqlite");
+        {
+            let seed = Connection::open(&db_path).expect("seed db creates");
+            seed.execute_batch(
+                r#"CREATE TABLE history_entry (
+                       id INTEGER PRIMARY KEY, session_id INTEGER, name TEXT, artist TEXT,
+                       genre TEXT, key_value INTEGER, "key" TEXT, bpm REAL, start_time INTEGER, deck TEXT,
+                       end_time INTEGER, played INTEGER, length_ms INTEGER, length_sec INTEGER,
+                       portable_id TEXT
+                   );
+                   INSERT INTO history_entry (session_id, name, start_time, played)
+                   VALUES (7, 'Loaded only', 1000, 0), (7, 'Also loaded only', 1100, 0);"#,
+            )
+            .unwrap();
+        }
+
+        let result = build_serato4(&dir, &db_path, 7, &no_dates());
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert!(matches!(result, Err(CaptureError::EmptySession)));
     }
 
     #[test]

@@ -172,3 +172,17 @@ Two panes can't sit side-by-side → **stack**: header (A/B, then arc C full-wid
 - [x] **Folded into `epics.md` Story 3.7** (⚑ 2026-08-03 design-session note, points here as authoritative spec).
 - [ ] **Commit these docs** (currently uncommitted in the 3.6 worktree — not yet discoverable by a fresh session).
 - [ ] **Write the dev-ready story file** (`bmad-create-story`) when 3.7 goes to build.
+
+## 6. Post-review refinements (Arjun live review, 2026-08-03 — all SHIPPED same session)
+
+Reacting to the built screen (trial-and-edit): 
+
+- **Dashboard material parity:** the Silk backdrop AND the liquid-glass shell language (conic glint hover, shimmer, dot matrix — `dz-shell`) now carry onto Set Detail's shells. The flat inner hover washes on the right-column modules are REMOVED (Arjun: "not a fan") — the shell glint is the hover language; rows brighten text only.
+- **Drill-in overlay superseded (§3b/§3h form):** now a fixed right-side **veil** over the full viewport height — a **gradual blur** ramping toward the right edge (reactbits gradual-blur language, ~7 masked backdrop-filter layers) sits on top of everything, details render over it, slides in from the right. Mobile keeps the bottom sheet. Stays-open/back-arrow/DR-2 focus semantics unchanged.
+- **BPM histogram rotated:** horizontal bars, one row per 4-BPM band (label · bar · count) — fills the panel instead of a squeezed column chart.
+- **Wording:** "% **in-key** transitions" (never "smooth" — descriptive, not a critique of the mixing); transition list reads in key / out of key / no key; filter = "Out-of-key only".
+- **Camelot wheel chips:** tracklist key chips colored per real Camelot wheel position (24 `--camelot-*` tokens, 30°-hue steps; A ring deeper, B ring brighter).
+- **Cursor-chip language extended:** genre rows pop the track count on the shared CursorChip (calendar/nav treatment; inline count removed, % stays); in-key connectors use a **compact** CursorChip (`8A → 9A · in key`) replacing the CSS tooltip; connector glyph/line brightened (was hard to see).
+- **Scope toggle:** wrapped in the liquid-metal rim material (FloatingNav rail-rim layer sandwich at button scale) — 4th sanctioned LiquidMetal placement.
+- **RESOLVED (Arjun, 2026-08-03): the tracklist does NOT react to the scope flip** — "leave neither" (no out-of-window dimming, no rail marker). The spine stays the full timeline; scope drives stats/arc/★PEAK only, per D1/DR-1 as originally locked.
+- **Round 2 (same night):** veil execution fixed — the gradual ramp is now a left-edge transition zone only (~⅓ of a min(540px, 38vw) veil), with a near-opaque scrim under the content zone so the stats beneath never interleave with the details (the first cut let them bleed through). Metal rim (MetalRim.tsx, shared wrapper) extended to the veil back arrow, the genre⇄subgenre toggle, and the Week/Month toggle. The in-key connector glyph is now the lucide `key` icon in a 20px circular chip (the ∞ was too small to see/hover).

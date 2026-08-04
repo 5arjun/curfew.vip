@@ -36,8 +36,16 @@ async function getFirstName(): Promise<string | null> {
   }
 }
 
-export default async function DashboardPage() {
-  const [sets, firstName] = await Promise.all([getRecentSets(), getFirstName()]);
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ deleted?: string }>;
+}) {
+  const [sets, firstName, { deleted }] = await Promise.all([
+    getRecentSets(),
+    getFirstName(),
+    searchParams,
+  ]);
   // The hero is the most recent SUBSTANTIAL set (a one-track soundcheck never
   // takes the slot); the LIST still shows every set including the hero's —
   // D9: the archive is complete, the hero is a spotlight.
@@ -49,6 +57,12 @@ export default async function DashboardPage() {
     <main className="dz">
       <SilkBackdrop />
       <Greeting name={firstName} />
+
+      {deleted != null && (
+        // Story 3.7 AC-34: the brief calm inline confirm after a delete —
+        // no celebration, no alarm; it simply states what happened.
+        <p className="dz-deleted-note">Set deleted. Your Serato history isn&apos;t touched.</p>
+      )}
 
       {hero ? (
         <HeroBand set={hero} />

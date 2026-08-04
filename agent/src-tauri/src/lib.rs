@@ -530,13 +530,19 @@ pub fn run() {
                     &watcher::detect::SystemDisks,
                 );
                 let app_handle = app.handle().clone();
+                let backfill_home = home.clone();
                 std::thread::spawn(move || {
                     let Ok(conn) = store::open(&app_handle) else {
                         return;
                     };
+                    // Story 3.7 (§3d): one lazy date-added index for the whole
+                    // startup sweep — the `database V2` catalogues load once,
+                    // however many sessions get re-derived.
+                    let dates = joiner::date_added::DateAddedIndex::live(&backfill_home);
                     backfill::reprocess_parse_failures(
                         &conn,
                         &backfill_plan,
+                        &dates,
                         &error_reporting::SentryReporter,
                     );
                     // Story 3.6: re-derive already-`captured` serato4 sets so a
@@ -551,6 +557,7 @@ pub fn run() {
                     backfill::backfill_captured_serato4(
                         &conn,
                         &backfill_plan,
+                        &dates,
                         &error_reporting::SentryReporter,
                     );
                 });

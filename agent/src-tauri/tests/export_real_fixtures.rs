@@ -23,6 +23,7 @@
 use std::path::Path;
 
 use agent_lib::capture::build_serato4;
+use agent_lib::joiner::date_added::DateAddedIndex;
 use agent_lib::store::{CapturedDerived, CapturedPlay};
 use serde::Serialize;
 
@@ -67,26 +68,47 @@ fn export_real_sets_and_verify_camelot_recovery() {
     };
     let master = Path::new(&master);
 
+    // Story 3.7 (§3d): the real date-added lookup — every reachable
+    // `database V2` (boot-drive library + mounted volumes). Coverage is
+    // honestly drive-dependent; the fixture carries whatever resolves today
+    // and the UI disclosure owns the gap.
+    let home = std::env::var("HOME").expect("HOME set on a dev machine");
+    let dates = DateAddedIndex::live(Path::new(&home));
+
     let mut exported: Vec<ExportedSet> = Vec::new();
     for &(serato_session_id, external_id) in SETS {
         // File-shaped root: `open_read_only` scopes a file-shaped root against
         // its own parent, so passing the db path as both root and path is in
         // scope (see joiner::serato4::open_read_only's doc).
-        let (plays, derived) = build_serato4(master, master, serato_session_id)
+        let (plays, derived) = build_serato4(master, master, serato_session_id, &dates)
             .unwrap_or_else(|e| panic!("build_serato4 for session {serato_session_id}: {e}"));
 
         let (started_at, ended_at) = agent_lib::capture::session_bounds(&plays);
 
-        // Task 3 verification, on the reference gig only: keys recover to ~177/178.
+        // Story 3.6's verification, on the reference gig only, restated as a
+        // ratio: Story 3.7's played-flag filter drops the loaded-but-never-
+        // played previews (178 → ~105 rows on set 975), so the absolute
+        // ">= 170 of 178" count no longer applies — the claim that survives is
+        // that nearly every *played* row recovers its Camelot key.
         if serato_session_id == 488 {
             let with_key = plays.iter().filter(|p| p.camelot_key.is_some()).count();
+            let with_duration = plays.iter().filter(|p| p.played_ms.is_some()).count();
+            let with_date = plays
+                .iter()
+                .filter(|p| p.library_added_at.is_some())
+                .count();
             println!(
-                "set 975 (session 488): {with_key}/{} plays have a Camelot key (was ~21 pre-fix)",
+                "set 975 (session 488): {with_key}/{} played rows have a Camelot key;                  {with_duration} have played_ms; {with_date} have library_added_at",
                 plays.len()
             );
             assert!(
-                with_key >= 170,
-                "expected ~177/178 keys recovered from key_value, got {with_key}/{}",
+                with_key as f64 >= plays.len() as f64 * 0.9,
+                "expected >=90% of played rows to recover a key_value Camelot key, got {with_key}/{}",
+                plays.len()
+            );
+            assert!(
+                with_duration as f64 >= plays.len() as f64 * 0.9,
+                "expected >=90% of played rows to carry a real played duration, got {with_duration}/{}",
                 plays.len()
             );
         }

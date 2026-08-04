@@ -72,7 +72,7 @@ describe("@curfew/shared frozen contract", () => {
 
   it("matches the full SyncPlay required array and property set", () => {
     // Mirrors shared/src/index.ts's SyncPlay interface fields verbatim (Story 1.10 Task 2).
-    const expectedProperties = [
+    const requiredProperties = [
       "position",
       "title",
       "artist",
@@ -82,9 +82,13 @@ describe("@curfew/shared frozen contract", () => {
       "camelot_key",
       "in_library",
     ];
+    // played_ms + library_added_at were added post-freeze (Story 3.7 §3d) and are
+    // optional per AD-15 — present in `properties`, deliberately absent from
+    // `required` (same pattern as SyncSetDerived.subgenre_breakdown below).
+    const allProperties = [...requiredProperties, "played_ms", "library_added_at"];
     const playSchema = schema.$defs.play;
-    expect(Object.keys(playSchema.properties).sort()).toEqual([...expectedProperties].sort());
-    expect(playSchema.required.slice().sort()).toEqual([...expectedProperties].sort());
+    expect(Object.keys(playSchema.properties).sort()).toEqual([...allProperties].sort());
+    expect(playSchema.required.slice().sort()).toEqual([...requiredProperties].sort());
   });
 
   it("matches the full SyncSetDerived required array and property set", () => {

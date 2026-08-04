@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "./tokens.css";
 @import "./dashboard.css";
+@import "./set-detail.css";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
@@ -79,7 +80,13 @@ html {
 html,
 body {
   max-width: 100vw;
-  overflow-x: hidden;
+  /* clip, NOT hidden (Story 3.7): `overflow-x: hidden` makes body a scroll
+     container, which silently becomes the scrollport every `position: sticky`
+     descendant pins against — while the WINDOW does the actual scrolling, so
+     sticky never engages (Set Detail's sticky stats rail + focus pill). A
+     clip box clips identically but is never a scroll container — the same
+     reasoning as .dz's own `overflow: clip` (dashboard.css). */
+  overflow-x: clip;
 }
 
 body {

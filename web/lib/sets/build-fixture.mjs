@@ -39,6 +39,11 @@ const sets = src
         : null,
       camelot_key: p.camelot_key ?? null,
       in_library: p.in_library,
+      // Story 3.7 (§3d): the two wire-promoted capture fields. played_ms is
+      // carried verbatim (already ms); library_added_at gets the same
+      // epoch→ISO conversion as started_at.
+      played_ms: p.played_ms ?? null,
+      library_added_at: toIso(p.library_added_at),
     })),
     derived: {
       ...s.derived,

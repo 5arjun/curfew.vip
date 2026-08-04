@@ -43,6 +43,7 @@ use crate::watcher::detect::WatchPlan;
 pub fn reprocess_parse_failures(
     store_conn: &Connection,
     plan: &WatchPlan,
+    dates: &crate::joiner::date_added::DateAddedIndex,
     reporter: &dyn ErrorReporter,
 ) {
     let Ok(rows) = crate::store::unresolved_parse_failures(store_conn) else {
@@ -73,6 +74,7 @@ pub fn reprocess_parse_failures(
                     &source.root,
                     &source.db_path,
                     session_id,
+                    dates,
                     reporter,
                 )
             }
@@ -137,6 +139,7 @@ pub fn reprocess_parse_failures(
 pub fn backfill_captured_serato4(
     store_conn: &Connection,
     plan: &WatchPlan,
+    dates: &crate::joiner::date_added::DateAddedIndex,
     reporter: &dyn ErrorReporter,
 ) -> usize {
     let Some(source) = &plan.serato4 else {
@@ -163,11 +166,21 @@ pub fn backfill_captured_serato4(
         // db_path to sit under the configured root, which the live source
         // guarantees. Any error (source gone, session pruned, corrupt row) leaves
         // the existing row untouched.
-        let Ok((plays, derived)) =
-            crate::capture::build_serato4(&source.root, &source.db_path, session_id)
+        let Ok((mut plays, derived)) =
+            crate::capture::build_serato4(&source.root, &source.db_path, session_id, dates)
         else {
             continue;
         };
+
+        // Story 3.7 carry-forward guard: `library_added_at` coverage depends on
+        // which volumes are mounted right now (`date_added`'s module doc), so a
+        // sweep run with the USB unplugged would re-derive dates an earlier run
+        // resolved down to `None` — rewriting and re-syncing 491 sets on every
+        // plug/unplug cycle, and losing real data both ways. A date this store
+        // already holds for the same play (matched on start_time + title, which
+        // are stable across re-derivations of the same raw) is therefore kept
+        // whenever the fresh derivation has none. Fresh `Some` values still win.
+        carry_forward_library_dates(row.plays_json.as_deref(), &mut plays);
 
         let (Ok(plays_json), Ok(derived_json)) = (
             serde_json::to_string(&plays),
@@ -212,6 +225,45 @@ pub fn backfill_captured_serato4(
     changed
 }
 
+/// Merges stored `library_added_at` values into a fresh re-derivation wherever
+/// the fresh pass resolved none — the no-data-loss half of the Story 3.7
+/// backfill (see the call site's comment for the plug/unplug churn this
+/// prevents). Matching is by `(started_at, title)`: both come verbatim from the
+/// same retained raw on every derivation, so they are stable where `position`
+/// is not (the Story 3.7 played-flag filter renumbers positions relative to
+/// pre-3.7 stored rows). Unparseable/absent stored JSON is a no-op — there is
+/// nothing to carry.
+fn carry_forward_library_dates(
+    stored_plays_json: Option<&str>,
+    fresh: &mut [crate::store::CapturedPlay],
+) {
+    let Some(json) = stored_plays_json else {
+        return;
+    };
+    let Ok(stored) = serde_json::from_str::<Vec<crate::store::CapturedPlay>>(json) else {
+        return;
+    };
+
+    let known: std::collections::HashMap<(Option<u32>, Option<&str>), i64> = stored
+        .iter()
+        .filter_map(|p| {
+            let date = p.library_added_at?;
+            Some(((p.started_at, p.title.as_deref()), date))
+        })
+        .collect();
+    if known.is_empty() {
+        return;
+    }
+
+    for play in fresh.iter_mut() {
+        if play.library_added_at.is_none() {
+            play.library_added_at = known
+                .get(&(play.started_at, play.title.as_deref()))
+                .copied();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -244,6 +296,12 @@ mod tests {
         fn report(&self, _context: &str, _agent_version: &str, _message: &str) {}
     }
 
+    /// A filesystem-free, empty date-added index — the "no catalogue
+    /// reachable" case every backfill test runs under unless it says otherwise.
+    fn no_dates() -> crate::joiner::date_added::DateAddedIndex {
+        crate::joiner::date_added::DateAddedIndex::fixed(std::collections::HashMap::new())
+    }
+
     /// A real on-disk `master.sqlite` fixture carrying one `history_entry`
     /// row -- mirrors `watcher::mod`'s own test fixture builder.
     fn write_serato4_fixture(dir: &Path, session_id: i64, start: i64) -> std::path::PathBuf {
@@ -253,7 +311,12 @@ mod tests {
         conn.execute_batch(
             r#"CREATE TABLE history_entry (
                    id INTEGER PRIMARY KEY, session_id INTEGER, name TEXT, artist TEXT,
-                   genre TEXT, key_value INTEGER, "key" TEXT, bpm REAL, start_time INTEGER, deck TEXT
+                   genre TEXT, key_value INTEGER, "key" TEXT, bpm REAL, start_time INTEGER, deck TEXT,
+                   end_time INTEGER, played INTEGER, length_ms INTEGER, length_sec INTEGER,
+                   portable_id TEXT
+               );
+               CREATE TABLE history_session (
+                   id INTEGER PRIMARY KEY, name TEXT, start_time INTEGER, end_time INTEGER
                );"#,
         )
         .unwrap();
@@ -287,7 +350,7 @@ mod tests {
             serato4: None,
             legacy: None,
         };
-        reprocess_parse_failures(&store_conn, &empty_plan, &NoopReporter);
+        reprocess_parse_failures(&store_conn, &empty_plan, &no_dates(), &NoopReporter);
 
         assert_eq!(
             crate::store::unresolved_parse_failures(&store_conn)
@@ -329,7 +392,7 @@ mod tests {
             legacy: None,
         };
 
-        reprocess_parse_failures(&store_conn, &plan, &NoopReporter);
+        reprocess_parse_failures(&store_conn, &plan, &no_dates(), &NoopReporter);
 
         assert!(
             crate::store::unresolved_parse_failures(&store_conn)
@@ -377,7 +440,7 @@ mod tests {
             legacy: None,
         };
 
-        reprocess_parse_failures(&store_conn, &plan, &NoopReporter);
+        reprocess_parse_failures(&store_conn, &plan, &no_dates(), &NoopReporter);
 
         let rows = crate::store::unresolved_parse_failures(&store_conn).unwrap();
         assert_eq!(rows.len(), 1, "a still-failing row must stay in the ledger");
@@ -401,7 +464,12 @@ mod tests {
         conn.execute_batch(
             r#"CREATE TABLE history_entry (
                    id INTEGER PRIMARY KEY, session_id INTEGER, name TEXT, artist TEXT,
-                   genre TEXT, key_value INTEGER, "key" TEXT, bpm REAL, start_time INTEGER, deck TEXT
+                   genre TEXT, key_value INTEGER, "key" TEXT, bpm REAL, start_time INTEGER, deck TEXT,
+                   end_time INTEGER, played INTEGER, length_ms INTEGER, length_sec INTEGER,
+                   portable_id TEXT
+               );
+               CREATE TABLE history_session (
+                   id INTEGER PRIMARY KEY, name TEXT, start_time INTEGER, end_time INTEGER
                );"#,
         )
         .unwrap();
@@ -453,7 +521,7 @@ mod tests {
             legacy: None,
         };
 
-        let changed = backfill_captured_serato4(&store_conn, &plan, &NoopReporter);
+        let changed = backfill_captured_serato4(&store_conn, &plan, &no_dates(), &NoopReporter);
         assert_eq!(
             changed, 1,
             "the one captured serato4 row changed and was re-derived"
@@ -499,7 +567,8 @@ mod tests {
         let identity = crate::capture::serato4_session_identity(42);
         // Store the row with the EXACT data the backfill would derive, then flag it synced.
         let (plays, derived) =
-            crate::capture::build_serato4(&serato4_dir.0, &db_path, 42).expect("derive");
+            crate::capture::build_serato4(&serato4_dir.0, &db_path, 42, &no_dates())
+                .expect("derive");
         let (started_at, ended_at) = crate::capture::session_bounds(&plays);
         crate::store::upsert_captured(
             &store_conn,
@@ -527,7 +596,7 @@ mod tests {
             legacy: None,
         };
 
-        let changed = backfill_captured_serato4(&store_conn, &plan, &NoopReporter);
+        let changed = backfill_captured_serato4(&store_conn, &plan, &no_dates(), &NoopReporter);
         assert_eq!(changed, 0, "an already-correct row must not be rewritten");
 
         let row = crate::store::get_by_identity(&store_conn, &identity)
@@ -538,6 +607,188 @@ mod tests {
             Some(777),
             "an unchanged row must keep its synced_at (no needless re-sync)"
         );
+    }
+
+    /// A serato4 fixture whose one play carries a `portable_id` — the join key
+    /// for the Story 3.7 date-added lookup.
+    fn write_serato4_fixture_with_portable_id(
+        dir: &Path,
+        session_id: i64,
+        portable_id: &str,
+        start: i64,
+    ) -> std::path::PathBuf {
+        std::fs::create_dir_all(dir).unwrap();
+        let db_path = dir.join("master.sqlite");
+        let conn = Connection::open(&db_path).unwrap();
+        conn.execute_batch(
+            r#"CREATE TABLE history_entry (
+                   id INTEGER PRIMARY KEY, session_id INTEGER, name TEXT, artist TEXT,
+                   genre TEXT, key_value INTEGER, "key" TEXT, bpm REAL, start_time INTEGER, deck TEXT,
+                   end_time INTEGER, played INTEGER, length_ms INTEGER, length_sec INTEGER,
+                   portable_id TEXT
+               );
+               CREATE TABLE history_session (
+                   id INTEGER PRIMARY KEY, name TEXT, start_time INTEGER, end_time INTEGER
+               );"#,
+        )
+        .unwrap();
+        conn.execute(
+            r#"INSERT INTO history_entry (session_id, name, artist, bpm, start_time, portable_id)
+               VALUES (?1, 'Track', 'Artist', 120.0, ?2, ?3)"#,
+            rusqlite::params![session_id, start, portable_id],
+        )
+        .unwrap();
+        db_path
+    }
+
+    /// Story 3.7 carry-forward guard, the churn half: a row whose stored plays
+    /// already carry a `library_added_at` is re-derived under an EMPTY date
+    /// index (the USB-unplugged case) — the stored date must be carried
+    /// forward, making the re-derivation identical, so the row is neither
+    /// rewritten nor re-queued. Without the guard, every plug/unplug cycle
+    /// would flip 491 rows between dated and dateless and re-sync them all.
+    #[test]
+    fn backfill_carries_stored_dates_forward_when_no_catalogue_is_reachable() {
+        let store_dir = TempDir::new("backfill-carry-store");
+        let store_conn = crate::store::open_at(&store_dir.0.join("local.sqlite")).unwrap();
+
+        let serato4_dir = TempDir::new("backfill-carry-serato4");
+        let db_path = write_serato4_fixture_with_portable_id(
+            &serato4_dir.0,
+            42,
+            "Users/arjun/Music/dated.mp3",
+            1_000,
+        );
+
+        // First derivation under a reachable "catalogue" (fixed index) — the
+        // stored row carries the date.
+        let with_dates =
+            crate::joiner::date_added::DateAddedIndex::fixed(std::collections::HashMap::from([(
+                "Users/arjun/Music/dated.mp3".to_string(),
+                1_644_628_114,
+            )]));
+        let identity = crate::capture::serato4_session_identity(42);
+        let (plays, derived) =
+            crate::capture::build_serato4(&serato4_dir.0, &db_path, 42, &with_dates)
+                .expect("derive with dates");
+        assert_eq!(plays[0].library_added_at, Some(1_644_628_114));
+        let (started_at, ended_at) = crate::capture::session_bounds(&plays);
+        crate::store::upsert_captured(
+            &store_conn,
+            &identity,
+            SessionSource::Serato4,
+            &crate::capture::serato4_raw_ref(&db_path, 42),
+            started_at,
+            ended_at,
+            &plays,
+            &derived,
+        )
+        .unwrap();
+        store_conn
+            .execute(
+                "UPDATE captured_sessions SET synced_at = 777 WHERE session_identity = ?1",
+                rusqlite::params![identity],
+            )
+            .unwrap();
+
+        // Second sweep: the catalogue is gone (empty index). The stored date
+        // must survive and the row must be left untouched — no rewrite, no
+        // re-sync.
+        let plan = WatchPlan {
+            serato4: Some(Serato4Source {
+                root: serato4_dir.0.clone(),
+                db_path,
+            }),
+            legacy: None,
+        };
+        let changed = backfill_captured_serato4(&store_conn, &plan, &no_dates(), &NoopReporter);
+
+        assert_eq!(
+            changed, 0,
+            "losing catalogue reachability must not count as a data change"
+        );
+        let row = crate::store::get_by_identity(&store_conn, &identity)
+            .unwrap()
+            .unwrap();
+        assert!(
+            row.plays_json
+                .as_deref()
+                .unwrap()
+                .contains("\"library_added_at\":1644628114"),
+            "the stored date must survive an unreachable-catalogue sweep"
+        );
+        assert_eq!(row.synced_at, Some(777), "no needless re-sync");
+    }
+
+    /// Story 3.7 carry-forward guard, the gain half: a stored row with NO date
+    /// (captured while the volume was unmounted) gains one when a later sweep
+    /// runs with the catalogue reachable — rewritten and re-queued exactly once.
+    #[test]
+    fn backfill_gains_dates_when_a_catalogue_becomes_reachable() {
+        let store_dir = TempDir::new("backfill-gain-store");
+        let store_conn = crate::store::open_at(&store_dir.0.join("local.sqlite")).unwrap();
+
+        let serato4_dir = TempDir::new("backfill-gain-serato4");
+        let db_path = write_serato4_fixture_with_portable_id(
+            &serato4_dir.0,
+            42,
+            "A Indian/usb-track.mp3",
+            1_000,
+        );
+
+        // First derivation with nothing reachable — no date stored.
+        let identity = crate::capture::serato4_session_identity(42);
+        let (plays, derived) =
+            crate::capture::build_serato4(&serato4_dir.0, &db_path, 42, &no_dates())
+                .expect("derive without dates");
+        assert_eq!(plays[0].library_added_at, None);
+        let (started_at, ended_at) = crate::capture::session_bounds(&plays);
+        crate::store::upsert_captured(
+            &store_conn,
+            &identity,
+            SessionSource::Serato4,
+            &crate::capture::serato4_raw_ref(&db_path, 42),
+            started_at,
+            ended_at,
+            &plays,
+            &derived,
+        )
+        .unwrap();
+        store_conn
+            .execute(
+                "UPDATE captured_sessions SET synced_at = 777 WHERE session_identity = ?1",
+                rusqlite::params![identity],
+            )
+            .unwrap();
+
+        // The USB comes back: the sweep re-derives with the catalogue
+        // reachable, gains the date, and re-queues the correction.
+        let usb_dates =
+            crate::joiner::date_added::DateAddedIndex::fixed(std::collections::HashMap::from([(
+                "A Indian/usb-track.mp3".to_string(),
+                1_700_000_000,
+            )]));
+        let plan = WatchPlan {
+            serato4: Some(Serato4Source {
+                root: serato4_dir.0.clone(),
+                db_path,
+            }),
+            legacy: None,
+        };
+        let changed = backfill_captured_serato4(&store_conn, &plan, &usb_dates, &NoopReporter);
+
+        assert_eq!(changed, 1, "gaining a date is a real correction");
+        let row = crate::store::get_by_identity(&store_conn, &identity)
+            .unwrap()
+            .unwrap();
+        assert!(
+            row.plays_json
+                .as_deref()
+                .unwrap()
+                .contains("\"library_added_at\":1700000000"),
+            "the gained date must be stored"
+        );
+        assert_eq!(row.synced_at, None, "the correction must re-sync");
     }
 
     /// With no serato4 source currently configured (drive unplugged), a captured
@@ -565,7 +816,7 @@ mod tests {
             legacy: None,
         };
 
-        let processed = backfill_captured_serato4(&store_conn, &plan, &NoopReporter);
+        let processed = backfill_captured_serato4(&store_conn, &plan, &no_dates(), &NoopReporter);
         assert_eq!(processed, 0, "nothing to re-derive with no source");
 
         let row = crate::store::get_by_identity(&store_conn, &identity)
@@ -601,7 +852,7 @@ mod tests {
             legacy: None, // the legacy source this row belonged to is gone
         };
 
-        reprocess_parse_failures(&store_conn, &plan, &NoopReporter);
+        reprocess_parse_failures(&store_conn, &plan, &no_dates(), &NoopReporter);
 
         assert_eq!(
             crate::store::unresolved_parse_failures(&store_conn)

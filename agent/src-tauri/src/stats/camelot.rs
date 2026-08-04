@@ -204,13 +204,8 @@ mod tests {
 
         fn play_with_camelot(camelot: Option<CamelotKey>) -> EnrichedPlay {
             EnrichedPlay {
-                title: None,
-                artist: None,
-                path: None,
-                start_time: None,
-                bpm: None,
-                genre: None,
                 camelot,
+                ..EnrichedPlay::default()
             }
         }
 

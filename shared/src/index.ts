@@ -102,6 +102,29 @@ export interface SyncPlay {
   camelot_key: string | null;
   /** From `JoinedMetadata.in_library` — NOT carried by `EnrichedPlay` itself. Required, never omitted or guessed (Consistency Conventions table). */
   in_library: boolean;
+  /**
+   * Real on-air duration in milliseconds, from `EnrichedPlay.played_ms` (Story 3.7
+   * §3d): Serato's own per-play `end_time − start_time` (98% populated on real
+   * data), with a next-play-start / set-end fallback resolved agent-side for the
+   * unset tail. Second-granular at the source; ms so the unit never needs a
+   * migration. Powers the per-row played-length and Longest/Shortest Play.
+   *
+   * Added post-freeze (Story 3.7) and therefore optional per AD-15's
+   * additive-only rule; `null` when genuinely unresolvable (never guessed).
+   */
+  played_ms?: number | null;
+  /**
+   * ISO 8601 (UTC) — when the DJ's library first saw this track, from
+   * `EnrichedPlay.library_added_at` (Story 3.7 §3d: `database V2` `tadd`/`uadd`
+   * joined by portable path — NOT the serato4 `asset` join, which only links
+   * ~4.6% of real plays). Same epoch→ISO payload-build-time conversion as
+   * `started_at`. Powers "New tracks played"; coverage is honestly
+   * drive-dependent (~94% ceiling) and the UI discloses the gap.
+   *
+   * Added post-freeze (Story 3.7), optional per AD-15; `null` when no reachable
+   * catalogue covers the track.
+   */
+  library_added_at?: string | null;
 }
 
 /**

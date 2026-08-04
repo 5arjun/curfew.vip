@@ -23,11 +23,11 @@
 | start_time | play log (✅) | ✅ | ✅ `started_at` | ordering, arc, timestamps | shipped |
 | path | play log | ✅ (internal) | ❌ by design (leaks local FS) | dedup only | shipped |
 | in_library | join | (join) | ✅ | new-tracks exclusion, off-library marker | shipped |
-| **end_time / played-duration (s)** | play log — **✅ verified** (`end−start == dur`, 381s; "Played" flag) | ❌ | ❌ | **per-row played-length (Q3), Longest/Shortest Play** | **CAPTURE now (3.7)** → `EnrichedPlay.played_ms` + `ended_at`; promote `played_ms` to wire |
-| **library date-added** | **`database V2` `tadd` by path (~94%)** — NOT serato4 `asset` (4.6% join, tracks on USB) | ❌ | ❌ | **New tracks played (3.7)** | **CAPTURE now (3.7)** via `portable_id`→`database V2` `tadd`; promote to wire; disclose non-covered |
-| "Played" flag | play log (✅) | partial (play-log semantics) | — | filter previews from played stats | **CAPTURE into EnrichedPlay**; verify honored; no wire field needed |
-| track total length (full song) | library/play | ❌ | ❌ | context ("played 4:12 of 6:30") | read into EnrichedPlay (cheap); promote when a story shows it |
-| deck assignment | play log (✅) | ❌ | ❌ | true overlap/transition + mix analysis | read into EnrichedPlay; wire later (energy-arc/mix story) |
+| **end_time / played-duration (s)** | play log — **✅ verified** (`end−start == dur`, 381s; "Played" flag) | ✅ `played_ms` + `ended_at` | ✅ `SyncPlay.played_ms` | **per-row played-length (Q3), Longest/Shortest Play** | **shipped (3.7)** — `-1` fallback: next-play-start, else `history_session.end_time`; 105/105 on set 975 |
+| **library date-added** | **`database V2` `tadd`/`uadd` by path (~94% when USB mounted)** — NOT serato4 `asset` (4.6% join, tracks on USB) | ✅ `library_added_at` | ✅ `SyncPlay.library_added_at` | **New tracks played (3.7)** | **shipped (3.7)** — `joiner/date_added.rs` loads every reachable catalogue (`~/Music` + `/Volumes/*`); coverage is drive-dependent (backfill carry-forward guard never regresses a stored date); disclosed in UI |
+| "Played" flag | play log (✅) | ✅ `played` | — by design | filter previews from played stats | **shipped (3.7)** — `build_serato4` drops `played = 0` rows before positions/stats/durations (set 975: 178 → 105 rows); `NULL` (legacy) kept, never guessed false |
+| track total length (full song) | library/play | ✅ `total_length_ms` (`length_ms`, else `length_sec`×1000) | ❌ | context ("played 4:12 of 6:30") | shipped into EnrichedPlay (3.7); promote when a story shows it |
+| deck assignment | play log (✅) | ✅ `deck` | ❌ | true overlap/transition + mix analysis | shipped into EnrichedPlay (3.7); wire later (energy-arc/mix story) |
 | album | library | ❌ | ❌ | none yet | skip until consumer |
 | year | library | ❌ | ❌ | none yet | skip |
 | bitrate | library | ❌ | ❌ | none yet | skip |
@@ -48,10 +48,11 @@ Confirmed column names on serato4 `history_entry`: `start_time`, **`end_time`** 
 ## Action items
 
 1. ~~Verify columns~~ **DONE (2026-08-03, above).** Verdict: played-duration + played-flag + deck solid on serato4; **date-added requires the `database V2` `tadd`-by-path lookup, not the `asset` join.**
-2. **Capture (Story 3.7 agent task):** add `played_ms` (+ `ended_at`, from `end_time`; fall back to next-play-start or set-end when `end_time=-1`) and `library_added_at` (from `database V2` `tadd`, joined by `portable_id` path) to `EnrichedPlay`; also read total-length, `deck`, `played` flag into `EnrichedPlay` while in the joiner. Honor `played` so previews don't count. Note: date-added needs the `database V2` reader wired into the serato4 enrichment path (currently separate) — small cross-path task.
-3. **Contract (additive):** promote `played_ms` and `library_added_at` to `SyncPlay` (AR-15 additive-only, `agent_version` bump; contract tests in `shared/`).
-4. **Backfill:** re-derive the 491 local sets through the retained-raw mechanism (same as the 3.6 Camelot fix). Idempotent, no data loss.
+2. ~~Capture~~ **DONE (Story 3.7, 2026-08-03).** `EnrichedPlay` carries `played_ms`/`ended_at`/`played`/`deck`/`total_length_ms`/`library_added_at`; `build_serato4` honors `played` (set 975: 178 → 105 real plays) and applies the `-1` fallback (next-play-start, else `history_session.end_time` — 105/105 durations on set 975). The cross-path `database V2` reader is `agent/src-tauri/src/joiner/date_added.rs` (`DateAddedIndex`: lazy, loads `~/Music` + every mounted `/Volumes/*` catalogue; `uadd` u32 preferred, `tadd` epoch-string fallback — verified identical on real data). **Portable-path finding:** `portable_id` is *volume-root-relative* (`Users/…` or `A Indian/…`), matching `database V2`'s own `pfil` convention — a direct string join.
+3. ~~Contract~~ **DONE (Story 3.7).** `SyncPlay.played_ms` (int ms) + `SyncPlay.library_added_at` (ISO) — optional per AD-15; `agent_version` 0.0.0 → 0.1.0; schema + parity + additive-only tests green. Supabase: `plays.played_ms` (bigint) + `plays.library_added_at` (timestamptz) + `sync_set()` replacement (`20260803190000_add_play_capture_fields.sql`) so the fields survive the RPC boundary.
+4. ~~Backfill~~ **DONE (Story 3.7).** Same retained-raw sweep (`backfill_captured_serato4`), now with a **carry-forward guard**: a stored `library_added_at` survives a sweep run with the covering volume unmounted (matched on `started_at` + title), so plug/unplug cycles never flip-flop/re-sync the 491 sets or lose dates. Runs on next agent launch.
 5. **Keep this table current:** any future field need updates this doc first (conscious inventory), then the contract.
+6. **Coverage note (2026-08-03, fixture regen):** with the Samsung USB unplugged, date-added resolves only via `~/Music`'s catalogue — set 975 gets 25/105. Plugging the USB and relaunching the agent back-fills the rest (~94% ceiling); the web fixture regenerates with it. The UI's "N without an add-date" disclosure owns the gap either way.
 
 ## Notes / risks
 

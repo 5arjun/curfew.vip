@@ -41,6 +41,7 @@ export function CursorChip({
   boundsRef,
   offsetX = 18,
   offsetY = -72,
+  compact = false,
   children,
 }: {
   target: RefObject<{ x: number; y: number }>;
@@ -51,6 +52,8 @@ export function CursorChip({
   boundsRef?: RefObject<HTMLElement | null>;
   offsetX?: number;
   offsetY?: number;
+  /** Smaller body (Set Detail's connector chip) — styles in set-detail.css. */
+  compact?: boolean;
   children: ReactNode;
 }) {
   const chipRef = useRef<HTMLDivElement>(null);
@@ -125,7 +128,7 @@ export function CursorChip({
               animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
               exit={{ opacity: 0, scale: 0.98, filter: "blur(6px)" }}
               transition={{ duration: 0.35, ease: "easeOut" }}
-              className="cursor-chip-body"
+              className={compact ? "cursor-chip-body cursor-chip-body--compact" : "cursor-chip-body"}
             >
               {children}
             </motion.div>

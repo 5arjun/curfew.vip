@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(10);
+select plan(13);
 
 -- Seed two auth users; the AFTER INSERT trigger (handle_new_dj) creates the
 -- matching public.djs row for each, same as djs_isolation_test.sql /
@@ -22,7 +22,7 @@ select public.sync_set(
   1000,
   1600,
   '{"track_count":1}'::jsonb,
-  '[{"position":1,"title":"Track A","artist":"Artist A","started_at":1000,"bpm":120.0,"genre":{"raw":"Deep House","normalized":"House","taxonomy_version":1},"camelot_key":"8A","in_library":true}]'::jsonb
+  '[{"position":1,"title":"Track A","artist":"Artist A","started_at":1000,"bpm":120.0,"genre":{"raw":"Deep House","normalized":"House","taxonomy_version":1},"camelot_key":"8A","in_library":true,"played_ms":240000,"library_added_at":1644628114}]'::jsonb
 );
 
 select public.sync_set(
@@ -30,7 +30,7 @@ select public.sync_set(
   1000,
   1600,
   '{"track_count":1}'::jsonb,
-  '[{"position":1,"title":"Track A","artist":"Artist A","started_at":1000,"bpm":120.0,"genre":{"raw":"Deep House","normalized":"House","taxonomy_version":1},"camelot_key":"8A","in_library":true}]'::jsonb
+  '[{"position":1,"title":"Track A","artist":"Artist A","started_at":1000,"bpm":120.0,"genre":{"raw":"Deep House","normalized":"House","taxonomy_version":1},"camelot_key":"8A","in_library":true,"played_ms":240000,"library_added_at":1644628114}]'::jsonb
 );
 
 reset role;
@@ -52,6 +52,45 @@ select is(
   (select count(*)::int from public.plays where dj_id = '11111111-1111-1111-1111-111111111111'),
   1,
   'plays are replaced (delete + reinsert), not accumulated, on re-sync -- still exactly one row'
+);
+
+-- Story 3.7 (§3d): the two wire-promoted capture fields survive the RPC write
+-- boundary — played_ms verbatim (bigint ms) and library_added_at as a real
+-- timestamptz cast from the wire's epoch-seconds convention.
+select is(
+  (select played_ms::int from public.plays where dj_id = '11111111-1111-1111-1111-111111111111'),
+  240000,
+  'played_ms survives the sync_set write boundary (Story 3.7 AC-41)'
+);
+
+select is(
+  (select extract(epoch from library_added_at)::int from public.plays where dj_id = '11111111-1111-1111-1111-111111111111'),
+  1644628114,
+  'library_added_at survives the sync_set write boundary as timestamptz (Story 3.7 AC-41)'
+);
+
+-- A pre-3.7 agent's play (neither key present) still syncs, both columns null —
+-- the additive-only guarantee at the RPC layer.
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
+
+select public.sync_set(
+  'legacy:old-agent',
+  5000,
+  5600,
+  '{}'::jsonb,
+  '[{"position":1,"title":"Old","artist":null,"started_at":5000,"bpm":null,"genre":null,"camelot_key":null,"in_library":false}]'::jsonb
+);
+
+reset role;
+reset request.jwt.claims;
+
+select is(
+  (select (played_ms is null and library_added_at is null) from public.plays pl
+   join public.sessions ss on ss.id = pl.set_id
+   where ss.session_identity = 'legacy:old-agent'),
+  true,
+  'a pre-3.7 payload with neither new field still syncs, both columns null (additive-only)'
 );
 
 -- Case 2 (AC-4): two different authenticated users calling with the SAME

@@ -399,6 +399,38 @@
   --shadow-ink-40: #00000066;
   --shadow-ink-50: #00000080;
 
+
+  /* Camelot wheel key colors (Story 3.7 post-review, Arjun 2026-08-03):
+     the tracklist key chips read as a real Camelot wheel — one hue per
+     clock position (30° steps), inner/minor A ring slightly deeper, outer/
+     major B ring brighter, both pastel enough to stay calm on the abyss
+     ground. Consumed via var() lookups keyed off the play's own Camelot
+     string (sd-row-key), never inline hex. */
+  --camelot-1a: #c7c075;
+  --camelot-1b: #e2db8d;
+  --camelot-2a: #a5c775;
+  --camelot-2b: #bfe28d;
+  --camelot-3a: #7cc775;
+  --camelot-3b: #94e28d;
+  --camelot-4a: #75c797;
+  --camelot-4b: #8de2b0;
+  --camelot-5a: #75c7c0;
+  --camelot-5b: #8de2db;
+  --camelot-6a: #75a5c7;
+  --camelot-6b: #8dbfe2;
+  --camelot-7a: #757cc7;
+  --camelot-7b: #8d94e2;
+  --camelot-8a: #9775c7;
+  --camelot-8b: #b08de2;
+  --camelot-9a: #c075c7;
+  --camelot-9b: #db8de2;
+  --camelot-10a: #c775a5;
+  --camelot-10b: #e28dbf;
+  --camelot-11a: #c7757c;
+  --camelot-11b: #e28d94;
+  --camelot-12a: #c79775;
+  --camelot-12b: #e2b08d;
+
   /* The ref's click ripple: white 40% → clear radial. */
   --color-metal-ripple: #ffffff66;
   --color-metal-ripple-fade: #ffffff00;

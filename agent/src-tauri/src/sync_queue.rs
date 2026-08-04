@@ -419,6 +419,8 @@ mod tests {
             artist: Some("Artist A".into()),
             started_at: Some(1_000),
             bpm: Some(120.0),
+            played_ms: None,
+            library_added_at: None,
             genre: None,
             camelot_key: None,
             in_library: true,

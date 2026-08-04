@@ -1,6 +1,10 @@
+---
+baseline_commit: 913248bfaea5f77a3c48c26e18c78a056e47f5f2
+---
+
 # Story 3.7: Set Detail summary + tracklist
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -98,68 +102,68 @@ so that I can study exactly what I played and how it landed.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 0: Branch-state preflight** (blocking)
-  - [ ] 0.1 Confirm `story/3-6-dashboard-home` is merged into `main` (spec docs + 3.6 code present). If not merged, halt and get Arjun's ruling.
-  - [ ] 0.2 Branch `story/3-7-set-detail` off `main`.
-  - [ ] 0.3 Read `3-7-set-detail.md` and `serato-capture-completeness.md` fully.
+- [x] **Task 0: Branch-state preflight** (blocking)
+  - [x] 0.1 Confirm `story/3-6-dashboard-home` is merged into `main` (spec docs + 3.6 code present). If not merged, halt and get Arjun's ruling.
+  - [x] 0.2 Branch `story/3-7-set-detail` off `main`.
+  - [x] 0.3 Read `3-7-set-detail.md` and `serato-capture-completeness.md` fully.
 
-- [ ] **Task 1: Agent capture pass** (AC: 40, 42, 44)
-  - [ ] 1.1 `joiner/serato4.rs`: extend the SELECT with `end_time`, `played`, `deck`, `length_sec`/`length_ms`, `portable_id`; read fully before editing — it owns the id-correlation join contract and the 3.6 `key_value`→Camelot mapping; break neither.
-  - [ ] 1.2 Wire a `database V2` `tadd`-by-path lookup into the serato4 enrichment path (the parser exists on the legacy path; this is the cross-path task). Sources: `/Volumes/Samsung USB/_Serato_/database V2` and/or `~/Music/_Serato_/database V2`.
-  - [ ] 1.3 Extend `EnrichedPlay` with `played_ms`, `ended_at`, `library_added_at`, `total_length_ms`, `deck`, `played`; apply the `end_time = -1` fallback (next-play-start, else set-end); filter stats/plays on the `played` flag.
-  - [ ] 1.4 Legacy path sanity-check (`legacy.rs`): same fields where present (`.session` field 45 carries a precomputed duration).
-  - [ ] 1.5 Unit + capture-path regression tests (follow 3.6's pattern: full-pipeline test through `build_serato4`).
-  - [ ] 1.6 Update `serato-capture-completeness.md` field-map rows to "shipped".
+- [x] **Task 1: Agent capture pass** (AC: 40, 42, 44)
+  - [x] 1.1 `joiner/serato4.rs`: extend the SELECT with `end_time`, `played`, `deck`, `length_sec`/`length_ms`, `portable_id`; read fully before editing — it owns the id-correlation join contract and the 3.6 `key_value`→Camelot mapping; break neither.
+  - [x] 1.2 Wire a `database V2` `tadd`-by-path lookup into the serato4 enrichment path (the parser exists on the legacy path; this is the cross-path task). Sources: `/Volumes/Samsung USB/_Serato_/database V2` and/or `~/Music/_Serato_/database V2`.
+  - [x] 1.3 Extend `EnrichedPlay` with `played_ms`, `ended_at`, `library_added_at`, `total_length_ms`, `deck`, `played`; apply the `end_time = -1` fallback (next-play-start, else set-end); filter stats/plays on the `played` flag.
+  - [x] 1.4 Legacy path sanity-check (`legacy.rs`): same fields where present (`.session` field 45 carries a precomputed duration).
+  - [x] 1.5 Unit + capture-path regression tests (follow 3.6's pattern: full-pipeline test through `build_serato4`).
+  - [x] 1.6 Update `serato-capture-completeness.md` field-map rows to "shipped".
 
-- [ ] **Task 2: Wire contract + backfill + cloud columns** (AC: 41, 43)
-  - [ ] 2.1 `shared/src/index.ts`: add optional `SyncPlay.played_ms` (number|null) + `SyncPlay.library_added_at` (ISO string|null, same convention as `started_at`); update `schema/sync-payload.schema.json`; keep `additive-only.test.ts` green; bump `agent_version`.
-  - [ ] 2.2 Extend the backfill sweep so re-derivation with the new fields marks changed rows for resync (`mark_for_resync` — 3.6's mechanism already does this on diff; verify the new fields flow through).
-  - [ ] 2.3 **Supabase (derived requirement — the spec is silent, but 3.6's "same data on every device" ruling implies it):** additive migration adding `plays.played_ms` + `plays.library_added_at`, update the Story 3.2 sync RPC to write them, pgTAP + additive-only guard green. Without this the re-synced rows silently drop the new fields at the RPC boundary. If Arjun prefers to defer cloud persistence, get a ruling — don't silently drop.
-  - [ ] 2.4 **Regenerate the web fixture** via `agent/src-tauri/tests/export_real_fixtures.rs` (env-gated, read-only) + `web/lib/sets/build-fixture.mjs` so `recent-sets.fixture.json` carries `played_ms`/`library_added_at` — the web stats below are unbuildable without this.
+- [x] **Task 2: Wire contract + backfill + cloud columns** (AC: 41, 43)
+  - [x] 2.1 `shared/src/index.ts`: add optional `SyncPlay.played_ms` (number|null) + `SyncPlay.library_added_at` (ISO string|null, same convention as `started_at`); update `schema/sync-payload.schema.json`; keep `additive-only.test.ts` green; bump `agent_version`.
+  - [x] 2.2 Extend the backfill sweep so re-derivation with the new fields marks changed rows for resync (`mark_for_resync` — 3.6's mechanism already does this on diff; verify the new fields flow through).
+  - [x] 2.3 **Supabase (derived requirement — the spec is silent, but 3.6's "same data on every device" ruling implies it):** additive migration adding `plays.played_ms` + `plays.library_added_at`, update the Story 3.2 sync RPC to write them, pgTAP + additive-only guard green. Without this the re-synced rows silently drop the new fields at the RPC boundary. If Arjun prefers to defer cloud persistence, get a ruling — don't silently drop.
+  - [x] 2.4 **Regenerate the web fixture** via `agent/src-tauri/tests/export_real_fixtures.rs` (env-gated, read-only) + `web/lib/sets/build-fixture.mjs` so `recent-sets.fixture.json` carries `played_ms`/`library_added_at` — the web stats below are unbuildable without this.
 
-- [ ] **Task 3: Scope engine + shared stat computation** (AC: 4–7)
-  - [ ] 3.1 Reuse `detectDancefloor` + `segmentStats`; extend `web/lib/sets` with scope-window play filtering and the new derived stats (longest/shortest by `played_ms`, new-tracks by `library_added_at` window, per-transition Camelot states, BPM histogram bins, arc peak).
-  - [ ] 3.2 Client Camelot rule mirrors `agent/src-tauri/src/stats/camelot.rs` exactly; add a test cross-checking the client whole-set recompute against `derived.camelot_mixing_stats` on fixture set 975.
-  - [ ] 3.3 Scope state (Dancefloor default | Whole night), single source of truth feeding header, stats, arc, tracklist annotations at once (AC-5).
+- [x] **Task 3: Scope engine + shared stat computation** (AC: 4–7)
+  - [x] 3.1 Reuse `detectDancefloor` + `segmentStats`; extend `web/lib/sets` with scope-window play filtering and the new derived stats (longest/shortest by `played_ms`, new-tracks by `library_added_at` window, per-transition Camelot states, BPM histogram bins, arc peak).
+  - [x] 3.2 Client Camelot rule mirrors `agent/src-tauri/src/stats/camelot.rs` exactly; add a test cross-checking the client whole-set recompute against `derived.camelot_mixing_stats` on fixture set 975.
+  - [x] 3.3 Scope state (Dancefloor default | Whole night), single source of truth feeding header, stats, arc, tracklist annotations at once (AC-5).
 
-- [ ] **Task 4: Page shell — header, scope line, arc** (AC: 1–3, 8–9, 31)
-  - [ ] 4.1 Replace the `/set/[id]` stub entirely (whole-page scroll shell; do not reuse `dashboard-shell` classes). **Note:** the stub hosts the app's only in-product `LiquidMetalButton` demo (3.6 AC-14) — flag its removal to Arjun / record in `deferred-work.md` rather than silently dropping the component's only usage; keep it only if a placement is natural.
-  - [ ] 4.2 Identity bar + `[⋯]` overflow + scope line + `[ Dancefloor | Whole night ]` switch (hidden per AC-35/36 rules).
-  - [ ] 4.3 Arc in mode C with scope-driven domain + morph transition (reduced-motion: cut).
+- [x] **Task 4: Page shell — header, scope line, arc** (AC: 1–3, 8–9, 31)
+  - [x] 4.1 Replace the `/set/[id]` stub entirely (whole-page scroll shell; do not reuse `dashboard-shell` classes). **Note:** the stub hosts the app's only in-product `LiquidMetalButton` demo (3.6 AC-14) — flag its removal to Arjun / record in `deferred-work.md` rather than silently dropping the component's only usage; keep it only if a placement is natural.
+  - [x] 4.2 Identity bar + `[⋯]` overflow + scope line + `[ Dancefloor | Whole night ]` switch (hidden per AC-35/36 rules).
+  - [x] 4.3 Arc in mode C with scope-driven domain + morph transition (reduced-motion: cut).
 
-- [ ] **Task 5: Right-column stats** (AC: 10–16)
-  - [ ] 5.1 Headline module: harmonic hero pips + % secondary; BPM range/median/sparkline; hairline dividers.
-  - [ ] 5.2 Genre module (top 3, hover motion vocab).
-  - [ ] 5.3 Most-played artists (conditional render rules) + Replayed line.
-  - [ ] 5.4 Longest/Shortest Play module. 5.5 New-tracks module with Week/Month toggle + disclosures. 5.6 Reserved slot G.
+- [x] **Task 5: Right-column stats** (AC: 10–16)
+  - [x] 5.1 Headline module: harmonic hero pips + % secondary; BPM range/median/sparkline; hairline dividers.
+  - [x] 5.2 Genre module (top 3, hover motion vocab).
+  - [x] 5.3 Most-played artists (conditional render rules) + Replayed line.
+  - [x] 5.4 Longest/Shortest Play module. 5.5 New-tracks module with Week/Month toggle + disclosures. 5.6 Reserved slot G.
 
-- [ ] **Task 6: Tracklist** (AC: 17–22)
-  - [ ] 6.1 Row anatomy + aligned mono metadata columns + `·new·` marker.
-  - [ ] 6.2 In-key connectors (three states, tooltip, quiet treatment).
-  - [ ] 6.3 Impact node (`★ PEAK`) from the scoped arc peak.
-  - [ ] 6.4 FR-2 unknown fallback. 6.5 Load more (~50 initial).
+- [x] **Task 6: Tracklist** (AC: 17–22)
+  - [x] 6.1 Row anatomy + aligned mono metadata columns + `·new·` marker.
+  - [x] 6.2 In-key connectors (three states, tooltip, quiet treatment).
+  - [x] 6.3 Impact node (`★ PEAK`) from the scoped arc peak.
+  - [x] 6.4 FR-2 unknown fallback. 6.5 Load more (~50 initial).
 
-- [ ] **Task 7: Drill-in + DR-2 focus mechanism** (AC: 23–30)
-  - [ ] 7.1 Build the single shared focus mechanism (single-select, "Focused: X ✕" pill, dim-don't-hide, scroll-to-first-match — beware the 3.6 review's `scrollIntoView`-scrolling-ancestor-shells bug; on a whole-page scroll prefer window-level scrolling).
-  - [ ] 7.2 Overlay frame (right-column footprint, blur, stays-open, back arrow, active row state).
-  - [ ] 7.3 Genre overlay (+ genre⇄subgenre toggle). 7.4 BPM overlay (histogram + band click). 7.5 Harmonic overlay (transition list + clashes-only filter). 7.6 Most-played-artists overlay (full list).
+- [x] **Task 7: Drill-in + DR-2 focus mechanism** (AC: 23–30)
+  - [x] 7.1 Build the single shared focus mechanism (single-select, "Focused: X ✕" pill, dim-don't-hide, scroll-to-first-match — beware the 3.6 review's `scrollIntoView`-scrolling-ancestor-shells bug; on a whole-page scroll prefer window-level scrolling).
+  - [x] 7.2 Overlay frame (right-column footprint, blur, stays-open, back arrow, active row state).
+  - [x] 7.3 Genre overlay (+ genre⇄subgenre toggle). 7.4 BPM overlay (histogram + band click). 7.5 Harmonic overlay (transition list + clashes-only filter). 7.6 Most-played-artists overlay (full list).
 
-- [ ] **Task 8: Delete** (AC: 32–34)
-  - [ ] 8.1 Blurred-modal confirm with the exact copy; delete via `deleteSet` seam; redirect + calm inline confirm on the dashboard.
-  - [ ] 8.2 Record the permanent-tombstone requirement in `deferred-work.md`, owed by the sync/read-path story.
+- [x] **Task 8: Delete** (AC: 32–34)
+  - [x] 8.1 Blurred-modal confirm with the exact copy; delete via `deleteSet` seam; redirect + calm inline confirm on the dashboard.
+  - [x] 8.2 Record the permanent-tombstone requirement in `deferred-work.md`, owed by the sync/read-path story.
 
-- [ ] **Task 9: States pass** (AC: 35–38) — sparse (use fixture 17577), whole-set fallback, aggregate disclosures, low-confidence note. All copy in After-Hours console voice, no exclamations.
+- [x] **Task 9: States pass** (AC: 35–38) — sparse (use fixture 17577), whole-set fallback, aggregate disclosures, low-confidence note. All copy in After-Hours console voice, no exclamations.
 
-- [ ] **Task 10: Mobile** (AC: 39) — stacked layout + bottom-sheet drill-in at 375px; touch targets ≥44px.
+- [x] **Task 10: Mobile** (AC: 39) — stacked layout + bottom-sheet drill-in at 375px; touch targets ≥44px.
 
-- [ ] **Task 11: Carry-backs + bookkeeping**
-  - [ ] 11.1 ⚑ **Dashboard carry-back (spec §3g):** low-confidence/no-dancefloor sets should be excluded from the dashboard **by default but VISIBLY** (Story 4.1's pattern: *"N low-confidence sessions hidden — show them"*). 3.6 currently includes the soundcheck fixture — this is a **behavior change, not already-done**. Check whether the 3.6 refinement pass already landed it; if not, record it in `deferred-work.md` as an owed 3.6/dashboard change (do NOT silently implement it inside this story without a ruling).
-  - [ ] 11.2 Note the 3.8 hooks: arc click-to-jump reuses DR-2 (Q4); Camelot wheel + key/harmonic timeline are 3.8's companion visualization.
-  - [ ] 11.3 Update sprint-status.yaml on completion.
+- [x] **Task 11: Carry-backs + bookkeeping**
+  - [x] 11.1 ⚑ **Dashboard carry-back (spec §3g):** low-confidence/no-dancefloor sets should be excluded from the dashboard **by default but VISIBLY** (Story 4.1's pattern: *"N low-confidence sessions hidden — show them"*). 3.6 currently includes the soundcheck fixture — this is a **behavior change, not already-done**. Check whether the 3.6 refinement pass already landed it; if not, record it in `deferred-work.md` as an owed 3.6/dashboard change (do NOT silently implement it inside this story without a ruling).
+  - [x] 11.2 Note the 3.8 hooks: arc click-to-jump reuses DR-2 (Q4); Camelot wheel + key/harmonic timeline are 3.8's companion visualization.
+  - [x] 11.3 Update sprint-status.yaml on completion.
 
-- [ ] **Task 12: Verification**
-  - [ ] 12.1 Full repo gate: `cargo fmt --check` / `clippy -D warnings` / `cargo test`; `pnpm lint/typecheck/test` (shared + web); supabase `db reset` + pgTAP if Task 2.3 lands.
-  - [ ] 12.2 **Real-browser walkthrough (non-negotiable — 3.5's and 3.6's worst bugs were only caught this way):** Playwright/headless-Chrome screenshots of: full set 975 both scopes (verify the global flip changes everything at once), the arc morph, each overlay + focus pill + dim-in-place, Longest/Shortest/new-tracks direct focus, load-more, delete flow end-to-end, sparse set 17577, mobile 375px stack + bottom sheet, keyboard-only pass (overlays operable, focus visible), reduced-motion. Zero console errors.
+- [x] **Task 12: Verification**
+  - [x] 12.1 Full repo gate: `cargo fmt --check` / `clippy -D warnings` / `cargo test`; `pnpm lint/typecheck/test` (shared + web); supabase `db reset` + pgTAP if Task 2.3 lands.
+  - [x] 12.2 **Real-browser walkthrough (non-negotiable — 3.5's and 3.6's worst bugs were only caught this way):** Playwright/headless-Chrome screenshots of: full set 975 both scopes (verify the global flip changes everything at once), the arc morph, each overlay + focus pill + dim-in-place, Longest/Shortest/new-tracks direct focus, load-more, delete flow end-to-end, sparse set 17577, mobile 375px stack + bottom sheet, keyboard-only pass (overlays operable, focus visible), reduced-motion. Zero console errors.
 
 ## Dev Notes
 
@@ -237,8 +241,78 @@ so that I can study exactly what I played and how it landed.
 
 ### Agent Model Used
 
+Claude Fable 5 (claude-fable-5) — bmad-dev-story session, 2026-08-03.
+
 ### Debug Log References
+
+- Real-data reconnaissance before coding (all read-only): `~/Music/_Serato_/database V2` probe — 930 otrk records, `tadd`/`uadd` both 100% populated and **identical epoch-seconds values** (`tadd` is a decimal epoch string, not a date string); `master.sqlite` probe — `portable_id` is **volume-root-relative** (`Users/…` for boot-drive, `A Indian/…` for USB tracks), matching `database V2`'s own `pfil` convention exactly, so the date-added join is a direct string match, no path surgery.
+- Samsung USB **not mounted** this session → date-added resolves only via the boot-drive catalogue: set 975 = 25/105 plays with an add-date (the ~94% ceiling needs the USB present; the backfill carry-forward guard makes this self-improving and never-regressing across plug/unplug cycles).
+- Played-flag reality on the fixture sets (played=1 / total): 975: 105/178 · 977: 51/75 · 971: 78/154 · 967: 90/184 · 963: 28/49 · 957: 98/164 · 953: 34/49 · 17577: 1/1. `played_ms` coverage after the `-1` fallback chain: 105/105 on set 975.
+- **Pre-existing break found on main:** `tests/golden_serato4.rs` was never updated by Story 3.6's key-source change (parser `Play.key` → always `None` for serato4) — the suite has been failing on `main` since the 3.6 merge (its fixture also lacked `key_value`, so the joiner's 3.6-era SELECT errored). Fixed forward here: fixture rebuilt to the live-verified real schema, expectations now pin both the 3.6 key rule and the 3.7 capture fields at golden level.
+- Browser-walkthrough catches (all fixed same-session, none caught by tests/typecheck — the 3.5/3.6 lesson holds): (1) framer-motion clobbered the arc-morph transform origin (`fill-box` 50/50) → morph rebuilt as an animated SVG `viewBox` zoom (svg viewport does the clipping, `non-scaling-stroke` keeps line weight); (2) `html, body { overflow-x: hidden }` (globals.css, Story 2.2) silently made `body` the sticky scrollport while the window scrolls → `position: sticky` (stats rail + focus pill) never engaged → changed to `overflow-x: clip` (same clipping, never a scroll container — .dz's own reasoning); (3) `.sd button` reset out-specified `.sd-focus-pill`'s fill → `:where()` zero-specificity reset; (4) delete modal's `position: fixed` was captured by `.sd-identity`'s `backdrop-filter` containing block → portaled to `document.body`; (5) framer's `useReducedMotion` lagged a runtime preference flip → the morph reads `matchMedia` directly at flip time (hard cut verified at 50ms).
+- `supabase db reset` + pgTAP execution: initially blocked — Docker Desktop would not start because the disk was nearly full (6.8GB free). **RESOLVED same session:** freed ~17GB (cargo target dirs + regenerable caches), Docker started cleanly on its own, `supabase db reset` applied all migrations including `20260803190000_add_play_capture_fields.sql` with no errors, and the full pgTAP suite passed — **61/61 across 3 files** (including the new `played_ms`/`library_added_at` round-trip + pre-3.7 null-field assertions, plan 10 → 13). The Supabase gate is fully green at runtime, not just statically.
 
 ### Completion Notes List
 
+- **Agent capture pass (Tasks 1–2):** `EnrichedPlay` now captures comprehensively (`played_ms`, `ended_at`, `played`, `deck`, `total_length_ms`, `library_added_at`); `build_serato4` honors the `played` flag (previews dropped before positions/stats/durations — set 975 is now honestly 105 plays, not 178), applies the `end_time = -1` fallback (next played play's start, else `history_session.end_time`), and resolves library date-added through the new cross-path `joiner/date_added.rs` (`DateAddedIndex`: lazy, loads `~/Music` + every mounted `/Volumes/*` `database V2`; `uadd` preferred, numeric `tadd` fallback; per-catalogue symlink scope guard). Legacy path captures the same fields where present (field-45 duration; `LibraryTrack.date_added`).
+- **Wire (additive, AR-15):** `SyncPlay.played_ms` (int ms) + `SyncPlay.library_added_at` (ISO) — optional; schema + TS parity + additive-only tests green; `agent_version` 0.0.0 → 0.1.0. Supabase migration `20260803190000_add_play_capture_fields.sql` adds `plays.played_ms` (bigint) + `plays.library_added_at` (timestamptz) and replaces `sync_set()` so the fields survive the RPC boundary; pgTAP extended (see Debug Log for the execution caveat).
+- **Backfill:** rides 3.6's change-detecting sweep untouched except for the new **carry-forward guard**: a stored `library_added_at` survives a re-derivation run with its covering volume unmounted (matched on `started_at` + title), so drive plug/unplug cycles can neither erase dates nor re-sync 491 sets back and forth. Gains still write + re-queue exactly once. Runs on next agent launch.
+- **Web (Tasks 3–10):** pure scope engine + stats in `web/lib/sets/setDetail.ts` (scoped plays, client Camelot rule mirroring `stats/camelot.rs` — cross-checked equal to `derived.camelot_mixing_stats` AND `derived.bpm_distribution` on fixture 975 in tests; transitions, histogram, set shape by real `played_ms`, set-date-relative new-tracks, artists/replays, genre/subgenre rankings, sustained-BPM arc peak). Page: whole-page scroll (no dashboard shell), header A/B ~24% + arc ~76% scrolls away, tracklist spine ~67% + sticky stats rail ~33%; global `[ Dancefloor | Whole night ]` flip changes every pane in one frame and clears any focus (never mixes frames); arc = the 3.6 heroArc geometry with a viewBox-zoom domain morph (reduced motion: hard cut). One shared DR-2 focus mechanism (positions-based, single-select, dim-never-hide, window-level scroll-to-first-match, dismissable pill) feeds genre/BPM-band/harmonic/artist/longest/shortest/new-tracks; overlays are right-column-only with blurred backdrop, stay open, back arrow, scope-reactive; mobile stacks with the same overlay as a bottom sheet. Delete = portaled calm modal with the exact spec copy → `deleteSet` seam → dashboard redirect + quiet "Set deleted." line. All §3f states verified live on fixtures 975/17577/953 (sparse, whole-set fallback, disclosures, low-confidence note — display rule: `confidence.value ≤ 0.5` or `track_count < 4`).
+- **Verification:** agent `cargo fmt --check` / `clippy -D warnings` / 346 lib tests + golden suites; shared 20; web lint / typecheck / 90 tests (22 new); additive-only migrations guard. Real-browser Playwright walkthrough at 1440px and 375px: both scopes on 975 (global flip verified), arc morph + reduced-motion hard cut, genre/BPM/harmonic/artists overlays with live focus + pill + dim-in-place, longest/shortest + new-tracks direct focus, load-more ×2 to all 105 rows, delete end-to-end on 953 (modal → dashboard, set absent, calm confirm), sparse 17577, mobile stack + bottom sheet, keyboard-only pass (Enter opens overlay → focus lands on back arrow → row focus works → Escape closes), **zero console errors** on the final build. Screenshots in `.playwright-mcp/` (`sd-*.png`).
+- **Carry-backs recorded in `deferred-work.md`:** permanent delete tombstone (owed by the sync/read-path story); ⚑ dashboard low-confidence exclusion (verified NOT landed by 3.6 — recorded for a ruling, not implemented); `LiquidMetalButton` demo displacement (stub replacement removed its only in-product usage); 3.8 hooks (DR-2 reuse for arc click-to-jump; wheel/timeline; same `DetailArc` upgrades).
+- **Fixture regenerated** (env-gated, read-only) through the fixed pipeline: 8 sets, plays now played-filtered with `played_ms` (100%) + `library_added_at` (partial — USB unplugged; see Debug Log). `serato-capture-completeness.md` field map updated to shipped.
+
 ### File List
+
+Agent:
+- agent/src-tauri/Cargo.toml (+Cargo.lock) — version 0.0.0 → 0.1.0 (agent_version bump, AC-41)
+- agent/src-tauri/src/joiner/mod.rs — `JoinedMetadata` + ended_at/played/total_length_ms/portable_path/library_added_at
+- agent/src-tauri/src/joiner/serato4.rs — SELECT + mapping for the new columns; `sane_length_ms`
+- agent/src-tauri/src/joiner/legacy.rs — `LibraryTrack.date_added` (uadd/tadd), `date_added_for`, join wiring
+- agent/src-tauri/src/joiner/date_added.rs — NEW: cross-path `DateAddedIndex` (lazy multi-catalogue lookup)
+- agent/src-tauri/src/joiner/embedded_tags.rs — fill_gaps carries the new fields through
+- agent/src-tauri/src/stats/mod.rs — `EnrichedPlay` extension, enrich mapping, `resolve_played_ms`
+- agent/src-tauri/src/stats/camelot.rs — test helper updated
+- agent/src-tauri/src/capture.rs — played filter, set-end lookup, date lookup, assemble → CapturedPlay promotion
+- agent/src-tauri/src/store.rs — `CapturedPlay.played_ms` + `library_added_at`
+- agent/src-tauri/src/backfill.rs — dates param + `carry_forward_library_dates` guard
+- agent/src-tauri/src/watcher/mod.rs — `DateAddedIndex` threaded through the capture chain
+- agent/src-tauri/src/sync.rs, sync_queue.rs, confidence.rs — test fixtures/helpers updated
+- agent/src-tauri/src/lib.rs — startup sweep constructs one lazy index
+- agent/src-tauri/tests/export_real_fixtures.rs — dates + ratio assertions (+played_ms/date counts)
+- agent/src-tauri/tests/golden_serato4.rs + tests/fixtures/serato4/history_session_and_entries.sql — fixed forward to the real schema (pre-existing break, see Debug Log)
+- agent/src-tauri/tests/golden_legacy_library.rs — upstream fixture genuinely carries date-added; expectations updated
+
+Shared:
+- shared/src/index.ts — `SyncPlay.played_ms` / `library_added_at` (optional, AD-15)
+- shared/schema/sync-payload.schema.json — same, language-neutral
+- shared/src/index.test.ts — parity test split required vs all properties
+
+Supabase:
+- supabase/migrations/20260803190000_add_play_capture_fields.sql — NEW: columns + sync_set replacement
+- supabase/tests/sync_set_isolation_test.sql — round-trip + pre-3.7 null-field cases (plan 10 → 13)
+
+Web:
+- web/lib/sets/setDetail.ts + setDetail.test.ts — NEW: scope engine, Camelot mirror, stats, peak (22 tests incl. fixture cross-checks)
+- web/lib/sets/build-fixture.mjs — carries played_ms + library_added_at (epoch→ISO)
+- web/lib/sets/recent-sets.fixture.json — regenerated through the fixed pipeline
+- web/app/(authenticated)/set/[id]/page.tsx — stub replaced with the real screen
+- web/app/(authenticated)/set/[id]/actions.ts — NEW: deleteSetAction (server action → seam → redirect)
+- web/app/(authenticated)/dashboard/page.tsx — post-delete calm confirm line
+- web/app/components/set-detail/ — NEW: model.ts, SetDetail.tsx, SetHeader.tsx, DetailArc.tsx, Tracklist.tsx, StatsColumn.tsx, Overlays.tsx, DeleteModal.tsx
+- web/app/set-detail.css — NEW: the page's full style layer (sd- prefix, token-only)
+- web/app/globals.css — set-detail.css import; html/body `overflow-x: hidden` → `clip` (sticky fix, see Debug Log)
+- web/app/dashboard.css — .dz-deleted-note
+
+Docs:
+- _bmad-output/implementation-artifacts/serato-capture-completeness.md — field map → shipped + coverage note
+- _bmad-output/implementation-artifacts/deferred-work.md — four 3.7 entries (tombstone, dashboard carry-back, LiquidMetalButton, 3.8 hooks)
+- _bmad-output/implementation-artifacts/sprint-status.yaml — 3-7 → review
+- _bmad-output/implementation-artifacts/3-7-set-detail-summary-tracklist.md — this bookkeeping
+
+### Change Log
+
+- 2026-08-03 (round 3) — Veil frost corrected to Arjun's intent: translucent (blur carries the frosting — ramp compressed to a narrow left-edge strip, full 46px frost + light ink tint + faint white sheen under all content, no blackout), confined to the right-column footprint so the tracklist's key chips never catch the ramp, histogram bands stretch to fill the panel height. **Durable gotcha found live:** a `mix-blend-mode` child turns its parent into a backdrop root, silently disabling every sibling `backdrop-filter` — the sheen must be plain translucent paint.
+- 2026-08-03 (round 2) — Veil execution corrected per Arjun's screenshot (ramp = left-edge transition zone only; near-opaque scrim under the content zone; width tightened to the right-column footprint); MetalRim extracted as a shared wrapper and applied to the veil back arrow + genre⇄subgenre + Week/Month toggles; connector glyph → lucide `key` icon in a 20px chip. Ruling recorded: tracklist does NOT react to scope ("leave neither"). Gate green, zero console errors.
+- 2026-08-03 (later) — Post-review refinement pass from Arjun's live test, all shipped + gate green (lint/tsc/90 web tests, zero console errors): Silk backdrop + dz-shell glint/shimmer/dots carried onto Set Detail; right-column hover washes removed; drill-in reworked into the right-side gradual-blur veil (slide-in, mobile sheet unchanged); BPM histogram rotated to horizontal bars; "in-key" wording (never "smooth"); Camelot-wheel-colored key chips (24 new tokens); CursorChip on genre rows (track count) + compact CursorChip on connectors (replacing the CSS tooltip, glyph brightened); liquid-metal rim on the scope toggle. Recorded in the design doc §6; tracklist-reacts-to-scope left as an open design question for Arjun.
+- 2026-08-03 — Story 3.7 implemented end-to-end (agent capture pass, additive wire promotion, Supabase columns/RPC, backfill carry-forward guard, fixture regen, full Set Detail screen with scope engine / DR-2 focus / overlays / delete / states / mobile). Full gate green + real-browser walkthrough at desktop and 375px, zero console errors. pgTAP executed later the same session after freeing disk space (61/61 pass) — the only remaining follow-ups are the recorded carry-backs in deferred-work.md.

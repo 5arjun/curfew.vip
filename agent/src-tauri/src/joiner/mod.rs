@@ -41,6 +41,9 @@
 //! out of scope), or display "Unknown" (a `None` here is the input to that chain, not
 //! the end of it).
 
+/// `database V2` date-added lookup across every reachable Serato catalogue
+/// (Story 3.7, §3d — the cross-path task).
+pub mod date_added;
 /// Off-library embedded-tag fallback (Story 1.5, AC-1/AC-2/AC-3).
 pub mod embedded_tags;
 /// Legacy `database V2` library join (Story 1.4, AC-1/AC-3).
@@ -82,6 +85,35 @@ pub struct JoinedMetadata {
     /// Genre, raw and un-normalized (normalization is Story 1.6's
     /// [`crate::genre::normalize`]).
     pub genre: Option<String>,
+    /// When this play stopped — Unix epoch seconds, from the play-log's own
+    /// per-play `end_time` (Story 3.7 capture pass, §3d). Serato's `-1`
+    /// "unset" sentinel reads as `None` (AD-11) — the played-duration fallback
+    /// for that case (next play's start, else set end) is the capture stage's
+    /// job ([`crate::stats::resolve_played_ms`]), not this join's.
+    pub ended_at: Option<i64>,
+    /// Serato's own "Played" flag (Story 3.7): `Some(false)` is a
+    /// loaded-but-never-played preview (25% of real rows) that must not count
+    /// as a play. `None` where the source has no such flag (legacy `.session`,
+    /// schema variance) — treated as played downstream, never guessed false.
+    pub played: Option<bool>,
+    /// The track's full-song length in milliseconds (context: "played 4:12 of
+    /// 6:30"). EnrichedPlay-internal for now — promoted to the wire only when
+    /// a story renders it (`serato-capture-completeness.md`).
+    pub total_length_ms: Option<u64>,
+    /// The play-log's own volume-root-relative file path (Serato 4+
+    /// `portable_id`, e.g. `Users/arjun/Music/x.mp3` or `A Indian/x.mp3` on a
+    /// USB volume — the same no-leading-slash convention `database V2` stores).
+    /// Used only agent-side to key the `database V2` date-added lookup
+    /// ([`date_added::DateAddedIndex`]); never promoted to the wire (a path
+    /// leaks local FS layout — same exclusion as `EnrichedPlay.path`).
+    pub portable_path: Option<String>,
+    /// When the DJ's library first saw this track — Unix epoch seconds, from
+    /// `database V2`'s `tadd`/`uadd` date-added field (Story 3.7, §3d: joined
+    /// by portable path, NOT the serato4 `asset` join, which only links ~4.6%
+    /// of real plays). Powers "New tracks played". `None` when no reachable
+    /// catalogue holds the track (off-library, or its volume is unmounted) —
+    /// absent, never guessed; the UI discloses the gap.
+    pub library_added_at: Option<i64>,
 }
 
 /// Accepts a BPM only if it is a real measurement.
@@ -120,6 +152,11 @@ mod tests {
                 bpm: None,
                 key: None,
                 genre: None,
+                ended_at: None,
+                played: None,
+                total_length_ms: None,
+                portable_path: None,
+                library_added_at: None,
             }
         );
     }

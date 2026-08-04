@@ -628,6 +628,14 @@ pub struct CapturedPlay {
     /// boundary, not the two-field Rust struct.
     pub camelot_key: Option<String>,
     pub in_library: bool,
+    /// Real on-air duration in milliseconds (Story 3.7, wire-promoted —
+    /// mirrors `SyncPlay.played_ms`). `Option` fields deserialize as `None`
+    /// from pre-3.7 stored rows, so old `plays_json` still round-trips.
+    pub played_ms: Option<u64>,
+    /// Library date-added, Unix epoch seconds (Story 3.7, wire-promoted —
+    /// mirrors `SyncPlay.library_added_at`; the epoch→ISO conversion is a
+    /// payload-boundary concern, same as `started_at`).
+    pub library_added_at: Option<i64>,
 }
 
 /// Mirrors `EnrichedPlay.genre: Option<NormalizedGenre>` — raw + subgenre +
@@ -829,6 +837,8 @@ mod tests {
             }),
             camelot_key: Some("8A".into()),
             in_library: true,
+            played_ms: Some(240_000),
+            library_added_at: Some(1_644_628_114),
         }]
     }
 
@@ -902,6 +912,8 @@ mod tests {
             artist: None,
             started_at: Some(1_500),
             bpm: Some(128.0),
+            played_ms: None,
+            library_added_at: None,
             genre: None,
             camelot_key: None,
             in_library: false,

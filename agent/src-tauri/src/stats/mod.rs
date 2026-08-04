@@ -54,7 +54,7 @@ use std::collections::HashMap;
 /// discipline [`Play`] and [`JoinedMetadata`] themselves hold to. Produced only by
 /// [`enrich`]/[`enrich_session`]; never constructed by adding fields to `Play` or
 /// `JoinedMetadata` directly (both are frozen by their owning stories).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct EnrichedPlay {
     pub title: Option<String>,
     pub artist: Option<String>,
@@ -63,6 +63,30 @@ pub struct EnrichedPlay {
     pub bpm: Option<f64>,
     pub genre: Option<NormalizedGenre>,
     pub camelot: Option<CamelotKey>,
+    /* Story 3.7 (§3d capture pass): EnrichedPlay is agent-internal, so it
+     * captures comprehensively; only `played_ms` and `library_added_at` are
+     * promoted to the wire (`SyncPlay`) — the rest wait for a consumer
+     * (`serato-capture-completeness.md`). */
+    /// When the play stopped — Unix epoch seconds. Serato 4+: the row's own
+    /// `end_time` (98% populated; `-1` reads absent). Legacy: derived as
+    /// `start_time + duration_sec` when both are known.
+    pub ended_at: Option<i64>,
+    /// Real on-air duration in milliseconds: `ended_at − start_time`, with
+    /// [`resolve_played_ms`]'s next-play-start / set-end fallback for the
+    /// `end_time`-unset tail. Second-granular at the source (×1000 here so the
+    /// wire field never needs a unit migration).
+    pub played_ms: Option<u64>,
+    /// Serato's "Played" flag — `Some(false)` is a loaded-but-never-played
+    /// preview. The capture stage filters on it; carried here so the decision
+    /// stays visible. `None` = the source has no flag (legacy).
+    pub played: Option<bool>,
+    /// Deck the track played on (legacy field 31 / serato4 `deck`, 1–4).
+    pub deck: Option<u32>,
+    /// Full-song length in milliseconds (context: "played 4:12 of 6:30").
+    pub total_length_ms: Option<u64>,
+    /// Library date-added — Unix epoch seconds, from `database V2`
+    /// `tadd`/`uadd` by portable path. Powers "New tracks played".
+    pub library_added_at: Option<i64>,
 }
 
 /// A "cleared" tag is stored as `""` or whitespace-only, not a real value — mirrors
@@ -114,6 +138,26 @@ pub fn enrich(play: &Play, joined: &JoinedMetadata) -> EnrichedPlay {
         .or(joined.key.as_deref().and_then(non_blank));
     let camelot = key_raw.and_then(camelot::parse);
 
+    // Story 3.7 (§3d): when the play stopped. Serato 4+ carries it on the
+    // joined row (`end_time`); legacy derives it from the play-log's own
+    // precomputed duration (field 45). Neither source guesses — an unset
+    // `end_time` (-1) or a missing duration stays absent for
+    // [`resolve_played_ms`]'s fallback to handle.
+    let ended_at = joined.ended_at.or_else(|| {
+        let start = play.start_time?;
+        let duration = play.duration_sec?;
+        Some(i64::from(start) + i64::from(duration))
+    });
+    // The direct-measurement duration. `saturating_sub`-shaped guard: an
+    // end_time before start_time (clock skew) is not a negative duration, it
+    // is absent (AD-11) — the fallback pass gets another try at it.
+    let played_ms = match (play.start_time, ended_at) {
+        (Some(start), Some(end)) if end >= i64::from(start) => {
+            Some(((end - i64::from(start)) as u64) * 1000)
+        }
+        _ => None,
+    };
+
     EnrichedPlay {
         title: play.title.clone(),
         artist: play.artist.clone(),
@@ -122,6 +166,12 @@ pub fn enrich(play: &Play, joined: &JoinedMetadata) -> EnrichedPlay {
         bpm: joined.bpm,
         genre,
         camelot,
+        ended_at,
+        played_ms,
+        played: joined.played,
+        deck: play.deck,
+        total_length_ms: joined.total_length_ms,
+        library_added_at: joined.library_added_at,
     }
 }
 
@@ -142,6 +192,37 @@ pub fn enrich_session(pairs: &[(Play, JoinedMetadata)]) -> Vec<EnrichedPlay> {
         .iter()
         .map(|(play, joined)| enrich(play, joined))
         .collect()
+}
+
+/// Fills the played-duration gaps a direct `end_time` measurement left behind
+/// (Story 3.7 §3d): a play whose `played_ms` is still absent gets
+/// `next play's start − its own start`, and the final play falls back to
+/// `set_end − its start` (the session's own resolved end time, when the caller
+/// has one). Anything still unresolvable — no start time, no later timestamp,
+/// a negative delta — stays `None`, never a guess (AD-11).
+///
+/// Runs over the **already played-filtered** sequence: a loaded-but-unplayed
+/// preview between two real plays is not on-air time, so the "next play" that
+/// bounds a duration must be the next *played* one. Expects chronological
+/// order (the standing `enrich_session` guarantee) and does not re-sort.
+pub fn resolve_played_ms(plays: &mut [EnrichedPlay], set_end: Option<i64>) {
+    for i in 0..plays.len() {
+        if plays[i].played_ms.is_some() {
+            continue;
+        }
+        let Some(start) = plays[i].start_time else {
+            continue;
+        };
+        let bound = plays[i + 1..]
+            .iter()
+            .find_map(|next| next.start_time.map(i64::from))
+            .or(set_end);
+        if let Some(end) = bound {
+            if end >= i64::from(start) {
+                plays[i].played_ms = Some(((end - i64::from(start)) as u64) * 1000);
+            }
+        }
+    }
 }
 
 /// A track's identity for ranking purposes (Task 2): `path` when available, else a
@@ -437,6 +518,7 @@ mod tests {
             bpm,
             key: key.map(String::from),
             genre: genre.map(String::from),
+            ..JoinedMetadata::default()
         }
     }
 
@@ -457,6 +539,7 @@ mod tests {
             bpm,
             genre: normalize(genre),
             camelot,
+            ..EnrichedPlay::default()
         }
     }
 
@@ -580,6 +663,130 @@ mod tests {
             enriched_plays.iter().map(|p| &p.title).collect::<Vec<_>>(),
             vec![&Some("Track A".to_string()), &Some("Track B".to_string())]
         );
+    }
+
+    /// (Story 3.7 §3d) Serato 4+: `ended_at` comes from the joined row and the
+    /// direct-measurement `played_ms` is `(ended_at − start) × 1000`; the
+    /// capture-comprehensive fields (played flag, deck, total length,
+    /// date-added) map straight through.
+    #[test]
+    fn enrich_maps_the_capture_pass_fields_from_the_join() {
+        let p = Play {
+            start_time: Some(1_000),
+            deck: Some(2),
+            ..Play::default()
+        };
+        let j = JoinedMetadata {
+            in_library: true,
+            ended_at: Some(1_381),
+            played: Some(true),
+            total_length_ms: Some(372_000),
+            library_added_at: Some(1_644_628_114),
+            ..JoinedMetadata::default()
+        };
+
+        let enriched_play = enrich(&p, &j);
+        assert_eq!(enriched_play.ended_at, Some(1_381));
+        assert_eq!(enriched_play.played_ms, Some(381_000));
+        assert_eq!(enriched_play.played, Some(true));
+        assert_eq!(enriched_play.deck, Some(2));
+        assert_eq!(enriched_play.total_length_ms, Some(372_000));
+        assert_eq!(enriched_play.library_added_at, Some(1_644_628_114));
+    }
+
+    /// (Story 3.7 §3d) Legacy: `ended_at`/`played_ms` derive from the play-log's
+    /// own precomputed `duration_sec` (field 45) when the join has no end time.
+    #[test]
+    fn enrich_derives_ended_at_from_legacy_duration() {
+        let p = Play {
+            start_time: Some(2_000),
+            duration_sec: Some(300),
+            ..Play::default()
+        };
+        let j = JoinedMetadata::default();
+
+        let enriched_play = enrich(&p, &j);
+        assert_eq!(enriched_play.ended_at, Some(2_300));
+        assert_eq!(enriched_play.played_ms, Some(300_000));
+    }
+
+    /// (Story 3.7 §3d) An `ended_at` before `start_time` (clock skew) is not a
+    /// negative duration — `played_ms` stays absent for the fallback pass.
+    #[test]
+    fn enrich_rejects_a_negative_duration_as_absent() {
+        let p = Play {
+            start_time: Some(2_000),
+            ..Play::default()
+        };
+        let j = JoinedMetadata {
+            ended_at: Some(1_500),
+            ..JoinedMetadata::default()
+        };
+
+        let enriched_play = enrich(&p, &j);
+        assert_eq!(enriched_play.ended_at, Some(1_500));
+        assert_eq!(enriched_play.played_ms, None);
+    }
+
+    /// (Story 3.7 §3d) `resolve_played_ms`: an unset-`end_time` play falls back
+    /// to the next play's start; the final play falls back to the set end; a
+    /// play that already carries a measured duration is left untouched.
+    #[test]
+    fn resolve_played_ms_falls_back_to_next_start_then_set_end() {
+        let mut plays = vec![
+            EnrichedPlay {
+                start_time: Some(1_000),
+                ..EnrichedPlay::default()
+            },
+            EnrichedPlay {
+                start_time: Some(1_240),
+                played_ms: Some(200_000),
+                ..EnrichedPlay::default()
+            },
+            EnrichedPlay {
+                start_time: Some(1_500),
+                ..EnrichedPlay::default()
+            },
+        ];
+
+        resolve_played_ms(&mut plays, Some(1_800));
+
+        assert_eq!(
+            plays[0].played_ms,
+            Some(240_000),
+            "next play's start bounds it"
+        );
+        assert_eq!(
+            plays[1].played_ms,
+            Some(200_000),
+            "a measured duration is never overwritten"
+        );
+        assert_eq!(
+            plays[2].played_ms,
+            Some(300_000),
+            "the final play falls back to set end"
+        );
+    }
+
+    /// (Story 3.7 §3d) With no later timestamp and no set end, the duration
+    /// stays absent — never a guess; and a timestamp-less play is skipped.
+    #[test]
+    fn resolve_played_ms_leaves_the_unresolvable_absent() {
+        let mut plays = vec![
+            EnrichedPlay {
+                start_time: None,
+                ..EnrichedPlay::default()
+            },
+            EnrichedPlay {
+                start_time: Some(1_000),
+                ..EnrichedPlay::default()
+            },
+        ];
+
+        resolve_played_ms(&mut plays, None);
+
+        assert_eq!(plays[0].played_ms, None);
+        assert_eq!(plays[1].played_ms, None);
     }
 
     /// (Task 1) A play with a path and a play without one both produce a usable

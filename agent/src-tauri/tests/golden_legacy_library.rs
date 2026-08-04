@@ -53,6 +53,10 @@ fn golden_normal_catalogue_resolves_bpm_key_and_genre() {
             bpm: Some(126.0),
             key: Some("Bb".to_string()),
             genre: None,
+            // Story 3.7: this upstream fixture's first track genuinely carries
+            // a date-added field (2020-02-06) — now captured, not dropped.
+            library_added_at: Some(1_580_992_490),
+            ..JoinedMetadata::default()
         }
     );
 
@@ -69,6 +73,8 @@ fn golden_normal_catalogue_resolves_bpm_key_and_genre() {
             bpm: Some(126.0),
             key: Some("C#m".to_string()),
             genre: Some("Funky Tech".to_string()),
+            library_added_at: Some(1_580_992_490),
+            ..JoinedMetadata::default()
         }
     );
 
@@ -83,6 +89,8 @@ fn golden_normal_catalogue_resolves_bpm_key_and_genre() {
             bpm: Some(123.0),
             key: Some("Am".to_string()),
             genre: None,
+            library_added_at: Some(1_580_992_490),
+            ..JoinedMetadata::default()
         }
     );
 
@@ -97,6 +105,8 @@ fn golden_normal_catalogue_resolves_bpm_key_and_genre() {
             bpm: Some(124.0),
             key: Some("Fm".to_string()),
             genre: None,
+            library_added_at: Some(1_580_992_490),
+            ..JoinedMetadata::default()
         }
     );
 }
@@ -120,6 +130,7 @@ fn golden_no_file_path_track_is_not_indexed() {
             bpm: Some(128.0),
             key: Some("1A".to_string()),
             genre: Some("House".to_string()),
+            ..JoinedMetadata::default()
         }
     );
 }
@@ -149,6 +160,7 @@ fn golden_duplicate_path_resolves_to_the_last_record() {
             bpm: Some(128.0),
             key: Some("8B".to_string()),
             genre: Some("Fresh".to_string()),
+            ..JoinedMetadata::default()
         },
         "the later record's fields win"
     );
