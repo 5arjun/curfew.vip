@@ -291,12 +291,30 @@
   cursor: pointer;
 }
 
-.sd-arc-median-hit {
+/* Review round 2 — the ball riding the curve under the cursor. Positioned
+   imperatively (translate3d) from the hit plane's mousemove; the negative
+   margins center it on the transform point. */
+.sd-arc-cursor-dot {
   position: absolute;
   left: 0;
-  right: 0;
-  height: 14px;
-  transform: translateY(-50%);
+  top: 0;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  border-radius: var(--radius-full);
+  background: var(--metal-abyss-tint);
+  box-shadow: 0 0 10px var(--color-abyss-accent-glow);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sd-arc-cursor-dot[data-on] {
+  opacity: 1;
+}
+
+.sd-arc[data-morphing] .sd-arc-cursor-dot {
+  opacity: 0;
 }
 
 /* §3b — key timeline strip: the key chips laid out in time. */
@@ -366,7 +384,7 @@
   overflow: hidden;
   text-wrap: nowrap;
   font-family: var(--font-geist-mono);
-  color: var(--color-abyss-text-22);
+  color: var(--color-abyss-text-45); /* review round 2: 22% was barely legible over the curve */
   text-transform: uppercase;
   letter-spacing: 0.14em;
   font-size: 9.5px;
@@ -379,17 +397,17 @@
   top: 1px;
   bottom: 1px;
   width: 5px;
-  border-top: 1px solid var(--color-abyss-text-22);
+  border-top: 1px solid var(--color-abyss-text-45);
 }
 
 .sd-arc-tick-df::before {
   left: 0;
-  border-left: 1px solid var(--color-abyss-text-22);
+  border-left: 1px solid var(--color-abyss-text-45);
 }
 
 .sd-arc-tick-df::after {
   right: 0;
-  border-right: 1px solid var(--color-abyss-text-22);
+  border-right: 1px solid var(--color-abyss-text-45);
 }
 
 .sd-arc-caption {

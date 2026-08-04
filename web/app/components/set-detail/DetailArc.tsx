@@ -12,7 +12,7 @@ import {
 } from "react";
 import { arcTextEquivalent, type ArcPoint } from "@/lib/sets/energyArc";
 import { formatClock } from "@/lib/sets/format";
-import { heroArcGeometry } from "@/lib/sets/heroArc";
+import { heroArcGeometry, type HeroArcGeometry } from "@/lib/sets/heroArc";
 import {
   bpmSummary,
   camelotCompatible,
@@ -63,9 +63,37 @@ interface StripSeam {
 }
 
 type ArcHover =
-  | { kind: "play"; play: SyncPlay }
+  // Review round 2: the PLOT reads as a chart — hover shows the curve's time +
+  // BPM under the cursor. Track identity lives on the key strip's hover.
+  | { kind: "point"; clock: string; bpm: number }
   | { kind: "strip"; play: SyncPlay; keyLabel: string | null }
   | { kind: "median" };
+
+/** The drawn curve's {t, y, bpm} at viewBox x — clamped to the curve's ends,
+ * linearly interpolated between smoothed points (dense enough that the lerp
+ * tracks the monotone segments closely). */
+function curveAtX(
+  curve: HeroArcGeometry["curve"],
+  vbX: number,
+): { t: number; y: number; bpm: number } {
+  const first = curve[0];
+  const last = curve[curve.length - 1];
+  if (vbX <= first.x) return first;
+  if (vbX >= last.x) return last;
+  for (let i = 1; i < curve.length; i++) {
+    if (curve[i].x >= vbX) {
+      const a = curve[i - 1];
+      const b = curve[i];
+      const f = (vbX - a.x) / (b.x - a.x || 1);
+      return {
+        t: a.t + (b.t - a.t) * f,
+        y: a.y + (b.y - a.y) * f,
+        bpm: a.bpm + (b.bpm - a.bpm) * f,
+      };
+    }
+  }
+  return last;
+}
 
 /* ── Error boundary (D-16) — render failure swaps in the caption block ── */
 
@@ -289,6 +317,13 @@ export function DetailArc({
 
   const chipTargetRef = useCursorChipTarget();
   const hitRef = useRef<HTMLDivElement>(null);
+  // The little ball riding the curve under the cursor (review round 2) —
+  // positioned imperatively per mousemove, no per-frame React state.
+  const ballRef = useRef<HTMLSpanElement>(null);
+
+  const hideBall = useCallback(() => {
+    ballRef.current?.removeAttribute("data-on");
+  }, []);
 
   const nearestPlay = useCallback(
     (clientX: number): TimedPlay | null => {
@@ -324,20 +359,57 @@ export function DetailArc({
       // A tap has no mouseleave — without this the chip strands on mobile
       // (D-17's immediate jump scrolls the page out from under it).
       setHover(null);
+      hideBall();
     },
-    [setFocus],
+    [setFocus, hideBall],
   );
 
   const onPlotMove = useCallback(
     (e: React.MouseEvent) => {
       chipTargetRef.current = { x: e.clientX, y: e.clientY };
-      const tp = nearestPlay(e.clientX);
-      if (!tp) return;
+      const el = hitRef.current;
+      if (!el || geo.curve.length === 0) return;
+      const rect = el.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+
+      // Median proximity wins (its identifying hover, D-6) — the dashed line
+      // needs no ball, it IS a y-reading.
+      if (medianY != null) {
+        const medianPy = (medianY / VIEW.height) * rect.height;
+        if (Math.abs(e.clientY - rect.top - medianPy) < 9) {
+          hideBall();
+          setHover((prev) => (prev?.kind === "median" ? prev : { kind: "median" }));
+          return;
+        }
+      }
+
+      const vbX =
+        domain.current.x + ((e.clientX - rect.left) / rect.width) * domain.current.width;
+      const pt = curveAtX(geo.curve, vbX);
+
+      // Ball on the line at the cursor's x — imperative transform, chip-style.
+      const ball = ballRef.current;
+      if (ball) {
+        const px = ((Math.max(geo.curve[0].x, Math.min(vbX, geo.curve[geo.curve.length - 1].x)) -
+          domain.current.x) /
+          domain.current.width) *
+          rect.width;
+        const py = (pt.y / VIEW.height) * rect.height;
+        ball.style.transform = `translate3d(${px.toFixed(1)}px, ${py.toFixed(1)}px, 0)`;
+        ball.setAttribute("data-on", "true");
+      }
+
+      // Chip = the curve's reading at that instant. State only changes when
+      // the DISPLAYED minute/BPM changes, so mousemove stays cheap.
+      const clock = formatClock(new Date(pt.t).toISOString());
+      const bpm = Math.round(pt.bpm);
       setHover((prev) =>
-        prev?.kind === "play" && prev.play === tp.play ? prev : { kind: "play", play: tp.play },
+        prev?.kind === "point" && prev.clock === clock && prev.bpm === bpm
+          ? prev
+          : { kind: "point", clock, bpm },
       );
     },
-    [chipTargetRef, nearestPlay],
+    [chipTargetRef, geo, medianY, hideBall],
   );
 
   const onPlotClick = useCallback(
@@ -348,16 +420,10 @@ export function DetailArc({
     [nearestPlay, jumpTo],
   );
 
-  const onMedianMove = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      chipTargetRef.current = { x: e.clientX, y: e.clientY };
-      setHover((prev) => (prev?.kind === "median" ? prev : { kind: "median" }));
-    },
-    [chipTargetRef],
-  );
-
-  const clearHover = useCallback(() => setHover(null), []);
+  const clearHover = useCallback(() => {
+    setHover(null);
+    hideBall();
+  }, [hideBall]);
 
   /* ── Render ───────────────────────────────────────────────────────── */
 
@@ -443,23 +509,19 @@ export function DetailArc({
             )}
           </div>
 
-          {/* Generous hit plane (D-9): the whole plot is the target. */}
+          {/* The cursor ball riding the curve — sibling of the hit plane so
+              the plane's events never re-target while it moves. */}
+          <span ref={ballRef} className="sd-arc-cursor-dot" aria-hidden="true" />
+
+          {/* Generous hit plane (D-9): the whole plot is the target. Median
+              proximity is resolved inside onPlotMove — no nested hit band. */}
           <div
             ref={hitRef}
             className="sd-arc-hit"
             onMouseMove={onPlotMove}
             onMouseLeave={clearHover}
             onClick={onPlotClick}
-          >
-            {medianY != null && (
-              <div
-                className="sd-arc-median-hit"
-                style={{ top: `${(medianY / VIEW.height) * 100}%` }}
-                onMouseMove={onMedianMove}
-                onMouseLeave={clearHover}
-              />
-            )}
-          </div>
+          />
         </div>
 
         {strip && (
@@ -535,8 +597,8 @@ export function DetailArc({
             ? null
             : hover.kind === "median"
               ? "median"
-              : hover.kind === "play"
-                ? `p-${hover.play.position}`
+              : hover.kind === "point"
+                ? "point" // stable key: the readout updates live, no crossfade churn
                 : `s-${hover.play.position}`
         }
         offsetY={-44}
@@ -546,8 +608,8 @@ export function DetailArc({
           <p className="cursor-chip-mono">
             {hover.kind === "median"
               ? `Median · ${Math.round(median ?? 0)} BPM`
-              : hover.kind === "play"
-                ? (hover.play.title ?? "Unknown track")
+              : hover.kind === "point"
+                ? `${hover.clock} · ${hover.bpm} BPM`
                 : hover.keyLabel
                   ? `${hover.keyLabel} · ${hover.play.title ?? "Unknown track"}`
                   : (hover.play.title ?? "Unknown track")}

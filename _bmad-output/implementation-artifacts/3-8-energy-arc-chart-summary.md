@@ -201,6 +201,10 @@ Rulings applied same-session: **(1)** key-strip opacity dropped 0.78 → 0.65 (n
 
 New files this round: `web/app/components/ui/AnimateNumber.tsx`, `web/app/components/set-detail/TempoSpark.tsx`.
 
+### Review round 2 (Arjun live review, 2026-08-04)
+
+**Hover model re-ruled — the plot reads as a CHART, the strip reads as TRACKS:** plot hover now shows the curve's reading under the cursor (`8:16 PM · 130 BPM` — time + smoothed BPM, interpolated from the drawn curve, superseding D-9's track-name chip there), while the key strip keeps `9A · <title>`. A small cursor ball rides the curve at the mouse's x (imperative translate3d per mousemove, no per-frame React state; hides on leave/jump/morph and while the median chip is up). The median hover now resolves by y-proximity inside the one plot handler (the nested hit band is gone). Chip state only updates when the displayed minute/BPM changes, and the `point` contentKey is stable so the readout updates live without crossfade churn. `heroArcGeometry.curve` gained `bpm` to feed the readout. Also: the `DANCEFLOOR` marker was barely legible at the 22% text step over the curve (Arjun screenshot) — raised to the 45% step, brackets included. Click-to-jump (nearest play → DR-2) unchanged. Verified live: point/median/strip chips, ball on-curve at two positions, ball hides on median + leave, marker at 52% computed alpha; gates green.
+
 ### Completion Notes
 
 - **All 9 tasks landed; status → review.** The D-19 design/motion polish pass (strip height / inline key codes / fade timing / star treatment knobs) is deliberately still owed — build-functional-first per [[feedback_polish_at_end]].

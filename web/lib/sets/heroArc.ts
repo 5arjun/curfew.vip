@@ -34,8 +34,9 @@ export interface HeroArcGeometry {
   count: number;
   /** Center point when exactly one play is plotted (dot fallback). */
   solo: { x: number; y: number } | null;
-  /** The smoothed points actually drawn, with their epoch-ms times (3.8 overlay anchor data). */
-  curve: Array<{ t: number; x: number; y: number }>;
+  /** The smoothed points actually drawn, with their epoch-ms times and
+   * smoothed BPM (3.8 overlay anchors + the cursor time/BPM readout). */
+  curve: Array<{ t: number; x: number; y: number; bpm: number }>;
   /** Epoch-ms → viewBox x, over the plotted domain (extrapolates linearly outside it). */
   mapX: (t: number) => number;
   /** BPM → viewBox y (inverted: higher BPM sits higher). */
@@ -133,7 +134,7 @@ export function heroArcGeometry(
   const x = (t: number) => padding + ((t - tMin) / tSpan) * innerW;
   const y = (b: number) => padding + (1 - (b - bMin) / bSpan) * innerH;
 
-  const curve = smooth.map((p) => ({ t: p.t, x: x(p.t), y: y(p.bpm) }));
+  const curve = smooth.map((p) => ({ t: p.t, x: x(p.t), y: y(p.bpm), bpm: p.bpm }));
   const path = monotonePath(curve);
   const last = curve[curve.length - 1];
   const first = curve[0];
