@@ -28,3 +28,6 @@ supabase/.temp/
 *.log
 .vercel
 .env*
+
+# --- Playwright MCP verification artifacts ---
+.playwright-mcp/

@@ -1,5 +1,7 @@
 @import "tailwindcss";
 @import "./tokens.css";
+@import "./dashboard.css";
+@import "./set-detail.css";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
@@ -47,6 +49,27 @@
   --color-border: var(--color-outline-variant);
   --color-input: var(--color-outline-variant);
   --color-ring: var(--color-primary);
+
+  /* Story 3.6 additions — aliased additively as this story's dashboard needs
+     them (globals.css comment: "extend additively as later stories need more").
+     primary-glow is --color-primary at ~20% alpha, the NEW-marker border;
+     surface-container-low is the card's hover lift; spark the rare amber pole. */
+  --color-primary-glow: var(--color-primary-glow);
+  --color-surface-container-low: var(--color-surface-container-low);
+  --color-surface-container-lowest: var(--color-surface-container-lowest);
+  --color-spark: var(--color-spark);
+  --color-on-surface-variant: var(--color-on-surface-variant);
+
+  /* Story 3.6 dashboard redesign (cool direction) — aliased so the arc's
+     stroke and fill utilities, and the shell's text, bg, and border utilities,
+     resolve to the cool tokens. See tokens.css for the values + AA notes. */
+  --color-ice: var(--color-ice);
+  --color-ice-bright: var(--color-ice-bright);
+  --color-ice-dim: var(--color-ice-dim);
+  --color-ice-glow: var(--color-ice-glow);
+  --color-ice-band: var(--color-ice-band);
+  --color-steel: var(--color-steel);
+  --color-steel-dim: var(--color-steel-dim);
 }
 
 html {
@@ -57,7 +80,13 @@ html {
 html,
 body {
   max-width: 100vw;
-  overflow-x: hidden;
+  /* clip, NOT hidden (Story 3.7): `overflow-x: hidden` makes body a scroll
+     container, which silently becomes the scrollport every `position: sticky`
+     descendant pins against — while the WINDOW does the actual scrolling, so
+     sticky never engages (Set Detail's sticky stats rail + focus pill). A
+     clip box clips identically but is never a scroll container — the same
+     reasoning as .dz's own `overflow: clip` (dashboard.css). */
+  overflow-x: clip;
 }
 
 body {
@@ -197,7 +226,182 @@ a {
   }
 }
 
+/* ─── Nav rail (Arjun, 2026-08-03) ─────────────────────────────────────────
+   At desktop widths the dock stands up as a vertical rail on the LEFT edge
+   (the centered bottom dock overlapped dashboard content), wearing the
+   dashboard's liquid-metal material — MetalButton's layer sandwich (shader
+   ring → dark plate inset 2px) flattened to a surface, with the CURFEW
+   wordmark as a chrome book-spine at the top. Below the breakpoint the
+   original bottom dock and its conic border-shine are untouched. 900.02px
+   mirrors dashboard.css's 900px viewport-lock release so the rail and the
+   page's rail-clearance padding always flip together. Geometry rides the
+   --nav-rail-* tokens (tokens.css). */
+
+/* Divider between destinations and Settings — was Tailwind utilities on the
+   span; now one class so dock (vertical hairline) and rail (horizontal) can
+   restyle the same element. */
+.nav-divider {
+  flex-shrink: 0;
+  width: 1px;
+  height: 24px;
+  margin-inline: 4px;
+  background: var(--color-outline-variant);
+}
+
+/* Rail-only chrome: hidden in dock mode. */
+.nav-rail-rim,
+.nav-rail-plate,
+.nav-brand {
+  display: none;
+}
+
+/* In dock mode the destinations wrapper vanishes from layout entirely so the
+   dock stays the same flat flex row it always was; the rail re-styles it into
+   the centered column group. */
+.nav-rail-items {
+  display: contents;
+}
+
+/* Dock positioning — CSS-owned, not Tailwind utilities, and scoped to the
+   exact complement of the rail range. Why: with the utilities in place the
+   rail block must cancel `translate: -50%`, and Lightning CSS folds a
+   `translate: none` declaration into the transform shorthand and silently
+   DELETES it (served as `transform: translate3d(0,0,0)`), so the cancel can
+   never win and the rail rides 34px off-screen. Same silently-rewritten-
+   modern-CSS family as the @property/setProperty bug (FloatingNav.tsx).
+   `(width < 900.02px)` is the true complement of the rail's
+   `(min-width: 900.02px)` — no gap, no overlap width. */
+@media (width < 900.02px) {
+  .floating-nav-dock {
+    bottom: 24px; /* the old Tailwind bottom-6 */
+    left: 50%;
+    translate: -50% 0;
+  }
+}
+
+@media (min-width: 900.02px) {
+  .floating-nav-dock {
+    top: var(--nav-rail-inset);
+    bottom: var(--nav-rail-inset);
+    left: var(--nav-rail-inset);
+    width: var(--nav-rail-width);
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    padding: 18px 0 14px;
+    /* The rim + plate carry the surface — the dock's 1px conic border and
+       void fill would double-frame the shader ring. */
+    border: 0;
+    border-radius: var(--nav-rail-radius);
+    background: none;
+    animation: none;
+    box-shadow: 0 24px 60px -24px var(--color-shadow-soft);
+  }
+
+  .nav-rail-rim {
+    display: block;
+    position: absolute;
+    inset: 0;
+    border-radius: var(--nav-rail-radius);
+    overflow: hidden;
+  }
+
+  /* Same canvas pinning as .mtl-shader canvas (the shader lib sizes its own
+     canvas; these keep it glued to the rim's box). */
+  .nav-rail-rim canvas {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    display: block !important;
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  .nav-rail-plate {
+    display: block;
+    position: absolute;
+    inset: 2px;
+    border-radius: calc(var(--nav-rail-radius) - 2px);
+    background: linear-gradient(
+      180deg,
+      var(--color-abyss-raised) 0%,
+      var(--color-abyss-base) 100%
+    );
+    box-shadow: inset 0 1px 0 0 var(--color-nav-rim);
+  }
+
+  .nav-brand {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 128px;
+    flex-shrink: 0;
+    border-radius: calc(var(--radius-2xl) - 2px);
+    outline: none;
+  }
+
+  .nav-brand:focus-visible {
+    box-shadow:
+      0 0 0 2px var(--color-primary),
+      0 0 0 6px var(--color-primary-glow);
+  }
+
+  /* The wordmark PNG (opaque glyphs on a clear ground, trimmed 1302×308) is a
+     MASK; the fill is the cold-chrome ramp, so the metal is the branding.
+     rotate(90deg) = book-spine convention, reads top→bottom. */
+  .nav-brand-mark {
+    width: 112px;
+    aspect-ratio: 1302 / 308;
+    background: linear-gradient(
+      180deg,
+      var(--metal-abyss-tint) 0%,
+      var(--metal-abyss-back) 60%,
+      var(--metal-abyss-label) 100%
+    );
+    -webkit-mask: url("/brand/curfew-wordmark.png") center / contain no-repeat;
+    mask: url("/brand/curfew-wordmark.png") center / contain no-repeat;
+    transform: rotate(90deg);
+  }
+
+  .nav-rail-items {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    /* Centers the destination group in the run between brand and Settings. */
+    margin-block: auto;
+  }
+
+  .nav-divider {
+    width: 26px;
+    height: 1px;
+    margin: 10px 0;
+  }
+
+  /* Rail labels: the dock's inline active-label reveal would break the
+     column, so labels ride the shared cursor-follow chip instead
+     (ui/CursorChip.tsx, mounted by FloatingNav at rail widths; styles
+     .cursor-chip* in dashboard.css — REFINEMENTS item 4). */
+  .nav-label-reveal {
+    display: none;
+  }
+}
+
 /* Obsidian type scale (UX-DR1 / Story 2.2 AC-2) */
+
+/* Hero display (Story 3.6 redesign) — the one oversized, cinematic headline.
+   Fluid clamp so it scales phone→desktop without a breakpoint switch; tight
+   leading + negative tracking as the type grows (Apple optical-sizing guidance). */
+.text-display-xl {
+  font-family: var(--font-hanken-grotesk);
+  font-size: clamp(2.5rem, 5.5vw, 4.5rem);
+  font-weight: 600;
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
 
 .text-display-lg {
   font-family: var(--font-hanken-grotesk);
@@ -495,3 +699,165 @@ a {
     outline-offset: 2px;
   }
 }
+
+/* ─── Dashboard (Story 3.6) ───────────────────────────────────────────────
+   Card-Reflection set cards + the passive NEW marker. Token-only (see
+   no-hardcoded-colors.test.ts); all motion respects prefers-reduced-motion. */
+
+/* Fixed app shell (AC-4): the page is locked to the viewport — 100dvh, not
+   100vh, so mobile browser chrome never clips the frame — and does NOT scroll.
+   Only .dashboard-scroll scrolls; the header and the floating nav stay put. */
+.dashboard-shell {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dashboard-scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+
+.dashboard-inner {
+  width: 100%;
+  max-width: var(--container-max);
+  margin: 0 auto;
+  /* Bottom padding clears the floating nav (bottom-6 dock, ~44px tall) plus the
+     device safe-area, so the last card is never trapped behind either. */
+  padding: 0 var(--space-gutter) calc(var(--space-xxl) + var(--space-lg) + env(safe-area-inset-bottom));
+}
+
+/* Centered console-voice section — retained for the Set Detail stub (its
+   eyebrow/title/body registers); the dashboard's own cold state now lives in
+   the redesign (dashboard.css, D13). */
+.dashboard-cold {
+  position: relative;
+  min-height: 72dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-md);
+  text-align: center;
+  max-width: 56ch;
+  margin: 0 auto;
+  padding: var(--space-xl) 0;
+}
+
+.dashboard-cold-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--color-steel);
+}
+
+.dashboard-cold-title {
+  text-wrap: balance;
+}
+
+.dashboard-cold-body {
+  color: var(--color-steel);
+  text-wrap: pretty;
+}
+
+/* ─── Liquid-metal hero CTA (Story 3.6, AC-14) ────────────────────────────
+   Styles moved here from the reference component's runtime document.head
+   <style> injection. Token-only. The WebGL shader fills behind the label; an
+   Ember gradient is the fallback until it mounts (or where WebGL is off). */
+.liquid-metal-button {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: var(--space-sm) var(--space-lg);
+  border: 1px solid var(--btn-gradient-border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  touch-action: manipulation;
+  font-family: var(--font-geist-mono);
+  color: var(--metal-label);
+  background: radial-gradient(
+    circle at 30% 20%,
+    var(--btn-gradient-1),
+    var(--btn-gradient-2) 55%,
+    var(--btn-gradient-3)
+  );
+  transition: transform var(--motion-duration-instant) var(--motion-ease-standard);
+}
+
+.liquid-metal-button:active {
+  transform: scale(0.985);
+}
+
+.liquid-metal-button:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-primary),
+    0 0 0 6px var(--color-primary-glow);
+}
+
+.liquid-metal-fill {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+}
+
+.liquid-metal-fill > * {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.liquid-metal-ripple-host {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.liquid-metal-label {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.liquid-metal-ripple {
+  position: absolute;
+  border-radius: var(--radius-full);
+  background: var(--color-nav-rim);
+  transform: scale(0);
+  animation: liquid-metal-ripple var(--motion-duration-slow) var(--motion-ease-out);
+  pointer-events: none;
+}
+
+@keyframes liquid-metal-ripple {
+  to {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liquid-metal-button {
+    transition: none;
+  }
+  .liquid-metal-button:active {
+    transform: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .liquid-metal-button:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
+}
+

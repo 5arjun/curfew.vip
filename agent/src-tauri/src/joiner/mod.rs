@@ -25,10 +25,14 @@
 //!   never assumes a filename is valid Unicode (Story 1.2 findings §5/D2).
 //! - **Read-only.** No source file is opened for writing; Serato may hold the same
 //!   files open during a gig.
-//! - **Raw values only.** Genre is returned exactly as the source stores it —
-//!   normalization (FR-8/AD-12, raw + normalized + `taxonomy_version`) is Story 1.6's
-//!   job, and key is already Camelot notation at the source (findings §3) or taken
-//!   raw from the embedded tag.
+//! - **Raw values only, except key.** Genre is returned exactly as the source stores
+//!   it — normalization (FR-8/AD-12, raw + normalized + `taxonomy_version`) is Story
+//!   1.6's job. Key is the one field this filter *derives* rather than passes through:
+//!   for Serato 4+ it is mapped from the canonical `key_value` INTEGER to Camelot
+//!   notation ([`serato4::join_session`], Story 3.6) — the earlier premise that the
+//!   source `"key"` text column is "already Camelot notation (findings §3)" was wrong
+//!   (it stores mixed, mostly-*musical* notation, silently dropping ~88% of keys), and
+//!   is retired. The legacy catalogue and embedded-tag paths still take key raw.
 //!
 //! What this filter deliberately does *not* do: reconcile its result against the play
 //! log's own inline `genre`/`key` ([`crate::parser::Play`] carries those from a
@@ -37,6 +41,9 @@
 //! out of scope), or display "Unknown" (a `None` here is the input to that chain, not
 //! the end of it).
 
+/// `database V2` date-added lookup across every reachable Serato catalogue
+/// (Story 3.7, §3d — the cross-path task).
+pub mod date_added;
 /// Off-library embedded-tag fallback (Story 1.5, AC-1/AC-2/AC-3).
 pub mod embedded_tags;
 /// Legacy `database V2` library join (Story 1.4, AC-1/AC-3).
@@ -63,16 +70,50 @@ pub struct JoinedMetadata {
     pub in_library: bool,
     /// Beats per minute, as analysed by Serato.
     pub bpm: Option<f64>,
-    /// Musical key, raw and exactly as stored at the source. When sourced from the
-    /// library join, this is Camelot notation, e.g. `"1A"` (findings §3). When
-    /// sourced from an embedded file tag ([`embedded_tags`]'s fallback), it is
-    /// whatever the tagging tool wrote — `TKEY`/Vorbis `KEY` carry no notation
-    /// guarantee, and nothing on this struct distinguishes which source a value
-    /// came from.
+    /// Musical key in Camelot notation, e.g. `"1A"`, or `None` for no key.
+    ///
+    /// For Serato 4+ this is **derived** from the canonical `key_value` INTEGER, not
+    /// read from the free-text `"key"` column (Story 3.6 — that column stores mixed,
+    /// mostly-*musical* notation and the old "already Camelot at the source (findings
+    /// §3)" premise was wrong). The legacy catalogue join returns whatever notation the
+    /// `database V2` stored; when sourced from an embedded file tag
+    /// ([`embedded_tags`]'s fallback) it is whatever the tagging tool wrote —
+    /// `TKEY`/Vorbis `KEY` carry no notation guarantee. Nothing on this struct
+    /// distinguishes which source a value came from; a non-Camelot string simply fails
+    /// [`crate::stats::camelot::parse`] downstream and becomes no key.
     pub key: Option<String>,
     /// Genre, raw and un-normalized (normalization is Story 1.6's
     /// [`crate::genre::normalize`]).
     pub genre: Option<String>,
+    /// When this play stopped — Unix epoch seconds, from the play-log's own
+    /// per-play `end_time` (Story 3.7 capture pass, §3d). Serato's `-1`
+    /// "unset" sentinel reads as `None` (AD-11) — the played-duration fallback
+    /// for that case (next play's start, else set end) is the capture stage's
+    /// job ([`crate::stats::resolve_played_ms`]), not this join's.
+    pub ended_at: Option<i64>,
+    /// Serato's own "Played" flag (Story 3.7): `Some(false)` is a
+    /// loaded-but-never-played preview (25% of real rows) that must not count
+    /// as a play. `None` where the source has no such flag (legacy `.session`,
+    /// schema variance) — treated as played downstream, never guessed false.
+    pub played: Option<bool>,
+    /// The track's full-song length in milliseconds (context: "played 4:12 of
+    /// 6:30"). EnrichedPlay-internal for now — promoted to the wire only when
+    /// a story renders it (`serato-capture-completeness.md`).
+    pub total_length_ms: Option<u64>,
+    /// The play-log's own volume-root-relative file path (Serato 4+
+    /// `portable_id`, e.g. `Users/arjun/Music/x.mp3` or `A Indian/x.mp3` on a
+    /// USB volume — the same no-leading-slash convention `database V2` stores).
+    /// Used only agent-side to key the `database V2` date-added lookup
+    /// ([`date_added::DateAddedIndex`]); never promoted to the wire (a path
+    /// leaks local FS layout — same exclusion as `EnrichedPlay.path`).
+    pub portable_path: Option<String>,
+    /// When the DJ's library first saw this track — Unix epoch seconds, from
+    /// `database V2`'s `tadd`/`uadd` date-added field (Story 3.7, §3d: joined
+    /// by portable path, NOT the serato4 `asset` join, which only links ~4.6%
+    /// of real plays). Powers "New tracks played". `None` when no reachable
+    /// catalogue holds the track (off-library, or its volume is unmounted) —
+    /// absent, never guessed; the UI discloses the gap.
+    pub library_added_at: Option<i64>,
 }
 
 /// Accepts a BPM only if it is a real measurement.
@@ -111,6 +152,11 @@ mod tests {
                 bpm: None,
                 key: None,
                 genre: None,
+                ended_at: None,
+                played: None,
+                total_length_ms: None,
+                portable_path: None,
+                library_added_at: None,
             }
         );
     }

@@ -133,6 +133,13 @@
   --space-gutter: 24px;
   --container-max: 1100px;
 
+  /* Nav rail geometry (Arjun, 2026-08-03: dock → left vertical rail at
+     desktop widths). Shared by globals.css (the rail itself) and
+     dashboard.css (the page's rail clearance) so they can never drift. */
+  --nav-rail-inset: 20px;
+  --nav-rail-width: 68px;
+  --nav-rail-radius: 22px;
+
   /* Radius: soft-industrial. sm/lg/xl for structural elements (buttons,
      inputs, cards, chips) — no pill buttons. `full` is reserved EXCLUSIVELY
      for the floating nav (Story 3.5, not built here), avatar, and status
@@ -162,6 +169,16 @@
   --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);      /* confident settle (enter) */
   --motion-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);  /* symmetric move */
   --motion-ease-spark: cubic-bezier(0.34, 1.56, 0.64, 1);/* slight overshoot: the "pop" */
+
+  /* Liquid house easing (dashboard redesign D4 — the progressive-blur ref's
+     signature timing, preserved exactly): everything structural on the
+     dashboard settles on -liquid; -liquid-pop is the ref's overshooting icon
+     spin; open 600ms / close 400ms / grand 1s (the artist-modal register). */
+  --motion-ease-liquid: cubic-bezier(0.17, 1, 0.33, 1);
+  --motion-ease-liquid-pop: cubic-bezier(0.32, 1.35, 0.75, 1);
+  --motion-duration-liquid-open: 600ms;
+  --motion-duration-liquid-close: 400ms;
+  --motion-duration-liquid-grand: 1000ms;
 
   /* OAuth-brand colors (Story 2.4) — Google's and Apple's own mandated
      button colors, the one sanctioned exception to Curfew's palette
@@ -246,6 +263,21 @@
      to name literal colors. */
   --color-surface-void: #000000;
 
+  /* Liquid-metal CTA material (Story 3.6) — a NEW "material" in the palette, per
+     AC-14's "decide: true-chrome vs lavender-tinted" call: a ROSE-TINTED CHROME,
+     so the hero CTA reads as premium metal that still belongs to Ember rather
+     than a neutral silver adrift from the accent. --metal-back is the deep
+     graphite the metal pools into; --metal-tint the bright rose-white its
+     highlights glint (reusing the Ember primary-fixed rose). These are passed to
+     the WebGL liquid-metal shader at RUNTIME (read via getComputedStyle in
+     liquid-metal-button.tsx), which is why they must be real hex here rather than
+     a var() the shader's hex parser can't read — and why they live in tokens.css,
+     the one file exempt from no-hardcoded-colors.test.ts. --metal-label is the
+     near-white the CTA text sits in over the metal. */
+  --metal-back: #14171d;
+  --metal-tint: #ffd9e1;
+  --metal-label: #f6eef0;
+
   /* Dock rim + chip overlays (dock revision 2) — thin white-alpha washes that
      catch light on the void dock: -rim is the 1px inset top-edge highlight
      (~8% white), -chip-active the active cell's raised-chip overlay (~1%),
@@ -255,4 +287,151 @@
   --color-nav-rim: #ffffff14;
   --color-nav-chip-active: #ffffff03;
   --color-nav-chip-hover: #ffffff0a;
+
+  /* ─── Dashboard cool direction (Story 3.6 redesign, 2026-08-02) ────────────
+     Arjun's 2026-08-02 pivot: the dashboard reads COOL — steel/ice on the
+     existing blue-black base — with the reddish Ember accent pulled back on
+     THIS surface. Ember still owns the nav / auth / primary buttons app-wide;
+     these tokens are the dashboard's own cool accent + hero materials, so the
+     global accent (and other stories' screens) stay untouched. tokens.css is
+     the one file allowed literal hex (no-hardcoded-colors.test.ts); every
+     consumer reads these as var()s. Contrast verified vs the base #101319:
+     ice 11.9:1, ice-bright 14.6:1, steel 8.6:1, steel-dim 6.0:1 — all clear
+     AA as text; the dimmed arc line is graphical (>3:1). */
+  --color-ice: #8fd8ff;         /* the energy-arc line + cool accent */
+  --color-ice-bright: #bfeaff;  /* peak marker + the emphasised dancefloor line */
+  --color-ice-dim: #3f6a8c;     /* the dimmed full-night line behind the window */
+  --color-ice-glow: #8fd8ff2b;  /* ~17% — arc area fill + soft accent glow */
+  --color-ice-band: #8fd8ff17;  /* ~9%  — the dancefloor window band wash */
+  --color-steel: #9fb2cf;       /* cool secondary text */
+  --color-steel-dim: #7f93b3;   /* cool tertiary labels (still AA) */
+
+  /* Hero atmosphere — a STATIC (never-oscillating, per Apple reduced-motion
+     guidance) steel-indigo radial that pools light into the hero; -scrim is
+     the legibility wash the editorial text sits over where it crosses the arc. */
+  --color-hero-atmos: #16233b;       /* deep steel-indigo ambience core */
+  --color-hero-atmos-fade: #16233b00;/* the same hue at zero alpha, for clean gradient fades */
+  --color-ice-fade: #8fd8ff00;       /* ice at zero alpha (stands in for the see-through keyword the guard flags) */
+  --color-hero-scrim: #0b0e14e6;     /* ~90% base wash for text legibility */
+
+  /* Cold-chrome liquid metal — the dashboard's cool counterpart to the Ember
+     rose --metal-* material still used on Set Detail. Read by the WebGL shader
+     at runtime (getComputedStyle), so real hex, not a var() its parser can't
+     read; the hero disc passes these token NAMES to the shared component. */
+  --metal-cool-back: #0f151d;   /* cold graphite the chrome pools into */
+  --metal-cool-tint: #cfe6ff;   /* cold ice-white the highlights glint */
+
+  /* ⌘K spotlight command palette (Apple-material overlay). -scrim dims the page
+     to focus; -surface is the frosted panel (globals.css raises it to
+     -surface-solid under prefers-reduced-transparency); -rim the bright top
+     edge; -row-active the ice wash on the highlighted result row. */
+  --color-spotlight-scrim: #06080cd9;       /* ~85% dim-to-focus backdrop */
+  --color-spotlight-surface: #141a24f2;     /* ~95% frosted panel */
+  --color-spotlight-surface-solid: #141a24; /* opaque fallback (reduced-transparency) */
+  --color-spotlight-rim: #ffffff1f;         /* ~12% bright top edge */
+  --color-spotlight-row-active: #8fd8ff14;  /* ~8% ice wash on the active row */
+
+  /* ═══ ABYSS CYAN — dashboard redesign palette (Story 3.6 v2, D11, 2026-08-03) ═══
+     Arjun's pick from the palette lab (candidate B): liquid metal + liquid glass
+     on deep blue-black, glacial-cyan accent. Replaces every reference hardcode
+     (music-player warm browns, calendar pink/orange, shiny-button blue/#8484ff,
+     silk mauve) — the refs render at full fidelity but re-tinted through these.
+     AA contrast verified in tokens.test.ts (Abyss Cyan block): text-100/-72 clear
+     4.5:1 on base AND shell; -45 clears the 3:1 large-text/secondary floor and is
+     reserved for de-emphasized meta (mirrors the ref's 45%-white register); -22
+     is decorative only (hairline-adjacent, never copy). */
+  --color-abyss-base: #04060a;       /* page behind the Silk shader (item 6: nudged darker + less blue) */
+  --color-abyss-shell: #0a0e13;      /* liquid-glass card fill (the ref .content re-tint; item 6 less-blue) */
+  --color-abyss-raised: #0e131b;     /* expanded/hover surfaces (ref modal #272322/#342E2D re-tint; item 6 less-blue) */
+  --color-abyss-hairline: #16283a;   /* hairline borders (ref #232120 re-tint) */
+  --color-abyss-silk: #1b3242;       /* Silk tint — the ONE color prop; read from :root at runtime
+                                        by SilkBackdrop (the Silk shader parses hex, not var()) */
+  --color-abyss-silk-2: #122334;     /* secondary lobe — reserved (D11 banks it; Silk takes one color) */
+  --color-abyss-accent: #7fd8f2;     /* glacial cyan */
+  --color-abyss-accent-soft: #4fb2d6;/* today-ring, secondary accent */
+  --color-abyss-glint: #3a7c96;      /* dimmed cyan for the shell border glint sweep (item 3):
+                                        brighter than the hairline base, dimmer than accent-soft, so
+                                        the sweep reads as a soft glint not a bright band. Independent
+                                        knob — tune here to taste without touching the accent. */
+  --color-abyss-accent-glow: #7fd8f280;  /* 50% — glows, dancefloor arc halo */
+  --color-abyss-on-accent: #04131c;  /* text on filled accent */
+  --color-abyss-shell-glass: #0a0e13e0;  /* ~88% shell — the liquid-glass fill over the Silk (D1:
+                                            translucent frosted; pairs with backdrop-blur in dashboard.css).
+                                            item 6: RGB tracks --color-abyss-shell; the e0 alpha is FROZEN
+                                            (translucency approved as-is, Arjun 2026-08-03). */
+  --color-abyss-shell-glow: #18344880;   /* 50% — the ref's inset 150px shell glow, re-tinted */
+  --color-abyss-shell-glow-dim: #18344859; /* ~35% — shell glow while a modal is active (ref drops to 0.7×) */
+  --color-abyss-row-hover: #7fd8f217;    /* ~9% — row hover inset glow (ref white 0.075 re-tint) */
+  --color-abyss-row-line: #ffffff0a;     /* 4% — the ref's rgba(255,255,255,0.04) row hairline, verbatim */
+  --color-abyss-text: #eaf3f8;       /* text ramp 100% */
+  --color-abyss-text-72: #eaf3f8b8;  /* 72% — the ref's .bold register */
+  --color-abyss-text-45: #eaf3f885;  /* 52% — the ref's .light register (meta/labels only), lifted from
+                                        45% (item 12 readability): row meta / stat + hero labels / track
+                                        artists measured 3.84–4.16:1 on the surfaces (worst case the
+                                        lighter hero-atmosphere shell), below AA 4.5 for normal text; 52%
+                                        clears it (hero 4.63, rows 5.18) while staying the de-emphasized tier
+                                        below text-72. Measured live in-browser against the item-6 ground. */
+  --color-abyss-text-22: #eaf3f838;  /* 22% — decorative only */
+  --color-abyss-scrim-fade: #04070c00;   /* base at zero alpha for edge-fade gradients (guard-safe) */
+
+  /* Abyss liquid metal — cold chrome for the dashboard's two set-view entries
+     (hero icon arrow + Enter Set pill). Shader-read at runtime (same
+     getComputedStyle pattern as --metal-*), hence real hex: -tint is the bright
+     ice-white the highlights glint, -back the steel the metal pools into. */
+  --metal-abyss-tint: #d2e4ec;
+  --metal-abyss-back: #7a96a8;
+  --metal-abyss-label: #8fa3b0;  /* steel the icon/label reads in on the dark pill face
+                                    (the ref's #666-on-black register, cooled + lifted; ~6.6:1 on the pill) */
+
+  /* Black-alpha shadow ramp — the liquid-metal ref's multi-layer stacked drop
+     shadows (rest → hover tighten → press), preserved stop-for-stop (D8 "ALL
+     its physics"). 8-digit hex, not rgba() (guard flags the function name).
+     Shared vocabulary for any dashboard depth work. */
+  --shadow-ink-0: #00000000;  /* zero-alpha stop for mask/fade gradients (guard-safe) */
+  --shadow-ink-2: #00000005;
+  --shadow-ink-5: #0000000d;
+  --shadow-ink-8: #00000014;
+  --shadow-ink-10: #0000001a;
+  --shadow-ink-12: #0000001f;
+  --shadow-ink-15: #00000026;
+  --shadow-ink-20: #00000033;
+  --shadow-ink-30: #0000004d;
+  --shadow-ink-40: #00000066;
+  --shadow-ink-50: #00000080;
+
+
+  /* Camelot wheel key colors (Story 3.7 post-review, Arjun 2026-08-03):
+     the tracklist key chips read as a real Camelot wheel — one hue per
+     clock position (30° steps), inner/minor A ring slightly deeper, outer/
+     major B ring brighter, both pastel enough to stay calm on the abyss
+     ground. Consumed via var() lookups keyed off the play's own Camelot
+     string (sd-row-key), never inline hex. */
+  --camelot-1a: #c7c075;
+  --camelot-1b: #e2db8d;
+  --camelot-2a: #a5c775;
+  --camelot-2b: #bfe28d;
+  --camelot-3a: #7cc775;
+  --camelot-3b: #94e28d;
+  --camelot-4a: #75c797;
+  --camelot-4b: #8de2b0;
+  --camelot-5a: #75c7c0;
+  --camelot-5b: #8de2db;
+  --camelot-6a: #75a5c7;
+  --camelot-6b: #8dbfe2;
+  --camelot-7a: #757cc7;
+  --camelot-7b: #8d94e2;
+  --camelot-8a: #9775c7;
+  --camelot-8b: #b08de2;
+  --camelot-9a: #c075c7;
+  --camelot-9b: #db8de2;
+  --camelot-10a: #c775a5;
+  --camelot-10b: #e28dbf;
+  --camelot-11a: #c7757c;
+  --camelot-11b: #e28d94;
+  --camelot-12a: #c79775;
+  --camelot-12b: #e2b08d;
+
+  /* The ref's click ripple: white 40% → clear radial. */
+  --color-metal-ripple: #ffffff66;
+  --color-metal-ripple-fade: #ffffff00;
 }

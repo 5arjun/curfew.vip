@@ -530,13 +530,34 @@ pub fn run() {
                     &watcher::detect::SystemDisks,
                 );
                 let app_handle = app.handle().clone();
+                let backfill_home = home.clone();
                 std::thread::spawn(move || {
                     let Ok(conn) = store::open(&app_handle) else {
                         return;
                     };
+                    // Story 3.7 (§3d): one lazy date-added index for the whole
+                    // startup sweep — the `database V2` catalogues load once,
+                    // however many sessions get re-derived.
+                    let dates = joiner::date_added::DateAddedIndex::live(&backfill_home);
                     backfill::reprocess_parse_failures(
                         &conn,
                         &backfill_plan,
+                        &dates,
+                        &error_reporting::SentryReporter,
+                    );
+                    // Story 3.6: re-derive already-`captured` serato4 sets so a
+                    // shipped stat-correctness fix (the Camelot `key_value`
+                    // recovery) reaches sessions captured before it — locally
+                    // AND in the cloud (a changed row clears synced_at so the
+                    // drain loop re-pushes the correction; Arjun 2026-08-02).
+                    // Self-terminating (only changed rows are written/re-queued)
+                    // and a no-op when no serato4 source is reachable. Runs after
+                    // the failure reprocess so a row that just recovered from
+                    // `parse_failures` is also re-derived on the same pass.
+                    backfill::backfill_captured_serato4(
+                        &conn,
+                        &backfill_plan,
+                        &dates,
                         &error_reporting::SentryReporter,
                     );
                 });

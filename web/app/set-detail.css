@@ -1,0 +1,1312 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Set Detail (Story 3.7) — the read-back shell. All classes prefixed `sd-`.
+   Token-only (no-hardcoded-colors.test.ts scans this file).
+
+   Layout contract (spec §3, L-1..L-5):
+   - WHOLE-PAGE scroll — the deliberate break from the dashboard's fixed
+     shell. No 100dvh lock, no nested scroll region; the full-length
+     tracklist drives page height and the header scrolls away.
+   - Header: identity+scope (~24%) beside the energy arc (~76%).
+   - Body: tracklist spine (~67%) + sticky stats rail (~33%); the rail (and
+     any open drill-in overlay) rides along the long tracklist scroll.
+   - Below 900px everything stacks (stats before tracklist) and the drill-in
+     presents as a bottom sheet (§3i).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.sd {
+  position: relative;
+  min-height: 100dvh;
+  width: 100%;
+  max-width: var(--container-max);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: var(--space-lg) var(--space-gutter)
+    calc(var(--space-xxl) + env(safe-area-inset-bottom));
+  font-family: var(--font-hanken-grotesk);
+  color: var(--color-abyss-text);
+  /* No own paint: the Silk backdrop (.dz-silk, shared with the dashboard)
+     carries the ground — post-review parity ruling (Arjun 2026-08-03). */
+}
+
+/* Same rail clearance as the dashboard (tokens.css geometry): with the nav
+   standing at the left edge the page spans the space right of the rail. */
+@media (min-width: 900.02px) {
+  .sd {
+    max-width: none;
+    padding-left: calc(var(--nav-rail-inset) + var(--nav-rail-width) + var(--space-gutter));
+    padding-right: var(--space-gutter);
+  }
+}
+
+/* ─── Header: A/B beside C (L-1) ───────────────────────────────────────── */
+
+.sd-header {
+  display: grid;
+  grid-template-columns: minmax(250px, 24%) minmax(0, 1fr);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.sd-identity {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 22px 24px;
+  border-radius: 28px;
+}
+
+.sd-identity-top {
+  /* The [⋯] floats top-right (absolute) so the mono eyebrow keeps the full
+     card width and never wraps its SET number onto its own line. */
+  padding-right: 40px;
+}
+
+.sd-eyebrow {
+  font-family: var(--font-geist-mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--color-abyss-text-72);
+}
+
+.sd-identity-meta {
+  font-size: 26px;
+  font-weight: 550;
+  letter-spacing: -0.01em;
+  color: var(--color-abyss-text);
+}
+
+.sd-confidence-note {
+  font-size: 12.5px;
+  color: var(--color-abyss-text-45);
+}
+
+.sd-scope-line {
+  margin-top: auto;
+  font-family: var(--font-geist-mono);
+  font-size: 12.5px;
+  color: var(--color-abyss-accent-soft);
+}
+
+/* Liquid-metal rim wrapper (MetalRim.tsx — the FloatingNav rail-rim layer
+   sandwich generalized: shader ring under a dark plate inset 2px). Used by
+   the scope toggle, the veil back arrow, and the mini-toggles (post-review
+   rulings, Arjun 2026-08-03). Radius rides --sd-metal-radius. */
+.sd-metal {
+  position: relative;
+  border-radius: var(--sd-metal-radius, 14px);
+  isolation: isolate;
+}
+
+.sd-metal-rim {
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  border-radius: var(--sd-metal-radius, 14px);
+  overflow: hidden;
+}
+
+.sd-metal-rim canvas {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.sd-metal-plate {
+  display: block;
+  position: absolute;
+  inset: 2px;
+  z-index: -1;
+  border-radius: calc(var(--sd-metal-radius, 14px) - 2px);
+  background: linear-gradient(180deg, var(--color-abyss-raised) 0%, var(--color-abyss-base) 100%);
+  box-shadow: inset 0 1px 0 0 var(--color-nav-rim);
+}
+
+.sd-toggle-metal {
+  align-self: flex-start;
+}
+
+.sd-scope-toggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 6px;
+}
+
+.sd-scope-option {
+  padding: 7px 14px;
+  min-height: 32px;
+  font-size: 12.5px;
+  font-weight: 550;
+  border-radius: 9px;
+  color: var(--color-abyss-text-45);
+  transition:
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sd-scope-option:hover {
+  color: var(--color-abyss-text);
+}
+
+.sd-scope-option[aria-pressed="true"] {
+  background: var(--color-abyss-raised);
+  color: var(--color-abyss-accent);
+  box-shadow: inset 0 0 0 1px var(--color-abyss-hairline);
+}
+
+/* [⋯] overflow — delete's calm home (§3e). */
+.sd-overflow {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+}
+
+.sd-overflow-trigger {
+  min-width: 36px;
+  min-height: 36px;
+  border-radius: 10px;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--color-abyss-text-45);
+  transition:
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sd-overflow-trigger:hover {
+  color: var(--color-abyss-text);
+  background: var(--color-abyss-row-hover);
+}
+
+.sd-overflow-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  min-width: 160px;
+  padding: 6px;
+  background: var(--color-spotlight-surface);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  border: 1px solid var(--color-abyss-hairline);
+  border-radius: 14px;
+  box-shadow: 0 18px 40px var(--shadow-ink-40);
+}
+
+.sd-overflow-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  min-height: 40px;
+  font-size: 13.5px;
+  border-radius: 9px;
+  color: var(--color-abyss-text);
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sd-overflow-item:hover {
+  background: var(--color-abyss-row-hover);
+}
+
+/* ─── C — energy arc ───────────────────────────────────────────────────── */
+
+.sd-arc {
+  position: relative;
+  overflow: hidden;
+  min-height: 220px;
+  border-radius: 28px;
+}
+
+.sd-arc-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.sd-arc-line {
+  fill: none;
+  stroke-width: 2.25px;
+  filter: drop-shadow(0 0 10px var(--color-abyss-accent-glow));
+}
+
+.sd-arc-fallback {
+  display: grid;
+  place-items: center;
+}
+
+.sd-arc-fallback-copy {
+  font-family: var(--font-geist-mono);
+  font-size: 13px;
+  color: var(--color-abyss-text-45);
+}
+
+/* ─── Body panes (L-3/L-4) ─────────────────────────────────────────────── */
+
+.sd-body {
+  display: grid;
+  grid-template-columns: minmax(0, 67fr) minmax(300px, 33fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.sd-rail {
+  position: sticky;
+  top: 18px;
+}
+
+/* ─── F — tracklist ────────────────────────────────────────────────────── */
+
+.sd-tracklist {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 18px 18px;
+  border-radius: 28px;
+}
+
+.sd-focus-pill-row {
+  position: sticky;
+  top: 12px;
+  z-index: 20;
+  display: flex;
+  justify-content: center;
+  padding: 6px 0;
+}
+
+.sd-focus-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  min-height: 36px;
+  font-size: 12.5px;
+  font-weight: 550;
+  border-radius: var(--radius-full);
+  color: var(--color-abyss-on-accent);
+  background: var(--color-abyss-accent);
+  box-shadow: 0 8px 24px var(--shadow-ink-40), 0 0 18px var(--color-abyss-accent-glow);
+  transition: transform var(--motion-duration-fast) var(--motion-ease-spark);
+}
+
+.sd-focus-pill:hover {
+  transform: scale(1.03);
+}
+
+.sd-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sd-row {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 10px;
+  border-radius: 14px;
+  transition:
+    opacity var(--motion-duration-base) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sd-row:hover {
+  background: var(--color-abyss-row-hover);
+}
+
+.sd-row[data-dimmed] {
+  opacity: 0.25;
+}
+
+/* Timeline rail: timestamp + node. */
+.sd-row-rail {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sd-row-time {
+  font-family: var(--font-geist-mono);
+  font-size: 11px;
+  color: var(--color-abyss-text-45);
+  min-width: 56px;
+}
+
+.sd-row-node {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-full);
+  background: var(--color-abyss-text-22);
+  flex: none;
+}
+
+.sd-row[data-peak] .sd-row-node {
+  background: var(--color-abyss-accent);
+  box-shadow: 0 0 10px var(--color-abyss-accent-glow);
+}
+
+.sd-row-peak {
+  position: absolute;
+  left: 66px;
+  top: calc(100% - 2px);
+  font-family: var(--font-geist-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  color: var(--color-abyss-accent);
+  text-wrap: nowrap;
+}
+
+.sd-row-main {
+  min-width: 0;
+}
+
+.sd-row-title {
+  font-size: 14.5px;
+  font-weight: 550;
+  color: var(--color-abyss-text);
+  text-wrap: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sd-row-artist {
+  font-size: 12.5px;
+  color: var(--color-abyss-text-45);
+  text-wrap: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sd-row-unknown {
+  color: var(--color-abyss-text-45);
+  font-style: italic;
+}
+
+/* Right-aligned mono metadata columns — fixed widths so BPM, length, and key
+   align vertically for column scanning (AC-17). */
+.sd-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--font-geist-mono);
+  font-size: 12px;
+}
+
+.sd-row-new {
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--color-abyss-accent-soft);
+}
+
+.sd-row-bpm {
+  min-width: 34px;
+  text-align: right;
+  color: var(--color-abyss-text-72);
+}
+
+.sd-row-length {
+  min-width: 44px;
+  text-align: right;
+  color: var(--color-abyss-text-45);
+}
+
+.sd-row-key {
+  min-width: 38px;
+  text-align: center;
+  padding: 3px 6px;
+  border-radius: 8px;
+  border: 1px solid var(--color-abyss-hairline);
+  background: var(--color-abyss-shell);
+  /* Camelot wheel coloring: the component sets --sd-key-color from the play's
+     own key (tokens.css --camelot-*); chips with no key stay neutral. */
+  color: var(--sd-key-color, var(--color-abyss-text-72));
+  border-color: var(--sd-key-color, var(--color-abyss-hairline));
+}
+
+.sd-row-key[data-empty] {
+  border-color: var(--color-abyss-row-line);
+  color: var(--color-abyss-text-22);
+}
+
+/* In-key connectors (Q1) — ON the connector between rows, always quiet. */
+.sd-connector {
+  position: relative;
+  height: 20px;
+  margin-left: 79px; /* aligns with the rail node column */
+  display: flex;
+  align-items: center;
+}
+
+.sd-connector-line {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-left: 1px solid var(--color-abyss-row-line);
+}
+
+.sd-connector[data-state="smooth"] .sd-connector-line {
+  border-left-width: 2px;
+  border-left-color: var(--color-abyss-accent);
+  box-shadow: 0 0 10px var(--color-abyss-accent-glow);
+}
+
+.sd-connector[data-state="clash"] .sd-connector-line {
+  border-left-style: dashed;
+  border-left-color: var(--color-abyss-text-22);
+}
+
+.sd-connector-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 8px;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-abyss-hairline);
+  background: var(--color-abyss-shell);
+  color: var(--color-abyss-accent);
+  filter: drop-shadow(0 0 6px var(--color-abyss-accent-glow));
+}
+
+/* Hover detail rides the shared CursorChip (compact) — the CSS tooltip is
+   gone (post-review ruling: same pop-up language as the calendar/nav). */
+.cursor-chip-body--compact {
+  min-width: 0;
+  padding: 7px 11px;
+  border-radius: 12px;
+}
+
+.cursor-chip-mono {
+  margin: 0;
+  font-family: var(--font-geist-mono);
+  font-size: 11.5px;
+  color: var(--color-abyss-text);
+  text-wrap: nowrap;
+}
+
+.sd-load-more {
+  margin: 14px auto 4px;
+  padding: 10px 22px;
+  min-height: 44px;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--color-abyss-text-72);
+  border: 1px solid var(--color-abyss-hairline);
+  border-radius: 12px;
+  background: var(--color-abyss-shell);
+  transition:
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    border-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sd-load-more:hover {
+  color: var(--color-abyss-text);
+  border-color: var(--color-abyss-glint);
+}
+
+/* ─── Right column stats ───────────────────────────────────────────────── */
+
+.sd-stats {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.sd-stats-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sd-module {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 18px;
+  border-radius: 22px;
+}
+
+/* The reserved slot stays a dashed ghost — not a dz-shell. */
+.sd-module-reserved {
+  border: 1px dashed var(--color-abyss-hairline);
+}
+
+.sd-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+  padding: 6px 4px;
+  border-radius: 12px;
+}
+
+/* Hairline divider between the harmonic hero and the BPM stat (module D). */
+.sd-stat + .sd-stat {
+  margin-top: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-abyss-row-line);
+  border-radius: 0 0 12px 12px;
+}
+
+.sd-stat-label,
+.sd-module-label {
+  font-family: var(--font-geist-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-abyss-text-45);
+}
+
+.sd-stat-readout {
+  font-size: 13.5px;
+  color: var(--color-abyss-text-72);
+}
+
+.sd-stat-value {
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--color-abyss-text);
+}
+
+.sd-stat-empty {
+  font-size: 13px;
+  color: var(--color-abyss-text-45);
+}
+
+.sd-disclosure {
+  font-size: 11.5px;
+  color: var(--color-abyss-text-45);
+}
+
+/* Harmonic hero — LED pips ARE the hero visual (UX-DR11). */
+.sd-pips {
+  display: flex;
+  gap: 6px;
+  padding: 4px 0 2px;
+}
+
+.sd-pip {
+  width: 14px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-abyss-hairline);
+  transition: background-color var(--motion-duration-base) var(--motion-ease-standard);
+}
+
+.sd-pip[data-lit] {
+  background: var(--color-abyss-accent);
+  box-shadow: 0 0 8px var(--color-abyss-accent-glow);
+}
+
+.sd-bpm-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sd-bpm-spark {
+  width: 96px;
+  height: 24px;
+  flex: none;
+}
+
+.sd-bpm-spark polyline {
+  fill: none;
+  stroke: var(--color-abyss-accent-soft);
+  stroke-width: 1.5;
+}
+
+/* Genre rows (top 3). */
+.sd-genre-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.sd-genre-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 6px;
+  border-radius: 10px;
+}
+
+.sd-genre-row:hover .sd-genre-name {
+  color: var(--color-abyss-accent);
+}
+
+.sd-genre-name {
+  font-size: 14px;
+  font-weight: 550;
+  color: var(--color-abyss-text);
+}
+
+.sd-genre-meta {
+  font-family: var(--font-geist-mono);
+  font-size: 11.5px;
+  color: var(--color-abyss-text-45);
+}
+
+/* Set shape rows. */
+.sd-shape-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 6px;
+  min-height: 44px;
+  text-align: left;
+  border-radius: 10px;
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sd-shape-row:hover .sd-shape-track {
+  color: var(--color-abyss-text);
+}
+
+.sd-shape-label {
+  font-family: var(--font-geist-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-abyss-text-45);
+}
+
+.sd-shape-track {
+  font-size: 13px;
+  color: var(--color-abyss-text-72);
+  text-wrap: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sd-shape-length {
+  font-family: var(--font-geist-mono);
+  font-size: 12.5px;
+  color: var(--color-abyss-text);
+}
+
+/* New tracks. */
+.sd-newtracks {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sd-newtracks-readout {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  padding: 4px 6px;
+  border-radius: 10px;
+}
+
+.sd-mini-toggle {
+  display: inline-flex;
+  gap: 3px;
+  padding: 5px;
+  align-self: flex-start;
+}
+
+.sd-mini-toggle button {
+  padding: 6px 11px;
+  min-height: 30px;
+  font-size: 11.5px;
+  font-weight: 550;
+  border-radius: 8px;
+  color: var(--color-abyss-text-45);
+  transition:
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sd-mini-toggle button[aria-pressed="true"] {
+  background: var(--color-abyss-raised);
+  color: var(--color-abyss-accent);
+}
+
+/* Most-played artists. */
+.sd-module-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 10px;
+  text-align: left;
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sd-module-head:hover .sd-stat-label {
+  color: var(--color-abyss-accent);
+}
+
+.sd-module-more {
+  font-size: 16px;
+  color: var(--color-abyss-text-45);
+}
+
+.sd-artist-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sd-artist-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 6px;
+  min-height: 40px;
+  text-align: left;
+  border-radius: 10px;
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sd-artist-row:hover .sd-artist-name {
+  color: var(--color-abyss-accent);
+}
+
+.sd-artist-row[data-active] {
+  box-shadow: inset 0 0 0 1px var(--color-abyss-accent-soft);
+}
+
+.sd-artist-name {
+  font-size: 13.5px;
+  font-weight: 550;
+  color: var(--color-abyss-text);
+}
+
+.sd-artist-count {
+  font-family: var(--font-geist-mono);
+  font-size: 12px;
+  color: var(--color-abyss-accent-soft);
+}
+
+.sd-replayed {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--color-abyss-text-45);
+}
+
+/* G — reserved enrichment slot (AC-16). */
+.sd-module-reserved {
+  border-style: dashed;
+  border-width: 1px;
+  box-shadow: none;
+  background: var(--color-abyss-scrim-fade);
+  min-height: 64px;
+  justify-content: center;
+}
+
+.sd-reserved-copy {
+  font-family: var(--font-geist-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--color-abyss-text-22);
+  text-align: center;
+}
+
+/* ─── Drill-in veil (§3b/§3h, post-review form — Arjun 2026-08-03) ────────
+   The detail panel is a fixed right-side veil over the whole viewport
+   height: a GRADUAL blur (strength ramping toward the right edge, reactbits
+   gradual-blur language) sits on top of everything beneath, the component's
+   details render over it, and the whole thing slides in from the right.
+   Blur layers are stacked backdrop-filters, each masked to a horizontal
+   band (guard-safe zero-alpha/opaque token stops). */
+
+.sd-veil {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  /* Confined to the right-column footprint so the tracklist (key chips) never
+     catches the ramp; the left ~28% stays a pure blur-ramp zone. */
+  width: min(470px, 34vw);
+  display: flex;
+  flex-direction: column;
+}
+
+.sd-veil-blur {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.sd-veil-blur span {
+  position: absolute;
+  inset: 0;
+}
+
+.sd-veil-blur span:nth-child(1) {
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  -webkit-mask-image: linear-gradient(to right, var(--shadow-ink-0) 0%, var(--color-surface-void) 4%);
+  mask-image: linear-gradient(to right, var(--shadow-ink-0) 0%, var(--color-surface-void) 4%);
+}
+
+.sd-veil-blur span:nth-child(2) {
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  -webkit-mask-image: linear-gradient(to right, var(--shadow-ink-0) 3%, var(--color-surface-void) 7%);
+  mask-image: linear-gradient(to right, var(--shadow-ink-0) 3%, var(--color-surface-void) 7%);
+}
+
+.sd-veil-blur span:nth-child(3) {
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  -webkit-mask-image: linear-gradient(to right, var(--shadow-ink-0) 6%, var(--color-surface-void) 10%);
+  mask-image: linear-gradient(to right, var(--shadow-ink-0) 6%, var(--color-surface-void) 10%);
+}
+
+.sd-veil-blur span:nth-child(4) {
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  -webkit-mask-image: linear-gradient(to right, var(--shadow-ink-0) 9%, var(--color-surface-void) 13%);
+  mask-image: linear-gradient(to right, var(--shadow-ink-0) 9%, var(--color-surface-void) 13%);
+}
+
+.sd-veil-blur span:nth-child(5) {
+  -webkit-backdrop-filter: blur(32px);
+  backdrop-filter: blur(32px);
+  -webkit-mask-image: linear-gradient(to right, var(--shadow-ink-0) 12%, var(--color-surface-void) 16%);
+  mask-image: linear-gradient(to right, var(--shadow-ink-0) 12%, var(--color-surface-void) 16%);
+}
+
+.sd-veil-blur span:nth-child(6) {
+  -webkit-backdrop-filter: blur(46px);
+  backdrop-filter: blur(46px);
+  -webkit-mask-image: linear-gradient(to right, var(--shadow-ink-0) 15%, var(--color-surface-void) 19%);
+  mask-image: linear-gradient(to right, var(--shadow-ink-0) 15%, var(--color-surface-void) 19%);
+}
+
+/* Translucent tint (NOT a blackout — the blur carries the frosting): a soft
+   dark wash for text contrast… */
+.sd-veil-blur span:nth-child(7) {
+  background: linear-gradient(
+    to right,
+    var(--color-abyss-scrim-fade) 0%,
+    var(--shadow-ink-40) 16%,
+    var(--shadow-ink-50) 100%
+  );
+}
+
+/* …plus the faint bright sheen that makes the frost read as glass. Plain
+   translucent paint — NEVER mix-blend-mode here: a blending child makes the
+   veil a backdrop root, which silently disables every sibling
+   backdrop-filter (they'd sample an empty root instead of the page). */
+.sd-veil-blur span:nth-child(8) {
+  background: linear-gradient(
+    to right,
+    var(--color-abyss-scrim-fade) 16%,
+    var(--color-nav-chip-hover) 55%,
+    var(--color-nav-rim) 100%
+  );
+}
+
+.sd-veil-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  /* Content clears the ramp zone entirely (left ~34% is transition only). */
+  padding: 22px 26px calc(18px + env(safe-area-inset-bottom)) clamp(92px, 21%, 110px);
+}
+
+.sd-overlay-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--color-abyss-row-line);
+}
+
+.sd-overlay-back {
+  display: block;
+  min-width: 38px;
+  min-height: 38px;
+  border-radius: 9px;
+  font-size: 16px;
+  color: var(--color-abyss-text-72);
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sd-overlay-back:hover {
+  color: var(--color-abyss-text);
+}
+
+.sd-veil-toggle {
+  align-self: flex-start;
+}
+
+.sd-overlay-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-abyss-text);
+}
+
+.sd-overlay-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 12px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.sd-overlay-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.sd-overlay-row {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 8px;
+  min-height: 40px;
+  text-align: left;
+  border-radius: 10px;
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sd-overlay-row:hover {
+  background: var(--color-abyss-row-hover);
+}
+
+.sd-overlay-row[data-active] {
+  background: var(--color-abyss-row-hover);
+  box-shadow: inset 0 0 0 1px var(--color-abyss-accent-soft);
+}
+
+.sd-overlay-row-name {
+  font-size: 13.5px;
+  font-weight: 550;
+  color: var(--color-abyss-text);
+}
+
+.sd-overlay-row-parent {
+  font-weight: 400;
+  color: var(--color-abyss-text-45);
+}
+
+.sd-overlay-row-meta {
+  font-family: var(--font-geist-mono);
+  font-size: 11.5px;
+  color: var(--color-abyss-text-45);
+  text-wrap: nowrap;
+}
+
+.sd-overlay-row-muted .sd-overlay-row-name {
+  color: var(--color-abyss-text-45);
+}
+
+.sd-transition-row .sd-overlay-row-name {
+  font-family: var(--font-geist-mono);
+  font-size: 12.5px;
+}
+
+.sd-transition-row[data-state="smooth"] .sd-overlay-row-meta {
+  color: var(--color-abyss-accent-soft);
+}
+
+.sd-overlay-empty {
+  font-size: 13px;
+  color: var(--color-abyss-text-45);
+  padding: 8px;
+}
+
+.sd-overlay-readout {
+  font-family: var(--font-geist-mono);
+  font-size: 12px;
+  color: var(--color-abyss-text-72);
+}
+
+.sd-clashes-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--color-abyss-text-72);
+  min-height: 32px;
+}
+
+.sd-clashes-filter input {
+  accent-color: var(--color-abyss-accent);
+}
+
+/* BPM histogram — horizontal bars, one row per 4-BPM band (post-review:
+   vertical stack fills the panel instead of a squeezed column chart). */
+.sd-histogram {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* Fill the panel: bands stretch to share the veil's height (capped so a
+     sparse set doesn't balloon), instead of leaving dead space beneath. */
+  flex: 1;
+  justify-content: flex-start;
+}
+
+.sd-histogram-band {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 30px;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 6px;
+  flex: 1 1 34px;
+  min-height: 34px;
+  max-height: 68px;
+  border-radius: 8px;
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sd-histogram-band:not(:disabled):hover,
+.sd-histogram-band[data-active] {
+  background: var(--color-abyss-row-hover);
+}
+
+.sd-histogram-track {
+  position: relative;
+  height: 14px;
+  border-radius: 7px;
+}
+
+.sd-histogram-bar {
+  display: block;
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  border-radius: 7px;
+  background: var(--color-abyss-accent-soft);
+  min-inline-size: 5px;
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sd-histogram-band:disabled .sd-histogram-bar {
+  background: var(--color-abyss-hairline);
+}
+
+.sd-histogram-band[data-active] .sd-histogram-bar {
+  background: var(--color-abyss-accent);
+  box-shadow: 0 0 10px var(--color-abyss-accent-glow);
+}
+
+.sd-histogram-tick {
+  font-family: var(--font-geist-mono);
+  font-size: 10.5px;
+  color: var(--color-abyss-text-45);
+  text-align: left;
+}
+
+.sd-histogram-count {
+  font-family: var(--font-geist-mono);
+  font-size: 10.5px;
+  color: var(--color-abyss-text-45);
+  text-align: right;
+}
+
+/* ─── Delete modal (§3e) — calm, blurred, no alarm register ────────────── */
+
+.sd-modal-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: var(--space-lg);
+  background: var(--color-spotlight-scrim);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+.sd-modal {
+  width: min(420px, 100%);
+  padding: 26px 28px;
+  background: var(--color-spotlight-surface-solid);
+  border: 1px solid var(--color-abyss-hairline);
+  border-radius: 20px;
+  box-shadow:
+    inset 0 1px 0 var(--color-spotlight-rim),
+    0 30px 80px var(--shadow-ink-50);
+}
+
+.sd-modal-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-abyss-text);
+}
+
+.sd-modal-body {
+  margin-top: 10px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--color-abyss-text-72);
+}
+
+.sd-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.sd-modal-cancel,
+.sd-modal-delete {
+  padding: 10px 18px;
+  min-height: 44px;
+  font-size: 13.5px;
+  font-weight: 550;
+  border-radius: 12px;
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sd-modal-cancel {
+  color: var(--color-abyss-text-72);
+  border: 1px solid var(--color-abyss-hairline);
+}
+
+.sd-modal-cancel:hover {
+  color: var(--color-abyss-text);
+  background: var(--color-abyss-row-hover);
+}
+
+.sd-modal-delete {
+  color: var(--color-abyss-on-accent);
+  background: var(--color-abyss-accent);
+}
+
+.sd-modal-delete:hover {
+  background: var(--color-abyss-accent-soft);
+}
+
+.sd-modal-delete:disabled,
+.sd-modal-cancel:disabled {
+  opacity: 0.6;
+}
+
+/* ─── Shared button reset + focus ring ─────────────────────────────────────
+   Zero-specificity reset (:where) so every styled control above — the focus
+   pill's fill, the modal buttons' borders — wins without extra rules. */
+
+:where(.sd, .sd-modal-scrim) :where(button) {
+  font-family: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.sd button:focus-visible,
+.sd-modal-scrim button:focus-visible {
+  outline: 2px solid var(--color-abyss-accent);
+  outline-offset: 2px;
+}
+
+/* ─── Mobile (§3i): stack, bottom-sheet drill-in ───────────────────────── */
+
+@media (max-width: 900px) {
+  .sd-header {
+    grid-template-columns: 1fr;
+  }
+
+  .sd-arc {
+    min-height: 180px;
+  }
+
+  .sd-body {
+    grid-template-columns: 1fr;
+  }
+
+  /* Stack order: header → stats → tracklist (§3i). */
+  .sd-rail {
+    position: static;
+    order: -1;
+  }
+
+  .sd-stats {
+    min-height: 0;
+  }
+
+  /* The drill-in becomes a bottom sheet; back arrow = sheet dismiss. The
+     gradual blur flips to a bottom-up ramp via a solid sheet fill instead
+     (small screens: one clean surface beats a side veil). */
+  .sd-veil {
+    top: auto;
+    inset-inline: 0;
+    width: auto;
+    max-height: 72dvh;
+    border-radius: 22px 22px 0 0;
+    background: var(--color-spotlight-surface);
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
+    border: 1px solid var(--color-abyss-hairline);
+    border-bottom: none;
+  }
+
+  .sd-veil-blur {
+    display: none;
+  }
+
+  .sd-veil-content {
+    padding: 14px 16px calc(16px + env(safe-area-inset-bottom));
+  }
+
+  .sd-row {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  .sd-row-time {
+    min-width: 44px;
+  }
+
+  .sd-row-meta {
+    grid-column: 2;
+    justify-content: flex-start;
+    padding-left: 0;
+  }
+
+  .sd-connector {
+    margin-left: 58px;
+  }
+
+  .sd-row-peak {
+    left: 52px;
+  }
+}
+
+/* ─── Reduced motion: no morphs, no smooth scroll, no springs ──────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .sd *,
+  .sd-modal-scrim * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

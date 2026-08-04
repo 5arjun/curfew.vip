@@ -156,11 +156,9 @@ mod tests {
         EnrichedPlay {
             title: Some("Track".to_string()),
             artist: Some("Artist".to_string()),
-            path: None,
             start_time,
-            bpm: None,
             genre: normalize(None),
-            camelot: None,
+            ..EnrichedPlay::default()
         }
     }
 

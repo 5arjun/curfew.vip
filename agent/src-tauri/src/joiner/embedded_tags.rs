@@ -84,12 +84,14 @@ pub fn fill_gaps(metadata: JoinedMetadata, path: Option<&str>) -> JoinedMetadata
 
     let embedded = read_embedded_tags(path);
 
-    JoinedMetadata {
-        in_library: metadata.in_library,
-        bpm: metadata.bpm.or(embedded.bpm),
-        key: metadata.key.or(embedded.key),
-        genre: metadata.genre.or(embedded.genre),
-    }
+    // Fill the three gap-fillable fields in place; everything else on the
+    // metadata (membership, and Story 3.7's play-log/date-added fields) passes
+    // through untouched — an embedded file tag has no say in any of them.
+    let mut filled = metadata;
+    filled.bpm = filled.bpm.or(embedded.bpm);
+    filled.key = filled.key.or(embedded.key);
+    filled.genre = filled.genre.or(embedded.genre);
+    filled
 }
 
 /// The three fields this module can pull from one embedded file tag.
@@ -582,6 +584,7 @@ mod tests {
             bpm: Some(128.0),
             key: Some("8A".to_string()),
             genre: Some("House".to_string()),
+            ..JoinedMetadata::default()
         };
 
         let filled = fill_gaps(metadata.clone(), Some("/definitely/does/not/exist.mp3"));
@@ -621,6 +624,7 @@ mod tests {
             bpm: None,
             key: Some("8A".to_string()),
             genre: None,
+            ..JoinedMetadata::default()
         };
 
         let filled = fill_gaps(metadata, Some("/definitely/does/not/exist_1_5_partial.mp3"));

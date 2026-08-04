@@ -677,6 +677,8 @@ So that the morning after a gig I land somewhere that reflects my night.
 3. **Given** a newly detected set, **Then** the declinable inline New-Set Nudge (lavender @20% border, pulsing lavender dot, "NEW SET DETECTED", equal-weight Add/Skip, no alarm colors) shows; Skip persists per-set and never re-prompts. *(UX-DR5, UX-DR19)*
 4. **Given** the nudge, **Then** it is never a modal and never a push. *(UX-DR5, UX-DR20)*
 
+> **⚑ Refinement (Arjun, 2026-08-02 — Story 3.6 planning + real-data findings; authored story: `implementation-artifacts/3-6-dashboard-home.md`).** Story 3.6 was widened and its ACs revised: **(1)** the New-Set Nudge's Add/Skip → a **passive NEW marker** (unopened = new; opening clears it; no Add button; deletion is the removal path) — sets already auto-sync, so confirm-to-add was ceremony. **(2)** **Card depth** locked exactly: card face = mono header · energy-arc thumbnail · 2–3 genre chips · set length · track count; deeper stats reserved for Set Detail. **(3)** **Fixed app-shell** — the page does not scroll (`100dvh`); only the set list scrolls within its own region. **(4)** A **basic dancefloor detector ships from the jump** (global-heuristic v0, client-side from `plays[]`) so card/detail stats reflect the dancefloor, not warm-up/dinner filler — knowingly interim, superseded by Story 5.2's per-DJ calibration (AR-13). **(5)** Folded in (the dashboard is only worth opening if its stats are *true*): the **agent-side stat-correctness fixes** — Camelot key recovery (read Serato `key_value` INT not the free-text `key`; ~12%→~94% coverage; verified mapping in memory `bug-serato-key-parsing`), a genre-source re-check, and a **backfill of the 491 already-captured local sets**. **(6)** Dashboard renders from a **real committed fixture** (set 975 from `local.sqlite`), not lorem-ipsum, behind a data-access seam that later swaps to Supabase. **(7)** Liquid-metal (`@paper-design/shaders`) CTA set up in `app/components/ui/` — a WebGL hero/CTA used **in-product too**, never a general Button variant.
+
 ### Story 3.7: Set Detail summary + tracklist
 
 As a DJ,
@@ -689,6 +691,30 @@ So that I can study exactly what I played and how it landed.
 2. **Given** most-played artists, **Then** it ranks artist-tagged plays only (no Unknown bucket, no untagged footnote). *(FR-6, CAP-5)*
 3. **Given** the tracklist, **Then** per-track timeline rows (title, artist, timestamp) render with a vertical connector; the top "impact" track gets a highlighted node + peak-metric annotation; "View Full Tracklist" expands from the top-tracks summary; unknown track data uses the FR-2 fallback. *(UX-DR8)*
 4. **Given** a long tracklist, **Then** it paginates / "load more" — never infinite scroll. *(UX-DR20)*
+
+> **⚑ Refinement (Arjun, 2026-08-02).** Set Detail's default view **filters stats to the detected dancefloor segment** (recomputed from `plays[]`), not the whole night — "stats a DJ can actually use, not clouded by unrelated tracks." It shows a **"we detected dancefloor from X–Y"** line with an **edit** affordance; the editor is the **tracklist with two draggable pointers** the DJ moves to bracket the segment (the tracklist-based form of Story 5.3's editor), and that **same Set Detail surface** hosts second-layer enrichment (tags, pics — Story 5.5). **Delete-set** lives here (calm, non-alarm confirm; hard delete, not a visibility flag). Whole-set stats are the honest fallback until a segment is set. Harmonic/**Camelot mixing** is a real ~94%-coverage stat post key-fix and earns a headline slot here.
+
+> **⚑ Dashboard-redesign carry-over (Arjun, 2026-08-03).** During the dashboard hero-chart decision (see `_bmad-output/implementation-artifacts/dashboard-redesign/PLAN.md`, D8), a **key/harmonic timeline** — the set's key progression over time, visualizing Camelot-compatible vs. clashing transitions — was considered for the dashboard hero and deliberately **saved for Set Detail instead**. When this screen is designed, treat it as a candidate companion visualization to the energy arc: AC-1's key/Camelot mixing stats earning a timeline form, in line with the 2026-08-02 refinement's Camelot headline slot.
+
+> **⚑ Design session — full screen designed (Arjun, 2026-08-03). Authoritative spec: `implementation-artifacts/3-7-set-detail.md`** (step-by-step design working doc; read it before creating/deving this story — it carries every layout/interaction/state decision + ASCII mockups). Summary of what was locked, extending/revising the ACs above:
+>
+> **Layout & scope.** Two-pane, **whole-page scroll** — no `100dvh` fixed shell, no nested scroll regions (a deliberate break from the dashboard's signature). Header: A identity + B scope (~20-25% left) beside C energy arc (~75-80% right); header scrolls away. Body: tracklist left (~67%, the spine) + **sticky** right stats column (~33%). Default scope = **detected dancefloor** (3.6's shipped v0 detector), recomputed client-side from `plays[]`; a **global** `[Dancefloor | Whole night]` switch flips *everything* (stats + arc domain) to one frame; the toggle **hides** when no dancefloor is detected (whole-set fallback). **No edit affordance in 3.7** — the draggable-pointer editor + manual-segment *persistence* are Story 5.3 (needs 5.1's `segments` table); 3.7's switch is view-only.
+>
+> **C arc.** Reuse the 3.6 thumbnail arc renderer as interim; **arc domain changes with scope** (dancefloor-only vs full-night, morph transition). Story 3.8 upgrades the *same component* to full annotated mode in place.
+>
+> **Stats (right column, all scope-reactive, all click→focus the tracklist).** Harmonic mixing is the **hero** (LED pips, UX-DR11). Plus BPM (range+median+sparkline); Genre (top 3 = `genre · % · #tracks`, hover = dashboard motion vocab); **Set shape = "Longest Play" / "Shortest Play"** (plain names); **"New tracks played · N of M · [Week|Month]"** (library date-added within 7/30d before set date — launch-honest, survives Epic 4 Decision B); Most-played **artist-primary with conditional replays** (per-set most tracks are singletons — show artists ×2+ only; a "Replayed: X ×2" line only if any track count>1).
+>
+> **F tracklist.** Rows: timeline rail (timestamp+node) · title/artist · right-aligned mono `BPM · played-length · Camelot key`; **`·new·` marker** on new-window tracks. **In-key connector (Q1):** marker on the connector between consecutive rows, same Camelot rule as the harmonic aggregate, **always visible but quiet** — smooth = soft cyan glow, clash = faint dashed break (**never red / no alarm colors**), no-key = plain. Impact node = **peak of the energy arc** (`★ PEAK`). Unknown-track FR-2 fallback. **Load more** (~50 initial), never infinite.
+>
+> **Drill-in (the "each stat gets a modal" pattern).** Clicking a stat opens a detail overlay **over the right column only** (~33%, blurred backdrop over the other stats), **stays open**, back-arrow top-left; picking a value **highlights-in-place / dims others** (never hides rows — would break the timeline + connectors) with a dismissable "Focused: X ✕" pill, **single-select** in 3.7. Overlays: Genre (full list + **genre⇄subgenre toggle**), BPM (client-computed **histogram**, click band→focus), Harmonic (**transition list** + "show clashes only"; Camelot wheel deferred to 3.8). One shared "focus these plays" mechanism underlies genre/harmonic/most-played select **and** 3.8's arc click-to-jump (Q4). Mobile: panes stack, overlay becomes a bottom sheet.
+>
+> **Delete (AC new).** `[⋯]` → calm **blurred-modal** confirm (no alarm/red), copy clarifies **Curfew ≠ Serato/library**; **hard delete, never recoverable** → requires a permanent **tombstone/suppress-id** on stable session identity so re-sync never resurrects it (carry into the sync story; 3.7 pre-sync just removes the row via the 3.6 seam).
+>
+> **Data / capture (agent + contract — the 3.6 "stats must be true" move again).** Additive contract change + one backfill of the 491 local sets: **capture real per-play played-duration** (`ended_at`/`played_ms`, Serato-computed, honors the "Played" flag — powers per-row length + Longest/Shortest) and **library date-added** (powers New-tracks-played). Principle: **`EnrichedPlay` is internal → make it comprehensive** (also read total-length, deck, Played flag while in the joiner); **`SyncPlay` is the frozen wire → keep it consumer-gated, additive-only**. Owed: 5-min verification that Serato 4+ `history_entry` carries duration + date-added columns; and a standalone **`serato-capture-completeness.md`** field-map artifact.
+>
+> **States.** Sparse set (toggle hidden; arc<2pts → chart-summary text; harmonic "not enough tracks"; modules self-hide) · whole-set fallback · unknown-track FR-2 + aggregate "N unanalyzed" disclosure · low-confidence = **quiet non-hiding note** near header.
+>
+> **⚑ Carry-back to Story 3.6 (dashboard).** Low-confidence / no-dancefloor sets (soundchecks) should be **excluded from the dashboard by default but VISIBLY** (Story 4.1's exclude-visibly principle — "N low-confidence sessions hidden · show them"), not silently. 3.6 currently *includes* the soundcheck fixture on the dashboard — this is a behavior change, not already-done.
 
 ### Story 3.8: Energy arc chart + chart summary
 
@@ -703,6 +729,8 @@ So that I can feel the pulse of the room and still get the takeaway if the chart
 3. **Given** a render failure, **Then** the Chart Summary is the fallback. *(UX-DR7, UX-DR19 chart-failed)*
 4. **Given** a screen-reader user, **Then** the Chart Summary is the accessible text-equivalent **And** the UJ-1 "genre gap" climax is reachable without seeing the chart. *(UX-DR7, UX-DR21)*
 5. **Given** a set that spans a DST transition or crosses timezones, **Then** the energy-arc timeline is monotonic — stored UTC + offset, with no repeated hour and no negative time deltas — so neither the chart nor its downstream segment detection (Story 5.2) is corrupted. *(Boundary's hole #2, party 2026-07-20)*
+
+> **⚑ Refinement (Arjun, 2026-08-02).** The full annotated + captioned energy-arc chart is the **"full" mode of the one reusable arc renderer** built in Story 3.6 (whose dashboard card uses its "thumbnail" mode) — one component, two modes, not two implementations.
 
 ### Story 3.9: Console voice, failure register, state/a11y/responsive pass
 
@@ -834,6 +862,8 @@ So that splitting a set into meaningful parts starts from a smart guess, not a b
 4. **Given** a session, **Then** it may yield zero, one, or several dancefloor segments — never assume exactly one. *(AR-13, FR-28)*
 5. **Given** a session spanning a DST transition, **Then** consecutive-pair time deltas stay non-negative and monotonic (the timeline is UTC-based), so per-window density and BPM-delta-smoothness are not corrupted by a repeated hour. *(Boundary's hole #2, party 2026-07-20)*
 
+> **⚑ Refinement (Arjun, 2026-08-02).** Story 3.6 ships a **basic global-heuristic dancefloor detector (v0)** client-side so launch stats aren't clouded by non-dancefloor tracks. This story **supersedes** that v0 with the AR-13 per-DJ-calibrated version (floors from the DJ's own history — "never a global constant"). The v0 was shipped knowingly as interim; when this lands, the client-side heuristic is retired in its favor.
+
 ### Story 5.3: Segment editor
 
 As a DJ,
@@ -846,6 +876,8 @@ So that segmenting a set is fast, precise, and accessible.
 2. **Given** keyboard-only use, **Then** Tab reaches a boundary, arrows nudge, Enter confirms — a full keyboard path. *(UX-DR9, UX-DR20, UX-DR21)*
 3. **Given** confirm, **Then** it commits; segments remain editable anytime. *(UX-DR9)*
 4. **Given** each segment, **Then** it is typed (dancefloor/dinner/performance) or custom-labeled. *(FR-14)*
+
+> **⚑ Refinement (Arjun, 2026-08-02).** The editor renders as draggable pointers **over the tracklist** (Arjun's mental model — bracket the dancefloor by pointing at the first and last track that count), in addition to over the arc. This editor and Story 5.5's Layer-2 enrichment share **one Set Detail editing surface** (the tracklist), not two separate screens. Layer 2 should also accept **photos/"pics"** (extend 5.5's venue/crowd/notes).
 
 ### Story 5.4: Segment-scoped stats
 

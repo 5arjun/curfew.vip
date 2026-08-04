@@ -90,6 +90,13 @@ pub struct LibraryTrack {
     pub key: Option<String>,
     /// Genre, raw and un-normalized.
     pub genre: Option<String>,
+    /// When the library first saw this track — Unix epoch seconds, from the
+    /// catalogue's `uadd` (u32 epoch) or `tadd` (the same epoch as a decimal
+    /// string — verified identical on real data, Story 3.7 §3d) date-added
+    /// field. Powers "New tracks played"; `None` when neither field is present
+    /// or the string form is not a plain epoch number (never guess a date
+    /// format, AD-11).
+    pub date_added: Option<i64>,
 }
 
 /// A loaded `database V2` catalogue, indexed by the file path it stores for each track.
@@ -142,6 +149,10 @@ impl LegacyLibrary {
 
             let mut path: Option<PathBuf> = None;
             let mut track = LibraryTrack::default();
+            // `tadd`'s epoch string, held back so the binary `uadd` (read as
+            // `Field::DateAdded`) wins whenever both are present — they carry
+            // the identical epoch on real data, but the u32 needs no parse.
+            let mut tadd_fallback: Option<i64> = None;
             for inner_field in inner {
                 match inner_field {
                     // An empty stored path is not a join key: keeping it would let a
@@ -152,8 +163,21 @@ impl LegacyLibrary {
                     Field::BPM(s) => track.bpm = s.parse::<f64>().ok().and_then(sane_bpm),
                     Field::Key(s) => track.key = non_empty(s),
                     Field::Genre(s) => track.genre = non_empty(s),
+                    // Date-added (Story 3.7 §3d): `uadd` u32 epoch, `0` = never set.
+                    Field::DateAdded(epoch) if epoch > 0 => {
+                        track.date_added = Some(i64::from(epoch));
+                    }
+                    // `tadd` — the same epoch as a decimal string (verified on real
+                    // data). Anything that is not a plain positive integer is
+                    // absent, never a guessed date (AD-11).
+                    Field::DateAddedStr(s) => {
+                        tadd_fallback = s.trim().parse::<i64>().ok().filter(|t| *t > 0);
+                    }
                     _ => {}
                 }
+            }
+            if track.date_added.is_none() {
+                track.date_added = tadd_fallback;
             }
 
             if let Some(path) = path {
@@ -192,6 +216,14 @@ impl LegacyLibrary {
         let relative = played_path.strip_prefix(Path::new("/")).ok()?;
         self.tracks.get(relative)
     }
+
+    /// The catalogue's date-added for one played path, via the same
+    /// absolute/relative bridging as the full join — the narrow read
+    /// [`super::date_added::DateAddedIndex`] needs (Story 3.7 §3d) without
+    /// widening [`get`](Self::get) itself.
+    pub(crate) fn date_added_for(&self, played_path: &Path) -> Option<i64> {
+        self.get(played_path)?.date_added
+    }
 }
 
 /// Resolves one played track against a loaded legacy library (AC-1, AC-3, AC-4).
@@ -216,6 +248,8 @@ pub fn join(play: &Play, library: &LegacyLibrary) -> JoinedMetadata {
         bpm: track.bpm,
         key: track.key.clone(),
         genre: track.genre.clone(),
+        library_added_at: track.date_added,
+        ..JoinedMetadata::default()
     }
 }
 
@@ -316,7 +350,51 @@ mod tests {
                 bpm: Some(128.0),
                 key: Some("1A".to_string()),
                 genre: Some("Deep House".to_string()),
+                ..JoinedMetadata::default()
             }
+        );
+    }
+
+    /// Story 3.7 (§3d): the catalogue's `uadd` (u32 epoch) date-added resolves
+    /// onto the join, and the binary form wins over the `tadd` string when both
+    /// are present (they carry the identical epoch on real data — the u32 just
+    /// needs no parse).
+    #[test]
+    fn date_added_resolves_from_uadd_preferring_it_over_tadd() {
+        let library = library_from(&[track_record(&[
+            path_field("Users/arjun/Music/dated.mp3"),
+            field(b'u', b"add", &1_644_628_114u32.to_be_bytes()),
+            text_field(b"add", "1_600_000_000 (not this one)"),
+        ])]);
+
+        let joined = join(&play_at("/Users/arjun/Music/dated.mp3"), &library);
+
+        assert_eq!(joined.library_added_at, Some(1_644_628_114));
+    }
+
+    /// Story 3.7 (§3d): with only the `tadd` string present, its plain epoch
+    /// number parses; a non-numeric `tadd` is absent, never a guessed date.
+    #[test]
+    fn date_added_falls_back_to_a_numeric_tadd_string() {
+        let library = library_from(&[
+            track_record(&[
+                path_field("Users/arjun/Music/tadd-only.mp3"),
+                text_field(b"add", "1644628114"),
+            ]),
+            track_record(&[
+                path_field("Users/arjun/Music/garbage-tadd.mp3"),
+                text_field(b"add", "June 10th 2021"),
+            ]),
+        ]);
+
+        assert_eq!(
+            join(&play_at("/Users/arjun/Music/tadd-only.mp3"), &library).library_added_at,
+            Some(1_644_628_114)
+        );
+        assert_eq!(
+            join(&play_at("/Users/arjun/Music/garbage-tadd.mp3"), &library).library_added_at,
+            None,
+            "a non-epoch tadd must not become a fabricated date"
         );
     }
 
@@ -339,6 +417,7 @@ mod tests {
                 bpm: None,
                 key: Some("8B".to_string()),
                 genre: Some("Techno".to_string()),
+                ..JoinedMetadata::default()
             },
             "a gap in one column must not cost the track its other fields, or its membership"
         );

@@ -67,7 +67,17 @@
           "type": ["string", "null"],
           "pattern": "^(1[0-2]|[1-9])[AB]$"
         },
-        "in_library": { "type": "boolean" }
+        "in_library": { "type": "boolean" },
+        "played_ms": {
+          "description": "Real on-air duration in ms (Story 3.7 §3d: end_time − start_time, with agent-side next-play-start/set-end fallback). Added post-freeze, optional per AD-15.",
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "library_added_at": {
+          "description": "ISO 8601 — library date-added via database V2 tadd/uadd by portable path (Story 3.7 §3d). Added post-freeze, optional per AD-15; null when no reachable catalogue covers the track.",
+          "type": ["string", "null"],
+          "format": "date-time"
+        }
       }
     },
     "genre": {

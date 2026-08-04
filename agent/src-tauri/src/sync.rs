@@ -513,6 +513,8 @@ mod tests {
             genre: None,
             camelot_key: None,
             in_library: true,
+            played_ms: None,
+            library_added_at: None,
         }]
     }
 

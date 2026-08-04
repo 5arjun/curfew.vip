@@ -384,6 +384,23 @@ pub fn mark_superseded(conn: &Connection, session_identity: &str) -> Result<(), 
     Ok(())
 }
 
+/// Clears `synced_at` on a `captured` row so the sync-queue drain loop
+/// ([`rows_pending_sync`] selects `status = 'captured' AND synced_at IS NULL`)
+/// picks it up again and re-pushes it to the cloud. Used by the Story 3.6
+/// captured-set backfill when a re-derivation actually *changed* a row's derived
+/// data (e.g. the Camelot key recovery): the cloud copy must be corrected too, so
+/// the dashboard reads the same on every device (Arjun 2026-08-02). Idempotent
+/// via the set's `external_id` on the cloud side (Story 3.2), so a re-sync
+/// updates the existing cloud row rather than duplicating it. A no-op (not an
+/// error) if the row is not currently `captured`.
+pub fn mark_for_resync(conn: &Connection, session_identity: &str) -> Result<(), StoreError> {
+    conn.execute(
+        "UPDATE captured_sessions SET synced_at = NULL WHERE session_identity = ?1 AND status = 'captured'",
+        [session_identity],
+    )?;
+    Ok(())
+}
+
 /// Reads one row by its dedup key, if it exists.
 pub fn get_by_identity(
     conn: &Connection,
@@ -611,6 +628,14 @@ pub struct CapturedPlay {
     /// boundary, not the two-field Rust struct.
     pub camelot_key: Option<String>,
     pub in_library: bool,
+    /// Real on-air duration in milliseconds (Story 3.7, wire-promoted —
+    /// mirrors `SyncPlay.played_ms`). `Option` fields deserialize as `None`
+    /// from pre-3.7 stored rows, so old `plays_json` still round-trips.
+    pub played_ms: Option<u64>,
+    /// Library date-added, Unix epoch seconds (Story 3.7, wire-promoted —
+    /// mirrors `SyncPlay.library_added_at`; the epoch→ISO conversion is a
+    /// payload-boundary concern, same as `started_at`).
+    pub library_added_at: Option<i64>,
 }
 
 /// Mirrors `EnrichedPlay.genre: Option<NormalizedGenre>` — raw + subgenre +
@@ -812,6 +837,8 @@ mod tests {
             }),
             camelot_key: Some("8A".into()),
             in_library: true,
+            played_ms: Some(240_000),
+            library_added_at: Some(1_644_628_114),
         }]
     }
 
@@ -885,6 +912,8 @@ mod tests {
             artist: None,
             started_at: Some(1_500),
             bpm: Some(128.0),
+            played_ms: None,
+            library_added_at: None,
             genre: None,
             camelot_key: None,
             in_library: false,

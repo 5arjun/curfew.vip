@@ -53,7 +53,8 @@
       "mcp__supabase__get_advisors",
       "mcp__plugin_resend_resend__list-api-keys",
       "mcp__supabase__execute_sql",
-      "mcp__supabase__get_publishable_keys"
+      "mcp__supabase__get_publishable_keys",
+      "mcp__playwright__*"
     ],
     "additionalDirectories": [
       "/Users/arjun/Documents/name-pending/_bmad-output/planning-artifacts/architecture"

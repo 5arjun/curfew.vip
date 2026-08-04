@@ -206,6 +206,7 @@ fn advance_serato4(
     tx: &mpsc::Sender<notify::Result<notify::Event>>,
     store_conn: Option<&Connection>,
     pending: &mut HashSet<i64>,
+    dates: &crate::joiner::date_added::DateAddedIndex,
 ) {
     if let (Some(new_source), Some(existing)) = (new_source, state.as_ref()) {
         if existing.source.db_path != new_source.db_path {
@@ -235,7 +236,7 @@ fn advance_serato4(
             });
             watch_state.source = new_source.clone();
             if watch_state.connected != Some(true) {
-                connect_serato4(watch_state, tx, store_conn, pending);
+                connect_serato4(watch_state, tx, store_conn, pending, dates);
             }
             if let Some(conn) = store_conn {
                 recheck_pending_serato4(
@@ -243,6 +244,7 @@ fn advance_serato4(
                     &watch_state.source.root,
                     &watch_state.source.db_path,
                     pending,
+                    dates,
                 );
             }
         }
@@ -261,6 +263,7 @@ fn connect_serato4(
     tx: &mpsc::Sender<notify::Result<notify::Event>>,
     store_conn: Option<&Connection>,
     pending: &mut HashSet<i64>,
+    dates: &crate::joiner::date_added::DateAddedIndex,
 ) {
     state.connected = Some(true);
     state._fs_watcher = start_fs_watch(&state.source.db_path, tx.clone());
@@ -272,6 +275,7 @@ fn connect_serato4(
         &mut state.watermark,
         store_conn,
         pending,
+        dates,
     );
     if let Some(conn) = store_conn {
         // Story 2.8 AC-4 resume: a session marked `incomplete` on a prior
@@ -481,12 +485,17 @@ fn watch_loop(app: AppHandle) {
         let plan =
             detect::resolve_watch_plan(override_path.as_deref(), &home, &detect::SystemDisks);
 
+        // Story 3.7 (§3d): a fresh lazy date-added index per tick, so any
+        // capture this tick performs sees the volumes mounted *right now* —
+        // catalogue loading only happens on the rare tick that captures.
+        let dates = crate::joiner::date_added::DateAddedIndex::live(&home);
         advance_serato4(
             plan.serato4.as_ref(),
             &mut serato4_state,
             &tx,
             store_conn.as_ref(),
             &mut pending_serato4,
+            &dates,
         );
         advance_legacy(
             plan.legacy.as_ref(),
@@ -536,6 +545,7 @@ fn watch_loop(app: AppHandle) {
                         &mut state.watermark,
                         store_conn.as_ref(),
                         &mut pending_serato4,
+                        &dates,
                     );
                 }
             }
@@ -619,6 +629,7 @@ fn recheck_pending_serato4(
     root: &Path,
     db_path: &Path,
     pending: &mut HashSet<i64>,
+    dates: &crate::joiner::date_added::DateAddedIndex,
 ) {
     let Ok(query_conn) = crate::joiner::serato4::open_read_only(root, db_path) else {
         return;
@@ -641,6 +652,7 @@ fn recheck_pending_serato4(
             root,
             db_path,
             id,
+            dates,
             &crate::error_reporting::SentryReporter,
         ) {
             pending.remove(&id);
@@ -667,11 +679,12 @@ pub(crate) fn capture_and_store_serato4(
     root: &Path,
     db_path: &Path,
     session_id: i64,
+    dates: &crate::joiner::date_added::DateAddedIndex,
     reporter: &dyn crate::error_reporting::ErrorReporter,
 ) -> bool {
     let identity = crate::capture::serato4_session_identity(session_id);
     let raw_ref = crate::capture::serato4_raw_ref(db_path, session_id);
-    match crate::capture::build_serato4(root, db_path, session_id) {
+    match crate::capture::build_serato4(root, db_path, session_id, dates) {
         Ok((plays, derived)) => {
             let (started_at, ended_at) = crate::capture::session_bounds(&plays);
             if let Err(_e) = crate::store::upsert_captured(
@@ -997,6 +1010,7 @@ fn check_for_new_sessions(
     watermark: &mut i64,
     store_conn: Option<&Connection>,
     pending: &mut HashSet<i64>,
+    dates: &crate::joiner::date_added::DateAddedIndex,
 ) {
     let Ok(conn) = crate::joiner::serato4::open_read_only(root, db_path) else {
         return;
@@ -1030,6 +1044,7 @@ fn check_for_new_sessions(
                     root,
                     db_path,
                     session.id,
+                    dates,
                     &crate::error_reporting::SentryReporter,
                 ) {
                     pending.insert(session.id);
@@ -1375,6 +1390,12 @@ mod tests {
         ])
     }
 
+    /// A filesystem-free, empty date-added index — watcher tests are never
+    /// about the `database V2` lookup.
+    fn no_dates() -> crate::joiner::date_added::DateAddedIndex {
+        crate::joiner::date_added::DateAddedIndex::fixed(std::collections::HashMap::new())
+    }
+
     fn write_legacy_session_file(dir: &Path, name: &str, data: &[u8]) -> PathBuf {
         std::fs::create_dir_all(dir).unwrap();
         let path = dir.join(name);
@@ -1407,7 +1428,12 @@ mod tests {
         conn.execute_batch(
             r#"CREATE TABLE history_entry (
                    id INTEGER PRIMARY KEY, session_id INTEGER, name TEXT, artist TEXT,
-                   genre TEXT, "key" TEXT, bpm REAL, start_time INTEGER, deck TEXT
+                   genre TEXT, key_value INTEGER, "key" TEXT, bpm REAL, start_time INTEGER, deck TEXT,
+                   end_time INTEGER, played INTEGER, length_ms INTEGER, length_sec INTEGER,
+                   portable_id TEXT
+               );
+               CREATE TABLE history_session (
+                   id INTEGER PRIMARY KEY, name TEXT, start_time INTEGER, end_time INTEGER
                );"#,
         )
         .unwrap();
@@ -1436,6 +1462,7 @@ mod tests {
             &serato4_dir.0,
             &db_path,
             7,
+            &no_dates(),
             &NoopReporter
         ));
 
@@ -1506,6 +1533,7 @@ mod tests {
             &serato4_dir.0,
             &db_path,
             9,
+            &no_dates(),
             &NoopReporter
         ));
 
@@ -1554,6 +1582,7 @@ mod tests {
             &serato4_dir.0,
             &db_path,
             11,
+            &no_dates(),
             &NoopReporter
         ));
 
@@ -1579,6 +1608,7 @@ mod tests {
             &serato4_dir.0,
             &db_path,
             13,
+            &no_dates(),
             &NoopReporter
         ));
 
@@ -1622,7 +1652,8 @@ mod tests {
         let db_path = serato4_dir.0.join("master.sqlite");
         let reporter = RecordingReporter::default();
 
-        let succeeded = capture_and_store_serato4(&store_conn, &db_path, &db_path, 77, &reporter);
+        let succeeded =
+            capture_and_store_serato4(&store_conn, &db_path, &db_path, 77, &no_dates(), &reporter);
 
         assert!(
             !succeeded,
