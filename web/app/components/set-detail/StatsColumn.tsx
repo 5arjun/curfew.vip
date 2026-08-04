@@ -2,7 +2,6 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useMemo, useState } from "react";
-import { formatBpm } from "@/lib/sets/format";
 import {
   bpmSummary,
   formatPlayedLength,
@@ -15,10 +14,12 @@ import {
   type NewTracksWindow,
 } from "@/lib/sets/setDetail";
 import type { SetRecord } from "@/lib/sets/types";
+import { AnimateNumber } from "@/app/components/ui/AnimateNumber";
 import { CursorChip, useCursorChipTarget } from "@/app/components/ui/CursorChip";
 import type { Focus, OverlayKind, ScopeFrame } from "./model";
 import { MetalRim } from "./MetalRim";
 import { OverlayPanel } from "./Overlays";
+import { TempoSpark } from "./TempoSpark";
 
 // The right stats column (spec §3a-D/E, §3c) — every module is scope-reactive
 // (reads `frame.plays`) and clickable (§3b): Genre/BPM/Harmonic/Artists open
@@ -83,24 +84,6 @@ export function StatsColumn({
   const showShape =
     shape.longest != null && shape.shortest != null && shape.longest.position !== shape.shortest.position;
 
-  const bpmSparkline = useMemo(() => {
-    const values = plays
-      .map((p) => p.bpm)
-      .filter((b): b is number => b != null);
-    if (values.length < 2) return null;
-    const min = Math.min(...values);
-    const span = Math.max(...values) - min || 1;
-    const w = 100;
-    const h = 24;
-    return values
-      .map((v, i) => {
-        const x = (i / (values.length - 1)) * w;
-        const y = h - 3 - ((v - min) / span) * (h - 6);
-        return `${x.toFixed(1)},${y.toFixed(1)}`;
-      })
-      .join(" ");
-  }, [plays]);
-
   return (
     <div className="sd-stats" data-overlay-open={overlay != null || undefined}>
       <div className="sd-stats-stack" aria-hidden={overlay != null} inert={overlay != null || undefined}>
@@ -122,7 +105,10 @@ export function StatsColumn({
                   ))}
                 </div>
                 <p className="sd-stat-readout">
-                  <span className="sd-stat-value">{smoothPct}%</span> in-key transitions
+                  <span className="sd-stat-value">
+                    <AnimateNumber value={smoothPct ?? 0} suffix="%" />
+                  </span>{" "}
+                  in-key transitions
                 </p>
               </>
             ) : plays.length < 2 ? (
@@ -146,15 +132,12 @@ export function StatsColumn({
               <div className="sd-bpm-row">
                 <p className="sd-stat-readout">
                   <span className="sd-stat-value">
-                    {formatBpm(bpm.min)}–{formatBpm(bpm.max)}
+                    <AnimateNumber value={Math.round(bpm.min)} />–
+                    <AnimateNumber value={Math.round(bpm.max)} />
                   </span>{" "}
-                  · median {formatBpm(bpm.median)}
+                  · median <AnimateNumber value={Math.round(bpm.median)} />
                 </p>
-                {bpmSparkline && (
-                  <svg className="sd-bpm-spark" viewBox="0 0 100 24" aria-hidden="true">
-                    <polyline points={bpmSparkline} />
-                  </svg>
-                )}
+                <TempoSpark set={set} frame={frame} />
               </div>
             ) : (
               <p className="sd-stat-empty">No tempo data</p>
@@ -195,7 +178,9 @@ export function StatsColumn({
                     onMouseLeave={() => setHoverGenre(null)}
                   >
                     <span className="sd-genre-name">{b.name}</span>
-                    <span className="sd-genre-meta">{b.pct}%</span>
+                    <span className="sd-genre-meta">
+                      <AnimateNumber value={b.pct} suffix="%" />
+                    </span>
                   </motion.li>
                 ))}
               </ul>
@@ -263,7 +248,10 @@ export function StatsColumn({
             >
               <span className="sd-stat-label">New tracks played</span>
               <span className="sd-stat-readout">
-                <span className="sd-stat-value">{fresh.newCount}</span> of {fresh.totalTracks}
+                <span className="sd-stat-value">
+                  <AnimateNumber value={fresh.newCount} />
+                </span>{" "}
+                of <AnimateNumber value={fresh.totalTracks} />
               </span>
             </button>
             <MetalRim radius={12}>

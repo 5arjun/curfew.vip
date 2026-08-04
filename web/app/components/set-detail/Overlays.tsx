@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { formatBpm } from "@/lib/sets/format";
 import { useMediaQuery, usePrefersReducedMotion } from "@/app/components/ui/metal-hooks";
@@ -10,6 +10,7 @@ import {
   bpmSummary,
   genreRanking,
   mostPlayedArtists,
+  parseCamelot,
   subgenreRanking,
   transitions,
 } from "@/lib/sets/setDetail";
@@ -276,6 +277,28 @@ function BpmOverlay({
 
 /* ── Harmonic (AC-29) ────────────────────────────────────────────────── */
 
+/** A Camelot key code tinted with its own --camelot-* token (3.8 review round
+ * 1 — the transition list previously rendered keys untinted). Built from the
+ * PARSED key, same fallback discipline as the tracklist chips: a malformed
+ * value stays neutral instead of referencing a nonexistent custom property. */
+function KeyCode({ raw }: { raw: string | null }) {
+  const parsed = raw ? parseCamelot(raw) : null;
+  return (
+    <span
+      className="sd-key-code"
+      style={
+        parsed
+          ? ({
+              "--sd-key-color": `var(--camelot-${parsed.number}${parsed.letter.toLowerCase()})`,
+            } as CSSProperties)
+          : undefined
+      }
+    >
+      {raw ?? "—"}
+    </span>
+  );
+}
+
 function HarmonicOverlay({
   frame,
   focus,
@@ -326,7 +349,7 @@ function HarmonicOverlay({
                 }
               >
                 <span className="sd-overlay-row-name">
-                  {t.fromKey ?? "—"} → {t.toKey ?? "—"}
+                  <KeyCode raw={t.fromKey} /> → <KeyCode raw={t.toKey} />
                 </span>
                 <span className="sd-overlay-row-meta">
                   {t.state === "smooth" ? "in key" : t.state === "clash" ? "out of key" : "no key"}

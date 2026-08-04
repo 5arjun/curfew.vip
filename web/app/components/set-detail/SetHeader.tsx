@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { formatDuration, formatSessionLabel, formatSetDate, formatTimeRange } from "@/lib/sets/format";
 import type { Scope } from "@/lib/sets/setDetail";
 import type { SetRecord } from "@/lib/sets/types";
+import { AnimateNumber } from "@/app/components/ui/AnimateNumber";
 import type { ScopeFrame } from "./model";
 import { DeleteModal } from "./DeleteModal";
 import { MetalRim } from "./MetalRim";
@@ -110,7 +111,7 @@ export function SetHeader({
       </div>
 
       <p className="sd-identity-meta">
-        {formatDuration(scopedLength(frame))} · {frame.plays.length}{" "}
+        {formatDuration(scopedLength(frame))} · <AnimateNumber value={frame.plays.length} />{" "}
         {frame.plays.length === 1 ? "track" : "tracks"}
       </p>
 

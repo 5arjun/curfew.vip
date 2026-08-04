@@ -281,34 +281,8 @@
   pointer-events: none;
 }
 
-/* D-10 — the ★ peak: a small node ON the curve, star riding just above.
-   Identifying hover comes from the shared CursorChip, not an always-on label. */
-.sd-arc-peak {
-  position: absolute;
-  width: 0;
-  height: 0;
-}
-
-.sd-arc-peak-node {
-  position: absolute;
-  left: -3.5px;
-  top: -3.5px;
-  width: 7px;
-  height: 7px;
-  border-radius: var(--radius-full);
-  background: var(--metal-abyss-tint);
-  box-shadow: 0 0 8px var(--color-abyss-accent-glow);
-}
-
-.sd-arc-peak-star {
-  position: absolute;
-  left: -7px;
-  top: -24px;
-  font-size: 13px;
-  line-height: 1;
-  color: var(--color-abyss-accent);
-  filter: drop-shadow(0 0 7px var(--color-abyss-accent-glow));
-}
+/* (The on-curve ★ peak styles were removed in review round 1 — the star
+   didn't convey the right point; the tracklist ★ PEAK node remains.) */
 
 /* D-9 — the whole plot is the hit target, not 6px dots. */
 .sd-arc-hit {
@@ -335,17 +309,17 @@
 
 .sd-arc-strip-seg {
   fill: var(--color-abyss-raised); /* no-key neutral; keyed segs inline their --camelot-* */
-  fill-opacity: 0.78;
+  fill-opacity: 0.65; /* review round 1: dropped from 0.78 — quieter next to the chrome curve */
   cursor: pointer;
   transition: fill-opacity var(--motion-duration-fast) var(--motion-ease-standard);
 }
 
 .sd-arc-strip-seg:hover {
-  fill-opacity: 1;
+  fill-opacity: 0.9;
 }
 
 .sd-arc-strip-seg[data-nokey] {
-  fill-opacity: 0.5;
+  fill-opacity: 0.4;
 }
 
 /* Seam language (AC-11): in key = soft cyan seam; out of key = faint dashed
@@ -379,28 +353,31 @@
   color: var(--color-abyss-text-45);
 }
 
+/* The dancefloor range marker (D-7) — moved INTO the plot's top edge (review
+   round 1: the footer row already carries the ticks + caption). Corner marks
+   open downward, bracketing the window they label. */
 .sd-arc-tick-df {
   position: absolute;
-  top: 0;
-  bottom: 0;
+  top: 10px;
+  height: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   text-wrap: nowrap;
+  font-family: var(--font-geist-mono);
   color: var(--color-abyss-text-22);
   text-transform: uppercase;
   letter-spacing: 0.14em;
   font-size: 9.5px;
 }
 
-/* The two quiet dancefloor-edge marks (D-7), drawn as corner ticks. */
 .sd-arc-tick-df::before,
 .sd-arc-tick-df::after {
   content: "";
   position: absolute;
-  top: 3px;
-  bottom: 3px;
+  top: 1px;
+  bottom: 1px;
   width: 5px;
   border-top: 1px solid var(--color-abyss-text-22);
 }
@@ -695,6 +672,12 @@
   filter: drop-shadow(0 0 6px var(--color-abyss-accent-glow));
 }
 
+/* Camelot key codes in the harmonic transition list — each key rides its own
+   --camelot-* token (3.8 review round 1); unparseable keys stay neutral. */
+.sd-key-code {
+  color: var(--sd-key-color, var(--color-abyss-text-72));
+}
+
 /* Hover detail rides the shared CursorChip (compact) — the CSS tooltip is
    gone (post-review ruling: same pop-up language as the calendar/nav). */
 .cursor-chip-body--compact {
@@ -833,7 +816,7 @@
   flex: none;
 }
 
-.sd-bpm-spark polyline {
+.sd-bpm-spark path {
   fill: none;
   stroke: var(--color-abyss-accent-soft);
   stroke-width: 1.5;

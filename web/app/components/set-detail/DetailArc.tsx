@@ -12,7 +12,7 @@ import {
 } from "react";
 import { arcTextEquivalent, type ArcPoint } from "@/lib/sets/energyArc";
 import { formatClock } from "@/lib/sets/format";
-import { heroArcGeometry, type HeroArcGeometry } from "@/lib/sets/heroArc";
+import { heroArcGeometry } from "@/lib/sets/heroArc";
 import {
   bpmSummary,
   camelotCompatible,
@@ -26,7 +26,7 @@ import type { Focus, ScopeFrame } from "./model";
 // Section C, FULL MODE (Story 3.8 — the in-place upgrade of the 3.7 slot-C
 // renderer, never a fork, D-8): the same heroArcGeometry domain + viewBox
 // morph machinery, now drawing the monotone-cubic chrome curve with a median
-// baseline, sparse edge ticks, a ★ peak mark, hover name chips, click-to-jump
+// baseline, sparse edge ticks, hover name chips, click-to-jump
 // (DR-2 setFocus — 3.7's one focus mechanism), a Camelot key-timeline strip
 // morphing in lockstep, and the ONE chart-summary caption (visible + aria +
 // error-boundary fallback, D-12).
@@ -43,24 +43,6 @@ const STRIP_H = 28;
 /* ── Pure helpers ─────────────────────────────────────────────────────── */
 
 const EPOCH = (iso: string) => new Date(iso).getTime();
-
-/** y of the DRAWN (smoothed) curve at time t — the ★ sits on the curve, not
- * on the raw play's un-smoothed BPM (which may be off the line). */
-function curveYAt(curve: HeroArcGeometry["curve"], t: number): number {
-  if (curve.length === 0) return VIEW.height / 2;
-  if (t <= curve[0].t) return curve[0].y;
-  const last = curve[curve.length - 1];
-  if (t >= last.t) return last.y;
-  for (let i = 1; i < curve.length; i++) {
-    if (curve[i].t >= t) {
-      const a = curve[i - 1];
-      const b = curve[i];
-      const f = (t - a.t) / (b.t - a.t || 1);
-      return a.y + (b.y - a.y) * f;
-    }
-  }
-  return last.y;
-}
 
 interface TimedPlay {
   play: SyncPlay;
@@ -174,14 +156,9 @@ export function DetailArc({
   }, [frame.scope, frame.plays, set.derived.bpm_distribution.median]);
   const medianY = median != null ? geo.mapY(median) : null;
 
-  // ★ peak (D-10/D-14): frame.peakPosition IS the tracklist node's value —
-  // one shared arcPeakPosition, never a second algorithm.
-  const peak = useMemo(() => {
-    if (frame.peakPosition == null) return null;
-    const tp = timedPlays.find((p) => p.play.position === frame.peakPosition);
-    if (!tp) return null;
-    return { play: tp.play, x: tp.x, y: curveYAt(geo.curve, tp.t) };
-  }, [frame.peakPosition, timedPlays, geo]);
+  // (The on-curve ★ peak mark was REMOVED in review round 1 — Arjun: the star
+  // didn't convey the right point. The shared arcPeakPosition lives on: the
+  // tracklist's ★ PEAK impact node still consumes frame.peakPosition.)
 
   // Key timeline strip (D-1, spec §3b): one segment per timed play across its
   // played window (next play's start, or the real capture where it's the last
@@ -408,10 +385,6 @@ export function DetailArc({
     );
   }
 
-  const domW = targetWidth;
-  const pct = (vbX: number) => ((vbX - targetX) / domW) * 100;
-  const peakVisible = peak != null && pct(peak.x) >= 0 && pct(peak.x) <= 100;
-
   return (
     <div ref={rootRef} className="sd-arc sd-arc-full dz-shell" role="img" aria-label={caption}>
       <span className="dz-dots" aria-hidden="true" />
@@ -456,15 +429,16 @@ export function DetailArc({
           </svg>
 
           {/* D-18: annotations are HTML positioned from arc geometry — they
-              fade with [data-morphing], never fighting the viewBox tween. */}
+              fade with [data-morphing], never fighting the viewBox tween.
+              The dancefloor range marker lives up here in the plot (review
+              round 1 — the footer row was already carrying the ticks). */}
           <div className="sd-arc-overlay sd-arc-fade" aria-hidden="true">
-            {peakVisible && (
+            {dfTick && (
               <span
-                className="sd-arc-peak"
-                style={{ left: `${pct(peak.x)}%`, top: `${(peak.y / VIEW.height) * 100}%` }}
+                className="sd-arc-tick-df"
+                style={{ left: `${dfTick.left}%`, width: `${dfTick.width}%` }}
               >
-                <span className="sd-arc-peak-node" />
-                <span className="sd-arc-peak-star">★</span>
+                dancefloor
               </span>
             )}
           </div>
@@ -547,14 +521,6 @@ export function DetailArc({
         <div className="sd-arc-footer sd-arc-fade">
           <div className="sd-arc-ticks">
             <span className="sd-arc-tick">{formatClock(tickStart ?? null)}</span>
-            {dfTick && (
-              <span
-                className="sd-arc-tick-df"
-                style={{ left: `${dfTick.left}%`, width: `${dfTick.width}%` }}
-              >
-                dancefloor
-              </span>
-            )}
             <span className="sd-arc-tick">{formatClock(tickEnd ?? null)}</span>
           </div>
           <p className="sd-arc-caption">{caption}</p>
@@ -581,9 +547,7 @@ export function DetailArc({
             {hover.kind === "median"
               ? `Median · ${Math.round(median ?? 0)} BPM`
               : hover.kind === "play"
-                ? hover.play.position === frame.peakPosition
-                  ? `★ Peak · ${hover.play.title ?? "Unknown track"}`
-                  : (hover.play.title ?? "Unknown track")
+                ? (hover.play.title ?? "Unknown track")
                 : hover.keyLabel
                   ? `${hover.keyLabel} · ${hover.play.title ?? "Unknown track"}`
                   : (hover.play.title ?? "Unknown track")}
