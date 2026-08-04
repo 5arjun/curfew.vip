@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(13);
+select plan(14);
 
 -- Seed two auth users; the AFTER INSERT trigger (handle_new_dj) creates the
 -- matching public.djs row for each, same as djs_isolation_test.sql /
@@ -68,6 +68,28 @@ select is(
   1644628114,
   'library_added_at survives the sync_set write boundary as timestamptz (Story 3.7 AC-41)'
 );
+
+-- Story 3.7 code review: the DB-level CHECK mirrors the JSON schema's own
+-- `played_ms minimum: 0` — a negative duration is rejected at the write
+-- boundary, not just documented as invalid in the schema.
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
+
+select throws_ok(
+  $$ select public.sync_set(
+    'legacy:negative-duration',
+    1000,
+    1600,
+    '{}'::jsonb,
+    '[{"position":1,"title":"Bad","artist":null,"started_at":1000,"bpm":null,"genre":null,"camelot_key":null,"in_library":false,"played_ms":-1}]'::jsonb
+  ) $$,
+  '23514'::char(5),
+  NULL,
+  'a negative played_ms is rejected by the played_ms >= 0 check constraint'
+);
+
+reset role;
+reset request.jwt.claims;
 
 -- A pre-3.7 agent's play (neither key present) still syncs, both columns null —
 -- the additive-only guarantee at the RPC layer.

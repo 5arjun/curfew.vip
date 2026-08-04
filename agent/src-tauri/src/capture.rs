@@ -44,6 +44,16 @@ pub enum CaptureError {
     /// variant rather than folded into `Ok((vec![], ..))`, so a caller cannot
     /// mistake "found nothing to persist" for "persisted an empty set".
     EmptySession,
+    /// Every row `build_serato4` read resolved to a loaded-but-never-played
+    /// preview (Story 3.7's `played` filter) — nothing was actually played,
+    /// so there is no session to capture. Kept distinct from [`EmptySession`]
+    /// (a source with zero rows to begin with) so a caller like
+    /// `backfill::backfill_captured_serato4` can tell "genuinely nothing
+    /// here" apart from "source unreachable/corrupt" instead of silently
+    /// merging the two (Story 3.7 code review).
+    ///
+    /// [`EmptySession`]: CaptureError::EmptySession
+    AllPreviews,
     /// `read_session`/`join_session` returned different row counts for the
     /// same `session_id` — the connection-sharing contract's `ORDER BY`
     /// clauses no longer agree, or the underlying table changed between the
@@ -64,6 +74,10 @@ impl std::fmt::Display for CaptureError {
             CaptureError::Open(e) => write!(f, "capture: database open failed: {e}"),
             CaptureError::Sqlite(e) => write!(f, "capture: query failed: {e}"),
             CaptureError::EmptySession => write!(f, "capture: session has no plays, nothing to capture"),
+            CaptureError::AllPreviews => write!(
+                f,
+                "capture: every row was a loaded-but-never-played preview, nothing to capture"
+            ),
             CaptureError::Correlation { plays, joined } => write!(
                 f,
                 "capture: play/metadata row count mismatch ({plays} plays, {joined} joined) — refusing to zip positionally"
@@ -79,7 +93,9 @@ impl std::error::Error for CaptureError {
             CaptureError::Join(e) => Some(e),
             CaptureError::Open(e) => Some(e),
             CaptureError::Sqlite(e) => Some(e),
-            CaptureError::EmptySession | CaptureError::Correlation { .. } => None,
+            CaptureError::EmptySession
+            | CaptureError::AllPreviews
+            | CaptureError::Correlation { .. } => None,
         }
     }
 }
@@ -329,8 +345,11 @@ pub fn build_serato4(
     if pairs.is_empty() {
         // Every row was a loaded-but-never-played preview — nothing was
         // actually played, so there is no session to capture (same skip-not-
-        // invent rationale as the zero-row case above).
-        return Err(CaptureError::EmptySession);
+        // invent rationale as the zero-row case above). A distinct variant
+        // from the zero-row `EmptySession` above so a caller can tell "really
+        // nothing here" apart from "source unreachable/corrupt" (Story 3.7
+        // code review).
+        return Err(CaptureError::AllPreviews);
     }
 
     Ok(assemble(&pairs, set_end))
@@ -1295,7 +1314,7 @@ mod tests {
         let result = build_serato4(&dir, &db_path, 7, &no_dates());
         let _ = std::fs::remove_dir_all(&dir);
 
-        assert!(matches!(result, Err(CaptureError::EmptySession)));
+        assert!(matches!(result, Err(CaptureError::AllPreviews)));
     }
 
     #[test]

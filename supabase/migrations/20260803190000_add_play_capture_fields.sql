@@ -7,7 +7,8 @@
 --                     end_time − start_time, with the agent-side
 --                     next-play-start/set-end fallback). bigint: ms values
 --                     overflow int4 past ~24 days, and bigint matches the
---                     agent's u64.
+--                     agent's u64. `check (played_ms >= 0)` mirrors the
+--                     JSON schema's own `minimum: 0` at the DB boundary.
 --   - `library_added_at` — when the DJ's library first saw the track
 --                     (database V2 tadd/uadd, joined by portable path).
 --                     Arrives as unix epoch seconds (the wire's timestamp
@@ -18,7 +19,7 @@
 -- (AR-15/AD-15). `sync_set()` is replaced wholesale with the same signature —
 -- same convention as 20260731130000_add_play_subgenre.sql.
 
-alter table public.plays add column played_ms bigint;
+alter table public.plays add column played_ms bigint check (played_ms >= 0);
 alter table public.plays add column library_added_at timestamptz;
 
 create or replace function public.sync_set(
