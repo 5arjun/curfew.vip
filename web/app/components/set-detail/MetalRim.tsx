@@ -39,7 +39,7 @@ export function MetalRim({
             style={{ width: "100%", height: "100%" }}
             colorBack={colors.back}
             colorTint={colors.tint}
-            speed={reduced ? 0 : 0.6}
+            speed={reduced ? 0 : 0.35}
             repetition={4}
             softness={0.5}
             shiftRed={0.3}
