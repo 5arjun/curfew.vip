@@ -105,7 +105,9 @@ export function SetDetail({ set }: { set: SetRecord }) {
       <SilkBackdrop />
       <header className="sd-header">
         <SetHeader set={set} frame={frame} onScopeChange={flipScope} scopeToggleVisible={segment != null} />
-        <DetailArc set={set} frame={frame} />
+        {/* 3.8: the arc + key strip click-to-jump ride the SAME DR-2 setFocus
+            every stat module uses — no second focus path. */}
+        <DetailArc set={set} frame={frame} setFocus={setFocus} />
       </header>
 
       <div className="sd-body">

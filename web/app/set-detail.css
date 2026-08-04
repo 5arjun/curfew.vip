@@ -215,13 +215,29 @@
   background: var(--color-abyss-row-hover);
 }
 
-/* ─── C — energy arc ───────────────────────────────────────────────────── */
+/* ─── C — energy arc, full mode (3.8) ──────────────────────────────────────
+   The one arc shell: plot (curve + median + HTML annotation overlay) over the
+   Camelot key-timeline strip over the tick/caption footer. Annotations are
+   HTML and fade with [data-morphing] (D-18) so the SVG viewBox tween never
+   fights them; the strip is its own SVG sharing the arc's animated x-domain. */
 
 .sd-arc {
   position: relative;
   overflow: hidden;
   min-height: 220px;
   border-radius: 28px;
+}
+
+.sd-arc-full {
+  display: flex;
+  flex-direction: column;
+  min-height: 264px;
+}
+
+.sd-arc-plot {
+  position: relative;
+  flex: 1;
+  min-height: 170px;
 }
 
 .sd-arc-svg {
@@ -237,6 +253,175 @@
   filter: drop-shadow(0 0 10px var(--color-abyss-accent-glow));
 }
 
+/* D-6 — the room's resting pulse: dashed, quiet, identified on hover. */
+.sd-arc-median {
+  stroke: var(--color-abyss-text-45);
+  stroke-width: 1px;
+  stroke-dasharray: 4 7;
+  opacity: 0.65;
+}
+
+/* D-18 — the HTML annotation layer; fades out for the morph, back in after. */
+.sd-arc-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.sd-arc-fade {
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sd-arc[data-morphing] .sd-arc-fade {
+  opacity: 0;
+  transition-duration: 0.1s;
+}
+
+.sd-arc[data-morphing] .sd-arc-hit {
+  pointer-events: none;
+}
+
+/* D-10 — the ★ peak: a small node ON the curve, star riding just above.
+   Identifying hover comes from the shared CursorChip, not an always-on label. */
+.sd-arc-peak {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+.sd-arc-peak-node {
+  position: absolute;
+  left: -3.5px;
+  top: -3.5px;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-full);
+  background: var(--metal-abyss-tint);
+  box-shadow: 0 0 8px var(--color-abyss-accent-glow);
+}
+
+.sd-arc-peak-star {
+  position: absolute;
+  left: -7px;
+  top: -24px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--color-abyss-accent);
+  filter: drop-shadow(0 0 7px var(--color-abyss-accent-glow));
+}
+
+/* D-9 — the whole plot is the hit target, not 6px dots. */
+.sd-arc-hit {
+  position: absolute;
+  inset: 0;
+  cursor: pointer;
+}
+
+.sd-arc-median-hit {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 14px;
+  transform: translateY(-50%);
+}
+
+/* §3b — key timeline strip: the key chips laid out in time. */
+.sd-arc-strip {
+  display: block;
+  width: 100%;
+  height: 22px;
+  flex: none;
+}
+
+.sd-arc-strip-seg {
+  fill: var(--color-abyss-raised); /* no-key neutral; keyed segs inline their --camelot-* */
+  fill-opacity: 0.78;
+  cursor: pointer;
+  transition: fill-opacity var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sd-arc-strip-seg:hover {
+  fill-opacity: 1;
+}
+
+.sd-arc-strip-seg[data-nokey] {
+  fill-opacity: 0.5;
+}
+
+/* Seam language (AC-11): in key = soft cyan seam; out of key = faint dashed
+   break, never an alarm hue (UX-DR18); no key = plain — no seam drawn. */
+.sd-arc-seam--smooth {
+  stroke: var(--color-abyss-accent);
+  stroke-width: 1.5px;
+  opacity: 0.85;
+  filter: drop-shadow(0 0 4px var(--color-abyss-accent-glow));
+}
+
+.sd-arc-seam--clash {
+  stroke: var(--color-abyss-text-22);
+  stroke-width: 1px;
+  stroke-dasharray: 3 3;
+}
+
+/* D-7/D-12 — sparse mono ticks + the quiet bottom-right caption. */
+.sd-arc-footer {
+  flex: none;
+  padding: 6px 16px 12px;
+}
+
+.sd-arc-ticks {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-geist-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--color-abyss-text-45);
+}
+
+.sd-arc-tick-df {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  text-wrap: nowrap;
+  color: var(--color-abyss-text-22);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 9.5px;
+}
+
+/* The two quiet dancefloor-edge marks (D-7), drawn as corner ticks. */
+.sd-arc-tick-df::before,
+.sd-arc-tick-df::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  width: 5px;
+  border-top: 1px solid var(--color-abyss-text-22);
+}
+
+.sd-arc-tick-df::before {
+  left: 0;
+  border-left: 1px solid var(--color-abyss-text-22);
+}
+
+.sd-arc-tick-df::after {
+  right: 0;
+  border-right: 1px solid var(--color-abyss-text-22);
+}
+
+.sd-arc-caption {
+  margin: 6px 0 0;
+  text-align: right;
+  font-size: 12px;
+  color: var(--color-abyss-text-45);
+}
+
 .sd-arc-fallback {
   display: grid;
   place-items: center;
@@ -246,6 +431,19 @@
   font-family: var(--font-geist-mono);
   font-size: 13px;
   color: var(--color-abyss-text-45);
+}
+
+/* D-16 — render failure: the caption block, standalone, calm. */
+.sd-arc-error {
+  display: grid;
+  place-items: center;
+  flex: 1;
+}
+
+.sd-arc-error .sd-arc-caption {
+  text-align: center;
+  margin: 0;
+  padding: 24px;
 }
 
 /* ─── Body panes (L-3/L-4) ─────────────────────────────────────────────── */

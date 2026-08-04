@@ -1,131 +1,154 @@
-// Energy-arc geometry + text-equivalent (Story 3.6 Task 7) — the pure, testable
-// core the reusable <EnergyArc> primitive renders. Thumbnail mode consumes it
-// now; Story 3.8's full annotated chart renders the SAME geometry in "full" mode.
+// Energy-arc pure core (Story 3.6 Task 7, upgraded in place by Story 3.8) —
+// the monotone-cubic path generator every arc renders through and the ONE
+// chart-summary generator (D-12: visible caption + aria text-equivalent +
+// render-failure fallback are the same string).
 //
 // BPM-over-time: x maps to a play's timestamp, y to its BPM (inverted for SVG:
 // higher BPM sits higher on screen). No fabricated points — only plays carrying
 // both a timestamp and a BPM are plotted (AD-11), matching the agent's own
-// `energy_arc` contract.
-import type { DancefloorSegment } from "./dancefloor";
+// `energy_arc` contract. The 3.6 polyline output (`arcGeometry`) retired in 3.8
+// (D-8): both the detail arc and the dashboard thumbnail draw the monotone
+// cubic below via heroArc.ts.
 
 export interface ArcPoint {
   started_at: string;
   bpm: number;
 }
 
-export interface ArcGeometry {
-  /** SVG polyline `points` for the whole night (dimmed layer). */
-  full: string;
-  /** SVG polyline `points` for just the dancefloor window (emphasized layer), or null when no segment. */
-  window: string | null;
-  /** The dancefloor band as `{ x, width }` in viewBox units, or null. */
-  band: { x: number; width: number } | null;
-  /** Number of plotted points (0/1 are the sparse/degenerate cases the component handles specially). */
-  count: number;
-  /** The single point (x,y) when exactly one is plotted, for the dot fallback. */
-  soloPoint: { x: number; y: number } | null;
+export interface CurveXY {
+  x: number;
+  y: number;
 }
 
-export interface ArcViewBox {
-  width: number;
-  height: number;
-  /** Inner padding so the 2px stroke never clips at the edges. */
-  padding: number;
-}
-
-const EPOCH = (iso: string) => new Date(iso).getTime();
+const f = (n: number) => n.toFixed(2);
 
 /**
- * Projects arc points into an SVG viewBox and slices out the dancefloor window.
- * Time drives x; BPM drives y (inverted). A flat set (all one BPM, or all one
- * instant) draws along the vertical/horizontal midline rather than dividing by
- * zero.
+ * Hand-rolled monotone cubic path (D-8, Fritsch–Carlson): smooth like the old
+ * Catmull-Rom hero line but it NEVER overshoots the data — each segment stays
+ * inside its endpoints' y-range, so a spiky BPM sequence can't fling the curve
+ * above the real max or below the real min. Points must be x-sorted. Emits an
+ * SVG `M … C …` d-string ("" for fewer than 2 points).
  */
-export function arcGeometry(
-  points: ArcPoint[],
-  segment: DancefloorSegment | null,
-  view: ArcViewBox,
-): ArcGeometry {
-  const { width, height, padding } = view;
-  const innerW = width - padding * 2;
-  const innerH = height - padding * 2;
+export function monotonePath(pts: CurveXY[]): string {
+  const n = pts.length;
+  if (n < 2) return "";
 
-  if (points.length === 0) {
-    return { full: "", window: null, band: null, count: 0, soloPoint: null };
+  // Secant slopes between neighbours.
+  const dx: number[] = new Array(n - 1);
+  const slope: number[] = new Array(n - 1);
+  for (let i = 0; i < n - 1; i++) {
+    dx[i] = pts[i + 1].x - pts[i].x || 1e-9;
+    slope[i] = (pts[i + 1].y - pts[i].y) / dx[i];
   }
 
-  const times = points.map((p) => EPOCH(p.started_at));
-  const bpms = points.map((p) => p.bpm);
-  const tMin = Math.min(...times);
-  const tMax = Math.max(...times);
-  const bMin = Math.min(...bpms);
-  const bMax = Math.max(...bpms);
-  const tSpan = tMax - tMin || 1;
-  const bSpan = bMax - bMin || 1;
-
-  const x = (t: number) => padding + ((t - tMin) / tSpan) * innerW;
-  // Invert y: max BPM at the top (padding), min BPM at the bottom.
-  const y = (b: number) => padding + (1 - (b - bMin) / bSpan) * innerH;
-
-  const xy = points.map((p) => ({ x: x(EPOCH(p.started_at)), y: y(p.bpm) }));
-  const toPoints = (pts: { x: number; y: number }[]) =>
-    pts.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(" ");
-
-  if (points.length === 1) {
-    // A single track: no line to draw; center a dot on the midline so the card
-    // still reads as "one play", not an empty box.
-    const solo = { x: padding + innerW / 2, y: padding + innerH / 2 };
-    return { full: "", window: null, band: null, count: 1, soloPoint: solo };
+  // Tangents: average of adjacent secants, zeroed at local extrema (sign
+  // change), then the Fritsch–Carlson limiter clamps them so no segment can
+  // leave its endpoints' range.
+  const tangent: number[] = new Array(n);
+  tangent[0] = slope[0];
+  tangent[n - 1] = slope[n - 2];
+  for (let i = 1; i < n - 1; i++) {
+    tangent[i] = slope[i - 1] * slope[i] <= 0 ? 0 : (slope[i - 1] + slope[i]) / 2;
   }
-
-  let windowPts: { x: number; y: number }[] = [];
-  let band: { x: number; width: number } | null = null;
-  if (segment) {
-    const sMs = EPOCH(segment.start);
-    const eMs = EPOCH(segment.end);
-    windowPts = points
-      .map((p, i) => ({ p, i }))
-      .filter(({ p }) => {
-        const t = EPOCH(p.started_at);
-        return t >= sMs && t <= eMs;
-      })
-      .map(({ i }) => xy[i]);
-    if (windowPts.length > 0) {
-      const bx = x(Math.max(sMs, tMin));
-      const bw = x(Math.min(eMs, tMax)) - bx;
-      band = { x: bx, width: Math.max(0, bw) };
+  for (let i = 0; i < n - 1; i++) {
+    if (slope[i] === 0) {
+      tangent[i] = 0;
+      tangent[i + 1] = 0;
+      continue;
+    }
+    const a = tangent[i] / slope[i];
+    const b = tangent[i + 1] / slope[i];
+    const s = a * a + b * b;
+    if (s > 9) {
+      const tau = 3 / Math.sqrt(s);
+      tangent[i] = tau * a * slope[i];
+      tangent[i + 1] = tau * b * slope[i];
     }
   }
 
-  return {
-    full: toPoints(xy),
-    window: windowPts.length >= 2 ? toPoints(windowPts) : null,
-    band,
-    count: points.length,
-    soloPoint: null,
-  };
+  // Hermite segments emitted as cubic Béziers.
+  const d: string[] = [`M ${f(pts[0].x)} ${f(pts[0].y)}`];
+  for (let i = 0; i < n - 1; i++) {
+    const h = dx[i] / 3;
+    d.push(
+      `C ${f(pts[i].x + h)} ${f(pts[i].y + tangent[i] * h)}, ${f(pts[i + 1].x - h)} ${f(
+        pts[i + 1].y - tangent[i + 1] * h,
+      )}, ${f(pts[i + 1].x)} ${f(pts[i + 1].y)}`,
+    );
+  }
+  return d.join(" ");
 }
 
-/**
- * A screen-reader text equivalent for the arc (AC-15: the energy-arc thumbnail
- * must carry a text equivalent). Reports the BPM range, the overall direction,
- * and — when present — the detected dancefloor window in local time.
- */
-export function arcTextEquivalent(points: ArcPoint[], segment: DancefloorSegment | null): string {
-  if (points.length === 0) return "Energy arc unavailable — no tempo data for this set.";
-  if (points.length === 1) return `Energy arc: a single track at ${Math.round(points[0].bpm)} BPM.`;
+/* ── Chart summary — one generator, three duties (D-12/D-13) ──────────── */
 
-  const bpms = points.map((p) => p.bpm);
-  const min = Math.round(Math.min(...bpms));
-  const max = Math.round(Math.max(...bpms));
+export type ArcScope = "dancefloor" | "whole";
+
+/** Reuse of the established steadiness threshold: |Δ| < 4 BPM = steady. */
+const STEADY_THRESHOLD = 4;
+
+/**
+ * THE chart-summary string (D-12): the visible bottom-right caption AND the
+ * arc container's aria text-equivalent AND what the render-failure error
+ * boundary shows — one pure generator, never three.
+ *
+ * Content is locked to D-13's register: min–max range + direction, templated,
+ * scope-reactive, NO peak time (BPM-only detection can't place the peak
+ * accurately enough to state as prose — AD-11). Direction vocabulary:
+ * climbing / easing down / holding steady; the concentration clause compares
+ * the first and back halves of the active scope. Callers pass the SCOPED
+ * points — the caption recomputes with the flip (D-13). The dashboard
+ * thumbnail uses the same generator aria-only (D-3).
+ */
+export function arcTextEquivalent(points: ArcPoint[], scope: ArcScope = "whole"): string {
+  const inWindow = scope === "dancefloor";
+  if (points.length === 0) {
+    return inWindow ? "No tempo data in the dancefloor window." : "No tempo data for this set.";
+  }
+  if (points.length === 1) {
+    const bpm = Math.round(points[0].bpm);
+    return inWindow
+      ? `A single track at ${bpm} BPM in the dancefloor window.`
+      : `A single track at ${bpm} BPM.`;
+  }
+
+  let min = Infinity;
+  let max = -Infinity;
+  for (const p of points) {
+    if (p.bpm < min) min = p.bpm;
+    if (p.bpm > max) max = p.bpm;
+  }
+
+  const range = `BPM ranged ${Math.round(min)}–${Math.round(max)}`;
   const first = points[0].bpm;
   const last = points[points.length - 1].bpm;
   const delta = last - first;
-  const direction = Math.abs(delta) < 4 ? "holding steady" : delta > 0 ? "rising overall" : "easing down overall";
+  if (Math.abs(delta) < STEADY_THRESHOLD) return `${range}, holding steady.`;
 
-  const time = (iso: string) =>
-    new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  const floor = segment ? ` Dancefloor detected ${time(segment.start)}–${time(segment.end)}.` : "";
+  const direction = delta > 0 ? "climbing" : "easing down";
 
-  return `Energy arc: tempo ${min} to ${max} BPM, ${direction}.${floor}`;
+  // Where the trend concentrates (D-13, templated): split at the time
+  // midpoint and compare each half's contribution in the overall direction.
+  const t0 = new Date(points[0].started_at).getTime();
+  const t1 = new Date(points[points.length - 1].started_at).getTime();
+  const midT = t0 + (t1 - t0) / 2;
+  let midIdx = 0;
+  let midDist = Infinity;
+  for (let i = 0; i < points.length; i++) {
+    const dist = Math.abs(new Date(points[i].started_at).getTime() - midT);
+    if (dist < midDist) {
+      midDist = dist;
+      midIdx = i;
+    }
+  }
+  const sign = delta > 0 ? 1 : -1;
+  const firstHalf = Math.max(0, sign * (points[midIdx].bpm - first));
+  const backHalf = Math.max(0, sign * (last - points[midIdx].bpm));
+  const clause =
+    backHalf >= 2 * firstHalf && backHalf > 0
+      ? " through the back half"
+      : firstHalf >= 2 * backHalf && firstHalf > 0
+        ? " through the first half"
+        : " throughout";
+
+  return `${range}, ${direction}${clause}.`;
 }

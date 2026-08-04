@@ -4,7 +4,7 @@ baseline_commit: d649610b32bc319c8a8f1cb13eca508a0bcf2f01
 
 # Story 3.8: Energy arc — full annotated chart + chart summary
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -81,49 +81,49 @@ Each AC cites the governing D-# ruling. The **epic ACs it maps to** — AC-1 (no
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1: D-15 wire verification — FIRST, blocking (AC: 26)**
-  - [ ] 1.1 Verify at dev time **what offset information the wire's `started_at` ISO strings actually carry** — are they UTC-Z, a fixed offset, or offset-naive set-local? Trace `build-fixture.mjs`'s epoch→ISO conversion and the agent's `started_at` emission. This determines whether tick labels can render set-local from the string alone or need a stored offset.
-  - [ ] 1.2 If (and only if) verification shows the offset is not recoverable for correct set-local tick labels, propose an **additive-only** contract touch (a stored offset field) — `SyncPlay` stays frozen/consumer-gated (AR-15/AD-15), additive-only guard green. **If the existing strings suffice, touch nothing.** Record the finding either way (in this story's Debug Log).
-  - [ ] 1.3 Confirm epoch-ms math stays monotonic across a synthetic DST fall-back hour on a fixture (no repeated-hour x-collision, no negative delta).
+- [x] **Task 1: D-15 wire verification — FIRST, blocking (AC: 26)**
+  - [x] 1.1 Verify at dev time **what offset information the wire's `started_at` ISO strings actually carry** — are they UTC-Z, a fixed offset, or offset-naive set-local? Trace `build-fixture.mjs`'s epoch→ISO conversion and the agent's `started_at` emission. This determines whether tick labels can render set-local from the string alone or need a stored offset.
+  - [x] 1.2 If (and only if) verification shows the offset is not recoverable for correct set-local tick labels, propose an **additive-only** contract touch (a stored offset field) — `SyncPlay` stays frozen/consumer-gated (AR-15/AD-15), additive-only guard green. **If the existing strings suffice, touch nothing.** Record the finding either way (in this story's Debug Log).
+  - [x] 1.3 Confirm epoch-ms math stays monotonic across a synthetic DST fall-back hour on a fixture (no repeated-hour x-collision, no negative delta).
 
-- [ ] **Task 2: Peak — one shared computation, D-14 definition (AC: 16, 17)**
-  - [ ] 2.1 Rewrite `arcPeakPosition` (`web/lib/sets/setDetail.ts`) from the current ±2-neighbour count window to D-14's **~10%-of-scope moving time-window, highest window-average BPM, play nearest the winning window center.** Keep the single exported function — both the arc ★ and the tracklist `★ PEAK` node already consume it; neither gets a private copy.
-  - [ ] 2.2 Extend `setDetail.test.ts`: short set vs long set both peak sensibly under the relative window; tie resolves deterministically; `null` below 2 BPM-carrying plays; cross-check the arc-marked position equals the tracklist impact-node position on fixture 975.
+- [x] **Task 2: Peak — one shared computation, D-14 definition (AC: 16, 17)**
+  - [x] 2.1 Rewrite `arcPeakPosition` (`web/lib/sets/setDetail.ts`) from the current ±2-neighbour count window to D-14's **~10%-of-scope moving time-window, highest window-average BPM, play nearest the winning window center.** Keep the single exported function — both the arc ★ and the tracklist `★ PEAK` node already consume it; neither gets a private copy.
+  - [x] 2.2 Extend `setDetail.test.ts`: short set vs long set both peak sensibly under the relative window; tie resolves deterministically; `null` below 2 BPM-carrying plays; cross-check the arc-marked position equals the tracklist impact-node position on fixture 975.
 
-- [ ] **Task 3: Monotone-cubic curve + median + edge ticks (AC: 3, 4, 5, 6)**
-  - [ ] 3.1 Add a hand-rolled **monotone cubic** (Fritsch–Carlson) path generator to `energyArc.ts` emitting `path`/`area` d-strings; retire the polyline output. Pure + unit-tested (never overshoots the data — assert against a spiky fixture). The thumbnail geometry inherits it.
-  - [ ] 3.2 Median baseline: dashed quiet line at `y(median)` of the active scope (client recompute for dancefloor, `derived.bpm_distribution.median` for whole-set), spanning the plotted domain; CursorChip on hover (`Median · N BPM`).
-  - [ ] 3.3 Edge ticks: mono, small — scope start/end times; two extra quiet ticks at detected dancefloor edges **in whole-night scope only**.
+- [x] **Task 3: Monotone-cubic curve + median + edge ticks (AC: 3, 4, 5, 6)**
+  - [x] 3.1 Add a hand-rolled **monotone cubic** (Fritsch–Carlson) path generator to `energyArc.ts` emitting `path`/`area` d-strings; retire the polyline output. Pure + unit-tested (never overshoots the data — assert against a spiky fixture). The thumbnail geometry inherits it.
+  - [x] 3.2 Median baseline: dashed quiet line at `y(median)` of the active scope (client recompute for dancefloor, `derived.bpm_distribution.median` for whole-set), spanning the plotted domain; CursorChip on hover (`Median · N BPM`).
+  - [x] 3.3 Edge ticks: mono, small — scope start/end times; two extra quiet ticks at detected dancefloor edges **in whole-night scope only**.
 
-- [ ] **Task 4: ★ peak mark + hover name chips + click-to-jump (AC: 7, 13, 14, 15)**
-  - [ ] 4.1 ★ node + star on the curve at the peak play's point; hover CursorChip `★ Peak · <title>`.
-  - [ ] 4.2 Desktop nearest-point-by-x tracking over a **generous whole-plot hit area**; hover name chip (title only, D-9); no tracklist pre-highlight on hover.
-  - [ ] 4.3 Click maps point → nearest play `position` → **3.7's `setFocus`** (DR-2, no new mechanism). Mobile tap = immediate jump (D-17).
+- [x] **Task 4: ★ peak mark + hover name chips + click-to-jump (AC: 7, 13, 14, 15)**
+  - [x] 4.1 ★ node + star on the curve at the peak play's point; hover CursorChip `★ Peak · <title>`.
+  - [x] 4.2 Desktop nearest-point-by-x tracking over a **generous whole-plot hit area**; hover name chip (title only, D-9); no tracklist pre-highlight on hover.
+  - [x] 4.3 Click maps point → nearest play `position` → **3.7's `setFocus`** (DR-2, no new mechanism). Mobile tap = immediate jump (D-17).
 
-- [ ] **Task 5: Key timeline strip (AC: 9, 10, 11, 12)**
-  - [ ] 5.1 Strip under the arc sharing the arc's exact time domain, **morphing with the scope flip** (same viewBox/domain math).
-  - [ ] 5.2 One segment per play across its played window (next-start or `ended_at`), tinted with the existing `--camelot-*` token.
-  - [ ] 5.3 Seam language via the **existing camelot mirror** (in-key soft cyan / out-of-key faint dashed, never red / no-key neutral grey).
-  - [ ] 5.4 Hover CursorChip (`9A · <title>`) + click → same DR-2 focus as the arc. Self-hide on <2-point fallback and all-no-key sets. (Height / inline-code knobs = designer discretion, polish pass.)
+- [x] **Task 5: Key timeline strip (AC: 9, 10, 11, 12)**
+  - [x] 5.1 Strip under the arc sharing the arc's exact time domain, **morphing with the scope flip** (same viewBox/domain math).
+  - [x] 5.2 One segment per play across its played window (next-start or `ended_at`), tinted with the existing `--camelot-*` token.
+  - [x] 5.3 Seam language via the **existing camelot mirror** (in-key soft cyan / out-of-key faint dashed, never red / no-key neutral grey).
+  - [x] 5.4 Hover CursorChip (`9A · <title>`) + click → same DR-2 focus as the arc. Self-hide on <2-point fallback and all-no-key sets. (Height / inline-code knobs = designer discretion, polish pass.)
 
-- [ ] **Task 6: Chart summary caption — one generator, three duties (AC: 18, 19, 20, 21, 22)**
-  - [ ] 6.1 Evolve `arcTextEquivalent` into the templated min–max + direction generator (climbing / easing down / holding steady; first-vs-back-half concentration phrasing; no peak time). Scope-reactive. Pure + unit-tested against register examples.
-  - [ ] 6.2 Wire the one string to all three duties: visible bottom-right one-liner, the arc container's aria text-equivalent, and the error-boundary fallback string.
-  - [ ] 6.3 Confirm the dashboard thumbnail uses the same generator aria-only (no visible caption; thumbnail otherwise untouched).
+- [x] **Task 6: Chart summary caption — one generator, three duties (AC: 18, 19, 20, 21, 22)**
+  - [x] 6.1 Evolve `arcTextEquivalent` into the templated min–max + direction generator (climbing / easing down / holding steady; first-vs-back-half concentration phrasing; no peak time). Scope-reactive. Pure + unit-tested against register examples.
+  - [x] 6.2 Wire the one string to all three duties: visible bottom-right one-liner, the arc container's aria text-equivalent, and the error-boundary fallback string.
+  - [x] 6.3 Confirm the dashboard thumbnail uses the same generator aria-only (no visible caption; thumbnail otherwise untouched).
 
-- [ ] **Task 7: States + D-4 fix + morph overlay + error boundary (AC: 23, 24, 25, 27)**
-  - [ ] 7.1 D-4: band computed from segment **time bounds**, not play overlap; empty-in-scope → in-scope caption fallback ("No tempo data in the dancefloor window."), never a silent whole-night draw under a "Dancefloor" line. (`heroArc.ts:145` band-null path + `DetailArc.tsx:31` `zoomed`.)
-  - [ ] 7.2 Annotation HTML overlay positioned from arc geometry; fades out during the scope morph, back in after; SVG viewBox tween + `non-scaling-stroke` untouched; reduced-motion hard cut preserved.
-  - [ ] 7.3 Error boundary around the SVG → swaps in the caption block on render throw.
+- [x] **Task 7: States + D-4 fix + morph overlay + error boundary (AC: 23, 24, 25, 27)**
+  - [x] 7.1 D-4: band computed from segment **time bounds**, not play overlap; empty-in-scope → in-scope caption fallback ("No tempo data in the dancefloor window."), never a silent whole-night draw under a "Dancefloor" line. (`heroArc.ts:145` band-null path + `DetailArc.tsx:31` `zoomed`.)
+  - [x] 7.2 Annotation HTML overlay positioned from arc geometry; fades out during the scope morph, back in after; SVG viewBox tween + `non-scaling-stroke` untouched; reduced-motion hard cut preserved.
+  - [x] 7.3 Error boundary around the SVG → swaps in the caption block on render throw.
 
-- [ ] **Task 8: Verification**
-  - [ ] 8.1 Repo gate: `pnpm lint / typecheck / test` (web + shared). Agent/supabase gates only if Task 1.2 lands an additive contract touch (`cargo fmt --check` / `clippy -D warnings` / `cargo test`; additive-only + schema-parity guards; `supabase db reset` + pgTAP if a column is added).
-  - [ ] 8.2 **Real-browser walkthrough (non-negotiable — 3.5/3.6/3.7's worst bugs were only caught this way):** Playwright/headless-Chrome on fixture 975 both scopes — full annotated curve, median hover chip, ★ peak hover + click-jump, name-chip hover, key strip (in-key/out/no-key seams) + strip click-jump, caption text both scopes, the scope morph (annotations fade out/in, curve + strip morph in lockstep), reduced-motion hard cut, the D-4 fallback caption, sparse fixture 17577 (arc + strip both hidden, text fallback), an all-no-key path (strip self-hides), mobile 375px tap-to-jump, keyboard pass, forced render-error → caption block. Zero console errors.
+- [x] **Task 8: Verification**
+  - [x] 8.1 Repo gate: `pnpm lint / typecheck / test` (web + shared). Agent/supabase gates only if Task 1.2 lands an additive contract touch (`cargo fmt --check` / `clippy -D warnings` / `cargo test`; additive-only + schema-parity guards; `supabase db reset` + pgTAP if a column is added).
+  - [x] 8.2 **Real-browser walkthrough (non-negotiable — 3.5/3.6/3.7's worst bugs were only caught this way):** Playwright/headless-Chrome on fixture 975 both scopes — full annotated curve, median hover chip, ★ peak hover + click-jump, name-chip hover, key strip (in-key/out/no-key seams) + strip click-jump, caption text both scopes, the scope morph (annotations fade out/in, curve + strip morph in lockstep), reduced-motion hard cut, the D-4 fallback caption, sparse fixture 17577 (arc + strip both hidden, text fallback), an all-no-key path (strip self-hides), mobile 375px tap-to-jump, keyboard pass, forced render-error → caption block. Zero console errors.
 
-- [ ] **Task 9: Bookkeeping**
-  - [ ] 9.1 Fold a ⚑ pointer into `epics.md` §Story 3.8 recording the supersessions (lavender-sketch → chrome D-5; wheel CUT → key timeline D-1; thumbnail untouched D-3).
-  - [ ] 9.2 Close the deferred-work.md D-4 entry (line ~270) and the 3.8-hooks entry (line ~14) as landed.
-  - [ ] 9.3 Update `sprint-status.yaml` on completion.
+- [x] **Task 9: Bookkeeping**
+  - [x] 9.1 Fold a ⚑ pointer into `epics.md` §Story 3.8 recording the supersessions (lavender-sketch → chrome D-5; wheel CUT → key timeline D-1; thumbnail untouched D-3).
+  - [x] 9.2 Close the deferred-work.md D-4 entry (line ~270) and the 3.8-hooks entry (line ~14) as landed.
+  - [x] 9.3 Update `sprint-status.yaml` on completion.
 
 ## Dev Notes
 
@@ -188,4 +188,34 @@ Same as 3.7: **this story now → dev → one design/motion polish pass at the e
 
 ## Dev Agent Record
 
-_(empty — not yet implemented)_
+### Debug Log
+
+- **Task 2 / D-14 implementation note (2026-08-04):** D-14's "highest window-average BPM" is computed over the SAME ±2-neighbour rolling-median smoothing the drawn curve uses (`heroArc.ts`) — not raw per-play BPM. Reason: the ★ must sit where the DRAWN curve peaks. The curve median-smooths away single doubled-BPM tags (a real Serato phenomenon); a raw-value window average would let one 250-BPM tag drag its window's average up and place the star where the visible curve shows no peak, breaking both D-10's "same peak the arc draws" invariant and the old function's documented spike-resistance. The windowing itself is exactly D-14: window = 10% of the scoped timed span, slid at play boundaries (exact discretization), highest average wins, annotated play = nearest the winning window's center, earliest on ties, `null` under 2 BPM-carrying plays, degenerate all-one-instant scope → highest raw BPM.
+- **Task 8.2 walkthrough finding (2026-08-04):** a mobile tap left the hover CursorChip stranded on screen (touch fires mouse events; no mouseleave follows, and the jump scrolls the page out from under it) — fixed by clearing hover inside `jumpTo`. Verified fixed in the same session.
+- **Task 8.2 verification method note:** the D-4 fallback, all-no-key strip self-hide, and forced-render-error cases were exercised in-browser via two TEMPORARY synthetic fixture entries (`d4test`: dense no-BPM detected window + sparse warm-up BPM; `nokeytest`: 12 timed BPM plays, zero keys) and a temporary `?arcthrow` throw hook inside the boundary — all three reverted before commit (fixture via `git checkout`, hook removed; final `git status`/gates confirm clean).
+- **Task 1 / D-15 wire verification (2026-08-04):** The wire's `started_at` ISO strings are **UTC-Z with no offset**, by construction: `build-fixture.mjs:16` converts the agent's epoch seconds via `new Date(s*1000).toISOString()`. Upstream, the epoch itself is true UTC — Serato session field 28 is documented "Play start time — Unix epoch, UTC" (`agent/src-tauri/src/parser/mod.rs:65`), the agent has no chrono and **never captures a timezone/offset anywhere** in the capture→store→sync pipeline, so a set-local offset is not recoverable from existing data. **Ruling: the existing strings suffice — no contract touch.** The app's established, documented convention (`format.ts` header: "a gig's date is the DJ's local date, not UTC") renders every timestamp viewer-local via `toLocaleTimeString`, which equals set-local in the product's core case (the DJ views their own agent's data in their own timezone). Tick labels MUST use the same `formatClock` basis as the adjacent scope line and tracklist times — rendering ticks in a different timezone basis than the rest of the screen would introduce inconsistency, not fix it. `Intl` applies the historically-correct offset per instant, so a DST fall-back hour renders honestly (the repeated local hour appears twice — true) while x stays monotonic on epoch-ms. The touring-DJ cross-timezone edge (play in Berlin, view in NYC) shifts *every* timestamp on the screen equally and is a product-wide future concern, not a 3.8 tick-label one; an additive offset field would additionally require new agent-side capture (it has no tz source today), i.e. far beyond this story's "additive-only if verification demands it" gate. Verification does not demand it. (Task 1.3's monotonic DST test lands in `heroArc.test.ts`.)
+
+### Completion Notes
+
+- **All 9 tasks landed; status → review.** The D-19 design/motion polish pass (strip height / inline key codes / fade timing / star treatment knobs) is deliberately still owed — build-functional-first per [[feedback_polish_at_end]].
+- **No contract touch** (Task 1 ruling above), so agent/supabase gates were not required. Repo gates green: web `lint` / `typecheck` / `test` (102), shared `typecheck` / `test` (20).
+- **`arcGeometry` (the 3.6 polyline) retired** — it had zero non-test consumers; both the detail arc and the dashboard `HeroBand` thumbnail draw the new monotone cubic through `heroArcGeometry`, which now also exposes `curve`/`mapX`/`mapY`/`tMin`/`tMax` as the D-18 overlay + key-strip anchors, and computes the band from segment time bounds (D-4).
+- **Real-browser walkthrough (Task 8.2) fully run** on fixture 975 (both scopes), 17577 (sparse), synthetic D-4 / all-no-key sets, and a forced render throw — morph lockstep + annotation fade sampled mid-tween (overlay opacity 0.26→0→back, arc+strip viewBoxes identical every sample), all four chip kinds, click/tap-to-jump through the DR-2 pill + window scroll + dim-don't-hide, arc ★ == tracklist ★ PEAK row, reduced-motion hard cut, keyboard pass (no focusables trapped in the `role="img"` chart; jumps have tracklist equivalents per AC-4), zero console errors.
+- **One bug found only by the walkthrough** (the repeated 3.5/3.6/3.7 lesson holds): the mobile stranded-chip-on-tap fix in the Debug Log.
+- **Lightning CSS traps ([[ref-property-setproperty-bug]]) stayed clear:** all runtime-animated values ride element attributes (`viewBox`, `data-morphing`) or framer/inline transforms — no registered `@property` custom props were introduced.
+
+### File List
+
+- `web/lib/sets/energyArc.ts` — monotone-cubic generator (D-8) + the ONE chart-summary generator (D-12/D-13); polyline `arcGeometry` retired
+- `web/lib/sets/energyArc.test.ts` — no-overshoot/flat-run path tests; caption register tests (locked strings, scope-reactive fallbacks, no-peak-time guard)
+- `web/lib/sets/heroArc.ts` — monotone path swap-in; `curve`/`mapX`/`mapY`/`tMin`/`tMax` exposure; D-4 band from segment time bounds
+- `web/lib/sets/heroArc.test.ts` — NEW: DST fall-back monotonicity (Task 1.3), D-4 band cases, overlay-projection sanity
+- `web/lib/sets/setDetail.ts` — `arcPeakPosition` rewritten to D-14 (see Debug Log)
+- `web/lib/sets/setDetail.test.ts` — extended peak suite (short/long sets, window-center annotation, ties, degenerate instant, fixture-975 stability + D-10 cross-check)
+- `web/app/components/set-detail/DetailArc.tsx` — the in-place full-mode upgrade (median, ticks, ★, chips, DR-2 click-jump, key strip, caption, D-4 fallback, D-18 overlay, D-16 error boundary)
+- `web/app/components/set-detail/SetDetail.tsx` — passes `setFocus` into `DetailArc` (DR-2 reuse)
+- `web/app/components/dashboard/HeroBand.tsx` — thumbnail aria updated to the evolved generator (aria-only, D-3)
+- `web/app/set-detail.css` — §C full-mode styles (plot/median/overlay/fade/peak/strip/seams/ticks/caption/error)
+- `_bmad-output/implementation-artifacts/deferred-work.md` — 3.8-hooks + D-4 entries closed
+- `_bmad-output/planning-artifacts/epics.md` — §3.8 ⚑ built-as-specced note
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — 3-8 → review + session log

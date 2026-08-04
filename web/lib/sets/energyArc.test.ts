@@ -1,67 +1,124 @@
 import { describe, expect, it } from "vitest";
-import { arcGeometry, arcTextEquivalent, type ArcPoint } from "./energyArc";
+import { arcTextEquivalent, monotonePath, type ArcPoint, type CurveXY } from "./energyArc";
 
-const VIEW = { width: 100, height: 32, padding: 3 };
-const pt = (sec: number, bpm: number): ArcPoint => ({ started_at: new Date(sec * 1000).toISOString(), bpm });
+const pt = (sec: number, bpm: number): ArcPoint => ({
+  started_at: new Date(sec * 1000).toISOString(),
+  bpm,
+});
 
-describe("arcGeometry", () => {
-  it("returns an empty geometry for no points", () => {
-    const g = arcGeometry([], null, VIEW);
-    expect(g.count).toBe(0);
-    expect(g.full).toBe("");
-    expect(g.soloPoint).toBeNull();
+/** Parse an `M … C …` d-string and sample each cubic Bézier segment's y. */
+function sampleSegments(d: string): Array<{ y0: number; y3: number; ys: number[] }> {
+  const nums = d.match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? [];
+  // M x0 y0, then per segment: c1x c1y c2x c2y x y (6 numbers).
+  const out: Array<{ y0: number; y3: number; ys: number[] }> = [];
+  let px = nums[0];
+  let py = nums[1];
+  for (let i = 2; i + 5 < nums.length; i += 6) {
+    const [c1x, c1y, c2x, c2y, x3, y3] = nums.slice(i, i + 6);
+    void c1x;
+    void c2x;
+    void px;
+    const ys: number[] = [];
+    for (let s = 0; s <= 20; s++) {
+      const t = s / 20;
+      const mt = 1 - t;
+      ys.push(
+        mt * mt * mt * py + 3 * mt * mt * t * c1y + 3 * mt * t * t * c2y + t * t * t * y3,
+      );
+    }
+    out.push({ y0: py, y3, ys });
+    px = x3;
+    py = y3;
+  }
+  return out;
+}
+
+describe("monotonePath (D-8, Fritsch–Carlson)", () => {
+  it("returns empty for fewer than 2 points", () => {
+    expect(monotonePath([])).toBe("");
+    expect(monotonePath([{ x: 0, y: 10 }])).toBe("");
   });
 
-  it("centers a solo dot for a single play (no line to draw)", () => {
-    const g = arcGeometry([pt(0, 120)], null, VIEW);
-    expect(g.count).toBe(1);
-    expect(g.full).toBe("");
-    expect(g.soloPoint).toEqual({ x: 50, y: 16 });
+  it("starts at the first point and ends at the last", () => {
+    const d = monotonePath([
+      { x: 0, y: 30 },
+      { x: 50, y: 10 },
+      { x: 100, y: 20 },
+    ]);
+    expect(d.startsWith("M 0.00 30.00")).toBe(true);
+    expect(d.endsWith("100.00 20.00")).toBe(true);
   });
 
-  it("plots a full polyline and clamps within the padded viewBox", () => {
-    const g = arcGeometry([pt(0, 100), pt(60, 140), pt(120, 120)], null, VIEW);
-    expect(g.count).toBe(3);
-    const coords = g.full.split(" ").map((p) => p.split(",").map(Number));
-    // First point at left padding, last at right padding; max BPM at top padding.
-    expect(coords[0][0]).toBeCloseTo(3, 1);
-    expect(coords[2][0]).toBeCloseTo(97, 1);
-    expect(Math.min(...coords.map((c) => c[1]))).toBeCloseTo(3, 1); // 140bpm → top
+  it("never overshoots the data on a spiky fixture (every segment stays inside its endpoints)", () => {
+    // The overshoot case Catmull-Rom fails: hard spikes next to flats.
+    const spiky: CurveXY[] = [
+      { x: 0, y: 100 },
+      { x: 10, y: 100 },
+      { x: 20, y: 10 },
+      { x: 30, y: 100 },
+      { x: 40, y: 100 },
+      { x: 50, y: 95 },
+      { x: 60, y: 12 },
+      { x: 70, y: 11 },
+      { x: 80, y: 90 },
+    ];
+    for (const seg of sampleSegments(monotonePath(spiky))) {
+      const lo = Math.min(seg.y0, seg.y3) - 1e-6;
+      const hi = Math.max(seg.y0, seg.y3) + 1e-6;
+      for (const y of seg.ys) {
+        expect(y).toBeGreaterThanOrEqual(lo);
+        expect(y).toBeLessThanOrEqual(hi);
+      }
+    }
   });
 
-  it("slices the dancefloor window as its own emphasized polyline + band", () => {
-    const points = [pt(0, 100), pt(60, 128), pt(120, 130), pt(180, 105)];
-    const g = arcGeometry(points, { start: points[1].started_at, end: points[2].started_at }, VIEW);
-    expect(g.window).not.toBeNull();
-    expect(g.window!.split(" ").length).toBe(2); // only the two in-window points
-    expect(g.band).not.toBeNull();
-    expect(g.band!.width).toBeGreaterThan(0);
-  });
-
-  it("does not divide by zero on a flat (single-BPM) set", () => {
-    const g = arcGeometry([pt(0, 128), pt(60, 128)], null, VIEW);
-    const coords = g.full.split(" ").map((p) => p.split(",").map(Number));
-    expect(coords.every((c) => Number.isFinite(c[0]) && Number.isFinite(c[1]))).toBe(true);
+  it("keeps a flat run perfectly flat", () => {
+    const flat: CurveXY[] = [
+      { x: 0, y: 50 },
+      { x: 10, y: 50 },
+      { x: 20, y: 50 },
+    ];
+    for (const seg of sampleSegments(monotonePath(flat))) {
+      for (const y of seg.ys) expect(y).toBeCloseTo(50, 6);
+    }
   });
 });
 
-describe("arcTextEquivalent", () => {
-  it("describes the range and rising direction", () => {
-    const s = arcTextEquivalent([pt(0, 100), pt(60, 130)], null);
-    expect(s).toContain("100 to 130 BPM");
-    expect(s).toContain("rising");
+describe("arcTextEquivalent — ONE chart-summary generator (D-12/D-13)", () => {
+  it("locks the register: min–max + climbing through the back half", () => {
+    // Flat first half, climb concentrated after the midpoint.
+    const s = arcTextEquivalent([pt(0, 122), pt(600, 122), pt(1200, 123), pt(1800, 128)]);
+    expect(s).toBe("BPM ranged 122–128, climbing through the back half.");
   });
 
-  it("reports a steady set", () => {
-    expect(arcTextEquivalent([pt(0, 128), pt(60, 129)], null)).toContain("holding steady");
+  it("phrases a first-half climb and an even climb distinctly (templated, never freeform)", () => {
+    const firstHalf = arcTextEquivalent([pt(0, 120), pt(600, 128), pt(1200, 128), pt(1800, 129)]);
+    expect(firstHalf).toBe("BPM ranged 120–129, climbing through the first half.");
+    const even = arcTextEquivalent([pt(0, 120), pt(600, 124), pt(1200, 128)]);
+    expect(even).toBe("BPM ranged 120–128, climbing throughout.");
   });
 
-  it("mentions the dancefloor window when a segment is present", () => {
-    const s = arcTextEquivalent([pt(0, 100), pt(600, 128)], { start: new Date(0).toISOString(), end: new Date(600000).toISOString() });
-    expect(s).toContain("Dancefloor detected");
+  it("eases down, and holds steady under the |Δ| < 4 threshold", () => {
+    expect(arcTextEquivalent([pt(0, 128), pt(600, 127), pt(1200, 120)])).toBe(
+      "BPM ranged 120–128, easing down through the back half.",
+    );
+    expect(arcTextEquivalent([pt(0, 128), pt(600, 135), pt(1200, 129)])).toBe(
+      "BPM ranged 128–135, holding steady.",
+    );
   });
 
-  it("handles the single-track case", () => {
-    expect(arcTextEquivalent([pt(0, 92)], null)).toContain("single track");
+  it("is scope-reactive (D-13): the dancefloor sparse fallbacks name the window", () => {
+    expect(arcTextEquivalent([], "dancefloor")).toBe("No tempo data in the dancefloor window.");
+    expect(arcTextEquivalent([], "whole")).toBe("No tempo data for this set.");
+    expect(arcTextEquivalent([pt(0, 92)], "dancefloor")).toBe(
+      "A single track at 92 BPM in the dancefloor window.",
+    );
+    expect(arcTextEquivalent([pt(0, 92)])).toBe("A single track at 92 BPM.");
+  });
+
+  it("never mentions a peak time (D-13 — AD-11: not placeable accurately enough for prose)", () => {
+    const s = arcTextEquivalent([pt(0, 100), pt(600, 140), pt(1200, 110)]);
+    expect(s).not.toMatch(/peak/i);
+    expect(s).not.toMatch(/\d+:\d+/);
   });
 });

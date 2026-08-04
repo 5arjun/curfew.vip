@@ -406,11 +406,15 @@ export function subgenreRanking(plays: SyncPlay[]): GenreRanking {
   );
 }
 
-/* ── Arc peak — the ★ PEAK impact node (AC-20) ───────────────────────── */
+/* ── Arc peak — the ★ PEAK impact node (AC-20, 3.8 D-14) ─────────────── */
 
 /** Rolling-median half-window — matches heroArc.ts's smoothing so the peak the
  * tracklist stars is the peak the arc draws. */
 const PEAK_HALF_WINDOW = 2;
+
+/** D-14: the moving window is ~10% of the active scope's duration (8–10%
+ * acceptable) — relative, so short and long sets both behave. */
+const PEAK_WINDOW_FRACTION = 0.1;
 
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
@@ -419,25 +423,71 @@ function median(values: number[]): number {
 }
 
 /**
- * The play at the energy arc's peak — the highest *sustained*-BPM moment
- * within the given (already-scoped) plays: per-play BPM smoothed by a rolling
- * median (±2 neighbours, same as the hero arc) so one doubled-BPM tag can't
- * steal the star. Ties resolve to the earliest. `null` when fewer than 2
- * BPM-carrying plays (a sparse set has no arc to peak — AC-35).
+ * The play at the energy arc's peak (D-14): a moving time-window of ~10% of
+ * the scope's duration slides across the (already-scoped) plays; the window
+ * with the highest average BPM wins, and the annotated play is the one nearest
+ * that window's center. Averages run over the same ±2-neighbour rolling-median
+ * smoothing the drawn curve uses (heroArc.ts), so a single doubled-BPM tag
+ * can't drag its window's average to a spot where the visible curve shows no
+ * peak. Ties resolve to the earliest window / earliest play. `null` when fewer
+ * than 2 BPM-carrying plays (a sparse set has no arc to peak — AC-35).
+ *
+ * The arc's ★ mark and the tracklist's ★ PEAK node BOTH consume this one
+ * function (D-10) — never two peak algorithms.
  */
 export function arcPeakPosition(plays: SyncPlay[]): number | null {
-  const timed = plays.filter(
-    (p): p is SyncPlay & { bpm: number } => p.bpm != null && p.started_at != null,
-  );
+  const timed = plays
+    .filter(
+      (p): p is SyncPlay & { bpm: number; started_at: string } =>
+        p.bpm != null && p.started_at != null,
+    )
+    .sort((a, b) => EPOCH(a.started_at) - EPOCH(b.started_at));
   if (timed.length < 2) return null;
-  let bestIdx = 0;
-  let bestValue = -Infinity;
-  for (let i = 0; i < timed.length; i++) {
+
+  const times = timed.map((p) => EPOCH(p.started_at));
+  const smoothed = timed.map((p, i) => {
     const from = Math.max(0, i - PEAK_HALF_WINDOW);
     const to = Math.min(timed.length - 1, i + PEAK_HALF_WINDOW);
-    const smoothed = median(timed.slice(from, to + 1).map((p) => p.bpm));
-    if (smoothed > bestValue) {
-      bestValue = smoothed;
+    return median(timed.slice(from, to + 1).map((q) => q.bpm));
+  });
+
+  const span = times[times.length - 1] - times[0];
+  if (span === 0) {
+    // Degenerate all-one-instant scope: no window to slide (and smoothing has
+    // no time axis to respect) — highest raw BPM wins, earliest on ties.
+    let bestIdx = 0;
+    for (let i = 1; i < timed.length; i++) {
+      if (timed[i].bpm > timed[bestIdx].bpm) bestIdx = i;
+    }
+    return timed[bestIdx].position;
+  }
+
+  // Slide the window anchored at each play's start (a continuous slide only
+  // changes membership at play boundaries, so this discretization is exact).
+  const windowMs = span * PEAK_WINDOW_FRACTION;
+  let bestAvg = -Infinity;
+  let bestCenter = times[0];
+  for (let i = 0; i < timed.length; i++) {
+    const end = times[i] + windowMs;
+    let sum = 0;
+    let n = 0;
+    for (let j = i; j < timed.length && times[j] <= end; j++) {
+      sum += smoothed[j];
+      n += 1;
+    }
+    const avg = sum / n;
+    if (avg > bestAvg) {
+      bestAvg = avg;
+      bestCenter = times[i] + windowMs / 2;
+    }
+  }
+
+  let bestIdx = 0;
+  let bestDist = Infinity;
+  for (let i = 0; i < timed.length; i++) {
+    const dist = Math.abs(times[i] - bestCenter);
+    if (dist < bestDist) {
+      bestDist = dist;
       bestIdx = i;
     }
   }

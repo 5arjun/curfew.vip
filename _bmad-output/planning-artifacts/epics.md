@@ -733,6 +733,8 @@ So that I can feel the pulse of the room and still get the takeaway if the chart
 > **⚑ Refinement (Arjun, 2026-08-02).** The full annotated + captioned energy-arc chart is the **"full" mode of the one reusable arc renderer** built in Story 3.6 (whose dashboard card uses its "thumbnail" mode) — one component, two modes, not two implementations.
 >
 > **⚑ Design session (Arjun, 2026-08-04) — see `3-8-energy-arc.md` as the authoritative spec.** Headlines: chrome look stays (the "lavender/no fill" sketch above is outdated); dashed baseline = median BPM with identifying hover; no axes (start/end/dancefloor-edge mono ticks only); monotone curve, hand-rolled (NOT shadcn/Recharts — never fork the renderer); hover = track name only, click = nearest-point jump via 3.7's DR-2 (mobile tap jumps immediately); small ★ peak mark (peak = moving window of ~10% of active-scope duration, shared with the tracklist impact node); caption = visible quiet one-liner bottom-right, min–max + direction, scope-reactive, no peak time — same string is the aria equivalent and the render-failure fallback; **key timeline strip** (plays as Camelot-colored time segments under the arc, in-key/out-of-key seams) is IN; **Camelot-wheel graphic is CUT**; dashboard thumbnail untouched; 3.7's deferred no-BPM-dancefloor silent-fallback edge is fixed here.
+>
+> **⚑ Built as specced (dev session 2026-08-04, branch `story/3-8-energy-arc`, status: review).** All 19 D-# rulings implemented; D-15 verification concluded the wire's UTC-Z strings suffice (no contract touch); the D-4 edge is closed in `deferred-work.md`. The polish pass (D-19) runs before `done`.
 
 ### Story 3.9: Console voice, failure register, state/a11y/responsive pass
 

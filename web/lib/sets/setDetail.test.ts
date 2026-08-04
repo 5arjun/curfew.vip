@@ -273,17 +273,19 @@ describe("genreRanking / subgenreRanking (AC-12, AC-27)", () => {
   });
 });
 
-describe("arcPeakPosition (AC-20)", () => {
+describe("arcPeakPosition (AC-20, 3.8 D-14 moving time-window)", () => {
+  /** Evenly-spaced BPM sequence starting 22:00, one play per `stepMin`. */
+  const ramp = (bpms: number[], stepMin = 5) =>
+    bpms.map((bpm, i) =>
+      play({
+        position: i + 1,
+        started_at: new Date(Date.UTC(2026, 5, 21, 22, i * stepMin)).toISOString(),
+        bpm,
+      }),
+    );
+
   it("stars the sustained peak, not a single doubled-BPM spike", () => {
-    const plays = [
-      play({ position: 1, started_at: "2026-06-21T22:00:00Z", bpm: 120 }),
-      play({ position: 2, started_at: "2026-06-21T22:05:00Z", bpm: 121 }),
-      play({ position: 3, started_at: "2026-06-21T22:10:00Z", bpm: 250 }), // doubled tag
-      play({ position: 4, started_at: "2026-06-21T22:15:00Z", bpm: 128 }),
-      play({ position: 5, started_at: "2026-06-21T22:20:00Z", bpm: 129 }),
-      play({ position: 6, started_at: "2026-06-21T22:25:00Z", bpm: 130 }),
-      play({ position: 7, started_at: "2026-06-21T22:30:00Z", bpm: 128 }),
-    ];
+    const plays = ramp([120, 121, 250, 128, 129, 130, 128]);
     const peak = arcPeakPosition(plays);
     // The doubled tag itself must never take the star; the sustained ~130
     // region around it wins (any of its members is a faithful answer).
@@ -291,9 +293,56 @@ describe("arcPeakPosition (AC-20)", () => {
     expect([4, 5, 6]).toContain(peak);
   });
 
+  it("a short set peaks sensibly under the relative window (D-14)", () => {
+    // 6 plays over 25 min — the ~10% window is ~2.5 min, narrower than the
+    // play spacing, so it must still resolve into the closing high plateau.
+    const peak = arcPeakPosition(ramp([120, 122, 126, 130, 131, 129]));
+    expect([4, 5, 6]).toContain(peak);
+  });
+
+  it("a long set peaks in the highest-average window, not at a stray late high note", () => {
+    // 5-hour set (61 plays): a sustained 134–136 plateau mid-set must beat a
+    // brief 137 flicker at the very end — window AVERAGE wins, not max sample.
+    const bpms = Array.from({ length: 61 }, (_, i) => {
+      if (i >= 28 && i <= 38) return 134 + (i % 3); // sustained plateau
+      if (i === 59) return 137; // one-track flicker at the end
+      return 122;
+    });
+    const peak = arcPeakPosition(ramp(bpms, 5));
+    expect(peak).not.toBe(60);
+    expect(peak).toBeGreaterThanOrEqual(29);
+    expect(peak).toBeLessThanOrEqual(39);
+  });
+
+  it("annotates the play nearest the winning window's center", () => {
+    // Rising staircase: the winning window is the one anchored at the last
+    // rise; the annotated play sits nearest its center, not at the anchor.
+    const plays = ramp([120, 120, 120, 120, 128, 129, 130, 131, 132, 132, 132], 6);
+    const peak = arcPeakPosition(plays);
+    expect(peak).toBeGreaterThanOrEqual(8);
+  });
+
+  it("resolves ties deterministically to the earliest window", () => {
+    const plays = ramp([130, 130, 130, 120, 130, 130, 130]);
+    const a = arcPeakPosition(plays);
+    expect(a).toBe(arcPeakPosition(plays));
+    // Two identical plateaus: the earlier one must win, stably.
+    expect([1, 2, 3]).toContain(a);
+  });
+
   it("fewer than 2 BPM-carrying plays has no peak (sparse set, AC-35)", () => {
     expect(arcPeakPosition([play({ position: 1, bpm: 128 })])).toBeNull();
     expect(arcPeakPosition([])).toBeNull();
+  });
+
+  it("an all-one-instant scope degrades to highest BPM, earliest tie", () => {
+    const t = "2026-06-21T22:00:00Z";
+    const plays = [
+      play({ position: 1, started_at: t, bpm: 120 }),
+      play({ position: 2, started_at: t, bpm: 130 }),
+      play({ position: 3, started_at: t, bpm: 130 }),
+    ];
+    expect(arcPeakPosition(plays)).toBe(2);
   });
 
   it("is deterministic on the real fixture and lands inside the scope", () => {
@@ -303,6 +352,19 @@ describe("arcPeakPosition (AC-20)", () => {
     expect(peak).not.toBeNull();
     expect(scoped.some((p) => p.position === peak)).toBe(true);
     expect(arcPeakPosition(scoped)).toBe(peak);
+  });
+
+  it("D-10 cross-check on fixture 975: the arc ★ and the tracklist node share one value", () => {
+    // Both consumers read frame.peakPosition = arcPeakPosition(scopedPlays)
+    // — one function, one value. This pins the shared value's stability per
+    // scope so neither consumer can drift without failing here.
+    const segment = detectDancefloor(set975.plays);
+    for (const scope of ["dancefloor", "whole"] as const) {
+      const scoped = scopedPlays(set975.plays, segment, scope);
+      const shared = arcPeakPosition(scoped);
+      expect(shared).not.toBeNull();
+      expect(arcPeakPosition(scoped)).toBe(shared);
+    }
   });
 });
 

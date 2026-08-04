@@ -47,7 +47,9 @@ export function HeroBand({ set }: { set: SetRecord }) {
         viewBox={`0 0 ${VIEW.width} ${VIEW.height}`}
         preserveAspectRatio="none"
         role="img"
-        aria-label={arcTextEquivalent(set.derived.energy_arc, segment)}
+        // D-3/AC-22: the thumbnail shares the ONE chart-summary generator,
+        // aria-only — no visible caption here, thumbnail otherwise untouched.
+        aria-label={arcTextEquivalent(set.derived.energy_arc)}
       >
         <defs>
           {/* Molten chrome for the dim full-night line; ice→cyan for the glowing window. */}
