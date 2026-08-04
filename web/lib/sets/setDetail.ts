@@ -251,7 +251,8 @@ export function newTracks(
   }
   const tracks = new Map<string, TrackAgg>();
   for (const p of plays) {
-    const identity = `${p.title ?? ""} ${p.artist ?? ""}`;
+    if (p.title == null && p.artist == null) continue; // no identity to count
+    const identity = `${p.title ?? ""} ${p.artist ?? ""}`;
     let agg = tracks.get(identity);
     if (!agg) {
       agg = { addedAt: null, positions: [] };
@@ -324,7 +325,7 @@ export function replayedTracks(plays: SyncPlay[]): ReplayedTrack[] {
   const byTrack = new Map<string, ReplayedTrack>();
   for (const p of plays) {
     if (p.title == null && p.artist == null) continue; // no identity to count
-    const identity = `${p.title ?? ""} ${p.artist ?? ""}`;
+    const identity = `${p.title ?? ""} ${p.artist ?? ""}`;
     let entry = byTrack.get(identity);
     if (!entry) {
       entry = { title: p.title, artist: p.artist, count: 0, positions: [] };

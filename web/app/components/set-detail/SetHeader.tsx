@@ -28,7 +28,8 @@ function scopedLength(frame: ScopeFrame): number | null {
   const timed = frame.plays
     .map((p) => p.started_at)
     .filter((t): t is string => t != null);
-  if (timed.length < 2) return timed.length === 1 ? 0 : null;
+  // A single timestamp has no span to measure — that's "unknown," not "zero."
+  if (timed.length < 2) return null;
   return Math.max(
     0,
     Math.round((new Date(timed[timed.length - 1]).getTime() - new Date(timed[0]).getTime()) / 1000),

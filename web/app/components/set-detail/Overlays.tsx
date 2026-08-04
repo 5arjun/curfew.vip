@@ -57,6 +57,12 @@ export function OverlayPanel({
     backRef.current?.focus();
   }, [kind]);
 
+  // Restore focus to whatever opened the veil (a stat button) once it closes.
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    return () => previouslyFocused?.focus();
+  }, []);
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onBack();
@@ -141,6 +147,10 @@ function GenreOverlay({
     () => (level === "genre" ? genreRanking(frame.plays) : subgenreRanking(frame.plays)),
     [frame.plays, level],
   );
+
+  if (ranking.buckets.length === 0 && ranking.noGenreCount === 0) {
+    return <p className="sd-overlay-empty">No genre data in this scope.</p>;
+  }
 
   return (
     <>

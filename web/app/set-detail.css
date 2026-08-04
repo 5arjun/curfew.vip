@@ -536,11 +536,6 @@
   border-radius: 22px;
 }
 
-/* The reserved slot stays a dashed ghost — not a dz-shell. */
-.sd-module-reserved {
-  border: 1px dashed var(--color-abyss-hairline);
-}
-
 .sd-stat {
   display: flex;
   flex-direction: column;
@@ -807,10 +802,9 @@
   color: var(--color-abyss-text-45);
 }
 
-/* G — reserved enrichment slot (AC-16). */
+/* G — reserved enrichment slot (AC-16) — stays a dashed ghost, not a dz-shell. */
 .sd-module-reserved {
-  border-style: dashed;
-  border-width: 1px;
+  border: 1px dashed var(--color-abyss-hairline);
   box-shadow: none;
   background: var(--color-abyss-scrim-fade);
   min-height: 64px;
@@ -1169,6 +1163,14 @@
   color: var(--color-abyss-text-72);
 }
 
+/* Calm failure state — same muted register as the body copy, no alarm color. */
+.sd-modal-error {
+  margin-top: 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--color-abyss-text-45);
+}
+
 .sd-modal-actions {
   display: flex;
   justify-content: flex-end;
@@ -1252,6 +1254,23 @@
 
   .sd-stats {
     min-height: 0;
+  }
+
+  /* Task 10 / AC-39: touch targets ≥44px on mobile. */
+  .sd-scope-option,
+  .sd-mini-toggle button,
+  .sd-overflow-trigger,
+  .sd-overlay-back,
+  .sd-artist-row,
+  .sd-overlay-row,
+  .sd-focus-pill,
+  .sd-histogram-band {
+    min-height: 44px;
+  }
+
+  .sd-overflow-trigger,
+  .sd-overlay-back {
+    min-width: 44px;
   }
 
   /* The drill-in becomes a bottom sheet; back arrow = sheet dismiss. The

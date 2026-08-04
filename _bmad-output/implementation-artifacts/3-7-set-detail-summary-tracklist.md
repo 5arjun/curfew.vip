@@ -4,7 +4,7 @@ baseline_commit: 913248bfaea5f77a3c48c26e18c78a056e47f5f2
 
 # Story 3.7: Set Detail summary + tracklist
 
-Status: review
+Status: done
 
 ## Story
 
@@ -164,6 +164,48 @@ so that I can study exactly what I played and how it landed.
 - [x] **Task 12: Verification**
   - [x] 12.1 Full repo gate: `cargo fmt --check` / `clippy -D warnings` / `cargo test`; `pnpm lint/typecheck/test` (shared + web); supabase `db reset` + pgTAP if Task 2.3 lands.
   - [x] 12.2 **Real-browser walkthrough (non-negotiable — 3.5's and 3.6's worst bugs were only caught this way):** Playwright/headless-Chrome screenshots of: full set 975 both scopes (verify the global flip changes everything at once), the arc morph, each overlay + focus pill + dim-in-place, Longest/Shortest/new-tracks direct focus, load-more, delete flow end-to-end, sparse set 17577, mobile 375px stack + bottom sheet, keyboard-only pass (overlays operable, focus visible), reduced-motion. Zero console errors.
+
+### Review Findings
+
+Code review of the frontend group (`web/app/components/set-detail/*`, `web/lib/sets/setDetail.ts`, `set-detail.css`) via `bmad-code-review`, 2026-08-04. Blind Hunter + Edge Case Hunter + Acceptance Auditor run in parallel, findings deduplicated and read against the actual code before rating (several raw-agent findings turned out to be false positives once traced — see Dismissed below). Backend/capture group (agent Rust, shared schema, supabase migration) deferred to a follow-up review run, not covered here.
+
+**Decision-needed** — resolved by Arjun, 2026-08-04
+
+- [x] [Review][Defer] Arc silently falls back to the whole-night domain when the detected dancefloor segment doesn't overlap any BPM-carrying play — `heroArcGeometry` returns `band: null` in that case, so `DetailArc`'s `zoomed` check is false even though `frame.scope === "dancefloor"` and the scope line/toggle still read "Dancefloor." [web/app/components/set-detail/DetailArc.tsx:31], [web/lib/sets/heroArc.ts:145] — deferred: rare edge case (needs a detected dancefloor whose plays lack BPM data), low value now; natural to revisit alongside 3.8's full arc rebuild.
+- [x] [Review][Defer] A single Escape keypress can close the delete-confirmation modal AND a stats drill-in veil simultaneously if both happen to be open (independent `document`-level keydown listeners in `DeleteModal` and `OverlayPanel`, no shared modal stack/priority). [web/app/components/set-detail/DeleteModal.tsx:25-27], [web/app/components/set-detail/Overlays.tsx:60-66] — deferred: low stakes, rare compound state — nothing destructive happens and few users will hit both open at once.
+- [x] [Review][Dismiss] Task 3.1 says scope stats recompute "via 3.6's shipped `detectDancefloor` + `segmentStats`," but `web/lib/sets/setDetail.ts` reimplements segment-window filtering independently (`scopedPlays`, epoch-based) instead of calling `segmentStats` (string-based date comparison). [web/lib/sets/setDetail.ts], [web/lib/sets/dancefloor.ts:148] — dismissed: `segmentStats` returns pre-aggregated card stats, not a play list; `scopedPlays` is a legitimately different, necessary primitive for 3.7's needs. No code change.
+
+**Patch** — applied by Arjun's call, 2026-08-04 (typecheck/lint/90 tests green after)
+
+- [x] [Review][Patch] `DeleteModal`'s Escape handler doesn't check `deleting` state (unlike the backdrop click, which does) — pressing Escape mid-delete dismisses the modal while the delete request keeps running, so it looks cancelled but isn't. [web/app/components/set-detail/DeleteModal.tsx:26]
+- [x] [Review][Patch] No error handling around the delete action, and no `revalidatePath`/`revalidateTag` backing the post-delete redirect — currently unreachable since the fixture-backed `deleteSet` can't throw, but this is the documented Supabase swap-in seam, worth hardening before that lands. [web/app/(authenticated)/set/[id]/actions.ts:12-15], [web/app/components/set-detail/DeleteModal.tsx:65-68]
+- [x] [Review][Patch] Tracklist key-chip color reads `play.camelot_key` raw instead of through the already-built `parseCamelot` validator — a malformed key produces an invalid CSS custom-property reference (fails silently past the intended neutral fallback) instead of degrading gracefully. [web/app/components/set-detail/Tracklist.tsx:124-130]
+- [x] [Review][Patch] Duplicate `.sd-module-reserved` CSS rule — two separate blocks target the same class; only one is live (enrichment slot G), the other looks orphaned from an earlier arc-slot-C ghost state. [web/app/set-detail.css:540, 811]
+- [x] [Review][Patch] `scopedLength()` returns `0` (renders "0m") for a scope with exactly one timed play, instead of `null` (renders "—" — the function already supports this for zero timed plays), conflating "zero duration" with "can't measure a duration." [web/app/components/set-detail/SetHeader.tsx:31]
+- [x] [Review][Patch] `newTracks()` has no guard for plays with both `title` and `artist` null, unlike its sibling `replayedTracks()` ("no identity to count") — unrelated untitled/unattributed plays collapse into one fake track, corrupting the new-tracks count and `·new·` row markers. [web/lib/sets/setDetail.ts:254]
+- [x] [Review][Patch] No keyboard focus trap in `DeleteModal` — the one true modal in the app (`OverlayPanel` intentionally leaves the tracklist reachable, this doesn't); Tab/Shift+Tab can move focus into the page behind the scrim. [web/app/components/set-detail/DeleteModal.tsx]
+- [x] [Review][Patch] No focus restoration on close for `DeleteModal` (Cancel/Escape) or `OverlayPanel` (back button) — focus is lost rather than returned to the `[⋯]` trigger / stat button that opened them. [web/app/components/set-detail/DeleteModal.tsx], [web/app/components/set-detail/Overlays.tsx]
+- [x] [Review][Patch] `StatsColumn`'s dimmed stack uses `aria-hidden` alone while a drill-in veil is open, with no `inert` — keyboard focus can still land on visually-covered, `aria-hidden` buttons (WCAG 4.1.2). [web/app/components/set-detail/StatsColumn.tsx:104]
+- [x] [Review][Patch] `setShape()`/`showShape` renders the same play as both "Longest Play" and "Shortest Play" when only one play in scope has a captured `played_ms` — misleading given the "real captured duration, never fabricated" principle the rest of the module holds to. [web/app/components/set-detail/StatsColumn.tsx:210-244], [web/lib/sets/setDetail.ts:198-212]
+- [x] [Review][Patch] The "Replayed: X ×N" line is nested inside the artist-concentration-gated (`showArtists`) section, so a replayed track with a null/untagged artist never shows it — AC-13 states the Replayed condition ("any single track's count > 1") independent of the artist-concentration rule. [web/app/components/set-detail/StatsColumn.tsx:330-334]
+- [x] [Review][Patch] `GenreOverlay` has no empty-state message for a zero-play scope, unlike the BPM/Harmonic/Artists overlays (which all show "No X data in this scope"). [web/app/components/set-detail/Overlays.tsx:130-208]
+- [x] [Review][Patch] Touch targets below the story's own ≥44px mobile requirement (Task 10, AC-39) on 7 selectors, none resized in the `@media (max-width: 900px)` block: `.sd-scope-option` (32px), `.sd-mini-toggle button` (30px), `.sd-overflow-trigger` (36px), `.sd-overlay-back` (38px), `.sd-artist-row`/`.sd-overlay-row` (40px), `.sd-focus-pill` (36px), `.sd-histogram-band` (34px). Task 10 is checked off but the requirement isn't met. [web/app/set-detail.css]
+- [x] [Review][Patch] Indentation inconsistency in `StatsColumn.tsx` — the "Set shape" and "Most-played artists" sections' `dz-dots` span sits at the same level as its parent `<section>` instead of nested one level deeper, unlike every other module in the file. Cosmetic only. [web/app/components/set-detail/StatsColumn.tsx:212, 294]
+- [x] [Review][Patch] Dashboard's `?deleted=` note shows for any truthy value of the query param (not just right after an actual delete) — a shared/bookmarked/back-navigated URL re-shows "Set deleted" with nothing having just happened. Low-stakes but worth clearing the param client-side after display. [web/app/(authenticated)/dashboard/page.tsx:61]
+- [x] [Review][Patch — bonus, found mid-fix, not in original agent findings] Two literal NUL bytes (`\x00`) embedded in the source between `${p.title ?? ""}` and `${p.artist ?? ""}` in the track-identity template literals — invisible on a normal read, only surfaced when an exact-string edit tool failed to match. Functionally benign as a Map-key delimiter but clearly unintentional; replaced with a plain space in both `newTracks()` and `replayedTracks()`. [web/lib/sets/setDetail.ts]
+
+**Defer**
+
+- [x] [Review][Defer] No authorization/ownership check in `deleteSetAction` — Server Actions are reachable independent of route-group layout gating, so anyone who knows/guesses an `external_id` could delete it. Same pre-existing gap already flagged in this story's own Dev Notes ("No auth-gating redirect exists yet on the `(authenticated)` group") and in Story 3.5's Dev Agent Record — not introduced by 3.7, not actionable without the auth-gating work landing first. [web/app/(authenticated)/set/[id]/actions.ts], [web/app/(authenticated)/layout.tsx] — deferred, pre-existing
+- [x] [Review][Defer] `bpmHistogram` doesn't clamp or bucket single-outlier BPM values, which can produce a long, mostly-empty band range in the BPM overlay. Polish/enhancement, not a spec violation. [web/lib/sets/setDetail.ts:168-183] — deferred, pre-existing
+
+**Dismissed as noise (6)** — verified false positives or already-resolved-by-design:
+- `React.CSSProperties` used without an explicit `React` import in `Tracklist.tsx` — not a compile error; the codebase already relies on `React` as an ambient UMD-global type elsewhere without importing it (`GlassCalendar.tsx`, `MetalButton.tsx`, `layout.tsx`).
+- Tracklist connectors computed over the unscoped full set while stats use the scoped frame — matches an explicit, dated "RESOLVED" decision in the design spec §6 ("the tracklist does NOT react to the scope flip... per D1/DR-1 as originally locked"); a stale historical Dev Agent Record line elsewhere still reads as an "open question" but that predates the resolution.
+- Global `html, body { overflow-x: hidden → clip }` change in `globals.css` — deliberate, correctly-reasoned fix for `position: sticky` breaking under a scroll-container ancestor (also independently documented in this story's own Debug Log, catch #2).
+- Delete modal copy ("removes it from Curfew for good — it can't be undone") vs. the deferred tombstone requirement — copy is spec-locked verbatim (AC-32); the tombstone gap is already tracked in `deferred-work.md`, owed by a future sync story.
+- `DetailArc` never marks the ★ PEAK point on the curve itself — full arc annotation is explicitly 3.8 scope per the build-order table ("3.8 fills slot C: full annotated energy arc"); 3.7 reuses 3.6's thumbnail geometry as-is.
+- `scopedPlays` NaN segment boundaries from an unparsable ISO string — unreachable; `segment` only ever comes from 3.6's `detectDancefloor`, which derives bounds from real play timestamps.
 
 ## Dev Notes
 
