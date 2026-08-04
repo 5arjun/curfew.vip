@@ -233,6 +233,16 @@ impl LegacyLibrary {
 /// all, reports the off-library default. Nothing on `play` is read beyond its path, and
 /// nothing on it is modified: the play log's own inline `genre`/`key` come from a
 /// different source, and reconciling the two is a later stage's decision.
+///
+/// **`total_length_ms` is not read here (Story 3.7 §3d, AC-42, code-review
+/// disclosed gap).** The catalogue's `triseratops::Field::Length(String)`
+/// (`len` tag) exists, but its on-disk string convention (seconds? `M:SS`?)
+/// is not verified against a real `database V2` export the way `bpm`/`key`/
+/// `tadd`/`uadd` were (Story 3.7's own verification pass, `serato-capture-
+/// completeness.md`) — parsing it on a guess would risk exactly the
+/// fabricated-value failure mode AD-11 exists to prevent. Left absent
+/// (never guessed) until it can be verified; low priority given AC-42 already
+/// scopes the legacy path to "sanity-check only, Arjun's library is serato4."
 pub fn join(play: &Play, library: &LegacyLibrary) -> JoinedMetadata {
     // No path means no join key — no library can resolve this play, so don't look.
     let Some(path) = play.path.as_deref() else {

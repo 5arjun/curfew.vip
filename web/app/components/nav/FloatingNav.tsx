@@ -290,8 +290,8 @@ export function FloatingNav() {
   };
 
   // MetalButton's speed state machine, minus the click burst (a nav rail has
-  // no single "the" click): idle 0.6 → hover 1.0; frozen for reduced motion.
-  const speed = reduced ? 0 : hovered ? 1 : 0.6;
+  // no single "the" click): idle 0.35 → hover 1.0; frozen for reduced motion.
+  const speed = reduced ? 0 : hovered ? 1 : 0.35;
 
   const destinations = NAV_ITEMS.slice(0, -1);
   const settings = NAV_ITEMS[NAV_ITEMS.length - 1];

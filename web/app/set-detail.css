@@ -121,9 +121,9 @@
 .sd-metal-plate {
   display: block;
   position: absolute;
-  inset: 2px;
+  inset: 1px;
   z-index: -1;
-  border-radius: calc(var(--sd-metal-radius, 14px) - 2px);
+  border-radius: calc(var(--sd-metal-radius, 14px) - 1px);
   background: linear-gradient(180deg, var(--color-abyss-raised) 0%, var(--color-abyss-base) 100%);
   box-shadow: inset 0 1px 0 0 var(--color-nav-rim);
 }
@@ -260,6 +260,25 @@
 .sd-rail {
   position: sticky;
   top: 18px;
+  /* The rail's own content (harmonic/BPM + genre + set shape + new-tracks +
+     most-played + reserved slot) can be taller than the viewport. Sticky
+     positioning pins it against the tracklist's much-taller grid row, so
+     without its own bounded scroll the lower modules were only reachable
+     once the whole rail unstuck near the very end of the tracklist — they'd
+     sit below the fold, unscrollable, for nearly the entire read. Bounding
+     it to the viewport and letting it scroll internally keeps every module
+     reachable throughout (dz-right's own ref convention: hidden scrollbar,
+     dashboard.css). Not the "no nested scroll regions" the page-level shell
+     avoids (L-2) — that rule is about not wrapping the whole page in a fixed
+     viewport-height shell; a self-scrolling sticky sidebar is the standard
+     pattern for content taller than its pinned viewport slice. */
+  max-height: calc(100dvh - 36px);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.sd-rail::-webkit-scrollbar {
+  display: none;
 }
 
 /* ─── F — tracklist ────────────────────────────────────────────────────── */
@@ -536,11 +555,6 @@
   border-radius: 22px;
 }
 
-/* The reserved slot stays a dashed ghost — not a dz-shell. */
-.sd-module-reserved {
-  border: 1px dashed var(--color-abyss-hairline);
-}
-
 .sd-stat {
   display: flex;
   flex-direction: column;
@@ -736,6 +750,10 @@
     background-color var(--motion-duration-fast) var(--motion-ease-standard);
 }
 
+.sd-mini-toggle button:hover {
+  color: var(--color-abyss-text);
+}
+
 .sd-mini-toggle button[aria-pressed="true"] {
   background: var(--color-abyss-raised);
   color: var(--color-abyss-accent);
@@ -807,10 +825,9 @@
   color: var(--color-abyss-text-45);
 }
 
-/* G — reserved enrichment slot (AC-16). */
+/* G — reserved enrichment slot (AC-16) — stays a dashed ghost, not a dz-shell. */
 .sd-module-reserved {
-  border-style: dashed;
-  border-width: 1px;
+  border: 1px dashed var(--color-abyss-hairline);
   box-shadow: none;
   background: var(--color-abyss-scrim-fade);
   min-height: 64px;
@@ -1169,6 +1186,14 @@
   color: var(--color-abyss-text-72);
 }
 
+/* Calm failure state — same muted register as the body copy, no alarm color. */
+.sd-modal-error {
+  margin-top: 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--color-abyss-text-45);
+}
+
 .sd-modal-actions {
   display: flex;
   justify-content: flex-end;
@@ -1248,10 +1273,29 @@
   .sd-rail {
     position: static;
     order: -1;
+    max-height: none;
+    overflow-y: visible;
   }
 
   .sd-stats {
     min-height: 0;
+  }
+
+  /* Task 10 / AC-39: touch targets ≥44px on mobile. */
+  .sd-scope-option,
+  .sd-mini-toggle button,
+  .sd-overflow-trigger,
+  .sd-overlay-back,
+  .sd-artist-row,
+  .sd-overlay-row,
+  .sd-focus-pill,
+  .sd-histogram-band {
+    min-height: 44px;
+  }
+
+  .sd-overflow-trigger,
+  .sd-overlay-back {
+    min-width: 44px;
   }
 
   /* The drill-in becomes a bottom sheet; back arrow = sheet dismiss. The

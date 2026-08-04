@@ -205,6 +205,13 @@ pub fn enrich_session(pairs: &[(Play, JoinedMetadata)]) -> Vec<EnrichedPlay> {
 /// preview between two real plays is not on-air time, so the "next play" that
 /// bounds a duration must be the next *played* one. Expects chronological
 /// order (the standing `enrich_session` guarantee) and does not re-sort.
+///
+/// **Bounds on the immediate next play only** (Story 3.7 code review): if a
+/// next play exists but itself has no `start_time`, this does *not* keep
+/// searching further ahead for one that does — doing so would silently fold
+/// that intervening play's own unresolvable gap into the current play's
+/// duration. Only the true final play (no next play at all) falls back to
+/// `set_end`.
 pub fn resolve_played_ms(plays: &mut [EnrichedPlay], set_end: Option<i64>) {
     for i in 0..plays.len() {
         if plays[i].played_ms.is_some() {
@@ -213,10 +220,10 @@ pub fn resolve_played_ms(plays: &mut [EnrichedPlay], set_end: Option<i64>) {
         let Some(start) = plays[i].start_time else {
             continue;
         };
-        let bound = plays[i + 1..]
-            .iter()
-            .find_map(|next| next.start_time.map(i64::from))
-            .or(set_end);
+        let bound = match plays.get(i + 1) {
+            Some(next) => next.start_time.map(i64::from),
+            None => set_end,
+        };
         if let Some(end) = bound {
             if end >= i64::from(start) {
                 plays[i].played_ms = Some(((end - i64::from(start)) as u64) * 1000);
@@ -787,6 +794,36 @@ mod tests {
 
         assert_eq!(plays[0].played_ms, None);
         assert_eq!(plays[1].played_ms, None);
+    }
+
+    /// (Story 3.7 code review) A next play with no `start_time` must not be
+    /// skipped past in search of a later one — that would silently fold the
+    /// intervening play's own unresolvable gap into the current play's
+    /// duration. The bound must come from the immediate next play only.
+    #[test]
+    fn resolve_played_ms_does_not_search_past_a_next_play_with_no_start_time() {
+        let mut plays = vec![
+            EnrichedPlay {
+                start_time: Some(1_000),
+                ..EnrichedPlay::default()
+            },
+            EnrichedPlay {
+                start_time: None,
+                ..EnrichedPlay::default()
+            },
+            EnrichedPlay {
+                start_time: Some(3_000),
+                ..EnrichedPlay::default()
+            },
+        ];
+
+        resolve_played_ms(&mut plays, Some(4_000));
+
+        assert_eq!(
+            plays[0].played_ms, None,
+            "the immediate next play has no start_time, so the bound must stay unresolved \
+             rather than reaching past it to play 2's start_time"
+        );
     }
 
     /// (Task 1) A play with a path and a play without one both produce a usable

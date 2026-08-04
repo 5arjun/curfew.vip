@@ -629,12 +629,18 @@ pub struct CapturedPlay {
     pub camelot_key: Option<String>,
     pub in_library: bool,
     /// Real on-air duration in milliseconds (Story 3.7, wire-promoted —
-    /// mirrors `SyncPlay.played_ms`). `Option` fields deserialize as `None`
-    /// from pre-3.7 stored rows, so old `plays_json` still round-trips.
+    /// mirrors `SyncPlay.played_ms`). `#[serde(default)]`: serde errors on a
+    /// genuinely *missing* key for an `Option<T>` field (it only auto-`None`s
+    /// a key present with an explicit `null`), so without it a pre-3.7 stored
+    /// `plays_json` row — which never wrote this key at all — would fail to
+    /// deserialize instead of round-tripping as `None`.
+    #[serde(default)]
     pub played_ms: Option<u64>,
     /// Library date-added, Unix epoch seconds (Story 3.7, wire-promoted —
     /// mirrors `SyncPlay.library_added_at`; the epoch→ISO conversion is a
-    /// payload-boundary concern, same as `started_at`).
+    /// payload-boundary concern, same as `started_at`). `#[serde(default)]`
+    /// for the same pre-3.7-row round-trip reason as `played_ms` above.
+    #[serde(default)]
     pub library_added_at: Option<i64>,
 }
 
@@ -840,6 +846,29 @@ mod tests {
             played_ms: Some(240_000),
             library_added_at: Some(1_644_628_114),
         }]
+    }
+
+    /// Story 3.7 code review: a pre-3.7 stored `plays_json` row never wrote
+    /// the `played_ms`/`library_added_at` keys at all (not even as `null`) —
+    /// this must still deserialize, with both fields absent, not error.
+    #[test]
+    fn captured_play_without_story_3_7_fields_round_trips_as_none() {
+        let pre_3_7_json = r#"{
+            "position": 1,
+            "title": "Track A",
+            "artist": "Artist A",
+            "started_at": 1000,
+            "bpm": 120.0,
+            "genre": null,
+            "camelot_key": "8A",
+            "in_library": true
+        }"#;
+
+        let play: CapturedPlay =
+            serde_json::from_str(pre_3_7_json).expect("pre-3.7 shape must still deserialize");
+
+        assert_eq!(play.played_ms, None);
+        assert_eq!(play.library_added_at, None);
     }
 
     /// Task 7: upsert-then-get round-trip — a captured row's content columns

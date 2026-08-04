@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Key } from "lucide-react";
 import { formatBpm, formatClock } from "@/lib/sets/format";
-import { formatPlayedLength, transitions, type Transition } from "@/lib/sets/setDetail";
+import { formatPlayedLength, parseCamelot, transitions, type Transition } from "@/lib/sets/setDetail";
 import type { SetRecord } from "@/lib/sets/types";
 import { CursorChip, useCursorChipTarget } from "@/app/components/ui/CursorChip";
 import type { Focus, ScopeFrame } from "./model";
@@ -82,6 +82,7 @@ export function Tracklist({
           const dimmed = focusSet != null && !focusSet.has(play.position);
           const unknown = play.title == null && play.artist == null;
           const connector = i < visible.length - 1 ? connectorAfter.get(play.position) : undefined;
+          const camelot = play.camelot_key ? parseCamelot(play.camelot_key) : null;
 
           return (
             <li key={play.position} className="sd-row-item">
@@ -120,11 +121,15 @@ export function Tracklist({
                     className="sd-row-key"
                     data-empty={play.camelot_key == null || undefined}
                     // Camelot wheel coloring: each key rides its own hue token
-                    // (tokens.css --camelot-*, post-review ruling).
+                    // (tokens.css --camelot-*, post-review ruling). Built from
+                    // the parsed key, not the raw string — a malformed value
+                    // must fall back to neutral, not reference a nonexistent
+                    // CSS custom property (which would be invalid-at-computed-
+                    // value-time instead of triggering the var() fallback).
                     style={
-                      play.camelot_key
+                      camelot
                         ? ({
-                            "--sd-key-color": `var(--camelot-${play.camelot_key.toLowerCase()})`,
+                            "--sd-key-color": `var(--camelot-${camelot.number}${camelot.letter.toLowerCase()})`,
                           } as React.CSSProperties)
                         : undefined
                     }

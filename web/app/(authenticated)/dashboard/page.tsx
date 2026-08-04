@@ -4,6 +4,7 @@ import { buildSetRows } from "@/lib/sets/listModel";
 import { buildRightColumn } from "@/lib/sets/rightColumn";
 import { createClient } from "@/lib/supabase/server";
 import { ConfidenceTile } from "@/app/components/dashboard/ConfidenceTile";
+import { DeletedNote } from "@/app/components/dashboard/DeletedNote";
 import { GlassCalendar } from "@/app/components/dashboard/GlassCalendar";
 import { Greeting } from "@/app/components/dashboard/Greeting";
 import { HeroBand } from "@/app/components/dashboard/HeroBand";
@@ -58,11 +59,10 @@ export default async function DashboardPage({
       <SilkBackdrop />
       <Greeting name={firstName} />
 
-      {deleted != null && (
-        // Story 3.7 AC-34: the brief calm inline confirm after a delete —
-        // no celebration, no alarm; it simply states what happened.
-        <p className="dz-deleted-note">Set deleted. Your Serato history isn&apos;t touched.</p>
-      )}
+      {/* Story 3.7 AC-34: the brief calm inline confirm after a delete — no
+          celebration, no alarm; it simply states what happened. Scrubs its
+          own query param on mount (see DeletedNote). */}
+      {deleted != null && <DeletedNote />}
 
       {hero ? (
         <HeroBand set={hero} />

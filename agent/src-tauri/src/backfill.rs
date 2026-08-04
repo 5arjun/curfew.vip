@@ -166,11 +166,28 @@ pub fn backfill_captured_serato4(
         // db_path to sit under the configured root, which the live source
         // guarantees. Any error (source gone, session pruned, corrupt row) leaves
         // the existing row untouched.
-        let Ok((mut plays, derived)) =
-            crate::capture::build_serato4(&source.root, &source.db_path, session_id, dates)
-        else {
-            continue;
-        };
+        let (mut plays, derived) =
+            match crate::capture::build_serato4(&source.root, &source.db_path, session_id, dates) {
+                Ok(built) => built,
+                // Distinct from every other re-derivation error (Story 3.7 code
+                // review): this session re-derived successfully but the played-flag
+                // filter dropped every row, so it is genuinely different from
+                // "source gone / corrupt row" — worth a signal if it ever fires,
+                // even though the row is left untouched the same way either way.
+                Err(crate::capture::CaptureError::AllPreviews) => {
+                    reporter.report(
+                        "serato4 backfill: session re-derived to zero real plays",
+                        crate::config::AGENT_VERSION,
+                        &format!(
+                            "session_identity={} re-derived with every row now a preview \
+                         (Story 3.7 played-flag filter) — left as-is",
+                            row.session_identity
+                        ),
+                    );
+                    continue;
+                }
+                Err(_) => continue,
+            };
 
         // Story 3.7 carry-forward guard: `library_added_at` coverage depends on
         // which volumes are mounted right now (`date_added`'s module doc), so a
@@ -233,6 +250,14 @@ pub fn backfill_captured_serato4(
 /// is not (the Story 3.7 played-flag filter renumbers positions relative to
 /// pre-3.7 stored rows). Unparseable/absent stored JSON is a no-op — there is
 /// nothing to carry.
+///
+/// **Collision guard (Story 3.7 code review):** two stored plays can share the
+/// same `(started_at, title)` key (most commonly both `None`/`None` — a play
+/// missing both fields — but any genuine duplicate qualifies too). If they
+/// disagree on `library_added_at`, picking either one risks silently carrying
+/// the wrong date onto an unrelated fresh play, so a colliding key with
+/// disagreeing dates is treated as unknown (never guessed, AD-11) rather than
+/// resolved to whichever value happened to be seen last.
 fn carry_forward_library_dates(
     stored_plays_json: Option<&str>,
     fresh: &mut [crate::store::CapturedPlay],
@@ -244,14 +269,23 @@ fn carry_forward_library_dates(
         return;
     };
 
-    let known: std::collections::HashMap<(Option<u32>, Option<&str>), i64> = stored
-        .iter()
-        .filter_map(|p| {
-            let date = p.library_added_at?;
-            Some(((p.started_at, p.title.as_deref()), date))
-        })
-        .collect();
-    if known.is_empty() {
+    let mut known: std::collections::HashMap<(Option<u32>, Option<&str>), Option<i64>> =
+        std::collections::HashMap::new();
+    for p in &stored {
+        let Some(date) = p.library_added_at else {
+            continue;
+        };
+        let key = (p.started_at, p.title.as_deref());
+        known
+            .entry(key)
+            .and_modify(|existing| {
+                if *existing != Some(date) {
+                    *existing = None;
+                }
+            })
+            .or_insert(Some(date));
+    }
+    if known.values().all(Option::is_none) {
         return;
     }
 
@@ -259,7 +293,8 @@ fn carry_forward_library_dates(
         if play.library_added_at.is_none() {
             play.library_added_at = known
                 .get(&(play.started_at, play.title.as_deref()))
-                .copied();
+                .copied()
+                .flatten();
         }
     }
 }
@@ -789,6 +824,58 @@ mod tests {
             "the gained date must be stored"
         );
         assert_eq!(row.synced_at, None, "the correction must re-sync");
+    }
+
+    fn play_with(
+        started_at: Option<u32>,
+        title: Option<&str>,
+        library_added_at: Option<i64>,
+    ) -> crate::store::CapturedPlay {
+        crate::store::CapturedPlay {
+            position: 1,
+            title: title.map(str::to_string),
+            artist: None,
+            started_at,
+            bpm: None,
+            genre: None,
+            camelot_key: None,
+            in_library: false,
+            played_ms: None,
+            library_added_at,
+        }
+    }
+
+    /// Story 3.7 code review: two stored plays sharing a `(started_at, title)`
+    /// key (here, both missing both fields) that disagree on their stored date
+    /// must never resolve to either one — guessing risks attaching the wrong
+    /// play's date to an unrelated fresh play.
+    #[test]
+    fn carry_forward_skips_a_colliding_key_with_disagreeing_dates() {
+        let stored = vec![
+            play_with(None, None, Some(1_644_628_114)),
+            play_with(None, None, Some(1_700_000_000)),
+        ];
+        let stored_json = serde_json::to_string(&stored).unwrap();
+
+        let mut fresh = vec![play_with(None, None, None)];
+        carry_forward_library_dates(Some(&stored_json), &mut fresh);
+
+        assert_eq!(
+            fresh[0].library_added_at, None,
+            "a colliding key with two different stored dates must never guess which one applies"
+        );
+    }
+
+    /// The non-colliding case still works exactly as before the collision guard.
+    #[test]
+    fn carry_forward_applies_an_unambiguous_key() {
+        let stored = vec![play_with(Some(1_000), Some("Track A"), Some(1_644_628_114))];
+        let stored_json = serde_json::to_string(&stored).unwrap();
+
+        let mut fresh = vec![play_with(Some(1_000), Some("Track A"), None)];
+        carry_forward_library_dates(Some(&stored_json), &mut fresh);
+
+        assert_eq!(fresh[0].library_added_at, Some(1_644_628_114));
     }
 
     /// With no serato4 source currently configured (drive unplugged), a captured

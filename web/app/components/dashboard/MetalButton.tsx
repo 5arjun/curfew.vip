@@ -63,8 +63,8 @@ export function MetalButton({ mode, label, href, onClick, className }: MetalButt
     };
   }, []);
 
-  // The ref's speed state machine: idle 0.6 → hover 1.0 → click 2.4 for 300ms.
-  const speed = reduced ? 0 : burst ? 2.4 : isHovered ? 1 : 0.6;
+  // The ref's speed state machine: idle 0.35 → hover 1.0 → click 2.4 for 300ms.
+  const speed = reduced ? 0 : burst ? 2.4 : isHovered ? 1 : 0.35;
 
   const handleClick = (e: React.MouseEvent<HTMLElement>) => {
     setBurst(true);

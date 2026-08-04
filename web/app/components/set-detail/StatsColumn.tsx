@@ -77,9 +77,11 @@ export function StatsColumn({
   const litPips = smoothPct == null ? 0 : Math.round((smoothPct / 100) * PIP_COUNT);
 
   // Conditional renders (AC-13, §3f): no concentration → no most-played story;
-  // fewer than 2 plays → no set shape to tell.
+  // fewer than 2 DISTINCT measured plays → no real longest/shortest
+  // comparison to tell (one captured duration can't be both extremes).
   const showArtists = artists.some((a) => a.count >= 2);
-  const showShape = plays.length >= 2 && shape.longest != null;
+  const showShape =
+    shape.longest != null && shape.shortest != null && shape.longest.position !== shape.shortest.position;
 
   const bpmSparkline = useMemo(() => {
     const values = plays
@@ -101,7 +103,7 @@ export function StatsColumn({
 
   return (
     <div className="sd-stats" data-overlay-open={overlay != null || undefined}>
-      <div className="sd-stats-stack" aria-hidden={overlay != null}>
+      <div className="sd-stats-stack" aria-hidden={overlay != null} inert={overlay != null || undefined}>
         {/* D — headline module: harmonic hero + BPM, hairline-divided. */}
         <section className="sd-module dz-shell">
           <span className="dz-dots" aria-hidden="true" />
@@ -209,7 +211,7 @@ export function StatsColumn({
         {/* Set shape — Longest / Shortest Play, real captured durations (AC-14). */}
         {showShape && (
           <section className="sd-module dz-shell">
-          <span className="dz-dots" aria-hidden="true" />
+            <span className="dz-dots" aria-hidden="true" />
             <p className="sd-stat-label sd-module-label">Set shape</p>
             {([
               ["Longest Play", shape.longest],
@@ -288,45 +290,52 @@ export function StatsColumn({
           )}
         </section>
 
-        {/* E — most-played artists, conditional (AC-13). */}
-        {showArtists && (
+        {/* E — most-played artists, conditional (AC-13); Replayed is its own
+            independent condition (any track count > 1) — it can appear with
+            no artist concentration at all (e.g. a replay with a null/untagged
+            artist), so it isn't gated behind `showArtists`. */}
+        {(showArtists || replays.length > 0) && (
           <section className="sd-module dz-shell">
-          <span className="dz-dots" aria-hidden="true" />
-            <button
-              type="button"
-              className="sd-module-head"
-              onClick={() => setOverlay("artists")}
-              aria-label="Most-played artists — open full list"
-            >
-              <span className="sd-stat-label">Most-played artists</span>
-              <span className="sd-module-more" aria-hidden="true">
-                ›
-              </span>
-            </button>
-            <ul className="sd-artist-rows">
-              {artists
-                .filter((a) => a.count >= 2)
-                .slice(0, 3)
-                .map((a) => (
-                  <li key={a.artist}>
-                    <button
-                      type="button"
-                      className="sd-artist-row"
-                      data-active={focus?.key === `artist:${a.artist}` || undefined}
-                      onClick={() =>
-                        setFocus({
-                          key: `artist:${a.artist}`,
-                          label: a.artist,
-                          positions: a.positions,
-                        })
-                      }
-                    >
-                      <span className="sd-artist-name">{a.artist}</span>
-                      <span className="sd-artist-count">×{a.count}</span>
-                    </button>
-                  </li>
-                ))}
-            </ul>
+            <span className="dz-dots" aria-hidden="true" />
+            {showArtists && (
+              <>
+                <button
+                  type="button"
+                  className="sd-module-head"
+                  onClick={() => setOverlay("artists")}
+                  aria-label="Most-played artists — open full list"
+                >
+                  <span className="sd-stat-label">Most-played artists</span>
+                  <span className="sd-module-more" aria-hidden="true">
+                    ›
+                  </span>
+                </button>
+                <ul className="sd-artist-rows">
+                  {artists
+                    .filter((a) => a.count >= 2)
+                    .slice(0, 3)
+                    .map((a) => (
+                      <li key={a.artist}>
+                        <button
+                          type="button"
+                          className="sd-artist-row"
+                          data-active={focus?.key === `artist:${a.artist}` || undefined}
+                          onClick={() =>
+                            setFocus({
+                              key: `artist:${a.artist}`,
+                              label: a.artist,
+                              positions: a.positions,
+                            })
+                          }
+                        >
+                          <span className="sd-artist-name">{a.artist}</span>
+                          <span className="sd-artist-count">×{a.count}</span>
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+              </>
+            )}
             {replays.length > 0 && (
               <p className="sd-replayed">
                 Replayed: {replays[0].title ?? "Unknown title"} ×{replays[0].count}

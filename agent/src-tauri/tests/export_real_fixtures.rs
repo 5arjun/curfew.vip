@@ -111,6 +111,19 @@ fn export_real_sets_and_verify_camelot_recovery() {
                 "expected >=90% of played rows to carry a real played duration, got {with_duration}/{}",
                 plays.len()
             );
+            // Story 3.7 code review: unlike with_key/with_duration, coverage here
+            // is legitimately drive-dependent (25/105 with the USB unplugged vs
+            // the ~94% ceiling plugged in, per serato-capture-completeness.md) —
+            // a fixed >=90% floor would be flaky. This sanity floor is weak on
+            // purpose: it only exists to catch a live regression in the
+            // date-added join collapsing to zero, not to police coverage.
+            assert!(
+                with_date > 0,
+                "expected at least some played rows to resolve a library date-added \
+                 (the ~/Music boot-drive catalogue alone should cover some tracks even \
+                 with every external volume unplugged), got {with_date}/{}",
+                plays.len()
+            );
         }
 
         exported.push(ExportedSet {
