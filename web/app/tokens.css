@@ -362,6 +362,8 @@
   --color-abyss-shell-glow: #18344880;   /* 50% — the ref's inset 150px shell glow, re-tinted */
   --color-abyss-shell-glow-dim: #18344859; /* ~35% — shell glow while a modal is active (ref drops to 0.7×) */
   --color-abyss-row-hover: #7fd8f217;    /* ~9% — row hover inset glow (ref white 0.075 re-tint) */
+  --color-abyss-band: #7fd8f212;         /* ~7% — the detail arc's dancefloor-window wash (3.8 review:
+                                            highlight the section instead of labeling it) */
   --color-abyss-row-line: #ffffff0a;     /* 4% — the ref's rgba(255,255,255,0.04) row hairline, verbatim */
   --color-abyss-text: #eaf3f8;       /* text ramp 100% */
   --color-abyss-text-72: #eaf3f8b8;  /* 72% — the ref's .bold register */

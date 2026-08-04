@@ -12,7 +12,7 @@ import {
 } from "react";
 import { arcTextEquivalent, type ArcPoint } from "@/lib/sets/energyArc";
 import { formatClock } from "@/lib/sets/format";
-import { heroArcGeometry, type HeroArcGeometry } from "@/lib/sets/heroArc";
+import { heroArcGeometry } from "@/lib/sets/heroArc";
 import {
   bpmSummary,
   camelotCompatible,
@@ -68,32 +68,6 @@ type ArcHover =
   | { kind: "point"; clock: string; bpm: number }
   | { kind: "strip"; play: SyncPlay; keyLabel: string | null }
   | { kind: "median" };
-
-/** The drawn curve's {t, y, bpm} at viewBox x — clamped to the curve's ends,
- * linearly interpolated between smoothed points (dense enough that the lerp
- * tracks the monotone segments closely). */
-function curveAtX(
-  curve: HeroArcGeometry["curve"],
-  vbX: number,
-): { t: number; y: number; bpm: number } {
-  const first = curve[0];
-  const last = curve[curve.length - 1];
-  if (vbX <= first.x) return first;
-  if (vbX >= last.x) return last;
-  for (let i = 1; i < curve.length; i++) {
-    if (curve[i].x >= vbX) {
-      const a = curve[i - 1];
-      const b = curve[i];
-      const f = (vbX - a.x) / (b.x - a.x || 1);
-      return {
-        t: a.t + (b.t - a.t) * f,
-        y: a.y + (b.y - a.y) * f,
-        bpm: a.bpm + (b.bpm - a.bpm) * f,
-      };
-    }
-  }
-  return last;
-}
 
 /* ── Error boundary (D-16) — render failure swaps in the caption block ── */
 
@@ -233,16 +207,13 @@ export function DetailArc({
     return { segs, seams };
   }, [set.plays, set.ended_at, geo]);
 
-  // Edge ticks (D-7): scope start · end; in whole-night scope, two extra
-  // quiet marks at the detected dancefloor edges.
+  // Edge ticks (D-7): scope start · end. The dancefloor window itself is
+  // HIGHLIGHTED in the plot (review round 3 — a wash + edge lines in the svg,
+  // morphing with the viewBox; the ⌐ DANCEFLOOR ¬ text label never read).
   const tickStart = zoomed ? frame.segment?.start : timedPlays[0]?.play.started_at;
   const tickEnd = zoomed
     ? frame.segment?.end
     : timedPlays[timedPlays.length - 1]?.play.started_at;
-  const dfTick =
-    frame.scope === "whole" && band != null
-      ? { left: (band.x / VIEW.width) * 100, width: (band.width / VIEW.width) * 100 }
-      : null;
 
   /* ── viewBox morph (3.7 machinery, untouched in spirit) — now driving the
      arc svg AND the key strip in lockstep, and flagging `morphing` so the
@@ -385,24 +356,28 @@ export function DetailArc({
 
       const vbX =
         domain.current.x + ((e.clientX - rect.left) / rect.width) * domain.current.width;
-      const pt = curveAtX(geo.curve, vbX);
+      // Round 3 fix: y comes from the DRAWN cubic's own evaluator (shared
+      // Fritsch–Carlson tangents) — the previous chord-lerp between smoothed
+      // points visibly floated off the bowed segments.
+      const clampedX = Math.max(
+        geo.curve[0].x,
+        Math.min(vbX, geo.curve[geo.curve.length - 1].x),
+      );
+      const yOnCurve = geo.yAtX(clampedX);
 
       // Ball on the line at the cursor's x — imperative transform, chip-style.
       const ball = ballRef.current;
       if (ball) {
-        const px = ((Math.max(geo.curve[0].x, Math.min(vbX, geo.curve[geo.curve.length - 1].x)) -
-          domain.current.x) /
-          domain.current.width) *
-          rect.width;
-        const py = (pt.y / VIEW.height) * rect.height;
+        const px = ((clampedX - domain.current.x) / domain.current.width) * rect.width;
+        const py = (yOnCurve / VIEW.height) * rect.height;
         ball.style.transform = `translate3d(${px.toFixed(1)}px, ${py.toFixed(1)}px, 0)`;
         ball.setAttribute("data-on", "true");
       }
 
       // Chip = the curve's reading at that instant. State only changes when
       // the DISPLAYED minute/BPM changes, so mousemove stays cheap.
-      const clock = formatClock(new Date(pt.t).toISOString());
-      const bpm = Math.round(pt.bpm);
+      const clock = formatClock(new Date(geo.timeAtX(clampedX)).toISOString());
+      const bpm = Math.round(geo.bpmAtY(yOnCurve));
       setHover((prev) =>
         prev?.kind === "point" && prev.clock === clock && prev.bpm === bpm
           ? prev
@@ -475,6 +450,37 @@ export function DetailArc({
               </linearGradient>
             </defs>
 
+            {/* The dancefloor-window highlight: a quiet wash + soft edge
+                lines, in viewBox space so it morphs with the zoom. CSS fades
+                it out under data-scope="dancefloor" (the window IS the view). */}
+            {band && (
+              <g className="sd-arc-band" aria-hidden="true">
+                <rect
+                  x={band.x.toFixed(2)}
+                  y={0}
+                  width={band.width.toFixed(2)}
+                  height={VIEW.height}
+                  className="sd-arc-band-wash"
+                />
+                <line
+                  x1={band.x.toFixed(2)}
+                  y1={0}
+                  x2={band.x.toFixed(2)}
+                  y2={VIEW.height}
+                  className="sd-arc-band-edge"
+                  vectorEffect="non-scaling-stroke"
+                />
+                <line
+                  x1={(band.x + band.width).toFixed(2)}
+                  y1={0}
+                  x2={(band.x + band.width).toFixed(2)}
+                  y2={VIEW.height}
+                  className="sd-arc-band-edge"
+                  vectorEffect="non-scaling-stroke"
+                />
+              </g>
+            )}
+
             <path d={geo.area} className="sd-arc-area" fill="url(#sd-arc-fill)" />
             {medianY != null && (
               <line
@@ -493,21 +499,6 @@ export function DetailArc({
               vectorEffect="non-scaling-stroke"
             />
           </svg>
-
-          {/* D-18: annotations are HTML positioned from arc geometry — they
-              fade with [data-morphing], never fighting the viewBox tween.
-              The dancefloor range marker lives up here in the plot (review
-              round 1 — the footer row was already carrying the ticks). */}
-          <div className="sd-arc-overlay sd-arc-fade" aria-hidden="true">
-            {dfTick && (
-              <span
-                className="sd-arc-tick-df"
-                style={{ left: `${dfTick.left}%`, width: `${dfTick.width}%` }}
-              >
-                dancefloor
-              </span>
-            )}
-          </div>
 
           {/* The cursor ball riding the curve — sibling of the hit plane so
               the plane's events never re-target while it moves. */}

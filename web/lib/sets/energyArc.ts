@@ -22,17 +22,10 @@ export interface CurveXY {
 
 const f = (n: number) => n.toFixed(2);
 
-/**
- * Hand-rolled monotone cubic path (D-8, Fritsch–Carlson): smooth like the old
- * Catmull-Rom hero line but it NEVER overshoots the data — each segment stays
- * inside its endpoints' y-range, so a spiky BPM sequence can't fling the curve
- * above the real max or below the real min. Points must be x-sorted. Emits an
- * SVG `M … C …` d-string ("" for fewer than 2 points).
- */
-export function monotonePath(pts: CurveXY[]): string {
+/** The Fritsch–Carlson tangents the path AND the point evaluator share — one
+ * computation so the cursor ball can never disagree with the drawn line. */
+function monotoneTangents(pts: CurveXY[]): { dx: number[]; tangent: number[] } {
   const n = pts.length;
-  if (n < 2) return "";
-
   // Secant slopes between neighbours.
   const dx: number[] = new Array(n - 1);
   const slope: number[] = new Array(n - 1);
@@ -65,6 +58,20 @@ export function monotonePath(pts: CurveXY[]): string {
       tangent[i + 1] = tau * b * slope[i];
     }
   }
+  return { dx, tangent };
+}
+
+/**
+ * Hand-rolled monotone cubic path (D-8, Fritsch–Carlson): smooth like the old
+ * Catmull-Rom hero line but it NEVER overshoots the data — each segment stays
+ * inside its endpoints' y-range, so a spiky BPM sequence can't fling the curve
+ * above the real max or below the real min. Points must be x-sorted. Emits an
+ * SVG `M … C …` d-string ("" for fewer than 2 points).
+ */
+export function monotonePath(pts: CurveXY[]): string {
+  const n = pts.length;
+  if (n < 2) return "";
+  const { dx, tangent } = monotoneTangents(pts);
 
   // Hermite segments emitted as cubic Béziers.
   const d: string[] = [`M ${f(pts[0].x)} ${f(pts[0].y)}`];
@@ -77,6 +84,43 @@ export function monotonePath(pts: CurveXY[]): string {
     );
   }
   return d.join(" ");
+}
+
+/**
+ * An evaluator for the SAME cubic `monotonePath` draws: y at any x, exactly on
+ * the line (cubic Hermite with the shared tangents — a chord lerp visibly
+ * floats off the bowed segments; 3.8 review round 3's cursor-ball fix).
+ * Tangents are computed once at creation; each call is a binary search + one
+ * Hermite evaluation. x outside the domain clamps to the end points.
+ */
+export function createMonotoneYAt(pts: CurveXY[]): (x: number) => number {
+  const n = pts.length;
+  if (n === 0) return () => 0;
+  if (n === 1) return () => pts[0].y;
+  const { dx, tangent } = monotoneTangents(pts);
+
+  return (x: number) => {
+    if (x <= pts[0].x) return pts[0].y;
+    if (x >= pts[n - 1].x) return pts[n - 1].y;
+    let lo = 0;
+    let hi = n - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (pts[mid].x <= x) lo = mid;
+      else hi = mid;
+    }
+    const h = dx[lo];
+    const t = (x - pts[lo].x) / h;
+    const t2 = t * t;
+    const t3 = t2 * t;
+    const h00 = 2 * t3 - 3 * t2 + 1;
+    const h10 = t3 - 2 * t2 + t;
+    const h01 = -2 * t3 + 3 * t2;
+    const h11 = t3 - t2;
+    return (
+      h00 * pts[lo].y + h10 * h * tangent[lo] + h01 * pts[lo + 1].y + h11 * h * tangent[lo + 1]
+    );
+  };
 }
 
 /* ── Chart summary — one generator, three duties (D-12/D-13) ──────────── */

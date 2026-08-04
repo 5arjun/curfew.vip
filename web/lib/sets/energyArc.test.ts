@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { arcTextEquivalent, monotonePath, type ArcPoint, type CurveXY } from "./energyArc";
+import {
+  arcTextEquivalent,
+  createMonotoneYAt,
+  monotonePath,
+  type ArcPoint,
+  type CurveXY,
+} from "./energyArc";
 
 const pt = (sec: number, bpm: number): ArcPoint => ({
   started_at: new Date(sec * 1000).toISOString(),
@@ -70,6 +76,34 @@ describe("monotonePath (D-8, Fritsch–Carlson)", () => {
         expect(y).toBeLessThanOrEqual(hi);
       }
     }
+  });
+
+  it("createMonotoneYAt evaluates the SAME cubic the path draws (the cursor ball sits on the line)", () => {
+    const pts: CurveXY[] = [
+      { x: 0, y: 100 },
+      { x: 25, y: 100 },
+      { x: 40, y: 12 },
+      { x: 70, y: 95 },
+      { x: 100, y: 90 },
+    ];
+    const yAt = createMonotoneYAt(pts);
+    // Passes through every knot exactly…
+    for (const p of pts) expect(yAt(p.x)).toBeCloseTo(p.y, 6);
+    // …matches the emitted Bézier segments at their sampled interior points…
+    const segs = sampleSegments(monotonePath(pts));
+    let seg = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+      for (let s = 0; s <= 20; s++) {
+        const x = pts[i].x + ((pts[i + 1].x - pts[i].x) * s) / 20;
+        // The d-string rounds control points to 2 decimals — compare at the
+        // precision the path actually carries.
+        expect(yAt(x)).toBeCloseTo(segs[seg].ys[s], 1);
+      }
+      seg += 1;
+    }
+    // …and clamps outside the domain.
+    expect(yAt(-10)).toBeCloseTo(100, 6);
+    expect(yAt(140)).toBeCloseTo(90, 6);
   });
 
   it("keeps a flat run perfectly flat", () => {

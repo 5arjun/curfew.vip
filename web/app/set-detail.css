@@ -261,11 +261,26 @@
   opacity: 0.65;
 }
 
-/* D-18 — the HTML annotation layer; fades out for the morph, back in after. */
-.sd-arc-overlay {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
+/* The dancefloor-window highlight (review round 3 — replaces the unreadable
+   ⌐ DANCEFLOOR ¬ text label): a quiet accent wash + soft edge lines drawn in
+   viewBox space, so the morph carries it. In dancefloor scope the window IS
+   the view, so it fades away rather than tinting the whole plot. */
+.sd-arc-band {
+  transition: opacity 0.45s var(--motion-ease-standard);
+}
+
+.sd[data-scope="dancefloor"] .sd-arc-band {
+  opacity: 0;
+}
+
+.sd-arc-band-wash {
+  fill: var(--color-abyss-band);
+}
+
+.sd-arc-band-edge {
+  stroke: var(--color-abyss-glint);
+  stroke-width: 1px;
+  opacity: 0.55;
 }
 
 .sd-arc-fade {
@@ -291,22 +306,43 @@
   cursor: pointer;
 }
 
-/* Review round 2 — the ball riding the curve under the cursor. Positioned
+/* Review round 2/3 — the ball riding the curve under the cursor. Positioned
    imperatively (translate3d) from the hit plane's mousemove; the negative
-   margins center it on the transform point. */
+   margins center it on the transform point. Chrome-sphere shading from the
+   metal tokens (a per-dot LiquidMetal WebGL context would break the standing
+   handful-per-screen rule — CSS carries the shine at this scale). */
 .sd-arc-cursor-dot {
   position: absolute;
   left: 0;
   top: 0;
-  width: 9px;
-  height: 9px;
-  margin: -4.5px 0 0 -4.5px;
+  width: 11px;
+  height: 11px;
+  margin: -5.5px 0 0 -5.5px;
   border-radius: var(--radius-full);
-  background: var(--metal-abyss-tint);
+  background: radial-gradient(
+    circle at 32% 28%,
+    var(--metal-cool-tint),
+    var(--metal-abyss-tint) 38%,
+    var(--metal-abyss-back) 74%,
+    var(--color-abyss-glint) 100%
+  );
   box-shadow: 0 0 10px var(--color-abyss-accent-glow);
   pointer-events: none;
   opacity: 0;
   transition: opacity var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+/* The specular glint that sells the sphere. */
+.sd-arc-cursor-dot::after {
+  content: "";
+  position: absolute;
+  left: 22%;
+  top: 16%;
+  width: 3px;
+  height: 3px;
+  border-radius: var(--radius-full);
+  background: var(--metal-cool-tint);
+  filter: blur(0.5px);
 }
 
 .sd-arc-cursor-dot[data-on] {
@@ -371,44 +407,8 @@
   color: var(--color-abyss-text-45);
 }
 
-/* The dancefloor range marker (D-7) — moved INTO the plot's top edge (review
-   round 1: the footer row already carries the ticks + caption). Corner marks
-   open downward, bracketing the window they label. */
-.sd-arc-tick-df {
-  position: absolute;
-  top: 10px;
-  height: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  text-wrap: nowrap;
-  font-family: var(--font-geist-mono);
-  color: var(--color-abyss-text-45); /* review round 2: 22% was barely legible over the curve */
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  font-size: 9.5px;
-}
-
-.sd-arc-tick-df::before,
-.sd-arc-tick-df::after {
-  content: "";
-  position: absolute;
-  top: 1px;
-  bottom: 1px;
-  width: 5px;
-  border-top: 1px solid var(--color-abyss-text-45);
-}
-
-.sd-arc-tick-df::before {
-  left: 0;
-  border-left: 1px solid var(--color-abyss-text-45);
-}
-
-.sd-arc-tick-df::after {
-  right: 0;
-  border-right: 1px solid var(--color-abyss-text-45);
-}
+/* (The ⌐ DANCEFLOOR ¬ text marker is gone — review round 3 replaced it with
+   the in-svg .sd-arc-band window highlight above.) */
 
 .sd-arc-caption {
   margin: 6px 0 0;

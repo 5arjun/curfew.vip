@@ -14,7 +14,7 @@
 // overlap (the D-4 fix — a window with no BPM-carrying plays must still band
 // honestly instead of silently un-zooming).
 import type { DancefloorSegment } from "./dancefloor";
-import { monotonePath, type ArcPoint } from "./energyArc";
+import { createMonotoneYAt, monotonePath, type ArcPoint } from "./energyArc";
 
 export interface HeroArcView {
   width: number;
@@ -41,6 +41,13 @@ export interface HeroArcGeometry {
   mapX: (t: number) => number;
   /** BPM → viewBox y (inverted: higher BPM sits higher). */
   mapY: (bpm: number) => number;
+  /** The DRAWN cubic's y at viewBox x — exactly on the line, end-clamped
+   * (the cursor ball's anchor; shares monotonePath's tangents). */
+  yAtX: (x: number) => number;
+  /** viewBox x → epoch-ms (mapX's inverse — the time axis is linear). */
+  timeAtX: (x: number) => number;
+  /** viewBox y → BPM (mapY's inverse — the cursor readout's value). */
+  bpmAtY: (y: number) => number;
   /** Plotted time domain (epoch ms) — the smoothed series' bounds; 0/0 when count < 2. */
   tMin: number;
   tMax: number;
@@ -105,6 +112,9 @@ export function heroArcGeometry(
     curve: [],
     mapX: () => 0,
     mapY: () => 0,
+    yAtX: () => 0,
+    timeAtX: () => 0,
+    bpmAtY: () => 0,
     tMin: 0,
     tMax: 0,
   };
@@ -151,5 +161,23 @@ export function heroArcGeometry(
     if (bw > 0) band = { x: bx, width: bw };
   }
 
-  return { path, area, band, count: points.length, solo: null, curve, mapX: x, mapY: y, tMin, tMax };
+  const yAtX = createMonotoneYAt(curve);
+  const timeAtX = (vx: number) => tMin + ((vx - padding) / innerW) * tSpan;
+  const bpmAtY = (vy: number) => bMin + (1 - (vy - padding) / innerH) * bSpan;
+
+  return {
+    path,
+    area,
+    band,
+    count: points.length,
+    solo: null,
+    curve,
+    mapX: x,
+    mapY: y,
+    yAtX,
+    timeAtX,
+    bpmAtY,
+    tMin,
+    tMax,
+  };
 }
