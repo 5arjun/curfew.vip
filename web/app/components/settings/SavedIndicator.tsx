@@ -61,7 +61,7 @@ export function SavedBadge() {
   return (
     <>
       <span
-        className={`text-label-sm st-saved${visible ? " st-saved-visible" : ""}`}
+        className={`st-saved${visible ? " st-saved-visible" : ""}`}
         aria-hidden="true"
       >
         Saved.

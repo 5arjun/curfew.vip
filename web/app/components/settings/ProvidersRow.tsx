@@ -114,7 +114,7 @@ export function ProvidersRow({ providers }: { providers: string[] }) {
     <div className="st-row">
       <span className="st-row-label">Sign-in</span>
       <div className="st-row-cell">
-        <div className="st-providers text-body-md">
+        <div className="st-providers">
           {attached.has("email") && (
             <span className="st-provider">
               Email <span className="st-provider-check" aria-hidden="true">✓</span>

@@ -281,3 +281,37 @@ Claude Fable 5 (claude-fable-5), Claude Code — dev session 2026-08-05/06.
 - _bmad-output/implementation-artifacts/pre-launch-services-checklist.md (4 new rows + terms/privacy re-confirm)
 - _bmad-output/planning-artifacts/ux-designs/.../EXPERIENCE.md (Failure Register row)
 - _bmad-output/implementation-artifacts/sprint-status.yaml (3-10 → review)
+
+---
+
+## Addendum — on-theme visual redesign (Arjun, 2026-08-05)
+
+Arjun's review verdict on the shipped D-2/D-17 "quietest surface" treatment:
+off-theme ("barely on theme… doesn't look like a good ui/ux experience").
+The flat-console material was replaced the same session; the console-row
+GRAMMAR (label left / value right, calm copy, one page-level "Saved.") and
+all behavior/a11y survived unchanged.
+
+What changed (visual layer only):
+- Ground: Silk backdrop mounted (same `SilkBackdrop`/`.dz-silk` as dashboard
+  + set detail — the 3.7 parity ruling now covers all three surfaces).
+- Sections: flat hairline groups → `dz-shell` liquid-glass cards at
+  set-detail's 28px radius (`.st-card`), with a 55ms-stagger rise-in on the
+  liquid ease (reduced-motion: none).
+- Voice: Inter/M3 tokens → Hanken Grotesk + abyss text ramp; section labels
+  in the sd-eyebrow mono register; page title in the dz-greeting register.
+- Accent: Ember → glacial cyan on this surface (focus rings, Saved., ghost-
+  input focus, provider ✓, modal confirm) — matching the dashboard's cool
+  direction; error stays --color-error.
+- Actions: text buttons → shell-fill chips with hover raise + scale(0.97)
+  press; DJ-name input decoupled from auth-ghost-field-input into
+  `.st-name-input` (abyss retint) + placeholder "Add your DJ name".
+- Modal: spotlight material kept; confirm button now accent-filled; panel
+  materializes (scale 0.96 + fade, center origin).
+
+Verified: 155/155 vitest (incl. no-hardcoded-colors guard), tsc clean,
+live-checked in Chrome at desktop width (rail, cards, focus states, modal).
+Mobile width unverified visually (window wouldn't resize) — the <480px
+rules carry over the previous wrap behavior; worth one phone-width glance
+in the next review pass. Reset-password page untouched (keeps the auth
+ghost/Ember treatment).

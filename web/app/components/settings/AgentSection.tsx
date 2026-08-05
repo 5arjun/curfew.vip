@@ -16,13 +16,13 @@ export function AgentSection({ snapshot }: { snapshot: AgentStatusSnapshot }) {
   const agentVersion = snapshot.row?.agent_version ?? null;
 
   return (
-    <section className="st-section" aria-labelledby="st-agent-label">
-      <h2 id="st-agent-label" className="text-label-sm st-section-label">
+    <section className="st-card dz-shell" aria-labelledby="st-agent-label">
+      <h2 id="st-agent-label" className="st-section-label">
         Agent
       </h2>
       <div className="st-row">
         <span className="st-row-label">Status</span>
-        <span className="st-row-value text-body-md">{line.text}</span>
+        <span className="st-row-value">{line.text}</span>
       </div>
       {agentVersion && (
         <div className="st-row">

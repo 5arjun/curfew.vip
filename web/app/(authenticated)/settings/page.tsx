@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getAgentStatus } from "@/lib/sets";
 import { getSettingsProfile, monogramLetter } from "@/lib/account/profile";
 import { maskPhone } from "@/lib/account/phone-mask";
+import { SilkBackdrop } from "@/app/components/dashboard/SilkBackdrop";
 import { Avatar } from "@/app/components/ui/Avatar";
 import { AgentSection } from "@/app/components/settings/AgentSection";
 import { DjNameRow } from "@/app/components/settings/DjNameRow";
@@ -11,12 +12,15 @@ import { SavedBadge, SettingsSavedProvider } from "@/app/components/settings/Sav
 import { SignOutRow } from "@/app/components/settings/SignOutRow";
 import pkg from "../../../package.json";
 
-// Profile/Settings (Story 3.10) — the one calm home for identity, agent, and
-// privacy controls. Deliberately the quietest surface in the product (D-2/
-// D-17): a single centered ~720px column of flat console rows, whole-page
-// scroll, no cards/glass/WebGL. Section order is D-1's: Profile header →
-// Account → [Billing slot, 7.4] → Agent → Privacy → Appearance → About →
-// Sign out; a section with nothing true to say does not render.
+// Profile/Settings (Story 3.10; on-theme redesign, Arjun 2026-08-05) — the
+// one calm home for identity, agent, and privacy controls. Still the calmest
+// surface in the product, but it now stands on the app's shared ground
+// (the flat-console D-2/D-17 treatment read off-theme): Silk backdrop,
+// dz-shell liquid-glass section cards, the Hanken voice, abyss text ramp.
+// A single centered ~720px column, whole-page scroll. Section order is
+// D-1's: Profile header → Account → [Billing slot, 7.4] → Agent → Privacy →
+// Appearance → About → Sign out; a section with nothing true to say does
+// not render.
 //
 // Server component: the read-only facts render on the server; only the
 // interactive rows (DJ name autosave, password reset, providers, sign-out)
@@ -42,41 +46,40 @@ export default async function SettingsPage() {
 
   return (
     <SettingsSavedProvider>
+      <SilkBackdrop />
       <main className="st-main">
         <div className="st-heading-row">
-          <h1 className="text-headline-md">Settings</h1>
+          <h1 className="st-title">Settings</h1>
           <SavedBadge />
         </div>
 
         {/* Profile header (3a) — facts, not a form; the editable DJ name
             lives once, in Account. */}
-        <header className="st-profile">
-          <Avatar imageUrl={profile.avatarUrl} monogram={monogramLetter(profile.djName, profile.email)} size={64} />
+        <header className="st-profile st-card dz-shell">
+          <Avatar imageUrl={profile.avatarUrl} monogram={monogramLetter(profile.djName, profile.email)} size={72} />
           <div>
-            <p className="text-body-lg st-profile-name">{headerName ?? profile.email}</p>
+            <p className="st-profile-name">{headerName ?? profile.email}</p>
             {headerName && profile.email && (
-              <p className="text-body-md st-profile-email">{profile.email}</p>
+              <p className="st-profile-email">{profile.email}</p>
             )}
           </div>
         </header>
 
-        <section className="st-section" aria-labelledby="st-account-label">
-          <h2 id="st-account-label" className="text-label-sm st-section-label">
+        <section className="st-card dz-shell" aria-labelledby="st-account-label">
+          <h2 id="st-account-label" className="st-section-label">
             Account
           </h2>
           <DjNameRow initialName={profile.djName} />
           <div className="st-row">
             <span className="st-row-label">Email</span>
-            <span className="st-row-value text-body-md">{profile.email ?? "—"}</span>
+            <span className="st-row-value">{profile.email ?? "—"}</span>
           </div>
           <div className="st-row">
             <span className="st-row-label">Phone</span>
             <div className="st-row-cell">
-              <span className="st-row-value text-body-md">
+              <span className="st-row-value">
                 {profile.phone ? maskPhone(profile.phone) : "Not on file"}
-                {profile.phone && (
-                  <span className="text-label-sm st-affix">verified · locked</span>
-                )}
+                {profile.phone && <span className="st-affix">verified · locked</span>}
               </span>
               <p className="st-row-note">Changing your number needs verification — coming later.</p>
             </div>
@@ -90,14 +93,14 @@ export default async function SettingsPage() {
 
         <AgentSection snapshot={agentStatus} />
 
-        <section className="st-section" aria-labelledby="st-privacy-label">
-          <h2 id="st-privacy-label" className="text-label-sm st-section-label">
+        <section className="st-card dz-shell" aria-labelledby="st-privacy-label">
+          <h2 id="st-privacy-label" className="st-section-label">
             Privacy
           </h2>
           <div className="st-row">
             <span className="st-row-label">Venue suggestion</span>
             <div className="st-row-cell">
-              <span className="st-row-value text-body-md">Coming soon</span>
+              <span className="st-row-value">Coming soon</span>
               <p className="st-row-note">
                 Will suggest where you played from your device&apos;s location. You confirm it —
                 nothing saves silently.
@@ -107,7 +110,7 @@ export default async function SettingsPage() {
           <div className="st-row">
             <span className="st-row-label">Your data</span>
             <div className="st-row-cell">
-              <a href="mailto:support@curfew.vip?subject=Data%20export%20request" className="st-link text-body-md">
+              <a href="mailto:support@curfew.vip?subject=Data%20export%20request" className="st-link">
                 Request an export
               </a>
               <p className="st-row-note">Handled manually, usually within a few days.</p>
@@ -115,8 +118,8 @@ export default async function SettingsPage() {
           </div>
         </section>
 
-        <section className="st-section" aria-labelledby="st-appearance-label">
-          <h2 id="st-appearance-label" className="text-label-sm st-section-label">
+        <section className="st-card dz-shell" aria-labelledby="st-appearance-label">
+          <h2 id="st-appearance-label" className="st-section-label">
             Appearance
           </h2>
           {/* D-13: a text row, no control — a disabled toggle invites
@@ -126,8 +129,8 @@ export default async function SettingsPage() {
           </div>
         </section>
 
-        <section className="st-section" aria-labelledby="st-about-label">
-          <h2 id="st-about-label" className="text-label-sm st-section-label">
+        <section className="st-card dz-shell" aria-labelledby="st-about-label">
+          <h2 id="st-about-label" className="st-section-label">
             About
           </h2>
           <div className="st-row">
@@ -142,7 +145,7 @@ export default async function SettingsPage() {
           )}
           <div className="st-row">
             <span className="st-row-label">Support</span>
-            <a href="mailto:support@curfew.vip" className="st-link text-body-md">
+            <a href="mailto:support@curfew.vip" className="st-link">
               support@curfew.vip
             </a>
           </div>

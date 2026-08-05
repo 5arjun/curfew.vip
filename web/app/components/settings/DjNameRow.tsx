@@ -11,10 +11,10 @@ import { useAnnounceSaved } from "./SavedIndicator";
 // — retry.", the new Failure Register entry). Network drop, expired session,
 // RLS rejection, and offline-while-typing all take the same row.
 //
-// The input wears the auth ghost-input treatment (auth-ghost-field-input) —
-// looks like a plain value until focused — but sits in the console-row
-// grammar, so the row's own left label labels it (htmlFor) rather than
-// GhostInput's stacked label-above layout.
+// The input wears the ghost treatment in the abyss register (st-name-input,
+// settings.css) — looks like a plain value until focused — and sits in the
+// console-row grammar, so the row's own left label labels it (htmlFor)
+// rather than GhostInput's stacked label-above layout.
 
 const DEBOUNCE_MS = 600;
 
@@ -84,10 +84,11 @@ export function DjNameRow({ initialName }: { initialName: string | null }) {
           name="dj_name"
           type="text"
           defaultValue={initialName ?? ""}
+          placeholder="Add your DJ name"
           maxLength={40}
           autoComplete="nickname"
           spellCheck={false}
-          className="text-mono-data auth-ghost-field-input st-name-input"
+          className="text-mono-data st-name-input"
           aria-describedby={failed ? `${inputId}-error` : undefined}
           aria-invalid={failed ? true : undefined}
           onChange={(e) => scheduleSave(e.target.value)}
