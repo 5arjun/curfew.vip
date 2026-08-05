@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { PHONE_ON_FILE_COOKIE, isPhoneGatedPath, needsPhone } from "./phone-gate";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -41,7 +42,43 @@ export async function updateSession(request: NextRequest) {
   // proxy.ts's matcher, so a transient failure here must not take down the
   // whole app — the request falls through unrefreshed and retries next time.
   try {
-    await supabase.auth.getClaims();
+    const { data } = await supabase.auth.getClaims();
+    const userId = data?.claims?.sub;
+
+    // Phone-on-file gate (Story 3.10, AC-19 / D-9): the third, lazy
+    // enforcement layer behind auth/confirm and auth/callback's doorway
+    // checks — it catches the bypass paths (plain signIn, passkey,
+    // abandon-/phone-required-and-return). Cookie-marked so the cost is one
+    // djs.phone read per SESSION, not per request. Only ever runs for an
+    // authenticated caller on a gated path; login-gating stays out of scope.
+    // needsPhone() swallows its own errors and returns false, so a failed
+    // read FAILS OPEN (least-blocking) — same discipline as its two
+    // existing callers.
+    if (
+      userId &&
+      isPhoneGatedPath(request.nextUrl.pathname) &&
+      !request.cookies.has(PHONE_ON_FILE_COOKIE)
+    ) {
+      if (await needsPhone(supabase, userId)) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/phone-required";
+        url.search = "";
+        // Carry any refreshed auth cookies over — dropping them would force
+        // a second refresh on the very next request.
+        const redirectResponse = NextResponse.redirect(url);
+        supabaseResponse.cookies
+          .getAll()
+          .forEach((cookie) => redirectResponse.cookies.set(cookie));
+        return redirectResponse;
+      }
+      // Session cookie (no maxAge): the next session re-verifies against
+      // the DB, which keeps the DB the source of truth.
+      supabaseResponse.cookies.set(PHONE_ON_FILE_COOKIE, "1", {
+        path: "/",
+        sameSite: "lax",
+        httpOnly: true,
+      });
+    }
   } catch {
     // no-op — see comment above
   }

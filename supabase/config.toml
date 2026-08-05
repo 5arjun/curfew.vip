@@ -181,7 +181,11 @@ enable_signup = true
 # Allow/disallow anonymous sign-ins to your project.
 enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts
-enable_manual_linking = false
+# Story 3.10 (D-6): Settings' provider row calls supabase.auth.linkIdentity()
+# to attach Google/Apple to an existing account — that API 404s unless manual
+# linking is enabled. The prod Dashboard needs the same toggle flipped (see
+# pre-launch-services-checklist.md §4).
+enable_manual_linking = true
 # Passwords shorter than this value will be rejected as weak. Minimum 6, recommended 8 or more.
 minimum_password_length = 6
 # Passwords that do not meet the following requirements will be rejected as weak. Supported values

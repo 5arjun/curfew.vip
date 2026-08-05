@@ -228,6 +228,10 @@ fn beat_status(app: &AppHandle) {
         &crate::auth::client::SupabaseAuthClient::new(),
         &crate::heartbeat::SupabaseStatusClient::new(),
         state,
+        // Story 3.10 (D-11): the one additive heartbeat field — the version
+        // this build compiled with, for Settings/About. Same beat, same
+        // cadence; nothing else changed.
+        crate::config::AGENT_VERSION,
     );
 
     if let Err(e) = result {

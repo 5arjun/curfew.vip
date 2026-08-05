@@ -12,6 +12,10 @@ import {
   usePrefersReducedMotion,
 } from "@/app/components/ui/metal-hooks";
 import { CursorChip, useCursorChipTarget } from "@/app/components/ui/CursorChip";
+import { Avatar } from "@/app/components/ui/Avatar";
+// Type-only import: profile.ts is server-only at runtime (Supabase server
+// client), but its NavAvatar shape is erased at compile time.
+import type { NavAvatar } from "@/lib/account/profile";
 
 // Desktop = the vertical liquid-metal rail on the left (Arjun, 2026-08-03:
 // the bottom dock overlapped dashboard content); below it, the original
@@ -43,9 +47,10 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: House },
   { href: "/style-evolution", label: "Style Evolution", icon: TrendUp },
   { href: "/library-utilization", label: "Library Utilization", icon: VinylRecord },
-  // Interim treatment (Task 3.6): UserCircle stands in for the real circular
-  // photo avatar Story 3.10 (AC-1) ships once avatar-image infra exists —
-  // that story swaps the icon, it does not restructure the nav.
+  // Story 3.10 (AC-1): the real circular avatar (photo or monogram, passed
+  // down from the server layout) renders in place of this icon when a
+  // session exists; UserCircle stays as the signed-out/dev-checkout
+  // fallback. Same /settings destination, visual change only.
   { href: "/settings", label: "Settings", icon: UserCircle },
 ];
 
@@ -93,6 +98,7 @@ function NavLink({
   item,
   active,
   onChip,
+  avatar,
 }: {
   item: NavItem;
   active: boolean;
@@ -100,6 +106,9 @@ function NavLink({
       shared CursorChip with this item's label; `at` pins it for keyboard
       focus, where there's no cursor to follow. */
   onChip?: (label: string | null, at?: { x: number; y: number }) => void;
+  /** Settings item only (Story 3.10, AC-1): the DJ's real avatar replaces
+      the placeholder icon when a session provided one. */
+  avatar?: NavAvatar | null;
 }) {
   const ItemIcon = item.icon;
 
@@ -238,7 +247,13 @@ function NavLink({
       {/* Icon colour (idle / active / hover) is set in globals.css via the
           unlayered .floating-nav-link colour rules; the icon inherits it. See
           the note there for why the Tailwind text-* utility route doesn't win. */}
-      <ItemIcon size={20} weight={active ? "fill" : "bold"} className="relative" />
+      {avatar ? (
+        <span className="relative inline-flex">
+          <Avatar imageUrl={avatar.imageUrl} monogram={avatar.monogram} size={20} />
+        </span>
+      ) : (
+        <ItemIcon size={20} weight={active ? "fill" : "bold"} className="relative" />
+      )}
       {/* Active-item label reveal — the bottom DOCK's treatment (≥sm, <rail):
           only the current route's label is shown, keeping the pill compact at
           every viewport. The 0fr→1fr grid-column transition animates the
@@ -269,7 +284,7 @@ function NavLink({
   );
 }
 
-export function FloatingNav() {
+export function FloatingNav({ avatar = null }: { avatar?: NavAvatar | null }) {
   const pathname = usePathname();
   const rail = useMediaQuery(RAIL_QUERY);
   const reduced = usePrefersReducedMotion();
@@ -378,6 +393,7 @@ export function FloatingNav() {
         item={settings}
         active={isActiveNavItem(pathname, settings.href)}
         onChip={rail ? handleChip : undefined}
+        avatar={avatar}
       />
 
       {/* The label chip (rail only; single-line body, so a shallower rise than

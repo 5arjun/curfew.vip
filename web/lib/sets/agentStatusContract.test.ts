@@ -18,11 +18,14 @@ import { AGENT_SYNC_STATES, STALE_AFTER_MS } from "./agentStatus";
 const REPO_ROOT = join(__dirname, "..", "..", "..");
 const TRAY_RS = join(REPO_ROOT, "agent", "src-tauri", "src", "tray.rs");
 const SYNC_QUEUE_RS = join(REPO_ROOT, "agent", "src-tauri", "src", "sync_queue.rs");
+// Story 3.10 replaced the function's signature (added `agent_version`), so
+// the LIVE allow-list is the re-created function in the 3.10 migration —
+// the 3.9 file's copy was dropped along with the old signature.
 const AGENT_STATUS_SQL = join(
   REPO_ROOT,
   "supabase",
   "migrations",
-  "20260805120000_create_agent_status.sql",
+  "20260806090100_add_agent_status_agent_version.sql",
 );
 
 function rustWireStates(): string[] {

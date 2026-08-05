@@ -213,7 +213,7 @@ development_status:
   3-7-set-detail-summary-tracklist: done
   3-8-energy-arc-chart-chart-summary: review
   3-9-console-voice-failure-register-state-a11y-responsive-pass: done
-  3-10-profile-settings-screen: backlog
+  3-10-profile-settings-screen: review
   epic-3-retrospective: optional
 
   # ---- Epic 4: Style Evolution & Library Utilization ----
