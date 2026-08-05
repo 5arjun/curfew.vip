@@ -554,6 +554,8 @@ pub fn record_parse_failure(
              (session_identity, source, raw_ref, failed_agent_version, failed_at, last_error)
            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
            ON CONFLICT(session_identity) DO UPDATE SET
+             source = excluded.source,
+             raw_ref = excluded.raw_ref,
              failed_agent_version = excluded.failed_agent_version,
              failed_at = excluded.failed_at,
              last_error = excluded.last_error"#,
@@ -571,11 +573,24 @@ pub fn record_parse_failure(
 
 /// Every row currently in the ledger, no filter — there is no "resolved"
 /// status to filter on (see `parse_failures`' schema doc comment above).
+/// A single row that fails to parse (e.g. an unrecognized `source` value)
+/// is skipped rather than failing the whole read — one corrupt row must not
+/// silently no-op the entire backfill sweep for every other session (Story
+/// 3.4 review).
+#[cfg_attr(not(debug_assertions), allow(clippy::manual_ok_err))]
 pub fn unresolved_parse_failures(conn: &Connection) -> Result<Vec<ParseFailureRow>, StoreError> {
     let mut stmt = conn.prepare("SELECT * FROM parse_failures")?;
     let rows = stmt.query_map([], parse_failure_row_from)?;
-    rows.collect::<rusqlite::Result<Vec<_>>>()
-        .map_err(StoreError::from)
+    Ok(rows
+        .filter_map(|r| match r {
+            Ok(row) => Some(row),
+            Err(_e) => {
+                #[cfg(debug_assertions)]
+                eprintln!("curfew-agent: skipping unreadable parse_failures row: {_e}");
+                None
+            }
+        })
+        .collect())
 }
 
 /// The tray-precedence signal `sync_queue.rs`'s `desired_tray_state` reads
@@ -588,6 +603,24 @@ pub fn has_unresolved_parse_failures(conn: &Connection) -> Result<bool, StoreErr
     )?)
 }
 
+/// Like [`has_unresolved_parse_failures`], but only counts rows whose
+/// `source` is still present in the given `WatchPlan` — an orphaned row
+/// (its source no longer configured/detected, e.g. a retired legacy
+/// library) must not indefinitely pin the tray on `FormatDriftPaused`,
+/// masking a real, unrelated backlog underneath it (Story 3.4 review,
+/// decision 2). The row itself stays in the ledger either way — only this
+/// tray-facing signal is scoped to what's currently reachable.
+pub fn has_unresolved_parse_failures_for_plan(
+    conn: &Connection,
+    plan: &crate::watcher::detect::WatchPlan,
+) -> Result<bool, StoreError> {
+    let rows = unresolved_parse_failures(conn)?;
+    Ok(rows.iter().any(|row| match row.source {
+        SessionSource::Serato4 => plan.serato4.is_some(),
+        SessionSource::Legacy => plan.legacy.is_some(),
+    }))
+}
+
 /// Removes a row once a reprocess attempt (Task 3) succeeds. A no-op (not an
 /// error) if `session_identity` does not match any row.
 pub fn clear_parse_failure(conn: &Connection, session_identity: &str) -> Result<(), StoreError> {
@@ -596,6 +629,18 @@ pub fn clear_parse_failure(conn: &Connection, session_identity: &str) -> Result<
         [session_identity],
     )?;
     Ok(())
+}
+
+/// Whether any session is currently mid-capture (`Watching` status) — the
+/// updater loop's restart-safety check (Story 3.4 review, decision 1): a DJ
+/// set the agent hasn't yet reached quiet-period on must not be interrupted
+/// by an auto-update restart. Fails open to `false` on a store read error,
+/// the same convention `has_unresolved_parse_failures`'s callers already
+/// follow — a store hiccup must not block an update from ever installing.
+pub fn has_active_capture(conn: &Connection) -> bool {
+    rows_with_status(conn, SessionStatus::Watching)
+        .map(|rows| !rows.is_empty())
+        .unwrap_or(false)
 }
 
 // ---- Local capture DTOs (Task 3) -------------------------------------------

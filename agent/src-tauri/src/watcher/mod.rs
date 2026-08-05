@@ -570,8 +570,11 @@ struct LegacyPendingSession {
 /// `_legacy`). Release builds have no UI surface to report to yet, and a
 /// future poll tick or reconnect calling the same write again is the retry —
 /// but a silently-discarded error is invisible even to a developer running a
-/// debug build without this.
-fn log_store_err(context: &str, result: Result<(), crate::store::StoreError>) {
+/// debug build without this. `pub(crate)` (Story 3.4 review) so `backfill.rs`
+/// can route its own store-write failures through the same convention
+/// instead of discarding them via a bare `.ok()`.
+#[cfg_attr(not(debug_assertions), allow(unused_variables))]
+pub(crate) fn log_store_err(context: &str, result: Result<(), crate::store::StoreError>) {
     if let Err(_e) = result {
         #[cfg(debug_assertions)]
         eprintln!("curfew-agent: local store write failed ({context}): {_e}");

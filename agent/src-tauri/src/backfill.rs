@@ -67,6 +67,31 @@ pub fn reprocess_parse_failures(
                     continue;
                 };
                 let Some(session_id) = crate::capture::parse_serato4_raw_ref(&row.raw_ref) else {
+                    // A malformed `raw_ref` (external DB corruption -- this
+                    // agent only ever writes well-formed ones) never reaches
+                    // `capture_and_store_serato4`, so unlike every other
+                    // continued-failure path it would otherwise never
+                    // restamp `failed_agent_version` or report to Sentry --
+                    // silently retrying on *every* startup forever instead
+                    // of just after a version bump (Story 3.4 review).
+                    let message =
+                        format!("backfill: unparseable serato4 raw_ref {:?}", row.raw_ref);
+                    crate::watcher::log_store_err(
+                        "record_parse_failure (backfill, unparseable raw_ref)",
+                        crate::store::record_parse_failure(
+                            store_conn,
+                            &row.session_identity,
+                            SessionSource::Serato4,
+                            &row.raw_ref,
+                            crate::config::AGENT_VERSION,
+                            &message,
+                        ),
+                    );
+                    reporter.report(
+                        "backfill serato4 raw_ref",
+                        crate::config::AGENT_VERSION,
+                        &message,
+                    );
                     continue;
                 };
                 crate::watcher::capture_and_store_serato4(
@@ -82,10 +107,25 @@ pub fn reprocess_parse_failures(
                 let Some(source) = &plan.legacy else {
                     continue;
                 };
+                // Re-resolve against the *current* `serato_dir`, not the
+                // absolute path recorded at original-failure time -- mirrors
+                // the Serato4 arm re-deriving from the current `WatchPlan`
+                // rather than trusting a possibly-stale stored location. A
+                // drive remount/relabel changes `serato_dir`'s parent but
+                // not a session file's name or its `History/Sessions`
+                // position underneath it (Story 3.4 review, decision 3).
+                let Some(file_name) = Path::new(&row.raw_ref).file_name() else {
+                    continue;
+                };
+                let session_path = source
+                    .serato_dir
+                    .join("History")
+                    .join("Sessions")
+                    .join(file_name);
                 crate::watcher::capture_and_store_legacy(
                     store_conn,
                     &source.library_root,
-                    Path::new(&row.raw_ref),
+                    &session_path,
                     &row.session_identity,
                     reporter,
                 )
@@ -93,7 +133,10 @@ pub fn reprocess_parse_failures(
         };
 
         if succeeded {
-            crate::store::clear_parse_failure(store_conn, &row.session_identity).ok();
+            crate::watcher::log_store_err(
+                "clear_parse_failure (backfill)",
+                crate::store::clear_parse_failure(store_conn, &row.session_identity),
+            );
         }
     }
 }
@@ -480,6 +523,11 @@ mod tests {
         let rows = crate::store::unresolved_parse_failures(&store_conn).unwrap();
         assert_eq!(rows.len(), 1, "a still-failing row must stay in the ledger");
         assert_eq!(rows[0].failed_agent_version, crate::config::AGENT_VERSION);
+        assert_ne!(
+            rows[0].last_error, "previously failed to parse",
+            "a still-failing row must be restamped with a fresh last_error from THIS attempt, \
+             not left carrying the original failure's message"
+        );
     }
 
     /// A serato4 fixture whose one play carries a `key_value` INTEGER (Serato's

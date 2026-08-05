@@ -256,6 +256,7 @@ const UPDATE_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_sec
 /// (FR-5) — no UI change accompanies this task.
 #[cfg(not(debug_assertions))]
 fn updater_loop(app: tauri::AppHandle) {
+    use error_reporting::ErrorReporter;
     use tauri_plugin_updater::UpdaterExt;
 
     loop {
@@ -265,15 +266,50 @@ fn updater_loop(app: tauri::AppHandle) {
             };
             match updater.check().await {
                 Ok(Some(update)) => {
-                    if update.download_and_install(|_, _| {}, || {}).await.is_ok() {
-                        app.restart(); // does not return
+                    // Story 3.4 review, decision 1: never restart out from
+                    // under a DJ set the agent hasn't finished capturing yet
+                    // (still `Watching`, not-yet-quiet-period). Skip this
+                    // tick entirely rather than install-then-defer-restart —
+                    // the next tick (or the DJ's next set ending) retries.
+                    if has_active_capture(&app) {
+                        return;
+                    }
+                    match update.download_and_install(|_, _| {}, || {}).await {
+                        Ok(()) => app.restart(), // does not return
+                        Err(e) => {
+                            error_reporting::SentryReporter.report(
+                                "updater download_and_install",
+                                config::AGENT_VERSION,
+                                &e.to_string(),
+                            );
+                        }
                     }
                 }
-                _ => {}
+                Ok(None) => {}
+                Err(e) => {
+                    error_reporting::SentryReporter.report(
+                        "updater check",
+                        config::AGENT_VERSION,
+                        &e.to_string(),
+                    );
+                }
             }
         });
         std::thread::sleep(UPDATE_CHECK_INTERVAL);
     }
+}
+
+/// Whether a DJ set is currently mid-capture, per the local store's
+/// `Watching` rows (Story 3.4 review, decision 1). Fails open to `false` on
+/// a store-open error — the same convention `store::has_active_capture`'s
+/// own doc comment follows — a store hiccup must not permanently block an
+/// update from ever installing.
+#[cfg(not(debug_assertions))]
+fn has_active_capture(app: &tauri::AppHandle) -> bool {
+    let Ok(conn) = store::open(app) else {
+        return false;
+    };
+    store::has_active_capture(&conn)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

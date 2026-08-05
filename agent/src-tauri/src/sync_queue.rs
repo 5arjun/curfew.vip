@@ -163,8 +163,10 @@ fn sync_loop(app: AppHandle) {
                     // Fail-open to `false` on a store read error -- a store
                     // hiccup must not paint every DJ's tray with a
                     // format-drift signal that was never actually detected.
+                    let plan = current_watch_plan(&app);
                     let has_format_drift =
-                        crate::store::has_unresolved_parse_failures(&conn).unwrap_or(false);
+                        crate::store::has_unresolved_parse_failures_for_plan(&conn, &plan)
+                            .unwrap_or(false);
                     let has_transient_backlog = has_retryable_backlog(&conn, &permanently_skipped);
                     let has_permanent_backlog = permanent || !permanently_skipped.is_empty();
                     coordinator.write_if_drive_state(&app, |drive_connected| {
@@ -288,7 +290,9 @@ fn handle_pass_outcome(
     if let Some(coordinator) = app.try_state::<crate::tray::DriveTrayCoordinator>() {
         // Fail-open to `false` on a store read error, same reasoning as
         // `sync_loop`'s pass-level-`Err` branch above.
-        let has_format_drift = crate::store::has_unresolved_parse_failures(conn).unwrap_or(false);
+        let plan = current_watch_plan(app);
+        let has_format_drift =
+            crate::store::has_unresolved_parse_failures_for_plan(conn, &plan).unwrap_or(false);
         let has_transient_backlog = summary.failed_transient > 0;
         let has_permanent_backlog = !permanently_skipped.is_empty();
         coordinator.write_if_drive_state(app, |drive_connected| {
@@ -341,6 +345,24 @@ fn desired_tray_state(
     } else {
         TrayState::Idle
     })
+}
+
+/// Resolves the `WatchPlan` currently in effect, the same way
+/// `watch_loop`/`backfill`'s startup sweep do — cheap enough (a filesystem/
+/// registry probe, the same cost `settings::validate_override` already pays
+/// on every settings save) to re-resolve fresh on this loop's own 30s-300s
+/// cadence rather than share mutable watch-state across threads. Used only to
+/// scope `has_format_drift` to sources that are still actually reachable
+/// (Story 3.4 review, decision 2) — a settings-load failure degrades to the
+/// same empty plan `settings::load`'s own `unwrap_or_default` would produce.
+fn current_watch_plan(app: &AppHandle) -> crate::watcher::detect::WatchPlan {
+    let home = crate::watcher::resolve_home(app);
+    let settings = crate::settings::load(app).unwrap_or_default();
+    crate::watcher::detect::resolve_watch_plan(
+        settings.serato_path_override.as_deref(),
+        &home,
+        &crate::watcher::detect::SystemDisks,
+    )
 }
 
 /// Whether any row eligible for sync is *not* already permanently
