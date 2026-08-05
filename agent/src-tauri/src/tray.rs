@@ -80,6 +80,30 @@ impl TrayState {
         }
     }
 
+    /// The **single** serialization point for this enum on the wire (Story
+    /// 3.9, AD-20): the string the agent-status heartbeat POSTs to
+    /// `set_agent_status`, and the exact value set that RPC validates against
+    /// server-side. Never stringify a `TrayState` with an ad-hoc `match`
+    /// anywhere else — a drifting spelling here is silently rejected by the
+    /// RPC (`22023`) and the dashboard simply goes quiet, which is the hardest
+    /// class of bug to notice in a fire-and-forget path.
+    ///
+    /// Note this is deliberately NOT [`TrayState::tooltip`]: the tooltip is
+    /// human-facing copy that UX may reword at any time, while this is a
+    /// machine contract shared with the migration
+    /// (`supabase/migrations/20260805120000_create_agent_status.sql`) and the
+    /// web renderer (`web/app/(authenticated)/dashboard/status-copy.ts`).
+    pub fn wire_state(self) -> &'static str {
+        match self {
+            TrayState::Idle => "Idle",
+            TrayState::Syncing => "Syncing",
+            TrayState::Failed => "Failed",
+            TrayState::DriveNotConnected => "DriveNotConnected",
+            TrayState::Queued => "Queued",
+            TrayState::FormatDriftPaused => "FormatDriftPaused",
+        }
+    }
+
     /// The next state in the fixed cycle order, wrapping back to `Idle` — used
     /// only by the debug "cycle state" menu item to prove all four render.
     pub fn next(self) -> TrayState {
@@ -233,6 +257,32 @@ pub fn set_tray_state(app: &AppHandle, state: TrayState) -> tauri::Result<()> {
     Ok(())
 }
 
+/// The state the tray is showing **right now** — the same value the agent's
+/// own UI surface is displaying, read straight out of [`CurrentTrayState`].
+///
+/// This is what the Story 3.9 heartbeat reports (AD-20), deliberately rather
+/// than re-deriving a state from `sync_queue`'s inputs: the dashboard's
+/// promise is "what your agent is doing", and the tray is the definition of
+/// that. Reading it here also picks up `DriveNotConnected` — written
+/// exclusively by `watch_loop`, invisible to `sync_queue`'s own
+/// `desired_tray_state` (which returns `None` rather than overwrite it).
+///
+/// `None` when the state isn't managed at all (a headless/test `AppHandle`),
+/// in which case there is genuinely nothing to report.
+pub fn current_tray_state(app: &AppHandle) -> Option<TrayState> {
+    let current = app.try_state::<CurrentTrayState>()?;
+    // Recovers rather than panics on a poisoned lock (Story 3.9 code review):
+    // this is now read every `sync_queue::sync_loop` drain pass, so a panic
+    // here would take down set-sync/heartbeating, not just tray-icon drawing
+    // — a categorically bigger blast radius than the other lock sites in this
+    // file, which only affect the tray icon itself.
+    let guard = current
+        .0
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    Some(guard.0)
+}
+
 /// Single-writer coordinator for the two independent loops that drive tray
 /// state from drive-connectivity and sync-backlog signals (`watcher::watch_loop`
 /// and `sync_queue::sync_loop`) — Story 3.3 code review fix. Before this,
@@ -382,6 +432,55 @@ mod tests {
             TrayState::FormatDriftPaused,
         ] {
             assert!(!state.tooltip().contains('!'), "UX-DR18: no exclamations");
+        }
+    }
+
+    // ---- Story 3.9 / AD-20: the wire contract -----------------------------
+
+    #[test]
+    fn every_state_serializes_to_its_agreed_wire_string() {
+        // These six strings are a contract shared with two other places that
+        // cannot see this file: the RPC's allow-list
+        // (supabase/migrations/20260805120000_create_agent_status.sql) and the
+        // dashboard's copy map (web/.../dashboard/status-copy.ts). Changing a
+        // spelling here without changing both there is a silent outage.
+        assert_eq!(TrayState::Idle.wire_state(), "Idle");
+        assert_eq!(TrayState::Syncing.wire_state(), "Syncing");
+        assert_eq!(TrayState::Failed.wire_state(), "Failed");
+        assert_eq!(
+            TrayState::DriveNotConnected.wire_state(),
+            "DriveNotConnected"
+        );
+        assert_eq!(TrayState::Queued.wire_state(), "Queued");
+        assert_eq!(
+            TrayState::FormatDriftPaused.wire_state(),
+            "FormatDriftPaused"
+        );
+    }
+
+    #[test]
+    fn wire_states_are_distinct_across_all_six_variants() {
+        // A copy-paste slip that maps two variants to the same string would
+        // make the dashboard render a state the agent is not in, and the
+        // per-variant assertions above would still pass if one were edited to
+        // match the other.
+        let mut seen = std::collections::HashSet::new();
+        for state in TrayState::ALL {
+            assert!(
+                seen.insert(state.wire_state()),
+                "duplicate wire string for {state:?}"
+            );
+        }
+        assert_eq!(seen.len(), TrayState::ALL.len());
+    }
+
+    #[test]
+    fn wire_state_is_not_the_human_facing_tooltip() {
+        // Guards against a future "simplification" that collapses the two:
+        // the tooltip is UX copy free to be reworded, wire_state is a machine
+        // contract that must not move when it is.
+        for state in TrayState::ALL {
+            assert_ne!(state.wire_state(), state.tooltip());
         }
     }
 

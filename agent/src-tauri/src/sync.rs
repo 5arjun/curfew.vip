@@ -226,7 +226,11 @@ impl Default for SupabaseSyncClient {
 /// disconnect the network (loopback to a local Supabase survives Wi-Fi-off,
 /// which otherwise masks the Queued state). Compiled out entirely in release:
 /// release builds always return `config::SUPABASE_URL`.
-fn debug_sync_base_url() -> String {
+///
+/// Shared with [`crate::heartbeat`] (Story 3.9) so the agent has exactly one
+/// notion of "where the cloud is", and so forcing offline exercises the
+/// heartbeat's failure path alongside sync's rather than only half of it.
+pub(crate) fn debug_sync_base_url() -> String {
     #[cfg(debug_assertions)]
     {
         if std::env::var("CURFEW_DEBUG_FORCE_OFFLINE").as_deref() == Ok("1") {

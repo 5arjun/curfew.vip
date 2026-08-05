@@ -54,15 +54,52 @@ export function OverlayPanel({
   const reduced = usePrefersReducedMotion();
   const sheet = useMediaQuery("(max-width: 900px)");
 
+  // Restore focus to whatever opened the veil (a stat button) once it closes.
+  //
+  // Story 3.9 AC-5 audit finding: this previously dropped focus to <body>, so a
+  // keyboard user closing a drill-in landed back at the top of the document
+  // instead of the stat they opened (WCAG 2.4.3). Three things had to be true
+  // to make it work, and the original had none of them:
+  //
+  //  1. Declared ABOVE the focus-the-back-button effect. React runs effects in
+  //     declaration order, so capturing second read `document.activeElement`
+  //     *after* focus had already moved into the veil.
+  //  2. Captured only ONCE (`??=`). React StrictMode mounts, unmounts and
+  //     remounts effects in development; on the remount the "previous" element
+  //     is the veil's own back button, which is detached by real close time.
+  //  3. Restored on the NEXT FRAME. At cleanup time the stats stack behind the
+  //     veil can still carry `inert`, and `focus()` inside an inert subtree is
+  //     a silent no-op — the single likeliest way for this to regress.
+  //
+  // The next-frame check also makes StrictMode's simulated cleanup harmless:
+  // the veil is still open then, so the stack is still inert, so the restore
+  // correctly declines to yank focus out of the open veil.
+  // `undefined` = not yet captured, `null` = captured but nothing worth
+  // restoring to — kept distinct from a real element so the `??=` capture-
+  // once still only fires once even when the first read resolves to `null`.
+  const restoreTargetRef = useRef<HTMLElement | null | undefined>(undefined);
+  useEffect(() => {
+    if (restoreTargetRef.current === undefined) {
+      const active = document.activeElement as HTMLElement | null;
+      // Safari does not focus a clicked `<button>` (only keyboard activation
+      // does), so a mouse user opening the veil often has `activeElement ===
+      // document.body` — restoring focus there on close would reproduce the
+      // exact "focus dropped to <body>" bug this effect exists to fix (Story
+      // 3.9 code review).
+      restoreTargetRef.current = active && active !== document.body ? active : null;
+    }
+    return () => {
+      const target = restoreTargetRef.current;
+      if (!target) return;
+      requestAnimationFrame(() => {
+        if (target.isConnected && !target.closest("[inert]")) target.focus();
+      });
+    };
+  }, []);
+
   useEffect(() => {
     backRef.current?.focus();
   }, [kind]);
-
-  // Restore focus to whatever opened the veil (a stat button) once it closes.
-  useEffect(() => {
-    const previouslyFocused = document.activeElement as HTMLElement | null;
-    return () => previouslyFocused?.focus();
-  }, []);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {

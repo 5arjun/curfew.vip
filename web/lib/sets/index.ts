@@ -10,7 +10,14 @@
 //
 // All three are `async` so the signature already matches the eventual awaited
 // Supabase reads — a component `await`s today and keeps awaiting later.
+//
+// `getAgentStatus` (Story 3.9) is the one function here that is NOT
+// fixture-backed: the agent-status heartbeat has no fixture stage, because the
+// whole point of it is to report whether a real agent is really running. It
+// reads Supabase directly through the same seam so the swap point stays in one
+// file.
 import fixture from "./recent-sets.fixture.json";
+import type { AgentStatusRow, AgentStatusSnapshot } from "./agentStatus";
 import type { SetRecord } from "./types";
 
 // A mutable working copy of the fixture so the delete seam (AC-12) has somewhere
@@ -45,4 +52,53 @@ export async function deleteSet(externalId: string): Promise<void> {
   store = store.filter((s) => s.external_id !== externalId);
 }
 
+/**
+ * The current DJ's agent-status heartbeat, stamped with the moment it was read
+ * (Story 3.9, AC-1/AC-2 — AD-20).
+ *
+ * A `null` row covers every "we don't know" case, and the caller must treat
+ * them all identically (render nothing): no session, no Supabase configured in
+ * this checkout, no agent ever linked, or a read that failed. RLS
+ * (owner-SELECT only) means the query can never return another DJ's row, so no
+ * `dj_id` filter is needed or wanted here — `auth.uid()` is the filter.
+ *
+ * Deliberately resilient rather than gating, exactly like the dashboard's own
+ * `getFirstName`: a status region that throws would take down a page whose
+ * actual content (the DJ's sets) has nothing to do with the heartbeat.
+ *
+ * Staleness is NOT decided here — this returns the row as stored, plus the
+ * clock. See `resolveAgentStatus` in `./agentStatus`, which owns that
+ * definition.
+ *
+ * `@/lib/supabase/server` is imported lazily on purpose: it pulls in
+ * `next/headers`, and a static import would bind that into every consumer of
+ * this module, including the pure fixture reads above.
+ */
+export async function getAgentStatus(): Promise<AgentStatusSnapshot> {
+  try {
+    const { createClient } = await import("@/lib/supabase/server");
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("agent_status")
+      .select("sync_state, updated_at")
+      .maybeSingle();
+
+    // A real misconfiguration (missing env, broken RLS) renders identically
+    // to "no agent has ever linked" by design (see doc comment above), which
+    // would otherwise let a genuine regression sit invisible indefinitely —
+    // so it's still surfaced loudly in dev (Story 3.9 code review).
+    if (error && process.env.NODE_ENV !== "production") {
+      console.error("getAgentStatus: Supabase read failed, rendering as no-agent", error);
+    }
+
+    return { row: error ? null : ((data as AgentStatusRow | null) ?? null), readAtMs: Date.now() };
+  } catch (err) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error("getAgentStatus: unexpected failure, rendering as no-agent", err);
+    }
+    return { row: null, readAtMs: Date.now() };
+  }
+}
+
 export type { SetRecord } from "./types";
+export type { AgentStatusRow, AgentStatusSnapshot } from "./agentStatus";

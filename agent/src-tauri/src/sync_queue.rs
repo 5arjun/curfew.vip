@@ -179,7 +179,80 @@ fn sync_loop(app: AppHandle) {
             }
         }
 
+        // Story 3.9 / AD-20 — beat-on-idle, "ride the loop" (Arjun,
+        // 2026-08-05). Sits here, once, AFTER both branches above have settled
+        // the tray through the coordinator, rather than duplicated inside each
+        // of them: one call site cannot drift out of sync with the other or
+        // double-beat, and "every drain pass beats exactly once" is then true
+        // by construction instead of by inspection.
+        //
+        // Deliberately NOT deduped against a last-sent state — that is the
+        // whole ruling. A fresh `updated_at` is what lets the dashboard tell a
+        // live-but-idle agent from a dead one; a fire-on-change beat would
+        // freeze the timestamp on exactly the agent that is healthiest.
+        //
+        // Fire-and-forget: the result is discarded, so nothing about a failed
+        // beat can block, fail, or delay set sync. It cannot hot-loop either —
+        // it is bounded by this loop's own backoff cadence.
+        beat_status(&app);
+
         std::thread::sleep(backoff.wait());
+    }
+}
+
+/// Sends one agent-status heartbeat carrying whatever state the tray is
+/// showing right now (Story 3.9, AC-1).
+///
+/// Reads [`crate::tray::current_tray_state`] rather than re-deriving from
+/// [`desired_tray_state`] on purpose: the dashboard's promise is "what your
+/// agent is doing", the tray *is* that, and only the tray carries
+/// `DriveNotConnected` — `desired_tray_state` returns `None` there rather than
+/// overwrite `watch_loop`'s more specific state, so re-deriving would report
+/// a disconnected drive as whatever the backlog happened to look like.
+///
+/// Every failure is swallowed (debug-logged only). An unlinked agent has no
+/// token and simply cannot beat, which is correct: there is no DJ to report
+/// to. Nothing here reads `subscription_status`, and nothing may be added that
+/// does (AD-19/AD-20).
+fn beat_status(app: &AppHandle) {
+    let Some(state) = crate::tray::current_tray_state(app) else {
+        return;
+    };
+    let Some(auth_state) = app.try_state::<crate::auth::AuthState>() else {
+        return;
+    };
+
+    let result = crate::heartbeat::beat(
+        &auth_state.tokens,
+        &crate::auth::store::KeyringTokenStore,
+        &crate::auth::client::SupabaseAuthClient::new(),
+        &crate::heartbeat::SupabaseStatusClient::new(),
+        state,
+    );
+
+    if let Err(e) = result {
+        match e {
+            // An offline/slow-network agent beats-and-fails every pass by
+            // design, so these must never be a loud log the way a permanent
+            // sync failure is.
+            #[cfg(debug_assertions)]
+            crate::heartbeat::HeartbeatError::Auth(_)
+            | crate::heartbeat::HeartbeatError::Http(_) => {
+                eprintln!("curfew-agent: agent-status heartbeat failed (ignored): {e}");
+            }
+            #[cfg(not(debug_assertions))]
+            crate::heartbeat::HeartbeatError::Auth(_)
+            | crate::heartbeat::HeartbeatError::Http(_) => {}
+            // A `Rejected` beat means the RPC's allow-list turned down
+            // `TrayState::wire_state()`'s own output -- i.e. the Rust/SQL
+            // wire contract has drifted apart (code review, Story 3.9). That
+            // can never legitimately happen if the contract holds, so unlike
+            // Auth/Http it is always logged, release build included --
+            // mirrors `sync_loop`'s own "permanent failure" branch above.
+            crate::heartbeat::HeartbeatError::Rejected(_) => {
+                eprintln!("curfew-agent: agent-status heartbeat rejected by server (wire contract drift?): {e}");
+            }
+        }
     }
 }
 
