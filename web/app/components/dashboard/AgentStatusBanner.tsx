@@ -25,6 +25,19 @@ export function AgentStatusBanner({ initial }: { initial: AgentStatusSnapshot })
   // produced. After mount this component owns the value; the server prop is
   // not re-read, because polling below is the update path.
   const [snapshot, setSnapshot] = useState<AgentStatusSnapshot>(initial);
+  // Tracks the last `initial` this component re-seeded from, so a fresh
+  // server prop (e.g. a router refresh after deleting a set re-renders
+  // `dashboard/page.tsx`) resets `snapshot` during render — React's own
+  // "adjusting state when a prop changes" pattern — rather than via an
+  // effect + setState, which the React Compiler lint rejects (same class of
+  // fix as D-5 in this story's Debug Log). Without this, the banner would
+  // keep showing whatever it first mounted with until the next 60s
+  // poll/focus tick.
+  const [prevInitial, setPrevInitial] = useState(initial);
+  if (initial !== prevInitial) {
+    setPrevInitial(initial);
+    setSnapshot(initial);
+  }
   const reducedMotion = useReducedMotion();
 
   const refresh = useCallback(() => {
@@ -96,37 +109,43 @@ export function AgentStatusBanner({ initial }: { initial: AgentStatusSnapshot })
 
   return (
     <MotionConfig reducedMotion="user">
-      {/* `mode="wait"` so the outgoing line clears before the incoming one
-          arrives: in normal flow, cross-fading two lines simultaneously would
-          push the viewport-locked layout (D9) for the length of the fade. The
-          resulting cross-dissolve-through-nothing is the calm reading anyway. */}
-      <AnimatePresence mode="wait" initial={false}>
-        {line && (
-          <motion.p
-            key={line.text}
-            className={`dz-agent-status dz-agent-status--${line.tone}`}
-            // role="status" (implicit aria-live="polite") so a state flip is
-            // announced without stealing focus or interrupting — this region
-            // must never behave like an alert.
-            role="status"
-            initial={{ opacity: 0, y: reducedMotion ? 0 : 2 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            // A settle, not an entrance. 2px of travel is below the threshold
-            // where motion reads as a slide, and both legs stay under the
-            // ~200ms budget: this is the first live-updating element on any
-            // logged-in surface and it must not announce itself like a toast.
-            // Named properties only — never `transition: all`.
-            transition={{
-              duration: reducedMotion ? 0 : 0.18,
-              ease: [0.4, 0, 0.2, 1],
-              opacity: { duration: reducedMotion ? 0 : 0.18 },
-            }}
-          >
-            {line.text}
-          </motion.p>
-        )}
-      </AnimatePresence>
+      {/* role="status" (implicit aria-live="polite") lives on this STABLE
+          wrapper, never on the swapped child below — AnimatePresence fully
+          unmounts/remounts the child on every state change (a fresh `key`),
+          and some assistive tech does not reliably announce a brand-new node
+          arriving with its own role="status" the way it announces a text
+          mutation inside an already-present live region (Story 3.9 code
+          review). Announced without stealing focus or interrupting — this
+          region must never behave like an alert. */}
+      <div role="status">
+        {/* `mode="wait"` so the outgoing line clears before the incoming one
+            arrives: in normal flow, cross-fading two lines simultaneously would
+            push the viewport-locked layout (D9) for the length of the fade. The
+            resulting cross-dissolve-through-nothing is the calm reading anyway. */}
+        <AnimatePresence mode="wait" initial={false}>
+          {line && (
+            <motion.p
+              key={line.text}
+              className={`dz-agent-status dz-agent-status--${line.tone}`}
+              initial={{ opacity: 0, y: reducedMotion ? 0 : 2 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              // A settle, not an entrance. 2px of travel is below the threshold
+              // where motion reads as a slide, and both legs stay under the
+              // ~200ms budget: this is the first live-updating element on any
+              // logged-in surface and it must not announce itself like a toast.
+              // Named properties only — never `transition: all`.
+              transition={{
+                duration: reducedMotion ? 0 : 0.18,
+                ease: [0.4, 0, 0.2, 1],
+                opacity: { duration: reducedMotion ? 0 : 0.18 },
+              }}
+            >
+              {line.text}
+            </motion.p>
+          )}
+        </AnimatePresence>
+      </div>
     </MotionConfig>
   );
 }

@@ -10,12 +10,11 @@ const NOW = Date.parse("2026-08-05T22:00:00.000Z");
 const iso = (msAgo: number) => new Date(NOW - msAgo).toISOString();
 
 describe("STALE_AFTER_MS", () => {
-  it("is 600s — 2x the agent's MAX_INTERVAL backoff, with margin", () => {
+  it("is exactly 600s — 2x the agent's MAX_INTERVAL backoff, no slack", () => {
     // The agent's sync_loop backs off to MAX_INTERVAL = 300s while failing, and
     // the heartbeat rides that tick (beat-on-idle ruling, 2026-08-05). Anything
     // at or below 300s would call a healthy-but-backed-off agent dead.
-    expect(STALE_AFTER_MS).toBe(600_000);
-    expect(STALE_AFTER_MS).toBeGreaterThan(2 * 300_000 - 1);
+    expect(STALE_AFTER_MS).toBe(2 * 300_000);
   });
 });
 

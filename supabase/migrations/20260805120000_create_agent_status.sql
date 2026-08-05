@@ -72,7 +72,7 @@ create policy "agent_status_select_own" on public.agent_status
 -- The agent is deliberately dumb about staleness -- it never knows what
 -- "stale" means. The DASHBOARD owns that definition (STALE_AFTER = 600s, 2x
 -- the loop's MAX_INTERVAL, web-side). Nothing here expires or sweeps rows.
-create function public.set_agent_status(sync_state text)
+create function public.set_agent_status(sync_state text default null)
 returns void
 language plpgsql
 security definer

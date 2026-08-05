@@ -60,8 +60,9 @@ export type AgentStatusSnapshot = {
 };
 
 /**
- * How long a heartbeat stays trustworthy: 600s, i.e. 2x the agent's
- * `MAX_INTERVAL` (300s) with margin.
+ * How long a heartbeat stays trustworthy: 600s, i.e. exactly 2x the agent's
+ * `MAX_INTERVAL` (300s) — no slack held in reserve for scheduling jitter or a
+ * slow beat POST (Story 3.9 code review correction).
  *
  * The threshold is coarse because the cadence is: the beat rides
  * `sync_queue::sync_loop`, which backs off from 30s to 300s while sync is

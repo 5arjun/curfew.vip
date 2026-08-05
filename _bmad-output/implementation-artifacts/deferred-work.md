@@ -1,5 +1,9 @@
 # Deferred Work
 
+## Deferred from: code review of 3-9-console-voice-failure-register-state-a11y-responsive-pass (2026-08-05)
+
+- **`set_agent_status`'s upsert surfaces a raw Postgres FK-violation error rather than the function's own 42501/22023 error contract if the caller's `djs` row is deleted while their JWT is still valid.** A real but narrow race (account deletion while the desktop agent still holds a cached, unexpired token). Mirrors an already-accepted gap in the sibling `sync_set` RPC this migration deliberately copies — not a regression introduced by this diff's own design choices. The fire-and-forget agent path treats it identically to any other rejected/failed beat (silently retried next pass), so there's no material user-facing consequence either way. [supabase/migrations/20260805120000_create_agent_status.sql:110-114]
+
 ## Deferred from: code review of 3-7-set-detail-summary-tracklist backend group (2026-08-04)
 
 - **`DateAddedIndex::live` reimplements its own `/Volumes` directory scan instead of reusing the existing `watcher::detect::SystemDisks`/`DiskSource` abstraction.** Real duplication — this codebase already has a testable, mockable disk-discovery seam (`DiskSource` trait + `SystemDisks`), and `date_added.rs` bypasses it with a raw `std::fs::read_dir("/Volumes")` walk that has no test coverage of its own. Deferred rather than patched because a real fix needs `DiskSource` (today scoped to "find a Serato install") extended to general catalogue discovery — an abstraction-design call, not a mechanical patch. [agent/src-tauri/src/joiner/date_added.rs:88-104]

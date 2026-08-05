@@ -83,8 +83,19 @@ export async function getAgentStatus(): Promise<AgentStatusSnapshot> {
       .select("sync_state, updated_at")
       .maybeSingle();
 
+    // A real misconfiguration (missing env, broken RLS) renders identically
+    // to "no agent has ever linked" by design (see doc comment above), which
+    // would otherwise let a genuine regression sit invisible indefinitely —
+    // so it's still surfaced loudly in dev (Story 3.9 code review).
+    if (error && process.env.NODE_ENV !== "production") {
+      console.error("getAgentStatus: Supabase read failed, rendering as no-agent", error);
+    }
+
     return { row: error ? null : ((data as AgentStatusRow | null) ?? null), readAtMs: Date.now() };
-  } catch {
+  } catch (err) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error("getAgentStatus: unexpected failure, rendering as no-agent", err);
+    }
     return { row: null, readAtMs: Date.now() };
   }
 }

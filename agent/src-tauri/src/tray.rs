@@ -271,12 +271,16 @@ pub fn set_tray_state(app: &AppHandle, state: TrayState) -> tauri::Result<()> {
 /// in which case there is genuinely nothing to report.
 pub fn current_tray_state(app: &AppHandle) -> Option<TrayState> {
     let current = app.try_state::<CurrentTrayState>()?;
-    let state = current
+    // Recovers rather than panics on a poisoned lock (Story 3.9 code review):
+    // this is now read every `sync_queue::sync_loop` drain pass, so a panic
+    // here would take down set-sync/heartbeating, not just tray-icon drawing
+    // — a categorically bigger blast radius than the other lock sites in this
+    // file, which only affect the tray icon itself.
+    let guard = current
         .0
         .lock()
-        .expect("current tray state mutex poisoned")
-        .0;
-    Some(state)
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    Some(guard.0)
 }
 
 /// Single-writer coordinator for the two independent loops that drive tray

@@ -222,7 +222,7 @@ fn beat_status(app: &AppHandle) {
         return;
     };
 
-    let _result = crate::heartbeat::beat(
+    let result = crate::heartbeat::beat(
         &auth_state.tokens,
         &crate::auth::store::KeyringTokenStore,
         &crate::auth::client::SupabaseAuthClient::new(),
@@ -230,11 +230,29 @@ fn beat_status(app: &AppHandle) {
         state,
     );
 
-    #[cfg(debug_assertions)]
-    if let Err(_e) = _result {
-        // Debug-only: an offline agent beats-and-fails every pass by design,
-        // so this must never be a loud log the way a permanent sync failure is.
-        eprintln!("curfew-agent: agent-status heartbeat failed (ignored): {_e}");
+    if let Err(e) = result {
+        match e {
+            // An offline/slow-network agent beats-and-fails every pass by
+            // design, so these must never be a loud log the way a permanent
+            // sync failure is.
+            #[cfg(debug_assertions)]
+            crate::heartbeat::HeartbeatError::Auth(_)
+            | crate::heartbeat::HeartbeatError::Http(_) => {
+                eprintln!("curfew-agent: agent-status heartbeat failed (ignored): {e}");
+            }
+            #[cfg(not(debug_assertions))]
+            crate::heartbeat::HeartbeatError::Auth(_)
+            | crate::heartbeat::HeartbeatError::Http(_) => {}
+            // A `Rejected` beat means the RPC's allow-list turned down
+            // `TrayState::wire_state()`'s own output -- i.e. the Rust/SQL
+            // wire contract has drifted apart (code review, Story 3.9). That
+            // can never legitimately happen if the contract holds, so unlike
+            // Auth/Http it is always logged, release build included --
+            // mirrors `sync_loop`'s own "permanent failure" branch above.
+            crate::heartbeat::HeartbeatError::Rejected(_) => {
+                eprintln!("curfew-agent: agent-status heartbeat rejected by server (wire contract drift?): {e}");
+            }
+        }
     }
 }
 

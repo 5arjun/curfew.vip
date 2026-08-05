@@ -74,9 +74,20 @@ export function OverlayPanel({
   // The next-frame check also makes StrictMode's simulated cleanup harmless:
   // the veil is still open then, so the stack is still inert, so the restore
   // correctly declines to yank focus out of the open veil.
-  const restoreTargetRef = useRef<HTMLElement | null>(null);
+  // `undefined` = not yet captured, `null` = captured but nothing worth
+  // restoring to — kept distinct from a real element so the `??=` capture-
+  // once still only fires once even when the first read resolves to `null`.
+  const restoreTargetRef = useRef<HTMLElement | null | undefined>(undefined);
   useEffect(() => {
-    restoreTargetRef.current ??= document.activeElement as HTMLElement | null;
+    if (restoreTargetRef.current === undefined) {
+      const active = document.activeElement as HTMLElement | null;
+      // Safari does not focus a clicked `<button>` (only keyboard activation
+      // does), so a mouse user opening the veil often has `activeElement ===
+      // document.body` — restoring focus there on close would reproduce the
+      // exact "focus dropped to <body>" bug this effect exists to fix (Story
+      // 3.9 code review).
+      restoreTargetRef.current = active && active !== document.body ? active : null;
+    }
     return () => {
       const target = restoreTargetRef.current;
       if (!target) return;

@@ -87,11 +87,15 @@ pub trait StatusClient {
     fn set_agent_status(&self, access_token: &str, state: TrayState) -> Result<(), HeartbeatError>;
 }
 
-/// Deliberately tighter than `sync::HTTP_TIMEOUT` (15s). A beat is a tiny
-/// fire-and-forget POST whose only consumer is a 600s staleness window, so
-/// there is nothing to gain by waiting longer on a host that is evidently not
-/// answering — the next pass sends a fresher beat anyway.
-const HTTP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+/// Deliberately tighter than `sync::HTTP_TIMEOUT` (15s) — and tighter than an
+/// earlier 10s (Story 3.9 code review): `beat_status` calls this
+/// synchronously on `sync_loop`'s own thread, so this timeout is also the
+/// worst-case delay it can add to the *next* drain pass on a network-down
+/// host. A beat is a tiny fire-and-forget POST whose only consumer is a 600s
+/// staleness window, so there is nothing to gain by waiting longer on a host
+/// that is evidently not answering — the next pass sends a fresher beat
+/// anyway.
+const HTTP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// The real implementation: `POST {SUPABASE_URL}/rest/v1/rpc/set_agent_status`,
 /// reusing `sync.rs`'s exact auth/header shape (`apikey` +
