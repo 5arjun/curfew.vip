@@ -50,6 +50,12 @@ pub mod fs_scope;
 /// (AD-12). Sits after the `joiner` (which supplies the raw genre) and before the
 /// stat-engine (which will consume the normalized value). See [`genre`].
 pub mod genre;
+/// Agent-status heartbeat (Story 3.9, AD-20): the agent's one sanctioned cloud
+/// write beyond the idempotent set sync — POSTs the current `tray::TrayState`
+/// to the `set_agent_status` RPC on every `sync_queue` drain pass, so the web
+/// dashboard can tell a live-but-idle agent from a silent one. Fire-and-forget;
+/// never blocks or gates sync. See [`heartbeat`].
+pub mod heartbeat;
 /// The `joiner` pipeline filter (Story 1.4): resolves a played track to the
 /// BPM/key/genre held by the DJ's Serato library, across both library formats.
 /// See [`joiner`] for the two paths and their shared invariants.

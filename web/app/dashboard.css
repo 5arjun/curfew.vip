@@ -62,6 +62,39 @@
   padding: 2px 6px;
 }
 
+/* Story 3.9 AC-2: the agent-status region — the ONLY live-updating element on
+   any logged-in surface. It borrows the post-delete note's register above
+   deliberately (quiet mono, sits in the same slot between greeting and hero)
+   rather than inventing a banner treatment: a DJ should read it as the console
+   stating a fact, not as the product interrupting them.
+
+   No background, no border, no icon, no color-alarm — `Failed` and `Queued`
+   are the SAME quiet ink as everything else here. The Failure Register's whole
+   premise is that a sync problem is expected and self-resolving; an alarm
+   colour would contradict the copy sitting inside it.
+
+   The element is absent from the DOM whenever there is nothing to report, so
+   it contributes no height and no flex gap to the viewport-locked layout (D9).
+   Motion lives on the component (framer-motion) — a ~180ms opacity settle,
+   never `transition: all`, never a toast-style slide. */
+.dz-agent-status {
+  font-family: var(--font-geist-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--color-abyss-text-45);
+  padding: 2px 6px;
+  /* The line never wraps the layout out of shape on a narrow phone; it simply
+     takes the two lines it needs. */
+  max-width: 100%;
+}
+
+/* The three Failure-Register reports carry marginally more presence than the
+   passing "Session: Syncing…" note — enough to be read, nowhere near an alert.
+   This is the entire visual difference between the two tones. */
+.dz-agent-status--report {
+  color: var(--color-abyss-text-72);
+}
+
 /* ─── Silk backdrop (D2) ─────────────────────────────────────────────────
    Fixed full-bleed WebGL silk behind everything; the base token paints
    beneath it while the canvas mounts (and wherever WebGL is off). */
@@ -297,6 +330,24 @@
   right: clamp(24px, 3vw, 40px);
   top: 50%;
   translate: 0 -50%;
+}
+
+/* Story 3.9 AC-5 (responsive audit finding, 375px). `.dz-hero-enter` is
+   absolutely positioned and vertically centred, so it sits OUTSIDE the flow
+   the stats row is laid out in. On a wide hero the stats never reach it; on a
+   phone the row spans the full content width and the last stat slides
+   underneath — the arrow's opaque metal pill then covers the final digit, so
+   "119" reads as "11". Not clipping (the text is intact, `scrollWidth ==
+   clientWidth`) but occlusion, which is why nothing overflowed and no
+   automated check caught it.
+   A dashboard whose entire premise is telling a DJ the truth about their
+   numbers must not silently eat one, so the stats row reserves the arrow's
+   footprint (button + a gutter) at the width where the collision is possible.
+   Layout-only — the arrow does not move, and above 640px nothing changes. */
+@media (max-width: 640px) {
+  .dz-hero-stats {
+    padding-right: calc(46px + var(--space-md));
+  }
 }
 
 /* ─── Liquid-metal button (D8/D9) — the ref's physics, ported verbatim ───

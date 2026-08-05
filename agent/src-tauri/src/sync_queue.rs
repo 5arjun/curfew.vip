@@ -179,7 +179,62 @@ fn sync_loop(app: AppHandle) {
             }
         }
 
+        // Story 3.9 / AD-20 — beat-on-idle, "ride the loop" (Arjun,
+        // 2026-08-05). Sits here, once, AFTER both branches above have settled
+        // the tray through the coordinator, rather than duplicated inside each
+        // of them: one call site cannot drift out of sync with the other or
+        // double-beat, and "every drain pass beats exactly once" is then true
+        // by construction instead of by inspection.
+        //
+        // Deliberately NOT deduped against a last-sent state — that is the
+        // whole ruling. A fresh `updated_at` is what lets the dashboard tell a
+        // live-but-idle agent from a dead one; a fire-on-change beat would
+        // freeze the timestamp on exactly the agent that is healthiest.
+        //
+        // Fire-and-forget: the result is discarded, so nothing about a failed
+        // beat can block, fail, or delay set sync. It cannot hot-loop either —
+        // it is bounded by this loop's own backoff cadence.
+        beat_status(&app);
+
         std::thread::sleep(backoff.wait());
+    }
+}
+
+/// Sends one agent-status heartbeat carrying whatever state the tray is
+/// showing right now (Story 3.9, AC-1).
+///
+/// Reads [`crate::tray::current_tray_state`] rather than re-deriving from
+/// [`desired_tray_state`] on purpose: the dashboard's promise is "what your
+/// agent is doing", the tray *is* that, and only the tray carries
+/// `DriveNotConnected` — `desired_tray_state` returns `None` there rather than
+/// overwrite `watch_loop`'s more specific state, so re-deriving would report
+/// a disconnected drive as whatever the backlog happened to look like.
+///
+/// Every failure is swallowed (debug-logged only). An unlinked agent has no
+/// token and simply cannot beat, which is correct: there is no DJ to report
+/// to. Nothing here reads `subscription_status`, and nothing may be added that
+/// does (AD-19/AD-20).
+fn beat_status(app: &AppHandle) {
+    let Some(state) = crate::tray::current_tray_state(app) else {
+        return;
+    };
+    let Some(auth_state) = app.try_state::<crate::auth::AuthState>() else {
+        return;
+    };
+
+    let _result = crate::heartbeat::beat(
+        &auth_state.tokens,
+        &crate::auth::store::KeyringTokenStore,
+        &crate::auth::client::SupabaseAuthClient::new(),
+        &crate::heartbeat::SupabaseStatusClient::new(),
+        state,
+    );
+
+    #[cfg(debug_assertions)]
+    if let Err(_e) = _result {
+        // Debug-only: an offline agent beats-and-fails every pass by design,
+        // so this must never be a loud log the way a permanent sync failure is.
+        eprintln!("curfew-agent: agent-status heartbeat failed (ignored): {_e}");
     }
 }
 

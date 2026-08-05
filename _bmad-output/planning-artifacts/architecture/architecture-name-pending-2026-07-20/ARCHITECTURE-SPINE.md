@@ -11,7 +11,7 @@ scope: >-
   which sits outside the numbered FRs.
 status: final
 created: 2026-07-20
-updated: 2026-07-21
+updated: 2026-08-04
 binds: [FR-1..FR-29, "Epic 7 (Subscription & Billing)"]
 sources:
   - _bmad-output/planning-artifacts/prds/prd-name-pending-2026-07-19/prd.md
@@ -101,7 +101,7 @@ graph TD
 
 - **Binds:** every write path except set sync.
 - **Prevents:** a bespoke write-API that quietly bypasses RLS.
-- **Rule:** web-side mutations (enrichment, hide, visibility, follow) go through Supabase (PostgREST / `supabase-js`), guarded by RLS. No custom mutation server at v1. The agent's **only** write is the idempotent set sync (AD-4).
+- **Rule:** web-side mutations (enrichment, hide, visibility, follow) go through Supabase (PostgREST / `supabase-js`), guarded by RLS. No custom mutation server at v1. The agent's **only** write is the idempotent set sync (AD-4) — except the AD-20 status heartbeat, the one named, column-scoped amendment to this rule.
 
 ### AD-9 — Visibility tiers + per-track redaction; plays inherit set visibility `[ADOPTED]`
 
@@ -178,16 +178,22 @@ graph TD
 - **Prevents:** billing logic leaking into the edge↔cloud sync contract (AD-3) or the idempotent sync path (AD-4); an implementer gating sync "for consistency" with the web paywall (including by accident, via a shared Next.js middleware matcher); a reinterpreted subscription-status enum drifting from Stripe's own state; a DJ's own authenticated session writing or forging its own billing state through a future DJ-writable update policy on `djs`; `subscription_status` bleeding into Phase 2 social-visibility logic that AD-9 already governs.
 - **Rule:** four nullable columns are added to `djs` as an **additive-only migration** (AD-15): `stripe_customer_id`, `stripe_subscription_id`, `subscription_status`, `current_period_end`. `subscription_status` stores **Stripe's own status string verbatim** (`trialing`/`active`/`past_due`/`canceled`/`unpaid`/`paused`/`incomplete`/…) — the webhook is a thin passthrough, never a second state machine; the column is `text`, not a restrictive DB enum, so a Stripe status added later never breaks the write. There is no separate trial-end column: while `subscription_status = 'trialing'`, `current_period_end` **is** the trial end. Existing per-DJ RLS (AD-7) already covers a DJ **reading** their own new columns. **No RLS `UPDATE` policy on `djs` ever grants a DJ write access to these four columns** — the only writer is AD-18's `SECURITY DEFINER` function, invoked by the webhook; if `djs` later gains any DJ-writable update policy (e.g. display name), that policy's column grant list must explicitly exclude the four billing columns. **Hard invariant:** the access gate restricts **the web experience only**. The agent's local capture (parse → local SQLite → sync-queue) and the idempotent set-sync endpoint (`PUT /sets/:set_id`, AD-4) are **never** gated by `subscription_status` — billing state is invisible to the agent and to the sync contract. A lapsed subscriber's agent keeps parsing and queuing every set locally and **resumes syncing on reactivation with no data loss**; only web routes serving the dashboard/stats check `subscription_status`. **Sync-endpoint isolation (structural, not just textual):** the cloud-side contract validation AD-3 requires for `PUT /sets/:set_id` on receive must **not** be implemented as a Next.js Route Handler living in the same route tree as the Epic 7 paywall-gated dashboard routes — implement it as a Postgres-side mechanism (trigger/extension) in front of PostgREST instead. This closes the seam where a blanket auth/subscription middleware matcher written for the web paywall (e.g. `matcher: ['/api/:path*']`) could net the sync route by accident, even though no line of Epic 7 code ever mentions "sync." *(Resolved 2026-07-21, Arjun — billing review Finding 5.)* **Phase 2 social reads:** `subscription_status` must never appear in any Phase 2 social read-policy or feed query (follows, feed, other DJs' profiles, comparisons — FR-19–26). Visibility of another DJ's content is governed exclusively by AD-9's public/friends/private tiers — a lapsed or non-subscribing DJ's own paywall status never hides or reveals *other* DJs' content, and a DJ's own subscription lapsing never makes their previously-public sets disappear from other people's feeds. *(Resolved 2026-07-21, Arjun — billing review Finding 6.)*
 
+### AD-20 — Agent-status heartbeat is the second sanctioned agent write, status-column-scoped `[ADOPTED 2026-08-04]`
+
+- **Binds:** FR-4, FR-5; UX-DR19's "Dashboard status" half; the agent write path; AD-8 (explicitly amended).
+- **Prevents:** the dashboard silently lying about sync health (no signal channel existed — deferred in Stories 3.3/3.3b); *and* an ad-hoc second agent write growing outside a named, column-scoped, RLS-safe boundary.
+- **Rule:** AD-8's "the agent's only write is the idempotent set sync" is amended to admit **exactly one** additional write: a compact **status heartbeat**. The agent writes its current tray state (Idle/Syncing/Failed/DriveNotConnected/Queued/FormatDriftPaused) through a single `SECURITY DEFINER` RPC (`set_agent_status`) that derives `dj_id` from `auth.uid()` and touches **only** the `agent_status` row's status columns — never `sets`/`plays`/overlays/billing. `agent_status` is per-DJ, owner-SELECT via RLS (AD-7), with **no DJ write grant** (the RPC is the only writer), mirroring AD-18/AD-19's webhook exception. The heartbeat is **fire-and-forget and never blocks or gates set sync**, carries no derived Serato data (AD-1/AD-2 untouched), does **not** change the frozen `shared/` sync-payload contract (AD-3 — it is a separate endpoint), and is **never gated by `subscription_status`** (AD-19 — a lapsed subscriber's agent still heartbeats). `sync_state` stores the tray-state string verbatim (`text`, not a DB enum), validated against the allowed set inside the RPC. The heartbeat **fires on every idle drain pass of the existing `sync_queue::sync_loop` — not only on state change** — so a fresh `updated_at` is the agent's liveness signal; this adds **no new poll loop** (it rides a loop that already runs at `BASE_INTERVAL` 30s → `MAX_INTERVAL` 300s). The agent is deliberately dumb about staleness: the **dashboard** owns the definition, treating a heartbeat older than `600s` (2× `MAX_INTERVAL`) as "not reporting," never as synced.
+
 ## Consistency Conventions
 
 | Concern | Convention |
 | --- | --- |
-| Entity naming | `djs`, `sets`, `plays`, `segments`, `follows` (plural, snake_case). A `Session` is Serato's file-level unit; a `Set` is the product unit derived from it (Glossary §3) — never conflated. |
+| Entity naming | `djs`, `sets`, `plays`, `segments`, `follows`, `agent_status` (plural/snake_case). A `Session` is Serato's file-level unit; a `Set` is the product unit derived from it (Glossary §3) — never conflated. `agent_status` keeps the snake_case convention but is a **1:1 per-DJ status row** (PK = `dj_id`), upserted, not an appended event log (AD-20). |
 | IDs | UUID. `set_id` is agent-generated and **deterministic** (AD-4); all others DB-generated. `dj_id` = `auth.uid()`. |
 | Dates / times | UTC ISO-8601 on the wire; `played_at` sourced from the session file. |
 | Sync payload | The `shared/` versioned schema is the only contract shape; `agent_version` on every set (AD-3). |
 | Unknown data | Missing metadata renders as a visible **"Unknown"**, carrying the `in_library` flag — never omitted, never guessed (AD-11; SM-C1 keeps the Unknown rate honest). |
-| Cloud mutation | Supabase/PostgREST + RLS only; agent writes only via idempotent set sync (AD-8). The Stripe webhook route handler is the one named exception, scoped to billing columns only (AD-18). |
+| Cloud mutation | Supabase/PostgREST + RLS only; agent writes only via idempotent set sync (AD-8). Two named exceptions, each scoped by a `SECURITY DEFINER` function to its own columns: the Stripe webhook route handler, billing columns only (AD-18); and the agent's status heartbeat, the `agent_status` row only (AD-20). |
 | Auth / tokens | Supabase JWT + refresh; agent token in Tauri secure storage (AD-10). |
 | Errors (agent) | Reported to error tracking tagged with `agent_version` (AD-13); user-facing copy is calm/technical per EXPERIENCE.md Failure Register ("Sync interrupted. Retrying automatically."). |
 | Errors (wire/API) | JSON error envelope `{ code, message }` (PostgREST/Supabase error shape); the agent maps these to the calm Failure-Register copy — never surfaces a raw provider error. |
@@ -257,9 +263,10 @@ erDiagram
   sets ||--o{ plays : contains
   sets ||--o{ segments : "overlaid by"
   djs ||--o{ follows : "follows (edge)"
+  djs ||--|| agent_status : "heartbeats (AD-20)"
 ```
 
-- The **session** is the immutable anchor keyed `hash(dj_id, session_identity)` (AD-16); a `set` is derived from it. `sets` carries a denormalized `derived` (jsonb) render-cache so dashboards render without recomputation; `plays` rows are the normalized record and carry `in_library`, raw + normalized genre, and `taxonomy_version` (AD-12). **Content columns (agent-written) and overlay columns (web-written: `segments`, enrichment, hide, visibility) are disjoint** (AD-16); overlays are cloud-only (AD-6). `follows` + shared-set read policies are the Phase 2 additions (AD-15). `djs` additionally carries four additive billing columns — `stripe_customer_id`, `stripe_subscription_id`, `subscription_status`, `current_period_end` — written only by the webhook route handler (AD-18, AD-19).
+- The **session** is the immutable anchor keyed `hash(dj_id, session_identity)` (AD-16); a `set` is derived from it. `sets` carries a denormalized `derived` (jsonb) render-cache so dashboards render without recomputation; `plays` rows are the normalized record and carry `in_library`, raw + normalized genre, and `taxonomy_version` (AD-12). **Content columns (agent-written) and overlay columns (web-written: `segments`, enrichment, hide, visibility) are disjoint** (AD-16); overlays are cloud-only (AD-6). `follows` + shared-set read policies are the Phase 2 additions (AD-15). `djs` additionally carries four additive billing columns — `stripe_customer_id`, `stripe_subscription_id`, `subscription_status`, `current_period_end` — written only by the webhook route handler (AD-18, AD-19). `agent_status` sits alongside as a 1:1 per-DJ row (PK = `dj_id`, `sync_state` + `updated_at`) carrying no Serato-derived content — written only by the agent's `set_agent_status` heartbeat RPC (AD-20), read owner-only by the dashboard.
 
 **Deployment & environments:**
 
@@ -299,6 +306,7 @@ curfew/
 | Community comparisons (FR-24, FR-25) — Phase 2 | Supabase (SQL over shared sets) | AD-1 (scene-aggregate exception), AD-7 |
 | Per-DJ isolation / privacy (§5.2) | Supabase RLS | AD-7, AD-8 |
 | Subscription & billing (Epic 7, epics.md) — outside FR-1..29 | Stripe Checkout/Portal + `web/` route handler (webhook) | AD-18, AD-19 |
+| Agent-status heartbeat → dashboard sync state (FR-4, FR-5; UX-DR19 "Dashboard status") | `agent/` (beat) → Supabase `agent_status` + `set_agent_status` RPC → `web/` (render) | AD-7, AD-8, AD-20 |
 
 ## Deferred
 

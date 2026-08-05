@@ -1,8 +1,9 @@
-import { getRecentSets } from "@/lib/sets";
+import { getAgentStatus, getRecentSets } from "@/lib/sets";
 import { splitSets } from "@/lib/sets/hero";
 import { buildSetRows } from "@/lib/sets/listModel";
 import { buildRightColumn } from "@/lib/sets/rightColumn";
 import { createClient } from "@/lib/supabase/server";
+import { AgentStatusBanner } from "@/app/components/dashboard/AgentStatusBanner";
 import { ConfidenceTile } from "@/app/components/dashboard/ConfidenceTile";
 import { DeletedNote } from "@/app/components/dashboard/DeletedNote";
 import { GlassCalendar } from "@/app/components/dashboard/GlassCalendar";
@@ -42,9 +43,10 @@ export default async function DashboardPage({
 }: {
   searchParams: Promise<{ deleted?: string }>;
 }) {
-  const [sets, firstName, { deleted }] = await Promise.all([
+  const [sets, firstName, agentStatus, { deleted }] = await Promise.all([
     getRecentSets(),
     getFirstName(),
+    getAgentStatus(),
     searchParams,
   ]);
   // The hero is the most recent SUBSTANTIAL set (a one-track soundcheck never
@@ -63,6 +65,11 @@ export default async function DashboardPage({
           celebration, no alarm; it simply states what happened. Scrubs its
           own query param on mount (see DeletedNote). */}
       {deleted != null && <DeletedNote />}
+
+      {/* Story 3.9 AC-2: the agent's live sync state, in console voice. Renders
+          nothing at all unless there is something true to report — which is the
+          normal case. */}
+      <AgentStatusBanner initial={agentStatus} />
 
       {hero ? (
         <HeroBand set={hero} />
