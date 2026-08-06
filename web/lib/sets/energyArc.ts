@@ -179,7 +179,9 @@ export function arcTextEquivalent(points: ArcPoint[], scope: ArcScope = "whole")
   let midDist = Infinity;
   for (let i = 0; i < points.length; i++) {
     const dist = Math.abs(new Date(points[i].started_at).getTime() - midT);
-    if (dist < midDist) {
+    // `<=` (not `<`): on an exact tie, prefer the later index — an earlier-wins
+    // tie-break silently biases every even split toward "back half" phrasing.
+    if (dist <= midDist) {
       midDist = dist;
       midIdx = i;
     }

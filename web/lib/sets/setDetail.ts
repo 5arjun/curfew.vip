@@ -465,8 +465,8 @@ export function arcPeakPosition(plays: SyncPlay[]): number | null {
   // Slide the window anchored at each play's start (a continuous slide only
   // changes membership at play boundaries, so this discretization is exact).
   const windowMs = span * PEAK_WINDOW_FRACTION;
-  let bestAvg = -Infinity;
-  let bestCenter = times[0];
+  const candidates: Array<{ avg: number; center: number; n: number }> = [];
+  let maxN = 0;
   for (let i = 0; i < timed.length; i++) {
     const end = times[i] + windowMs;
     let sum = 0;
@@ -475,10 +475,26 @@ export function arcPeakPosition(plays: SyncPlay[]): number | null {
       sum += smoothed[j];
       n += 1;
     }
-    const avg = sum / n;
-    if (avg > bestAvg) {
-      bestAvg = avg;
-      bestCenter = times[i] + windowMs / 2;
+    if (n > maxN) maxN = n;
+    candidates.push({ avg: sum / n, center: times[i] + windowMs / 2, n });
+  }
+
+  // A window anchored near the tail can hold far fewer members than a full
+  // ~10%-of-scope span (down to n=1 at the very last play) — its "average"
+  // is then just one smoothed value, which can out-rank a genuine sustained
+  // plateau purely from reduced smoothing sample size. Require at least half
+  // of the widest observed window's membership; fall back to all candidates
+  // if that threshold would exclude everything (e.g. very sparse scopes).
+  const minN = Math.max(2, Math.ceil(maxN / 2));
+  const pool = candidates.filter((c) => c.n >= minN);
+  const eligible = pool.length > 0 ? pool : candidates;
+
+  let bestAvg = -Infinity;
+  let bestCenter = times[0];
+  for (const c of eligible) {
+    if (c.avg > bestAvg) {
+      bestAvg = c.avg;
+      bestCenter = c.center;
     }
   }
 
