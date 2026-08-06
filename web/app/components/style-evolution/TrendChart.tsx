@@ -660,7 +660,13 @@ function TrendChartPlot({
           ) : metric !== "bpm" ? (
             <>
               <span className="se-chart-ylabel" style={{ top: pctY(mapY(lineMax, lineDomain)) }}>
-                {lineMax.toFixed(1)}
+                {/* Significant figures, not fixed decimals: the tenth of an
+                    effective genre is noise once the count is in double
+                    digits, and "16.9" is wide enough to sit on top of the
+                    first column in the narrow gutter a phone leaves (measured
+                    overlapping at 320px). The caption still carries the
+                    precise value. */}
+                {lineMax >= 10 ? Math.round(lineMax) : lineMax.toFixed(1)}
               </span>
               {/* The floor label is the same point as the ceiling when every
                   bucket sits at one effective category, which painted "1.0"
@@ -672,7 +678,11 @@ function TrendChartPlot({
               )}
               {hasBars && (
                 <span className="se-chart-ylabel se-chart-ylabel--bars" style={{ top: pctY(yBarsLabel) }}>
-                  {maxBarCount} plays
+                  {/* The noun is dropped at phone width, where the gutter is
+                      too narrow to hold it without covering the first column
+                      — see the max-width: 640px block in style-evolution.css. */}
+                  {maxBarCount}
+                  <span className="se-chart-ylabel-noun"> plays</span>
                 </span>
               )}
             </>

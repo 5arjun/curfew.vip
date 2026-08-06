@@ -269,6 +269,7 @@
 }
 
 .se-chart-info-btn {
+  position: relative;
   display: grid;
   place-items: center;
   width: 15px;
@@ -280,6 +281,21 @@
   cursor: help;
   border-radius: var(--radius-full);
   transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+/* The glyph reads best at 15px, but 15px is below WCAG 2.2 AA's 24x24 minimum
+   target size (SC 2.5.8) — measured at 375px during the phone pass, where a
+   thumb has to hit it. An invisible pseudo-element grows the hit area to 24px
+   without touching the visual size or disturbing the inline text flow it sits
+   in. */
+.se-chart-info-btn::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 24px;
+  height: 24px;
+  transform: translate(-50%, -50%);
 }
 
 .se-chart-info-btn svg {
@@ -333,7 +349,14 @@
   right: 0;
   z-index: 20;
   width: max-content;
-  max-width: 280px;
+  /* Two caps, not one. 280px is the comfortable reading measure; the viewport
+     term is what stops the tip hanging off-screen on a phone. It is anchored
+     `right: 0` to a trigger that sits only ~250px from the left edge at 375px,
+     so a full-width 280px tip grew LEFTWARD past the viewport (measured at
+     left: -27px, losing its first words). The 8rem subtracted is the room
+     between that anchor and the screen edge — enough that the tip still lands
+     fully on-screen at 320px, the narrowest phone worth supporting. */
+  max-width: min(280px, calc(100vw - 8rem));
   padding: 9px 12px;
   border-radius: 12px;
   background: var(--color-abyss-raised);
@@ -762,5 +785,21 @@
   }
   .se-chart-cats {
     padding-left: 0;
+  }
+
+  /* The gutter is a PERCENTAGE of the plot (5.8%, matching the viewBox's
+     Y_AXIS_GUTTER/VIEW.width), which keeps labels registered to their data at
+     every width — but 5.8% of a 375px phone is only ~17px, and "53 plays" is
+     47px. Measured at 375px: labels ran to 47px while the first data point
+     starts at 25px, so they sat on top of the leftmost column. Shrinking the
+     type and dropping the noun (the row is unambiguous at a glance, and the
+     legend below already says what the bars are) brings the widest label back
+     inside the gutter instead of over the chart. */
+  .se-chart-ylabel {
+    font-size: 9px;
+    letter-spacing: 0;
+  }
+  .se-chart-ylabel--bars .se-chart-ylabel-noun {
+    display: none;
   }
 }
