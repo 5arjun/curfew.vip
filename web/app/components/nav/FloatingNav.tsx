@@ -55,7 +55,8 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 export function isActiveNavItem(pathname: string, href: string): boolean {
-  return pathname === href;
+  const normalized = pathname.length > 1 && pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+  return normalized === href;
 }
 
 // Hover glow (Arjun's 21st.dev hover-glow-button reference, @easemize): a soft
@@ -220,15 +221,13 @@ function NavLink({
         // colour/scale transitions + the glow follow-lag live in globals.css
         // (.floating-nav-link) so one rule owns the transition list.
         "active:scale-[0.97] motion-reduce:active:scale-100",
-        "focus-visible:shadow-[0_0_0_2px_var(--color-primary),0_0_0_6px_var(--color-primary-glow)]",
+        "focus-visible:shadow-[0_0_0_2px_var(--color-nav-glow-strong),0_0_0_6px_var(--color-nav-glow-fade)]",
         // Active is a neutral raised chip (subtle white overlay), not the old
         // pink-glow fill — a filled pastel block read as a consumer default.
-        // Only the chip background lives on the link. Icon COLOUR is set on the
-        // <svg> itself (below), not here: globals.css ships an unlayered
-        // `a { color: inherit }` reset, and unlayered rules beat Tailwind's
-        // layered colour utilities, so any `text-*` on the <a> is dead — it'd
-        // pin every icon to inherited white and the hover tint would never
-        // fire. The <svg> escapes that reset, so its own utilities win.
+        // Only the chip background lives on the link — icon/label colour is
+        // set in globals.css via the unlayered .floating-nav-link rules (see
+        // the note there) and inherited from there, not set here or on the
+        // <svg> directly.
         active
           ? "bg-[var(--color-nav-chip-active)]"
           : "hover:bg-[var(--color-nav-chip-hover)]",
@@ -236,7 +235,7 @@ function NavLink({
     >
       <span
         aria-hidden
-        className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit] opacity-0 transition-opacity [transition-duration:var(--motion-duration-base)] [transition-timing-function:var(--motion-ease-standard)] group-hover:opacity-100"
+        className="nav-item-glow pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit] opacity-0 transition-opacity [transition-duration:var(--motion-duration-base)] [transition-timing-function:var(--motion-ease-standard)]"
         style={{
           background:
             "radial-gradient(90px circle at var(--gx, 50%) var(--gy, 50%), var(--color-nav-glow-strong) 0%, var(--color-nav-glow-mid) 38%, var(--color-nav-glow-fade) 78%)",
@@ -321,7 +320,7 @@ export function FloatingNav({ avatar = null }: { avatar?: NavAvatar | null }) {
       // the transform shorthand and DELETES it, so the utility's -50% could
       // never be cancelled — the dock's centering is scoped to the non-rail
       // media range instead (see the dock-positioning note there).
-      className="floating-nav-dock fixed z-50 flex w-max items-center gap-0.5 p-0.2"
+      className="floating-nav-dock fixed z-50 flex w-max items-center gap-0.5 p-0.5"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onMouseMove={
@@ -386,8 +385,9 @@ export function FloatingNav({ avatar = null }: { avatar?: NavAvatar | null }) {
       </div>
 
       {/* Hairline divider between the three destinations and Profile/Settings
-          — the dock reference's grouping, matching the IA where Settings is
-          the avatar's own row, not a destination. */}
+          — the dock reference's grouping. Settings renders through the same
+          NavLink as the other three (same active/hover/focus treatment); the
+          divider is a visual grouping cue only, not a structural difference. */}
       <span aria-hidden className="nav-divider" />
       <NavLink
         item={settings}
