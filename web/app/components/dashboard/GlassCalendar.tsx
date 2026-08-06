@@ -156,6 +156,7 @@ export function GlassCalendar({ marks }: { marks: DayMarks }) {
               className="cal-tab"
               data-active={view === v || undefined}
               onClick={() => {
+                if (v === view) return;
                 // Keep the two views on the same date when swapping.
                 if (v === "weekly") setWeekStart(startOfWeek(startOfMonth(currentMonth)));
                 else setCurrentMonth(weekStart);

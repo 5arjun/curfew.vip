@@ -190,8 +190,16 @@ pub fn backfill_captured_serato4(
         // nothing to re-derive against; leave every row untouched.
         return 0;
     };
-    let Ok(rows) = crate::store::rows_with_status(store_conn, SessionStatus::Captured) else {
-        return 0;
+    let rows = match crate::store::rows_with_status(store_conn, SessionStatus::Captured) {
+        Ok(rows) => rows,
+        Err(e) => {
+            reporter.report(
+                "serato4 backfill: rows_with_status query failed",
+                crate::config::AGENT_VERSION,
+                &e.to_string(),
+            );
+            return 0;
+        }
     };
 
     let mut changed = 0;
@@ -279,7 +287,13 @@ pub fn backfill_captured_serato4(
         }
         // The local copy is corrected; clear synced_at so the drain loop pushes
         // the correction to the cloud (idempotent by external_id, Story 3.2).
-        crate::store::mark_for_resync(store_conn, &row.session_identity).ok();
+        if let Err(e) = crate::store::mark_for_resync(store_conn, &row.session_identity) {
+            reporter.report(
+                "serato4 backfill: mark_for_resync failed after a successful write",
+                crate::config::AGENT_VERSION,
+                &e.to_string(),
+            );
+        }
         changed += 1;
     }
     changed
