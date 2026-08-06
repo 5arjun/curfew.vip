@@ -12,6 +12,7 @@ import {
   formatTimeRange,
   topGenres,
 } from "./format";
+import { HERO_MIN_TRACKS } from "./hero";
 import type { SetRecord, SyncPlay } from "./types";
 
 export interface SetTrack {
@@ -39,6 +40,12 @@ export interface SetRowModel {
   tracklist: SetTrack[];
   /** Local day key "2026-06-21" — calendar cross-linking (D10). */
   dayKey: string;
+  /** Story 3.7 spec §3g: "low-confidence/no-dancefloor" — either the FR-27
+      confidence signal (`derived.confidence.value < 1.0`) or too few tracks
+      to be a real dancefloor (same `HERO_MIN_TRACKS` bar hero.ts already
+      uses to keep a soundcheck out of the hero slot). Hidden from the
+      archive by default (Style Evolution's pattern), never silently. */
+  isLowConfidence: boolean;
   /** Epoch ms of started_at — sort by date (D12 filters). */
   startedAtMs: number;
   /** Whole-set length in seconds (0 when unknown) — sort by set length. */
@@ -71,6 +78,7 @@ export function buildSetRows(sets: SetRecord[]): SetRowModel[] {
     const segment = detectDancefloor(set.plays);
     const floor = segmentStats(set.plays, segment);
     const bpm = set.derived.bpm_distribution;
+    const trackCount = set.derived.track_count ?? set.plays.length;
     const dateLabel = formatDayDate(set.started_at);
     const startedAtMs = set.started_at ? new Date(set.started_at).getTime() : 0;
 
@@ -102,6 +110,7 @@ export function buildSetRows(sets: SetRecord[]): SetRowModel[] {
       genreChips: topGenres(floor.genre_breakdown),
       tracklist: setTracklist(set.plays),
       dayKey: localDayKey(set.started_at),
+      isLowConfidence: set.derived.confidence.value < 1.0 || trackCount < HERO_MIN_TRACKS,
       startedAtMs: Number.isNaN(startedAtMs) ? 0 : startedAtMs,
       lengthSec: set.derived.set_length_sec ?? 0,
       haystack,

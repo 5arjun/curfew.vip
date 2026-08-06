@@ -131,7 +131,7 @@ Unified across BPM / Harmonic / Genre:
 
 ## 3g. Cross-story carry-backs
 
-- **⚑ Dashboard (3.6) — exclude low-confidence sets from the dashboard, VISIBLY (Arjun, 2026-08-03).** Realistically a soundcheck/no-dancefloor set shouldn't populate the dashboard. But per Story 4.1's binding principle a real set is **never silently hidden** — so use the Style-Evolution pattern: hidden by default with a quiet reversible *"N low-confidence sessions hidden — show them"* affordance. This is why 3.7's sparse/low-confidence states are rare-but-necessary (still reachable when opened / by direct URL). **3.6 currently INCLUDES the soundcheck fixture on the dashboard — this is a behavior change, not already-done.** Carry back to 3.6/dashboard.
+- **[RESOLVED 2026-08-06]** ⚑ Dashboard (3.6) — exclude low-confidence sets from the dashboard, VISIBLY (Arjun, 2026-08-03). Realistically a soundcheck/no-dancefloor set shouldn't populate the dashboard. But per Story 4.1's binding principle a real set is **never silently hidden** — so use the Style-Evolution pattern: hidden by default with a quiet reversible *"N low-confidence sessions hidden — show them"* affordance. This is why 3.7's sparse/low-confidence states are rare-but-necessary (still reachable when opened / by direct URL). Landed 2026-08-06: `listModel.ts`'s `isLowConfidence` (confidence signal OR sub-`HERO_MIN_TRACKS` track count) + `SetListPanel.tsx`'s hide/reveal affordance — see `deferred-work.md` for the full note.
 - **⚑ Sync story — permanent delete tombstone** (see §3e): never-recoverable delete must suppress re-sync forever.
 - **⚑ 3.8 — click energy-arc → jump to track** (Q4) reuses 3.7's DR-2 focus mechanism.
 

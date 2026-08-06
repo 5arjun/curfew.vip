@@ -157,7 +157,7 @@ so that I can study exactly what I played and how it landed.
 - [x] **Task 10: Mobile** (AC: 39) — stacked layout + bottom-sheet drill-in at 375px; touch targets ≥44px.
 
 - [x] **Task 11: Carry-backs + bookkeeping**
-  - [x] 11.1 ⚑ **Dashboard carry-back (spec §3g):** low-confidence/no-dancefloor sets should be excluded from the dashboard **by default but VISIBLY** (Story 4.1's pattern: *"N low-confidence sessions hidden — show them"*). 3.6 currently includes the soundcheck fixture — this is a **behavior change, not already-done**. Check whether the 3.6 refinement pass already landed it; if not, record it in `deferred-work.md` as an owed 3.6/dashboard change (do NOT silently implement it inside this story without a ruling).
+  - [x] 11.1 ⚑ **[RESOLVED 2026-08-06] Dashboard carry-back (spec §3g):** low-confidence/no-dancefloor sets should be excluded from the dashboard **by default but VISIBLY** (Story 4.1's pattern: *"N low-confidence sessions hidden — show them"*). 3.6 currently includes the soundcheck fixture — this is a **behavior change, not already-done**. Check whether the 3.6 refinement pass already landed it; if not, record it in `deferred-work.md` as an owed 3.6/dashboard change (do NOT silently implement it inside this story without a ruling). Recorded, ruled, and implemented 2026-08-06 — see `deferred-work.md`.
   - [x] 11.2 Note the 3.8 hooks: arc click-to-jump reuses DR-2 (Q4); Camelot wheel + key/harmonic timeline are 3.8's companion visualization.
   - [x] 11.3 Update sprint-status.yaml on completion.
 

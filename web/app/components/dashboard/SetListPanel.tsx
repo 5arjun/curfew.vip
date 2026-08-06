@@ -56,6 +56,16 @@ export function SetListPanel({ rows }: { rows: SetRowModel[] }) {
   const [pulseDay, setPulseDay] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SpotlightSort>({ key: "date", dir: "desc" });
+  // Story 1.8's confidence signal is heuristic, not ground truth (FR-27) — a
+  // real set is never erased, only hidden by default, same pattern as Style
+  // Evolution (AC-2). No persistence: resets to hidden on every page load.
+  const [showLowConfidence, setShowLowConfidence] = useState(false);
+
+  const { availableRows, hiddenCount } = useMemo(() => {
+    if (showLowConfidence) return { availableRows: rows, hiddenCount: 0 };
+    const available = rows.filter((r) => !r.isLowConfidence);
+    return { availableRows: available, hiddenCount: rows.length - available.length };
+  }, [rows, showLowConfidence]);
 
   // Live filtering (D12): the archive IS the results surface. Every token must
   // hit the haystack (dates + every play's title/artist); sort per the chips.
@@ -63,13 +73,15 @@ export function SetListPanel({ rows }: { rows: SetRowModel[] }) {
     const q = query.trim().toLowerCase();
     const tokens = q === "" ? [] : q.split(/\s+/);
     const filtered =
-      tokens.length === 0 ? rows : rows.filter((r) => tokens.every((t) => r.haystack.includes(t)));
+      tokens.length === 0
+        ? availableRows
+        : availableRows.filter((r) => tokens.every((t) => r.haystack.includes(t)));
     const sorted = [...filtered].sort((a, b) =>
       sort.key === "date" ? a.startedAtMs - b.startedAtMs : a.lengthSec - b.lengthSec,
     );
     if (sort.dir === "desc") sorted.reverse();
     return sorted;
-  }, [rows, query, sort]);
+  }, [availableRows, query, sort]);
 
   const bodyRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -117,6 +129,12 @@ export function SetListPanel({ rows }: { rows: SetRowModel[] }) {
       if (!dayKey) return;
       const dayRows = rows.filter((r) => r.dayKey === dayKey);
       if (dayRows.length === 0) return;
+      // A direct calendar jump to a hidden low-confidence day still needs to
+      // land — hiding is a browse-time default, not a block on direct access
+      // (same principle as Set Detail staying reachable by URL either way).
+      if (dayRows.some((r) => r.isLowConfidence) && !showLowConfidence) {
+        setShowLowConfidence(true);
+      }
       close();
       const firstEl = rowRefs.current.get(dayRows[0].id);
       firstEl?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -130,7 +148,7 @@ export function SetListPanel({ rows }: { rows: SetRowModel[] }) {
     };
     window.addEventListener(SELECT_DAY_EVENT, onSelectDay);
     return () => window.removeEventListener(SELECT_DAY_EVENT, onSelectDay);
-  }, [rows, open, close]);
+  }, [rows, open, close, showLowConfidence]);
 
   useEffect(() => {
     return () => {
@@ -173,9 +191,26 @@ export function SetListPanel({ rows }: { rows: SetRowModel[] }) {
               <p className="dz-list-empty">
                 Your archive opens with your first captured set — every night lands here, searchable.
               </p>
-            ) : visibleRows.length === 0 ? (
-              <p className="dz-list-empty">No sets match — try a date, a song, or an artist.</p>
             ) : (
+              <>
+                {hiddenCount > 0 && (
+                  <p className="dz-list-hidden-note">
+                    {hiddenCount} low-confidence {hiddenCount === 1 ? "session" : "sessions"} hidden —{" "}
+                    <button
+                      type="button"
+                      className="dz-list-hidden-toggle"
+                      onClick={() => setShowLowConfidence(true)}
+                    >
+                      show them
+                    </button>
+                  </p>
+                )}
+                {visibleRows.length === 0 && availableRows.length > 0 && (
+                  <p className="dz-list-empty">No sets match — try a date, a song, or an artist.</p>
+                )}
+              </>
+            )}
+            {rows.length > 0 && visibleRows.length > 0 && (
               <ul className="dz-rows">
                 {visibleRows.map((row) => (
                   <li

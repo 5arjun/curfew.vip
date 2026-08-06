@@ -739,6 +739,40 @@
   line-height: 1.5;
 }
 
+/* Low-confidence sets (FR-27) hidden by default, never silently — a quiet
+   note above the archive rows, not a full empty-state interruption. */
+.dz-list-hidden-note {
+  margin: 0 0 10px;
+  padding: 0 4px;
+  color: var(--color-abyss-text-45);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.dz-list-hidden-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: var(--color-abyss-accent-soft);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.dz-list-hidden-toggle:hover {
+  color: var(--color-abyss-text);
+}
+
+.dz-list-hidden-toggle:focus-visible {
+  outline: none;
+  border-radius: 4px;
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 6px var(--color-abyss-accent-glow);
+}
+
 /* ─── Rows: the ref's 72px song rows, re-tinted ─────────────────────────── */
 .dz-rows {
   list-style: none;
