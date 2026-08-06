@@ -436,3 +436,29 @@ NOT built.
 - Arc rolling-median smoothing.
 - ~88% shell translucency.
 - Right column quiet-scrolls below ~950px-tall viewports (by design).
+
+### Hero stat strip — ruling supersedes D8 (code review, 2026-08-05)
+
+D8 (locked 2026-08-03, above) specified the hero's three bottom-of-band
+stats as **dancefloor songs · median BPM · average BPM**. The shipped
+implementation (`describe.ts`'s `stats` array) instead surfaces **SET
+LENGTH · TRACKS · PEAK BPM · IN-KEY BLENDS** (Camelot compatible-transitions
+count) — a different stat set than D8 names, and one that pulls the Camelot
+mixing stat AC-5 otherwise reserves for Set Detail. Flagged in the Story 3.6
+code review as an undocumented deviation. **Arjun's ruling: keep the shipped
+stat set** — this note is the record of that decision superseding D8's
+original three-stat spec. No code change.
+
+### Mobile scroll-lock exception supersedes AC-4/D9 (code review, 2026-08-05)
+
+AC-4 and D9 both state the dashboard's fixed-viewport shell (`100dvh`, only
+the set list scrolls) as a hard requirement with no viewport carve-out.
+The shipped implementation (`dashboard.css`, `@media (max-width: 900px)`)
+releases the lock below 900px — the whole page scrolls on phone/tablet
+instead. The code's own comment already called this "a deviation from the
+desktop zone map, not from any ref mechanic," but it was never logged as an
+approved decision the way every other sanctioned deviation in this story
+was. Flagged in the Story 3.6 code review. **Arjun's ruling: approve as an
+intentional mobile exception** — phones/tablets get normal page scroll
+instead of the fixed-viewport lock; AC-4/D9's fixed-shell requirement is
+desktop-only (≥900.02px) from here on. No code change.

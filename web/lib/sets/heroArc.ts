@@ -153,11 +153,18 @@ export function heroArcGeometry(
   // D-4: the band is the segment's TIME bounds projected into x — independent
   // of whether any plotted play falls inside it. (Whether the scoped window
   // has enough points to draw is the COMPONENT's honesty check, not a reason
-  // to silently drop the band and un-zoom the "Dancefloor" scope.)
+  // to silently drop the band and un-zoom the "Dancefloor" scope.) The
+  // segment can still extend past the plotted BPM-carrying points' domain
+  // (detection runs over all plays, not just BPM-carrying ones), so the
+  // rect is clamped to the drawable view range — never to tMin/tMax, which
+  // would reintroduce the un-zoom bug D-4 fixed.
   let band: { x: number; width: number } | null = null;
   if (segment) {
-    const bx = x(EPOCH(segment.start));
-    const bw = x(EPOCH(segment.end)) - bx;
+    const left = padding;
+    const right = width - padding;
+    const bx = Math.min(Math.max(x(EPOCH(segment.start)), left), right);
+    const bEnd = Math.min(Math.max(x(EPOCH(segment.end)), left), right);
+    const bw = bEnd - bx;
     if (bw > 0) band = { x: bx, width: bw };
   }
 

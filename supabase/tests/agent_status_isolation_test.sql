@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(22);
+select plan(28);
 
 -- Seed two auth users; the AFTER INSERT trigger (handle_new_dj) creates the
 -- matching public.djs row for each, same as djs_isolation_test.sql /
@@ -135,6 +135,61 @@ select throws_ok(
   '22023'::char(5),
   NULL,
   'an unknown sync_state string is rejected -- the column cannot be poisoned'
+);
+
+-- ---------------------------------------------------------------------------
+-- Case 2b (Story 3.10, D-11/AD-20): the additive `agent_version` parameter.
+-- The signature grew by exactly one defaulted param; the old one-arg call
+-- shape must keep working (an in-flight pre-D-11 agent POSTs only
+-- `sync_state`), and a version-less beat honestly clears a stored version
+-- rather than freezing it.
+-- ---------------------------------------------------------------------------
+select lives_ok(
+  $$ select public.set_agent_status('Idle', '0.1.0') $$,
+  'the new signature accepts an agent_version'
+);
+
+reset role;
+reset request.jwt.claims;
+
+select is(
+  (select agent_version from public.agent_status where dj_id = '11111111-1111-1111-1111-111111111111'),
+  '0.1.0',
+  'a versioned beat stores agent_version on the caller''s row'
+);
+
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
+
+select lives_ok(
+  $$ select public.set_agent_status('Idle') $$,
+  'a version-less beat (the pre-D-11 call shape) is still valid'
+);
+
+reset role;
+reset request.jwt.claims;
+
+select is(
+  (select agent_version from public.agent_status where dj_id = '11111111-1111-1111-1111-111111111111'),
+  null::text,
+  'a version-less beat clears a previously stored agent_version (every beat reports what is true now)'
+);
+
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
+
+select throws_ok(
+  $$ select public.set_agent_status('DefinitelyNotAState', '0.1.0') $$,
+  '22023'::char(5),
+  NULL,
+  'the state allow-list still applies when a version is supplied'
+);
+
+select throws_ok(
+  $$ select public.set_agent_status('Idle', repeat('9', 33)) $$,
+  '22023'::char(5),
+  NULL,
+  'an over-long agent_version is rejected -- the rendered column cannot be poisoned'
 );
 
 reset role;

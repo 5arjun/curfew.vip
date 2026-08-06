@@ -131,18 +131,17 @@ describe("Story 2.4 focus-ring glow: AA contrast (AC-4 / UX-DR21)", () => {
 // pattern this file already uses). The translucent text-ramp steps are
 // composited over BOTH surfaces they render on (base page + shell cards)
 // before measuring — a translucent color has no contrast ratio of its own.
-// Honest scoping, mirroring the focus-ring finding above: the 45% step
-// measures ~3.9:1, below 4.5:1 — so it is BOUND to the 3:1 large-text/
-// secondary floor and reserved for de-emphasized meta (the same register the
-// music-player ref renders at 45% white on #161616, which measures ~3.5:1);
-// the 22% step is decorative-only and deliberately untested as text.
+// Lifted 45% -> 52% (REFINEMENTS.md item 12, 2026-08-03) after the original
+// 45% step measured below 4.5:1 for normal text; the 52% step now clears AA
+// normal-text on all three surfaces (~5.1-5.2:1). the 22% step is
+// decorative-only and deliberately untested as text.
 describe("Abyss Cyan tokens meet WCAG 2.2 AA (dashboard redesign D11)", () => {
   const BASE = "#04070c";
   const SHELL = "#091018";
   const RAISED = "#0f1824";
   const TEXT = "#eaf3f8";
   const TEXT_72 = "#eaf3f8b8";
-  const TEXT_45 = "#eaf3f873";
+  const TEXT_45 = "#eaf3f885";
   const ACCENT = "#7fd8f2";
   const ACCENT_SOFT = "#4fb2d6";
   const ON_ACCENT = "#04131c";
@@ -160,9 +159,9 @@ describe("Abyss Cyan tokens meet WCAG 2.2 AA (dashboard redesign D11)", () => {
         AA_NORMAL_TEXT_MIN,
       );
     });
-    it(`text-45 (composited) clears the 3:1 large/secondary floor on ${name}`, () => {
+    it(`text-45 (composited) passes AA on ${name}`, () => {
       expect(contrastRatio(compositeOver(TEXT_45, surface), surface)).toBeGreaterThanOrEqual(
-        AA_LARGE_TEXT_MIN,
+        AA_NORMAL_TEXT_MIN,
       );
     });
     it(`accent passes AA as text/icon on ${name}`, () => {

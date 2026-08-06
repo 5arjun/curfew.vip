@@ -80,7 +80,7 @@ export async function getAgentStatus(): Promise<AgentStatusSnapshot> {
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("agent_status")
-      .select("sync_state, updated_at")
+      .select("sync_state, updated_at, agent_version")
       .maybeSingle();
 
     // A real misconfiguration (missing env, broken RLS) renders identically

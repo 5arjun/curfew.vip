@@ -116,6 +116,17 @@ export function SpotlightSearch({
         setHovered(false);
         setHoveredChip(null);
       }}
+      onFocus={() => setHovered(true)}
+      onBlur={(e) => {
+        // Only clear when focus leaves the whole pill+chips group, not when
+        // it moves between the input and a chip within it (matches the
+        // mouse-hover behavior above — sort chips are otherwise unreachable
+        // by keyboard, since they only mount while hovered/focused).
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+          setHovered(false);
+          setHoveredChip(null);
+        }
+      }}
     >
       <SVGFilter />
       <div className="spot-goo">

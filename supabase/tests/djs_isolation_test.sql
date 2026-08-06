@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(17);
+select plan(23);
 
 -- Seed two auth users; the AFTER INSERT trigger (handle_new_dj) should create
 -- exactly one matching public.djs row for each.
@@ -127,6 +127,50 @@ select is(
   'authenticated DJ A cannot change DJ B''s phone (RLS blocks the row, not the grant)'
 );
 
+-- Case 3f (Story 3.10, D-3/AD-19): the second column-scoped grant, dj_name —
+-- same shapes as phone (Cases 3d/3e). The existing Case 3c update of
+-- created_at continues to prove the grant never widened to the whole table.
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
+
+update public.djs set dj_name = 'Arjun' where id = '11111111-1111-1111-1111-111111111111';
+
+select is(
+  (select dj_name from public.djs where id = '11111111-1111-1111-1111-111111111111'),
+  'Arjun',
+  'authenticated DJ A can update their own dj_name'
+);
+
+select throws_ok(
+  $$ update public.djs set dj_name = repeat('x', 41) where id = '11111111-1111-1111-1111-111111111111' $$,
+  '23514'::char(5),
+  NULL,
+  'a dj_name over 40 characters is rejected by the column CHECK'
+);
+
+-- dj_name is optional (D-3) — clearing it back to null must be a legal write.
+update public.djs set dj_name = null where id = '11111111-1111-1111-1111-111111111111';
+
+select is(
+  (select dj_name from public.djs where id = '11111111-1111-1111-1111-111111111111'),
+  null::text,
+  'authenticated DJ A can clear their own dj_name (the field is optional)'
+);
+
+select lives_ok(
+  $$ update public.djs set dj_name = 'Not Your Name' where id = '22222222-2222-2222-2222-222222222222' $$,
+  'authenticated DJ A''s update of DJ B''s dj_name does not throw (RLS filters the row silently)'
+);
+
+reset role;
+reset request.jwt.claims;
+
+select is(
+  (select dj_name from public.djs where id = '22222222-2222-2222-2222-222222222222'),
+  null::text,
+  'authenticated DJ A cannot change DJ B''s dj_name (RLS blocks the row, not the grant)'
+);
+
 -- Case 4: as anon with no JWT (auth.uid() is null), a select on djs returns
 -- zero rows -- not a permission error.
 set local role anon;
@@ -174,6 +218,14 @@ select throws_ok(
   '42501'::char(5),
   NULL,
   'anon cannot update phone (no grant exists for anon)'
+);
+
+-- Case 4d: same for Story 3.10's dj_name grant.
+select throws_ok(
+  $$ update public.djs set dj_name = 'Anon' where id = '11111111-1111-1111-1111-111111111111' $$,
+  '42501'::char(5),
+  NULL,
+  'anon cannot update dj_name (no grant exists for anon)'
 );
 
 reset role;

@@ -44,11 +44,17 @@ use crate::tray::TrayState;
 ///
 /// Deliberately excludes `dj_id`: the RPC derives it from `auth.uid()` and
 /// never accepts a client-supplied copy (AD-20, mirroring `sync_set`). The
-/// field name must match the SQL function's parameter name — PostgREST maps
-/// the JSON body key to the argument by name.
+/// field names must match the SQL function's parameter names — PostgREST
+/// maps JSON body keys to arguments by name.
+///
+/// `agent_version` (Story 3.10, D-11) is the ONE additive field the
+/// heartbeat ever grew: the version this build compiled with, so
+/// Settings/About can show which agent is actually beating. Nothing else
+/// joins it — no device name, no OS.
 #[derive(Debug, Serialize)]
 struct SetAgentStatusRequest<'a> {
     sync_state: &'a str,
+    agent_version: &'a str,
 }
 
 /// Everything that can go wrong sending one heartbeat. Mirrors
@@ -84,7 +90,12 @@ impl std::error::Error for HeartbeatError {}
 /// Wraps the `set_agent_status` RPC call — mirrors [`crate::sync::SyncClient`]'s
 /// trait-injection pattern so tests never make a real network call.
 pub trait StatusClient {
-    fn set_agent_status(&self, access_token: &str, state: TrayState) -> Result<(), HeartbeatError>;
+    fn set_agent_status(
+        &self,
+        access_token: &str,
+        state: TrayState,
+        agent_version: &str,
+    ) -> Result<(), HeartbeatError>;
 }
 
 /// Deliberately tighter than `sync::HTTP_TIMEOUT` (15s) — and tighter than an
@@ -124,7 +135,12 @@ impl Default for SupabaseStatusClient {
 }
 
 impl StatusClient for SupabaseStatusClient {
-    fn set_agent_status(&self, access_token: &str, state: TrayState) -> Result<(), HeartbeatError> {
+    fn set_agent_status(
+        &self,
+        access_token: &str,
+        state: TrayState,
+        agent_version: &str,
+    ) -> Result<(), HeartbeatError> {
         let url = format!(
             "{}/rest/v1/rpc/set_agent_status",
             crate::sync::debug_sync_base_url()
@@ -136,6 +152,7 @@ impl StatusClient for SupabaseStatusClient {
             .header("Authorization", format!("Bearer {access_token}"))
             .json(&SetAgentStatusRequest {
                 sync_state: state.wire_state(),
+                agent_version,
             })
             .send()
             .map_err(HeartbeatError::Http)?;
@@ -166,10 +183,11 @@ pub fn beat(
     auth_client: &dyn AuthClient,
     status_client: &dyn StatusClient,
     state: TrayState,
+    agent_version: &str,
 ) -> Result<(), HeartbeatError> {
     let access_token =
         get_valid_access_token(tokens, token_store, auth_client).map_err(HeartbeatError::Auth)?;
-    status_client.set_agent_status(&access_token, state)
+    status_client.set_agent_status(&access_token, state, agent_version)
 }
 
 #[cfg(test)]
@@ -197,6 +215,7 @@ mod tests {
     struct FakeStatusClient {
         calls: AtomicUsize,
         sent: Mutex<Vec<TrayState>>,
+        sent_versions: Mutex<Vec<String>>,
         fail: bool,
     }
 
@@ -213,6 +232,9 @@ mod tests {
         fn sent_states(&self) -> Vec<TrayState> {
             self.sent.lock().unwrap().clone()
         }
+        fn sent_versions(&self) -> Vec<String> {
+            self.sent_versions.lock().unwrap().clone()
+        }
     }
 
     impl StatusClient for FakeStatusClient {
@@ -220,9 +242,14 @@ mod tests {
             &self,
             _access_token: &str,
             state: TrayState,
+            agent_version: &str,
         ) -> Result<(), HeartbeatError> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             self.sent.lock().unwrap().push(state);
+            self.sent_versions
+                .lock()
+                .unwrap()
+                .push(agent_version.to_string());
             if self.fail {
                 return Err(HeartbeatError::Rejected(
                     reqwest::StatusCode::INTERNAL_SERVER_ERROR,
@@ -251,10 +278,16 @@ mod tests {
             &FakeAuthClient,
             &client,
             TrayState::Queued,
+            "0.1.0",
         )
         .expect("beat succeeds");
 
         assert_eq!(client.sent_states(), vec![TrayState::Queued]);
+        assert_eq!(
+            client.sent_versions(),
+            vec!["0.1.0".to_string()],
+            "the beat carries the version it was given (Story 3.10, D-11)"
+        );
     }
 
     #[test]
@@ -272,6 +305,7 @@ mod tests {
                 &FakeAuthClient,
                 &client,
                 state,
+                crate::config::AGENT_VERSION,
             )
             .expect("beat succeeds");
         }
@@ -295,6 +329,7 @@ mod tests {
                 &FakeAuthClient,
                 &client,
                 TrayState::Idle,
+                "0.1.0",
             )
             .expect("beat succeeds");
         }
@@ -324,6 +359,7 @@ mod tests {
             &FakeAuthClient,
             &client,
             TrayState::Failed,
+            "0.1.0",
         );
 
         assert!(result.is_err());
@@ -346,6 +382,7 @@ mod tests {
             &FakeAuthClient,
             &client,
             TrayState::Idle,
+            "0.1.0",
         );
 
         assert!(matches!(result, Err(HeartbeatError::Auth(_))));

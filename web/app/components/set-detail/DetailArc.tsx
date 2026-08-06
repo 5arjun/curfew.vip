@@ -55,6 +55,11 @@ interface StripSeg {
   x: number;
   w: number;
   key: CamelotKey | null;
+  /** Index into the pre-filter chronological `timed` list — lets seam-building
+   * tell a truly-adjacent pair from two plays with a dropped segment between
+   * them (duplicate `started_at`), instead of pairing whatever survived the
+   * filter as if it were always consecutive. */
+  origIndex: number;
 }
 
 interface StripSeam {
@@ -93,6 +98,12 @@ class ArcErrorBoundary extends Component<
 
 /* ── The component ────────────────────────────────────────────────────── */
 
+// D-16's error-boundary fallback must cover the geometry/strip computation
+// too, not just the JSX below it — those run as useMemo/hooks in a
+// component's OWN render, which is the boundary's parent scope, not a
+// descendant it can intercept. So the boundary lives here, one level up,
+// wrapping every hook that could throw; only the cheap, low-risk caption
+// input (a plain array filter) is computed outside it.
 export function DetailArc({
   set,
   frame,
@@ -102,11 +113,6 @@ export function DetailArc({
   frame: ScopeFrame;
   setFocus: (focus: Focus | null) => void;
 }) {
-  const geo = useMemo(
-    () => heroArcGeometry(set.derived.energy_arc, frame.segment, VIEW),
-    [set.derived.energy_arc, frame.segment],
-  );
-
   // Scope-reactive caption input (D-13): the dancefloor caption reads only the
   // window's points; whole-night reads them all. Recomputes with the flip.
   const scopedArc = useMemo<ArcPoint[]>(() => {
@@ -124,6 +130,31 @@ export function DetailArc({
   // text-equivalent, and error-boundary fallback below.
   const caption = arcTextEquivalent(scopedArc, frame.scope);
 
+  return (
+    <ArcErrorBoundary caption={caption}>
+      <DetailArcChart set={set} frame={frame} setFocus={setFocus} scopedArc={scopedArc} caption={caption} />
+    </ArcErrorBoundary>
+  );
+}
+
+function DetailArcChart({
+  set,
+  frame,
+  setFocus,
+  scopedArc,
+  caption,
+}: {
+  set: SetRecord;
+  frame: ScopeFrame;
+  setFocus: (focus: Focus | null) => void;
+  scopedArc: ArcPoint[];
+  caption: string;
+}) {
+  const geo = useMemo(
+    () => heroArcGeometry(set.derived.energy_arc, frame.segment, VIEW),
+    [set.derived.energy_arc, frame.segment],
+  );
+
   const band = geo.band;
   const zoomed = frame.scope === "dancefloor" && band != null;
   const targetX = zoomed ? band.x : 0;
@@ -136,17 +167,20 @@ export function DetailArc({
   const showChart = geo.count >= 2 && !inScopeSparse;
 
   // Timed plays with their viewBox x — the nearest-point hit model (D-9) and
-  // the DR-2 click-to-jump mapping both read this.
+  // the DR-2 click-to-jump mapping both read this. Scoped to `frame.plays`
+  // when zoomed, so a click near the zoomed edge can never resolve to (and
+  // jump to) a track outside the visible dancefloor window — the scope is a
+  // hard boundary everywhere else in this feature (toggle, caption, median).
   const timedPlays = useMemo<TimedPlay[]>(
     () =>
-      set.plays
+      (zoomed ? frame.plays : set.plays)
         .filter(
           (p): p is SyncPlay & { started_at: string } => p.started_at != null && p.bpm != null,
         )
         .map((p) => ({ play: p, t: EPOCH(p.started_at), x: 0 }))
         .sort((a, b) => a.t - b.t)
         .map((tp) => ({ ...tp, x: geo.mapX(tp.t) })),
-    [set.plays, geo],
+    [zoomed, frame.plays, set.plays, geo],
   );
 
   // Median baseline (D-6) — the active scope's resting pulse. Whole-set reads
@@ -193,15 +227,24 @@ export function DetailArc({
         x,
         w: geo.mapX(end) - x,
         key: timed[i].camelot_key ? parseCamelot(timed[i].camelot_key as string) : null,
+        origIndex: i,
       });
     }
     for (let i = 0; i < segs.length - 1; i++) {
       const a = segs[i];
       const b = segs[i + 1];
+      // A gap (a dropped duplicate-`started_at` play between them) means
+      // these two were never actually consecutive — draw "nokey" rather than
+      // a smooth/clash verdict between tracks with an undisclosed gap.
+      const adjacent = b.origIndex === a.origIndex + 1;
       seams.push({
         x: b.x,
         state:
-          a.key && b.key ? (camelotCompatible(a.key, b.key) ? "smooth" : "clash") : "nokey",
+          adjacent && a.key && b.key
+            ? camelotCompatible(a.key, b.key)
+              ? "smooth"
+              : "clash"
+            : "nokey",
       });
     }
     return { segs, seams };
@@ -429,7 +472,7 @@ export function DetailArc({
   return (
     <div ref={rootRef} className="sd-arc sd-arc-full dz-shell" role="img" aria-label={caption}>
       <span className="dz-dots" aria-hidden="true" />
-      <ArcErrorBoundary caption={caption}>
+      <>
         <div className="sd-arc-plot">
           <svg
             ref={syncArcRef}
@@ -578,7 +621,7 @@ export function DetailArc({
           </div>
           <p className="sd-arc-caption">{caption}</p>
         </div>
-      </ArcErrorBoundary>
+      </>
 
       <CursorChip
         target={chipTargetRef}

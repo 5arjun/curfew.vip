@@ -1,0 +1,542 @@
+/* ─── Settings (Story 3.10; on-theme redesign, Arjun 2026-08-05) ───────────
+   The original flat-console treatment ("quietest surface", D-2/D-17) read
+   off-theme next to the dashboard/set-detail Abyss language — Arjun's call.
+   Settings now stands on the same ground as every other authenticated
+   surface: Silk backdrop, dz-shell liquid-glass cards, the Hanken voice,
+   the abyss text ramp, glacial-cyan accents. The console-row grammar
+   (label left / value right, calm copy) survives — settings stays the
+   calmest surface in the product; only the material changed.
+   Token-only throughout (no-hardcoded-colors.test.ts). */
+
+.st-main {
+  position: relative;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--space-xl) var(--space-lg) var(--space-xxl);
+  font-family: var(--font-hanken-grotesk);
+  color: var(--color-abyss-text);
+}
+
+/* Heading row: "Settings" left, the page-level "Saved." on the same
+   baseline right (D-15 — the one confirmation for every save on the page). */
+.st-heading-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--space-lg);
+}
+
+/* The dz-greeting display register — the page speaks in the app's voice. */
+.st-title {
+  margin: 0;
+  font-size: clamp(26px, 3vw, 34px);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+}
+
+/* "Saved." rides the accent — the one cyan word on the page when it speaks. */
+.st-saved {
+  font-family: var(--font-geist-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  color: var(--color-abyss-accent-soft);
+  opacity: 0;
+  transition: opacity var(--motion-duration-slow) var(--motion-ease-standard);
+}
+
+.st-saved-visible {
+  opacity: 1;
+}
+
+/* ─── Cards ──────────────────────────────────────────────────────────────
+   Every section is a dz-shell (liquid glass over the Silk, dashboard.css)
+   wearing set-detail's 28px card radius. Cards materialize on arrival —
+   a short rise + fade cascade on the liquid ease (rare-view page, so the
+   entrance may speak once; reduced-motion drops it entirely). */
+.st-card {
+  border-radius: 28px;
+  padding: 20px 26px 14px;
+  margin-bottom: 14px;
+  animation: st-rise var(--motion-duration-liquid-open) var(--motion-ease-liquid) both;
+}
+
+.st-main > :nth-child(2 of .st-card) { animation-delay: 55ms; }
+.st-main > :nth-child(3 of .st-card) { animation-delay: 110ms; }
+.st-main > :nth-child(4 of .st-card) { animation-delay: 165ms; }
+.st-main > :nth-child(5 of .st-card) { animation-delay: 220ms; }
+.st-main > :nth-child(6 of .st-card) { animation-delay: 275ms; }
+
+@keyframes st-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+/* Profile header (3a): avatar + name line + email. Facts, not a form. */
+.st-profile {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 24px 26px;
+}
+
+.st-profile-name {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 550;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  color: var(--color-abyss-text);
+}
+
+.st-profile-email {
+  margin: 4px 0 0;
+  font-family: var(--font-geist-mono);
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+  color: var(--color-abyss-text-45);
+}
+
+/* Section eyebrow — the sd-eyebrow mono register. */
+.st-section-label {
+  margin: 0;
+  padding: 4px 0 8px;
+  font-family: var(--font-geist-mono);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-abyss-text-72);
+}
+
+/* Console row: label left, value/control right; the ref's 4%-alpha row
+   hairline between rows (never after the last — the glass edge closes the
+   card). */
+.st-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  min-height: 56px;
+  padding: 10px 0;
+}
+
+.st-row + .st-row {
+  border-top: 1px solid var(--color-abyss-row-line);
+}
+
+.st-row-label {
+  color: var(--color-abyss-text-45);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+
+.st-row-value {
+  color: var(--color-abyss-text);
+  font-size: 15px;
+  line-height: 1.5;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+/* The quiet status affix on a value ("verified · locked") — a status word,
+   not a disabled input (D-8). */
+.st-affix {
+  font-family: var(--font-geist-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  color: var(--color-abyss-text-45);
+  margin-left: var(--space-sm);
+  /* text-wrap, not the classic wrapping property — the color guard's
+     named-color scan matches that property's first word. Same workaround
+     set-detail.css uses. */
+  text-wrap: nowrap;
+}
+
+/* Explanatory line under a row's value — quiet, right-aligned with it. */
+.st-row-note {
+  color: var(--color-abyss-text-45);
+  font-size: 12.5px;
+  line-height: 1.5;
+  margin: 4px 0 0;
+  text-align: right;
+  max-width: 44ch;
+}
+
+/* A row that stacks value + note (right cell). */
+.st-row-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 0;
+}
+
+/* Text action — the calm chip affordance for "Send reset link", "+ Link",
+   "Add a passkey", "Link agent". Shell fill on hairline; hover raises it
+   toward the glint, press gives the instant scale feedback. */
+.st-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-height: 36px;
+  padding: 7px 16px;
+  touch-action: manipulation;
+  font-family: var(--font-hanken-grotesk);
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--color-abyss-text-72);
+  background: var(--color-abyss-shell);
+  border: 1px solid var(--color-abyss-hairline);
+  border-radius: 12px;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    transform var(--motion-duration-instant) var(--motion-ease-standard);
+}
+
+.st-action:hover:not(:disabled) {
+  color: var(--color-abyss-text);
+  background: var(--color-abyss-raised);
+  border-color: var(--color-abyss-glint);
+}
+
+.st-action:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.st-action:disabled {
+  color: var(--color-abyss-text-45);
+  cursor: default;
+  background: none;
+  border-color: var(--color-abyss-hairline);
+}
+
+/* Inline mailto/link styled as a value, not a button. */
+.st-link {
+  font-size: 15px;
+  color: var(--color-abyss-text);
+  text-decoration: underline;
+  text-decoration-color: var(--color-abyss-text-22);
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.st-link:hover {
+  text-decoration-color: var(--color-abyss-accent);
+}
+
+/* Inline failure line (Failure Register): calm, technical, with a retry
+   affordance. Error color marks it as a failure; register stays quiet. */
+.st-inline-error {
+  color: var(--color-error);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 4px 0 0;
+  display: flex;
+  gap: var(--space-sm);
+  align-items: baseline;
+  justify-content: flex-end;
+}
+
+.st-inline-ok {
+  color: var(--color-abyss-text-72);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 4px 0 0;
+  text-align: right;
+}
+
+.st-retry {
+  color: var(--color-abyss-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+}
+
+/* DJ-name ghost input (D-15): looks like a value until focused — the abyss
+   retint of the auth ghost treatment, right-aligned to sit in the row
+   grammar. Width holds the row steady while typing. */
+.st-name-input {
+  width: min(280px, 60vw);
+  text-align: right;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--color-abyss-hairline);
+  border-radius: 0;
+  color: var(--color-abyss-text);
+  caret-color: var(--color-abyss-accent);
+  padding: var(--space-sm) 0 6px;
+  transition:
+    border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    box-shadow var(--motion-duration-instant) var(--motion-ease-standard);
+}
+
+/* The solid accent border-bottom is the contrast-bearing focus indicator
+   (same reasoning as the auth ghost input's AA note in globals.css); the
+   soft band glow beneath is decorative. */
+.st-name-input:focus-visible {
+  outline: none;
+  border-bottom-color: var(--color-abyss-accent);
+  box-shadow: 0 4px 14px 0 var(--color-abyss-band);
+}
+
+.st-name-input[aria-invalid="true"] {
+  border-bottom-color: var(--color-error);
+}
+
+/* The empty row still reads as a place to type, not a broken value. */
+.st-name-input::placeholder {
+  color: var(--color-abyss-text-45);
+}
+
+/* Provider list: one line per provider, attached ✓ or a link action. */
+.st-providers {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-sm);
+  font-size: 15px;
+}
+
+.st-provider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--color-abyss-text);
+}
+
+.st-provider-check {
+  color: var(--color-abyss-accent-soft);
+}
+
+/* Sign out (D-16): bottom of the page, centered, past the last card. */
+.st-signout {
+  display: flex;
+  justify-content: center;
+  padding-top: var(--space-lg);
+  animation: st-rise var(--motion-duration-liquid-open) var(--motion-ease-liquid) both;
+  animation-delay: 330ms;
+}
+
+/* Sign-out confirm dialog — the ⌘K-spotlight material (blurred scrim, same
+   frosted surface), zero alarm color (D-16). The panel materializes: a short
+   scale + fade on entry, center-origin (modals stay centered). */
+.st-modal-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: var(--space-lg);
+  background: var(--color-spotlight-scrim);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  overscroll-behavior: contain;
+  animation: st-scrim-in var(--motion-duration-fast) var(--motion-ease-standard) both;
+}
+
+@keyframes st-scrim-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.st-modal {
+  width: min(420px, 100%);
+  padding: 26px 28px;
+  background: var(--color-spotlight-surface-solid);
+  border: 1px solid var(--color-abyss-hairline);
+  border-radius: 20px;
+  box-shadow:
+    inset 0 1px 0 var(--color-spotlight-rim),
+    0 30px 80px var(--shadow-ink-50);
+  animation: st-modal-in var(--motion-duration-base) var(--motion-ease-out) both;
+}
+
+@keyframes st-modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+.st-modal-title {
+  margin: 0;
+  font-family: var(--font-hanken-grotesk);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-abyss-text);
+}
+
+.st-modal-body {
+  margin: 10px 0 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--color-abyss-text-72);
+}
+
+.st-modal-error {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--color-abyss-text-72);
+}
+
+.st-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.st-modal-cancel,
+.st-modal-confirm {
+  padding: 10px 18px;
+  min-height: 44px;
+  font-size: 13.5px;
+  font-weight: 550;
+  border-radius: 12px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    transform var(--motion-duration-instant) var(--motion-ease-standard);
+}
+
+.st-modal-cancel:active:not(:disabled),
+.st-modal-confirm:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.st-modal-cancel {
+  color: var(--color-abyss-text-72);
+  border: 1px solid var(--color-abyss-hairline);
+}
+
+.st-modal-cancel:hover:not(:disabled) {
+  color: var(--color-abyss-text);
+  background: var(--color-abyss-raised);
+}
+
+.st-modal-confirm {
+  color: var(--color-abyss-on-accent);
+  background: var(--color-abyss-accent);
+}
+
+.st-modal-confirm:hover:not(:disabled) {
+  background: var(--color-abyss-accent-soft);
+}
+
+.st-modal-cancel:disabled,
+.st-modal-confirm:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Focus ring — the settings surface sits on the abyss ground, so the ring
+   is the glacial accent. The ghost input keeps its own border-bottom
+   focus treatment. */
+.st-main button:focus-visible,
+.st-main a:focus-visible,
+.st-modal-scrim button:focus-visible {
+  outline: 2px solid var(--color-abyss-accent);
+  outline-offset: 2px;
+}
+
+/* Reduced motion: the entrance cascade and press feedback drop entirely;
+   the Saved fade becomes an instant show/hide. */
+@media (prefers-reduced-motion: reduce) {
+  .st-card,
+  .st-signout,
+  .st-modal-scrim,
+  .st-modal {
+    animation: none;
+  }
+
+  .st-saved,
+  .st-action,
+  .st-name-input {
+    transition: none;
+  }
+
+  .st-action:active:not(:disabled),
+  .st-modal-cancel:active:not(:disabled),
+  .st-modal-confirm:active:not(:disabled) {
+    transform: none;
+  }
+}
+
+/* Avatar (shared with the floating nav) — `full` radius is sanctioned for
+   avatars (tokens.css radius note). */
+.avatar-image,
+.avatar-monogram {
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-outline-variant);
+  flex-shrink: 0;
+  object-fit: cover;
+}
+
+.avatar-monogram {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-primary-container);
+  color: var(--color-on-primary-container);
+  font-family: var(--font-hanken-grotesk);
+  font-weight: 600;
+  line-height: 1;
+  user-select: none;
+}
+
+/* Reset-password page shares the settings ground. */
+.st-reset-form {
+  max-width: 420px;
+}
+
+/* Narrow viewports: rows keep the grammar but let long right cells wrap
+   under the label rather than crushing it; cards tighten their padding. */
+@media (max-width: 480px) {
+  .st-card {
+    padding: 16px 18px 10px;
+  }
+
+  .st-profile {
+    padding: 20px 18px;
+  }
+
+  .st-row {
+    flex-wrap: wrap;
+  }
+
+  .st-row-cell {
+    width: 100%;
+  }
+
+  .st-name-input {
+    width: 100%;
+  }
+}
+
+/* Below the rail breakpoint the floating nav is the bottom dock — give the
+   page-end Sign out real clearance so the dock never sits on it. */
+@media (max-width: 900px) {
+  .st-main {
+    padding-bottom: calc(var(--space-xxl) + 64px);
+  }
+}

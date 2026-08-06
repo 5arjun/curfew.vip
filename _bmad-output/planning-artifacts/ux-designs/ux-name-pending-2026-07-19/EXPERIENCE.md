@@ -52,6 +52,7 @@ Microcopy. Brand voice lives in `DESIGN.md.Brand & Style` (After-Hours Archive /
 | Format-drift, parse paused (FR-1 NFR) | "Format change detected — sync paused until verified." |
 | Login failed, wrong password | "Credentials not recognized — try again." |
 | Signup blocked, email already registered | "Account already archived — log in instead." |
+| Settings change failed | "Change not saved — retry." *(Story 3.10, D-15: inline under the row, typed value preserved, never a silent revert.)* |
 | Chart/data failed to render | Falls through to `{components.chart-summary}` — never a bare broken-chart icon. |
 
 ## Component Patterns

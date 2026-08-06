@@ -12,6 +12,10 @@ import {
   usePrefersReducedMotion,
 } from "@/app/components/ui/metal-hooks";
 import { CursorChip, useCursorChipTarget } from "@/app/components/ui/CursorChip";
+import { Avatar } from "@/app/components/ui/Avatar";
+// Type-only import: profile.ts is server-only at runtime (Supabase server
+// client), but its NavAvatar shape is erased at compile time.
+import type { NavAvatar } from "@/lib/account/profile";
 
 // Desktop = the vertical liquid-metal rail on the left (Arjun, 2026-08-03:
 // the bottom dock overlapped dashboard content); below it, the original
@@ -43,14 +47,16 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: House },
   { href: "/style-evolution", label: "Style Evolution", icon: TrendUp },
   { href: "/library-utilization", label: "Library Utilization", icon: VinylRecord },
-  // Interim treatment (Task 3.6): UserCircle stands in for the real circular
-  // photo avatar Story 3.10 (AC-1) ships once avatar-image infra exists —
-  // that story swaps the icon, it does not restructure the nav.
+  // Story 3.10 (AC-1): the real circular avatar (photo or monogram, passed
+  // down from the server layout) renders in place of this icon when a
+  // session exists; UserCircle stays as the signed-out/dev-checkout
+  // fallback. Same /settings destination, visual change only.
   { href: "/settings", label: "Settings", icon: UserCircle },
 ];
 
 export function isActiveNavItem(pathname: string, href: string): boolean {
-  return pathname === href;
+  const normalized = pathname.length > 1 && pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+  return normalized === href;
 }
 
 // Hover glow (Arjun's 21st.dev hover-glow-button reference, @easemize): a soft
@@ -93,6 +99,7 @@ function NavLink({
   item,
   active,
   onChip,
+  avatar,
 }: {
   item: NavItem;
   active: boolean;
@@ -100,6 +107,9 @@ function NavLink({
       shared CursorChip with this item's label; `at` pins it for keyboard
       focus, where there's no cursor to follow. */
   onChip?: (label: string | null, at?: { x: number; y: number }) => void;
+  /** Settings item only (Story 3.10, AC-1): the DJ's real avatar replaces
+      the placeholder icon when a session provided one. */
+  avatar?: NavAvatar | null;
 }) {
   const ItemIcon = item.icon;
 
@@ -211,15 +221,13 @@ function NavLink({
         // colour/scale transitions + the glow follow-lag live in globals.css
         // (.floating-nav-link) so one rule owns the transition list.
         "active:scale-[0.97] motion-reduce:active:scale-100",
-        "focus-visible:shadow-[0_0_0_2px_var(--color-primary),0_0_0_6px_var(--color-primary-glow)]",
+        "focus-visible:shadow-[0_0_0_2px_var(--color-nav-glow-strong),0_0_0_6px_var(--color-nav-glow-fade)]",
         // Active is a neutral raised chip (subtle white overlay), not the old
         // pink-glow fill — a filled pastel block read as a consumer default.
-        // Only the chip background lives on the link. Icon COLOUR is set on the
-        // <svg> itself (below), not here: globals.css ships an unlayered
-        // `a { color: inherit }` reset, and unlayered rules beat Tailwind's
-        // layered colour utilities, so any `text-*` on the <a> is dead — it'd
-        // pin every icon to inherited white and the hover tint would never
-        // fire. The <svg> escapes that reset, so its own utilities win.
+        // Only the chip background lives on the link — icon/label colour is
+        // set in globals.css via the unlayered .floating-nav-link rules (see
+        // the note there) and inherited from there, not set here or on the
+        // <svg> directly.
         active
           ? "bg-[var(--color-nav-chip-active)]"
           : "hover:bg-[var(--color-nav-chip-hover)]",
@@ -227,7 +235,7 @@ function NavLink({
     >
       <span
         aria-hidden
-        className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit] opacity-0 transition-opacity [transition-duration:var(--motion-duration-base)] [transition-timing-function:var(--motion-ease-standard)] group-hover:opacity-100"
+        className="nav-item-glow pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit] opacity-0 transition-opacity [transition-duration:var(--motion-duration-base)] [transition-timing-function:var(--motion-ease-standard)]"
         style={{
           background:
             "radial-gradient(90px circle at var(--gx, 50%) var(--gy, 50%), var(--color-nav-glow-strong) 0%, var(--color-nav-glow-mid) 38%, var(--color-nav-glow-fade) 78%)",
@@ -238,7 +246,13 @@ function NavLink({
       {/* Icon colour (idle / active / hover) is set in globals.css via the
           unlayered .floating-nav-link colour rules; the icon inherits it. See
           the note there for why the Tailwind text-* utility route doesn't win. */}
-      <ItemIcon size={20} weight={active ? "fill" : "bold"} className="relative" />
+      {avatar ? (
+        <span className="relative inline-flex">
+          <Avatar imageUrl={avatar.imageUrl} monogram={avatar.monogram} size={20} />
+        </span>
+      ) : (
+        <ItemIcon size={20} weight={active ? "fill" : "bold"} className="relative" />
+      )}
       {/* Active-item label reveal — the bottom DOCK's treatment (≥sm, <rail):
           only the current route's label is shown, keeping the pill compact at
           every viewport. The 0fr→1fr grid-column transition animates the
@@ -269,7 +283,7 @@ function NavLink({
   );
 }
 
-export function FloatingNav() {
+export function FloatingNav({ avatar = null }: { avatar?: NavAvatar | null }) {
   const pathname = usePathname();
   const rail = useMediaQuery(RAIL_QUERY);
   const reduced = usePrefersReducedMotion();
@@ -306,7 +320,7 @@ export function FloatingNav() {
       // the transform shorthand and DELETES it, so the utility's -50% could
       // never be cancelled — the dock's centering is scoped to the non-rail
       // media range instead (see the dock-positioning note there).
-      className="floating-nav-dock fixed z-50 flex w-max items-center gap-0.5 p-0.2"
+      className="floating-nav-dock fixed z-50 flex w-max items-center gap-0.5 p-0.5"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onMouseMove={
@@ -371,13 +385,15 @@ export function FloatingNav() {
       </div>
 
       {/* Hairline divider between the three destinations and Profile/Settings
-          — the dock reference's grouping, matching the IA where Settings is
-          the avatar's own row, not a destination. */}
+          — the dock reference's grouping. Settings renders through the same
+          NavLink as the other three (same active/hover/focus treatment); the
+          divider is a visual grouping cue only, not a structural difference. */}
       <span aria-hidden className="nav-divider" />
       <NavLink
         item={settings}
         active={isActiveNavItem(pathname, settings.href)}
         onChip={rail ? handleChip : undefined}
+        avatar={avatar}
       />
 
       {/* The label chip (rail only; single-line body, so a shallower rise than

@@ -45,5 +45,13 @@ mod tests {
     fn agent_version_is_non_empty_and_matches_cargo_toml() {
         assert!(!AGENT_VERSION.is_empty());
         assert_eq!(AGENT_VERSION, env!("CARGO_PKG_VERSION"));
+        // set_agent_status rejects versions over 32 chars (errcode 22023) —
+        // a longer CARGO_PKG_VERSION (prerelease/build metadata) would kill
+        // every heartbeat in prod. Catch it at build time instead (Story
+        // 3.10 code review).
+        assert!(
+            AGENT_VERSION.len() <= 32,
+            "AGENT_VERSION {AGENT_VERSION:?} exceeds the DB's 32-char cap"
+        );
     }
 }

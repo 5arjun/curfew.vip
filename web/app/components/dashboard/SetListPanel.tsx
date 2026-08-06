@@ -76,6 +76,7 @@ export function SetListPanel({ rows }: { rows: SetRowModel[] }) {
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
   const unmountTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pulseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoOpenTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const open = useCallback((row: SetRowModel) => {
     const rowEl = rowRefs.current.get(row.id);
@@ -94,10 +95,11 @@ export function SetListPanel({ rows }: { rows: SetRowModel[] }) {
   }, []);
 
   const close = useCallback(() => {
+    if (!sheetRow) return; // nothing open — avoid a wasted state update + timer
     setActive(false);
     if (unmountTimer.current) clearTimeout(unmountTimer.current);
     unmountTimer.current = setTimeout(() => setSheetRow(null), 600);
-  }, []);
+  }, [sheetRow]);
 
   // Escape closes the sheet (scoped to the document — the panel has no focus trap).
   useEffect(() => {
@@ -122,7 +124,8 @@ export function SetListPanel({ rows }: { rows: SetRowModel[] }) {
       if (pulseTimer.current) clearTimeout(pulseTimer.current);
       pulseTimer.current = setTimeout(() => setPulseDay(null), 2400);
       if (dayRows.length === 1) {
-        setTimeout(() => open(dayRows[0]), 450);
+        if (autoOpenTimer.current) clearTimeout(autoOpenTimer.current);
+        autoOpenTimer.current = setTimeout(() => open(dayRows[0]), 450);
       }
     };
     window.addEventListener(SELECT_DAY_EVENT, onSelectDay);
@@ -133,6 +136,7 @@ export function SetListPanel({ rows }: { rows: SetRowModel[] }) {
     return () => {
       if (unmountTimer.current) clearTimeout(unmountTimer.current);
       if (pulseTimer.current) clearTimeout(pulseTimer.current);
+      if (autoOpenTimer.current) clearTimeout(autoOpenTimer.current);
     };
   }, []);
 

@@ -20,9 +20,9 @@ export function formatSessionLabel(externalId: string): string {
   return `SET ${externalId}`;
 }
 
-/** Human set length, e.g. "5h 56m", "56m", "0m". `null` → "—". */
+/** Human set length, e.g. "5h 56m", "56m", "0m". `null`/non-finite → "—". */
 export function formatDuration(seconds: number | null): string {
-  if (seconds == null) return "—";
+  if (seconds == null || !Number.isFinite(seconds)) return "—";
   if (seconds < 60) return seconds <= 0 ? "0m" : "1m";
   let hours = Math.floor(seconds / 3600);
   let minutes = Math.round((seconds % 3600) / 60);

@@ -79,7 +79,13 @@ export function detectDancefloor(plays: SyncPlay[]): DancefloorSegment | null {
   const windowCount = Math.max(1, Math.ceil(spanSec / WINDOW_SEC));
   const windows: TimedPlay[][] = Array.from({ length: windowCount }, () => []);
   for (const p of timed) {
-    const w = Math.min(windowCount - 1, Math.floor((p.epochMs - firstMs) / 1000 / WINDOW_SEC));
+    // `plays[]` is not guaranteed pre-sorted, so a play before `firstMs` is
+    // possible — clamp both ends or an out-of-order play produces a negative
+    // index and crashes the whole render.
+    const w = Math.max(
+      0,
+      Math.min(windowCount - 1, Math.floor((p.epochMs - firstMs) / 1000 / WINDOW_SEC)),
+    );
     windows[w].push(p);
   }
 
@@ -163,11 +169,16 @@ export function segmentStats(plays: SyncPlay[], segment: DancefloorSegment | nul
     }
   }
 
-  const timed = inSegment.map((p) => p.started_at).filter((t): t is string => t != null);
+  // `plays[]`/`inSegment` are not guaranteed pre-sorted, so derive the span
+  // from actual min/max epoch rather than array position — else an
+  // out-of-order play silently understates (or zeroes) the length.
+  const epochs = inSegment
+    .map((p) => (p.started_at != null ? new Date(p.started_at).getTime() : NaN))
+    .filter((t) => !Number.isNaN(t));
   const lengthSec =
-    timed.length >= 2
-      ? Math.max(0, Math.round((new Date(timed[timed.length - 1]).getTime() - new Date(timed[0]).getTime()) / 1000))
-      : timed.length === 1
+    epochs.length >= 2
+      ? Math.max(0, Math.round((Math.max(...epochs) - Math.min(...epochs)) / 1000))
+      : epochs.length === 1
         ? 0
         : null;
 

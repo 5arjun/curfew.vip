@@ -49,7 +49,11 @@ export function HeroBand({ set }: { set: SetRecord }) {
         role="img"
         // D-3/AC-22: the thumbnail shares the ONE chart-summary generator,
         // aria-only — no visible caption here, thumbnail otherwise untouched.
-        aria-label={arcTextEquivalent(set.derived.energy_arc)}
+        // Scoped to match what's actually drawn: `arcSource` is already the
+        // dancefloor-only slice when a floor is detected (Item 5), so the
+        // caption must read "dancefloor" too, not silently describe the
+        // whole night while the pixels show only the floor window.
+        aria-label={arcTextEquivalent(arcSource, floorArc ? "dancefloor" : "whole")}
       >
         <defs>
           {/* Molten chrome for the dim full-night line; ice→cyan for the glowing window. */}

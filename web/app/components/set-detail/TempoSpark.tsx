@@ -25,6 +25,13 @@ export function TempoSpark({ set, frame }: { set: SetRecord; frame: ScopeFrame }
   const targetX = zoomed ? band.x : 0;
   const targetWidth = zoomed ? band.width : VIEW.width;
 
+  // D-4's honesty check, mirrored here: `geo.count` is the WHOLE night's
+  // point count, so a dancefloor window with <2 BPM-carrying plays must not
+  // borrow neighboring whole-night data to draw an interpolated curve.
+  const inScopeSparse =
+    frame.scope === "dancefloor" &&
+    frame.plays.filter((p) => p.bpm != null).length < 2;
+
   const [initialDomain] = useState(() => ({ x: targetX, width: targetWidth }));
   const svgRef = useRef<SVGSVGElement | null>(null);
   const domain = useRef({ x: targetX, width: targetWidth });
@@ -53,7 +60,7 @@ export function TempoSpark({ set, frame }: { set: SetRecord; frame: ScopeFrame }
     return () => controls.stop();
   }, [targetX, targetWidth]);
 
-  if (geo.count < 2) return null;
+  if (geo.count < 2 || inScopeSparse) return null;
 
   return (
     <svg

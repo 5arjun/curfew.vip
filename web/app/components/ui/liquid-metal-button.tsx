@@ -87,7 +87,14 @@ export function LiquidMetalButton({ children, href, onClick, className, ...rest 
     ripple.style.left = `${event.clientX - rect.left - size / 2}px`;
     ripple.style.top = `${event.clientY - rect.top - size / 2}px`;
     host.appendChild(ripple);
-    ripple.addEventListener("animationend", () => ripple.remove());
+    // Fallback in case `animationend` never fires (interrupted animation, tab
+    // backgrounded, element hidden) — otherwise the ripple leaks permanently.
+    // 600ms comfortably outlasts the 400ms --motion-duration-slow animation.
+    const fallback = setTimeout(() => ripple.remove(), 600);
+    ripple.addEventListener("animationend", () => {
+      clearTimeout(fallback);
+      ripple.remove();
+    });
   };
 
   const content = (

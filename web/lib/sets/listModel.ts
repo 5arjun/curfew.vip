@@ -4,7 +4,14 @@
 // wire records. Pure + deterministic aside from locale/timezone formatting
 // (a gig's date/clock are the DJ's local ones, same rule as format.ts).
 import { detectDancefloor, segmentStats } from "./dancefloor";
-import { formatBpm, formatClock, formatDayDate, formatDuration, formatTimeRange } from "./format";
+import {
+  formatBpm,
+  formatClock,
+  formatDayDate,
+  formatDuration,
+  formatTimeRange,
+  topGenres,
+} from "./format";
 import type { SetRecord, SyncPlay } from "./types";
 
 export interface SetTrack {
@@ -22,10 +29,12 @@ export interface SetRowModel {
   timeRange: string;
   /** Dancefloor track count (whole set when detection falls back). */
   floorCount: number;
-  /** "2h 12m" — whole-set duration. */
+  /** "2h 12m" — dancefloor-scoped duration (AC-7), paired with floorCount. */
   durationLabel: string;
   avgBpm: string;
   medianBpm: string;
+  /** 2–3 top genre chips (AC-1/AC-5), dancefloor-scoped like floorCount/durationLabel. */
+  genreChips: string[];
   /** Every track played, in play order — the expanded card's full tracklist (item 11). */
   tracklist: SetTrack[];
   /** Local day key "2026-06-21" — calendar cross-linking (D10). */
@@ -87,9 +96,10 @@ export function buildSetRows(sets: SetRecord[]): SetRowModel[] {
       startClock: formatClock(set.started_at),
       timeRange: formatTimeRange(set.started_at, set.ended_at),
       floorCount: floor.track_count,
-      durationLabel: formatDuration(set.derived.set_length_sec),
+      durationLabel: formatDuration(floor.set_length_sec),
       avgBpm: formatBpm(bpm.count > 0 ? bpm.mean : null),
       medianBpm: formatBpm(bpm.count > 0 ? bpm.median : null),
+      genreChips: topGenres(floor.genre_breakdown),
       tracklist: setTracklist(set.plays),
       dayKey: localDayKey(set.started_at),
       startedAtMs: Number.isNaN(startedAtMs) ? 0 : startedAtMs,

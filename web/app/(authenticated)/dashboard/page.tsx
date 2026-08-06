@@ -1,3 +1,4 @@
+import { resolveFirstName } from "@/lib/account/greeting";
 import { getAgentStatus, getRecentSets } from "@/lib/sets";
 import { splitSets } from "@/lib/sets/hero";
 import { buildSetRows } from "@/lib/sets/listModel";
@@ -24,15 +25,21 @@ async function getFirstName(): Promise<string | null> {
   // Resilient rather than gating: with no session (or no configured Supabase
   // env in a dev checkout) the greeting simply drops the name — auth-gating
   // this route group is a known separate gap, not this page's job.
+  // Story 3.10 (AC-4/D-3): an explicit `djs.dj_name` wins over OAuth
+  // metadata, so email-path DJs are no longer permanently nameless —
+  // precedence lives in `resolveFirstName`, shared with Settings.
   try {
     const supabase = await createClient();
     const { data } = await supabase.auth.getUser();
-    const meta = data.user?.user_metadata as Record<string, unknown> | undefined;
-    const raw =
-      (typeof meta?.full_name === "string" && meta.full_name) ||
-      (typeof meta?.name === "string" && meta.name) ||
-      null;
-    return raw ? raw.trim().split(/\s+/)[0] : null;
+    if (!data.user) return null;
+    const { data: dj } = await supabase
+      .from("djs")
+      .select("dj_name")
+      .maybeSingle<{ dj_name: string | null }>();
+    return resolveFirstName(
+      dj?.dj_name ?? null,
+      data.user.user_metadata as Record<string, unknown> | undefined,
+    );
   } catch {
     return null;
   }

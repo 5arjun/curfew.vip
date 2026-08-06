@@ -42,6 +42,14 @@ export function isAgentSyncState(value: string): value is AgentSyncState {
 export type AgentStatusRow = {
   sync_state: string;
   updated_at: string;
+  /**
+   * Version string the beating agent compiled with (Story 3.10, D-11) —
+   * additive and optional: pre-D-11 rows and version-less beats are null,
+   * and consumers hide their version display entirely then. Not consulted
+   * by {@link resolveAgentStatus}; liveness is `sync_state`/`updated_at`'s
+   * job alone.
+   */
+  agent_version?: string | null;
 };
 
 /**

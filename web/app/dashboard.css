@@ -133,6 +133,15 @@
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
+  /* The 8/6-layer progressive blur stacks (.dz-gblur, .dz-efade) are pure
+     backdrop-filter effects with no other visible content — neutralize them
+     the same way .dz-shell is above, rather than leaving an 11-layer blur
+     stack running under a reduced-transparency preference. */
+  .dz-gblur > div,
+  .dz-efade > div {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }
 
 /* ─── Greeting (D14: time-aware text only, nothing beside it) ──────────── */
@@ -492,6 +501,10 @@
   height: 100%;
   border-radius: 100px;
   overflow: hidden;
+  /* Fallback fill for before the shader mounts / if colors resolve to null
+     (matches the metal-abyss material's back/tint pair) — so this layer
+     always shows a fill while waiting on getComputedStyle, not empty space. */
+  background: linear-gradient(180deg, var(--metal-abyss-tint) 0%, var(--metal-abyss-back) 100%);
 }
 
 .mtl-shader canvas {
@@ -606,11 +619,16 @@
   justify-content: space-between;
   gap: var(--space-md);
   opacity: 0;
+  /* Matches .dz-sheet's pattern for the same collapsed/expanded problem —
+     invisible-but-focusable at rest would otherwise leave the back button
+     tabbable/clickable while hidden. */
+  pointer-events: none;
   transition: opacity var(--motion-duration-liquid-close) var(--motion-ease-liquid);
 }
 
 .dz-list-actions[data-active] {
   opacity: 1;
+  pointer-events: all;
   /* Lands with the (now-faster) sheet pop instead of trailing it. */
   transition: opacity 220ms var(--motion-ease-liquid) 60ms;
 }
@@ -931,7 +949,7 @@
   flex-shrink: 0;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
-  color: var(--color-abyss-text-22);
+  color: var(--color-abyss-text-45);
 }
 
 /* Title/artist share the row and truncate with an ellipsis inside the card's
@@ -1406,7 +1424,7 @@
 .cal-dow {
   font-size: 10px;
   font-weight: 700;
-  color: var(--color-abyss-text-22);
+  color: var(--color-abyss-text-45);
 }
 
 .cal-cell {
@@ -1453,6 +1471,15 @@
 /* Today: hairline ring (accent-soft), D10. */
 .cal-day[data-today] {
   box-shadow: inset 0 0 0 1px var(--color-abyss-accent-soft);
+}
+
+/* Today + selected at once: box-shadow isn't additive across separate
+   same-specificity rules, so without this the later [data-today] rule above
+   would silently replace the selected-day glow with just the today ring. */
+.cal-day[data-selected][data-today] {
+  box-shadow:
+    0 4px 14px var(--color-abyss-accent-glow),
+    inset 0 0 0 1px var(--color-abyss-accent-soft);
 }
 
 /* Set-day blips: the ref's today-dot, repurposed (1–3, glow past 3). */
@@ -1608,7 +1635,7 @@
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--color-abyss-text-22);
+  color: var(--color-abyss-text-45);
 }
 
 .mp-value {
@@ -1660,7 +1687,7 @@
 .conf-hint {
   margin: 0;
   font-size: 11px;
-  color: var(--color-abyss-text-22);
+  color: var(--color-abyss-text-45);
 }
 
 /* ─── Odometer ──────────────────────────────────────────────────────────── */

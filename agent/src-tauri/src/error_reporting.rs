@@ -34,11 +34,20 @@ impl ErrorReporter for SentryReporter {
         if crate::config::SENTRY_DSN.is_empty() {
             return;
         }
-        sentry::configure_scope(|scope| {
-            scope.set_tag("agent_version", agent_version);
-            scope.set_tag("context", context);
-        });
-        sentry::capture_message(message, sentry::Level::Error);
+        // `with_scope` (not `configure_scope`) so these tags apply to only
+        // this one capture — `configure_scope` would permanently mutate the
+        // calling thread's persistent Hub scope, mislabeling every later
+        // event on the same long-lived background thread (watcher/
+        // sync_queue/backfill/updater each run on their own) with a stale
+        // `agent_version`/`context` from whatever unrelated failure last
+        // reported here (Story 3.4 review).
+        sentry::with_scope(
+            |scope| {
+                scope.set_tag("agent_version", agent_version);
+                scope.set_tag("context", context);
+            },
+            || sentry::capture_message(message, sentry::Level::Error),
+        );
     }
 }
 

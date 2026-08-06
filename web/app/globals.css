@@ -2,6 +2,7 @@
 @import "./tokens.css";
 @import "./dashboard.css";
 @import "./set-detail.css";
+@import "./settings.css";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
@@ -216,8 +217,17 @@ a {
 .floating-nav-link[aria-current="page"] {
   color: var(--color-on-surface);
 }
-.floating-nav-link:not([aria-current="page"]):hover {
-  color: var(--color-nav-hover-text);
+
+/* Hover-only treatments gated to real hover input — a touch tap leaves :hover
+   stuck on mobile Safari otherwise, pinning the glow/tint visibly "on" after
+   the finger lifts. Same guard the dock's border-shine already uses. */
+@media (hover: hover) and (pointer: fine) {
+  .floating-nav-link:not([aria-current="page"]):hover {
+    color: var(--color-nav-hover-text);
+  }
+  .group:hover .nav-item-glow {
+    opacity: 1;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
