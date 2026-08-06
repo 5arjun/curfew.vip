@@ -61,6 +61,12 @@ export function SetListPanel({ rows }: { rows: SetRowModel[] }) {
   // Evolution (AC-2). No persistence: resets to hidden on every page load.
   const [showLowConfidence, setShowLowConfidence] = useState(false);
 
+  // lowConfidenceTotal stays stable across the reveal toggle (unlike
+  // hiddenCount, which would drop to 0 once revealed) — it's what backs the
+  // "hide them" path back, added post-launch-review (2026-08-06, Arjun: no
+  // way back to hidden without a full page reload).
+  const lowConfidenceTotal = useMemo(() => rows.filter((r) => r.isLowConfidence).length, [rows]);
+
   const { availableRows, hiddenCount } = useMemo(() => {
     if (showLowConfidence) return { availableRows: rows, hiddenCount: 0 };
     const available = rows.filter((r) => !r.isLowConfidence);
@@ -193,16 +199,32 @@ export function SetListPanel({ rows }: { rows: SetRowModel[] }) {
               </p>
             ) : (
               <>
-                {hiddenCount > 0 && (
+                {lowConfidenceTotal > 0 && (
                   <p className="dz-list-hidden-note">
-                    {hiddenCount} low-confidence {hiddenCount === 1 ? "session" : "sessions"} hidden —{" "}
-                    <button
-                      type="button"
-                      className="dz-list-hidden-toggle"
-                      onClick={() => setShowLowConfidence(true)}
-                    >
-                      show them
-                    </button>
+                    {showLowConfidence ? (
+                      <>
+                        Showing {lowConfidenceTotal} low-confidence{" "}
+                        {lowConfidenceTotal === 1 ? "session" : "sessions"} —{" "}
+                        <button
+                          type="button"
+                          className="dz-list-hidden-toggle"
+                          onClick={() => setShowLowConfidence(false)}
+                        >
+                          hide them
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        {hiddenCount} low-confidence {hiddenCount === 1 ? "session" : "sessions"} hidden —{" "}
+                        <button
+                          type="button"
+                          className="dz-list-hidden-toggle"
+                          onClick={() => setShowLowConfidence(true)}
+                        >
+                          show them
+                        </button>
+                      </>
+                    )}
                   </p>
                 )}
                 {visibleRows.length === 0 && availableRows.length > 0 && (

@@ -1,0 +1,766 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Style Evolution (Story 4.1) — shares the Abyss Cyan liquid-glass language
+   (`.dz-shell`/`.dz-dots`, dashboard.css) and the DetailArc chart precedent's
+   chrome-gradient stroke + Chart Summary caption idiom (set-detail.css), but
+   is its own page: a NEW month-bucketed chart (D-3), not a fork of either.
+   Classes are prefixed `se-` (style evolution) so they can't collide.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.se {
+  position: relative;
+  min-height: 100dvh;
+  width: 100%;
+  max-width: var(--container-max);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: var(--space-lg) var(--space-gutter)
+    calc(var(--space-xxl) + env(safe-area-inset-bottom));
+  font-family: var(--font-hanken-grotesk);
+  color: var(--color-abyss-text);
+}
+
+@media (min-width: 900.02px) {
+  .se {
+    max-width: none;
+    padding-left: calc(var(--nav-rail-inset) + var(--nav-rail-width) + var(--space-gutter));
+  }
+}
+
+.se-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.se-title {
+  margin: 0;
+  font-size: clamp(24px, 3vw, 34px);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+}
+
+.se-subtitle {
+  margin: 0;
+  font-family: var(--font-inter);
+  font-size: 14px;
+  color: var(--color-abyss-text-45);
+}
+
+.se-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.se-controls-right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+}
+
+/* ─── Metric chip toggle (Task 4) — the SpotlightSearch/genre-chip hover-glow
+   idiom: a raised pill, quiet at rest, glowing on hover, lit solid when
+   active. Inter (not mono) — this is a label, not metadata (D-taste rule the
+   nav labels already follow). ────────────────────────────────────────────── */
+.se-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.se-chip {
+  padding: 9px 16px;
+  min-height: 36px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--color-abyss-raised);
+  color: var(--color-abyss-text-45);
+  font-family: var(--font-inter);
+  font-size: 13px;
+  font-weight: 550;
+  cursor: pointer;
+  transition:
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    box-shadow var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.se-chip:hover {
+  color: var(--color-abyss-text);
+  box-shadow: 0 0 18px var(--color-abyss-accent-glow);
+}
+
+.se-chip[aria-pressed="true"] {
+  background: var(--color-abyss-raised);
+  color: var(--color-abyss-accent);
+  box-shadow: 0 0 18px var(--color-abyss-accent-glow);
+}
+
+.se-chip:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 6px var(--color-abyss-accent-glow);
+}
+
+/* ─── Week/Month granularity toggle — a smaller, secondary sibling of the
+   metric chip's pill idiom (never `.sd-mini-toggle`/MetalRim: that pulls in
+   its own WebGL context, and this page has no LiquidMetal budget to spend on
+   a two-button toggle). ──────────────────────────────────────────────────── */
+.se-gran {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: var(--radius-full);
+  background: var(--color-abyss-raised);
+}
+
+.se-gran-btn {
+  padding: 5px 12px;
+  min-height: 26px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: none;
+  color: var(--color-abyss-text-45);
+  font-family: var(--font-inter);
+  font-size: 12px;
+  font-weight: 550;
+  cursor: pointer;
+  transition:
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.se-gran-btn:hover {
+  color: var(--color-abyss-text);
+}
+
+.se-gran-btn[aria-pressed="true"] {
+  background: var(--color-abyss-shell-glass);
+  color: var(--color-abyss-accent);
+}
+
+.se-gran-btn:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 6px var(--color-abyss-accent-glow);
+}
+
+/* ─── Low-confidence reveal affordance (Task 5) — verbatim reference
+   implementation of the dashboard's own hidden-note/toggle pattern
+   (SetListPanel.tsx / dz-list-hidden-*), the pattern deferred-work.md:61
+   points at for its own future fix. ─────────────────────────────────────── */
+.se-hidden-note {
+  margin: 0;
+  padding: 0 4px;
+  color: var(--color-abyss-text-45);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.se-hidden-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: var(--color-abyss-accent-soft);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.se-hidden-toggle:hover {
+  color: var(--color-abyss-text);
+}
+
+.se-hidden-toggle:focus-visible {
+  outline: none;
+  border-radius: 4px;
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 6px var(--color-abyss-accent-glow);
+}
+
+/* ─── Disclosure line (AC-5/AC-6 — untagged/no-key counts, never folded in;
+   same idiom as StatsColumn's `.sd-disclosure`). ────────────────────────── */
+.se-disclosure {
+  margin: 6px 0 0;
+  padding: 0 4px;
+  font-family: var(--font-geist-mono);
+  font-size: 11.5px;
+  color: var(--color-abyss-text-45);
+}
+
+/* ─── Insufficient-history state (Task 6) — the console-voice empty state,
+   EXPERIENCE.md:91's exact copy. ─────────────────────────────────────────── */
+.se-empty {
+  display: grid;
+  place-items: center;
+  min-height: 260px;
+  padding: 48px 24px;
+  text-align: center;
+}
+
+.se-empty-copy {
+  margin: 0;
+  max-width: 32ch;
+  font-size: 15px;
+  color: var(--color-abyss-text-72);
+}
+
+/* ─── The trend chart itself (Task 3) ────────────────────────────────────── */
+.se-chart {
+  position: relative;
+  overflow: hidden;
+  min-height: 260px;
+  border-radius: 28px;
+}
+
+.se-chart-full {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 16px 12px;
+}
+
+/* Chart head (added post-launch-review, 2026-08-06): a persistent metric
+   title + legend/subtitle so the chart is self-explanatory without relying
+   on the chip row above staying visually obvious, or on scrolling down to
+   the bottom-right caption first. */
+.se-chart-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 16px;
+  padding: 8px 8px 4px;
+}
+
+.se-chart-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-abyss-text);
+}
+
+.se-chart-subtitle {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-inter);
+  font-size: 12px;
+  color: var(--color-abyss-text-45);
+}
+
+/* ─── "What does this mean?" explainer. The definition used to run the full
+   width of the card as a subtitle; it now lives behind this button, shown on
+   hover AND on keyboard focus (hover-only would strand keyboard and touch
+   users). ────────────────────────────────────────────────────────────────── */
+.se-chart-info {
+  position: relative;
+  display: inline-flex;
+}
+
+.se-chart-info-btn {
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-abyss-text-45);
+  cursor: help;
+  border-radius: var(--radius-full);
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.se-chart-info-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+.se-chart-info-ring {
+  fill: none;
+  stroke: var(--color-abyss-text-45);
+  stroke-width: 1.3px;
+}
+
+.se-chart-info-dot {
+  fill: var(--color-abyss-text-45);
+}
+
+.se-chart-info-stem {
+  stroke: var(--color-abyss-text-45);
+  stroke-width: 1.4px;
+  stroke-linecap: round;
+}
+
+.se-chart-info-btn:hover .se-chart-info-ring,
+.se-chart-info-btn:focus-visible .se-chart-info-ring,
+.se-chart-info-btn:hover .se-chart-info-stem,
+.se-chart-info-btn:focus-visible .se-chart-info-stem {
+  stroke: var(--color-abyss-accent);
+}
+
+.se-chart-info-btn:hover .se-chart-info-dot,
+.se-chart-info-btn:focus-visible .se-chart-info-dot {
+  fill: var(--color-abyss-accent);
+}
+
+.se-chart-info-btn:hover,
+.se-chart-info-btn:focus-visible {
+  color: var(--color-abyss-accent);
+}
+
+.se-chart-info-btn:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 6px var(--color-abyss-accent-glow);
+}
+
+.se-chart-info-tip {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  width: max-content;
+  max-width: 280px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: var(--color-abyss-raised);
+  box-shadow:
+    0 0 0 1px var(--color-abyss-hairline),
+    0 12px 32px var(--shadow-ink-40);
+  color: var(--color-abyss-text-72);
+  font-size: 11.5px;
+  line-height: 1.5;
+  text-align: left;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-3px);
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-standard),
+    transform var(--motion-duration-fast) var(--motion-ease-standard),
+    visibility var(--motion-duration-fast);
+}
+
+/* Hover for mouse, `:focus-visible` for keyboard, and `aria-expanded` for
+   touch. The last one matters: tapping a <button> does not reliably match
+   :focus-visible under Chrome/Safari's heuristics and a touch device has no
+   hover, so before the explicit toggle this tip was unreachable on a phone —
+   which is where the whole "what does effective number of genres mean"
+   question is most likely to be asked. */
+.se-chart-info:hover .se-chart-info-tip,
+.se-chart-info-btn:focus-visible + .se-chart-info-tip,
+.se-chart-info-btn[aria-expanded="true"] + .se-chart-info-tip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .se-chart-info-tip {
+    transition: none;
+    transform: none;
+  }
+}
+
+.se-chart-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-inter);
+  font-size: 12px;
+  color: var(--color-abyss-text-45);
+}
+
+.se-legend-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+.se-legend-swatch--max {
+  background: var(--color-abyss-accent);
+  box-shadow: 0 0 6px var(--color-abyss-accent-glow);
+}
+
+.se-legend-swatch--min {
+  background: var(--color-abyss-glint);
+}
+
+.se-chart-plot {
+  position: relative;
+  flex: 1;
+  min-height: 250px;
+}
+
+/* Y-axis. Two scales share the one gutter — the line's own unit and the
+   stacked bars' play count — told apart by COLOUR rather than by opposite
+   sides (2026-08-06, Arjun: "maybe color code so it can be on the same
+   side"): cyan matches the chrome stroke, muted grey (carrying its own
+   "plays" noun) matches the columns. Each label is positioned at the exact
+   height of the value it names, so the axis stays honest about where the
+   number actually sits. BPM numbers carry no "BPM" suffix — the unit is a
+   given once you're looking at a chart titled BPM Range. */
+/* 5.8% — NOT 58px. The plot's x coordinates come out of TrendChart.tsx as
+   percentages of a 1000-unit viewBox, where Y_AXIS_GUTTER = 58 reserves
+   exactly 5.8% of the width. A fixed 58px only agreed with that at a card
+   width of exactly 1000px: wider, the labels floated left of their data;
+   narrower, this box overlapped the plot. Keep this in sync with
+   Y_AXIS_GUTTER / VIEW.width in TrendChart.tsx. */
+.se-chart-yaxis {
+  position: absolute;
+  inset: 0;
+  width: 5.8%;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.se-chart-ylabel {
+  position: absolute;
+  left: 0;
+  transform: translateY(-50%);
+  font-family: var(--font-geist-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  color: var(--color-abyss-accent);
+  opacity: 0.75;
+  width: max-content;
+  max-width: 54px;
+  line-height: 1.2;
+}
+
+.se-chart-ylabel--bars {
+  color: var(--color-abyss-text-45);
+  opacity: 1;
+  font-size: 9.5px;
+}
+
+.se-chart-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.se-chart-band {
+  opacity: 0.75;
+}
+
+.se-chart-line {
+  fill: none;
+  stroke-width: 2.25px;
+  filter: drop-shadow(0 0 10px var(--color-abyss-accent-glow));
+}
+
+.se-chart-line--min {
+  stroke: var(--color-abyss-glint);
+  stroke-width: 1.5px;
+  opacity: 0.7;
+  filter: none;
+}
+
+/* An isolated bucket's collapsed band — one x, min to max. */
+.se-chart-whisker {
+  stroke-width: 2.25px;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 10px var(--color-abyss-accent-glow));
+}
+
+/* Gap bridge (D-8): the trend spans the full axis, but a dashed straight
+   connector reads as "nothing measured here" — never as an interpolated
+   value the way a solid curve through the gap would. */
+.se-chart-bridge {
+  fill: none;
+  stroke-width: 1.5px;
+  stroke-dasharray: 3 5;
+  stroke-linecap: round;
+  opacity: 0.5;
+}
+
+.se-chart-bridge--min {
+  stroke: var(--color-abyss-glint);
+  opacity: 0.35;
+}
+
+/* ─── Grouped composition bars, behind the line (2026-08-06, Arjun: one
+   graph, not two — "the line overlaid on top of the bars", bars "inline with
+   each other and a little gap to show a different month"). HTML rather than
+   SVG rects so the rounded cap survives the plot svg's
+   preserveAspectRatio="none", and so each bar is its own hover target instead
+   of needing a hand-aligned hit layer. ──────────────────────────────────── */
+.se-chart-bars {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.se-chart-group {
+  position: absolute;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  pointer-events: none;
+}
+
+/* Opacity matched to set-detail's key strip (`.sd-arc-strip-seg`, 0.65 → 0.9
+   on hover) so a key reads at the same weight on both pages, and the chrome
+   line stays the hero over both breakdowns. */
+.se-chart-bar {
+  display: block;
+  flex: 1 1 0; /* every ranked category holds its slot, even at zero plays */
+  min-width: 0;
+  border-radius: 2px 2px 0 0;
+  opacity: 0.65;
+  pointer-events: auto;
+  cursor: pointer;
+  /* Height AND flex-grow are both animated so toggling Show other reads as one
+     move: the remaining bars grow taller (new scale) and wider (the hidden
+     slot's share redistributes) together, rather than snapping. flex-grow is
+     animatable; flex shorthand is not, hence the explicit basis above. */
+  transition:
+    height var(--motion-duration-slow) var(--motion-ease-standard),
+    flex-grow var(--motion-duration-slow) var(--motion-ease-standard),
+    opacity var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.se-chart-bar[data-hot] {
+  opacity: 0.9;
+}
+
+/* Collapsed rather than unmounted, so it animates out and back in place. */
+.se-chart-bar[data-hidden] {
+  flex-grow: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .se-chart-bar {
+    transition: opacity var(--motion-duration-fast) var(--motion-ease-standard);
+  }
+}
+
+/* Show-other checkbox — the native input with `accent-color`, matching
+   set-detail's `.sd-clashes-filter` precedent rather than a custom widget. */
+.se-chart-other-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  color: var(--color-abyss-text-72);
+  cursor: pointer;
+  user-select: none;
+}
+
+.se-chart-other-toggle input {
+  accent-color: var(--color-abyss-accent);
+  cursor: pointer;
+  margin: 0;
+}
+
+.se-chart-other-toggle:hover {
+  color: var(--color-abyss-text);
+}
+
+/* ─── Per-bucket point marks — always visible, unlike the hover-only cursor
+   ball. Without these an isolated bucket (real data, empty neighbours) drew
+   literally nothing. ─────────────────────────────────────────────────────── */
+.se-chart-dots {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.se-chart-dot {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  margin: -2.5px 0 0 -2.5px;
+  border-radius: var(--radius-full);
+  background: var(--color-abyss-accent);
+  box-shadow: 0 0 6px var(--color-abyss-accent-glow);
+}
+
+.se-chart-dot--min {
+  background: var(--color-abyss-glint);
+  box-shadow: none;
+  opacity: 0.8;
+}
+
+/* The set-detail chart's own chrome-sphere cursor ball, reused verbatim
+   (D-3 visual-language sharing) — `.sd-arc-cursor-dot`'s exact treatment,
+   set-detail.css. No always-visible per-bucket dots (that precedent has
+   none either); the ball only appears riding the curve on hover. Percentage
+   left/top (not translate3d px, unlike the continuously-tracking original)
+   since this ball only ever snaps to one of a handful of discrete bucket
+   positions — plain CSS transitions glide it there. */
+.se-chart-cursor-dot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 11px;
+  height: 11px;
+  margin: -5.5px 0 0 -5.5px;
+  border-radius: var(--radius-full);
+  background: radial-gradient(
+    circle at 32% 28%,
+    var(--metal-cool-tint),
+    var(--metal-abyss-tint) 38%,
+    var(--metal-abyss-back) 74%,
+    var(--color-abyss-glint) 100%
+  );
+  box-shadow: 0 0 10px var(--color-abyss-accent-glow);
+  pointer-events: none;
+  opacity: 0;
+  z-index: 5;
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-standard),
+    left 0.25s var(--motion-ease-standard),
+    top 0.25s var(--motion-ease-standard);
+}
+
+.se-chart-cursor-dot::after {
+  content: "";
+  position: absolute;
+  left: 22%;
+  top: 16%;
+  width: 3px;
+  height: 3px;
+  border-radius: var(--radius-full);
+  background: var(--metal-cool-tint);
+  filter: blur(0.5px);
+}
+
+.se-chart-cursor-dot[data-on] {
+  opacity: 1;
+}
+
+/* Discrete per-bucket hit targets (D-3: no continuous cursor ball — a handful
+   of monthly points needs only a hoverable column each). Absolutely placed
+   from the same xs the points use, not flex-distributed: equal flex columns
+   drift off the outer points, whose x sits inside the axis padding rather
+   than at the container edge. */
+.se-chart-hit-row {
+  position: absolute;
+  inset: 0;
+}
+
+.se-chart-hit {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.se-chart-ticks {
+  position: relative;
+  height: 18px;
+  flex: none;
+  font-family: var(--font-geist-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--color-abyss-text-45);
+}
+
+.se-chart-tick {
+  position: absolute;
+  /* The shrink-to-fit width algorithm for an absolutely-positioned box with
+     only `left` set measures AVAILABLE width from that offset to the
+     container's edge — near-zero for a tick sitting at ~99% left, so a
+     two-word week label (e.g. "Jul 27") wraps before the recentering
+     transform below ever runs. Forcing content-sized width skips that
+     shrink-to-fit calculation entirely. */
+  width: max-content;
+  transform: translateX(-50%);
+}
+
+.se-chart-caption {
+  margin: 6px 4px 0;
+  text-align: right;
+  font-size: 12px;
+  color: var(--color-abyss-text-45);
+}
+
+.se-chart-fallback {
+  display: grid;
+  place-items: center;
+}
+
+.se-chart-fallback .se-chart-caption {
+  text-align: center;
+  margin: 0;
+  padding: 24px;
+  font-family: var(--font-geist-mono);
+  font-size: 13px;
+}
+
+/* Category legend for the stacked columns — top categories, globally ranked,
+   stable colour and stack slot per category across the whole timeline. Sits
+   inside the chart card now that the bars do. */
+.se-chart-cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: 8px;
+  /* Aligns with the plot's first column, so it tracks the same 5.8% gutter
+     the y-axis box uses rather than a third hardcoded 58. */
+  padding-left: 5.8%;
+  font-family: var(--font-inter);
+  font-size: 11.5px;
+  color: var(--color-abyss-text-45);
+}
+
+.se-chart-cat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.se-chart-cat-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none;
+  opacity: 0.65; /* the swatch reads at the bars' own weight */
+}
+
+/* Footnote for the MAX_CATEGORIES cap — rendered only when the cap actually
+   left something out, so a library with five or fewer never claims otherwise. */
+.se-chart-cats-note {
+  font-size: 11px;
+  font-style: italic;
+  color: var(--color-abyss-text-45);
+  opacity: 0.8;
+}
+
+@media (max-width: 640px) {
+  .se-chart {
+    min-height: 220px;
+  }
+  .se-chart-plot {
+    min-height: 190px;
+  }
+  .se-chart-cats {
+    padding-left: 0;
+  }
+}

@@ -73,12 +73,26 @@ function setTracklist(plays: SyncPlay[]): SetTrack[] {
   }));
 }
 
+/**
+ * The product-wide "this set isn't a real gig" rule (spec §3g): a rehearsal-
+ * grade confidence signal, OR too few tracks for dancefloor detection to have
+ * anything to work with (`HERO_MIN_TRACKS` === `MIN_PLAYS_FOR_DETECTION`).
+ *
+ * Exported so the set list and the most-played card share ONE definition.
+ * They used to diverge: the list hid these sets while the card beside it
+ * still counted their plays, which is how a 1-play soundcheck ended up
+ * crowning the most-played track.
+ */
+export function isLowConfidenceSet(set: SetRecord): boolean {
+  const trackCount = set.derived.track_count ?? set.plays.length;
+  return set.derived.confidence.value < 1.0 || trackCount < HERO_MIN_TRACKS;
+}
+
 export function buildSetRows(sets: SetRecord[]): SetRowModel[] {
   return sets.map((set) => {
     const segment = detectDancefloor(set.plays);
     const floor = segmentStats(set.plays, segment);
     const bpm = set.derived.bpm_distribution;
-    const trackCount = set.derived.track_count ?? set.plays.length;
     const dateLabel = formatDayDate(set.started_at);
     const startedAtMs = set.started_at ? new Date(set.started_at).getTime() : 0;
 
@@ -110,7 +124,7 @@ export function buildSetRows(sets: SetRecord[]): SetRowModel[] {
       genreChips: topGenres(floor.genre_breakdown),
       tracklist: setTracklist(set.plays),
       dayKey: localDayKey(set.started_at),
-      isLowConfidence: set.derived.confidence.value < 1.0 || trackCount < HERO_MIN_TRACKS,
+      isLowConfidence: isLowConfidenceSet(set),
       startedAtMs: Number.isNaN(startedAtMs) ? 0 : startedAtMs,
       lengthSec: set.derived.set_length_sec ?? 0,
       haystack,

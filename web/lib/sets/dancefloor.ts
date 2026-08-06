@@ -151,10 +151,21 @@ export interface SegmentStats {
  * Genre bucketing mirrors the agent's `stats::genre_breakdown`: normalized
  * bucket, first-seen order, an explicit `no_genre_count` (never folded away).
  */
+/**
+ * The plays that actually fall inside a detected segment. `segment === null`
+ * is the honest whole-set fallback (detection declined, or the run WAS the
+ * night), in which case every play counts.
+ *
+ * Exported so anything scoping to the dancefloor — segment stats, the
+ * most-played card — applies the identical bound rather than re-deriving it.
+ */
+export function playsInSegment(plays: SyncPlay[], segment: DancefloorSegment | null): SyncPlay[] {
+  if (!segment) return plays;
+  return plays.filter((p) => p.started_at != null && p.started_at >= segment.start && p.started_at <= segment.end);
+}
+
 export function segmentStats(plays: SyncPlay[], segment: DancefloorSegment | null): SegmentStats {
-  const inSegment = segment
-    ? plays.filter((p) => p.started_at != null && p.started_at >= segment.start && p.started_at <= segment.end)
-    : plays;
+  const inSegment = playsInSegment(plays, segment);
 
   const order: string[] = [];
   const counts = new Map<string, number>();
