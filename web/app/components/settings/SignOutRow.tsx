@@ -23,7 +23,11 @@ function isRedirectError(error: unknown): boolean {
   );
 }
 
-const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+// :not(:disabled) matters: while signing out both buttons disable, and a
+// trap that targets unfocusable elements silently no-ops — focus falls to
+// body and Tab walks out from behind an aria-modal dialog.
+const FOCUSABLE =
+  'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
 
 export function SignOutRow() {
   const [confirming, setConfirming] = useState(false);
@@ -62,13 +66,26 @@ function SignOutModal({ onCancel }: { onCancel: () => void }) {
       }
       if (e.key !== "Tab") return;
       const focusables = modalRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE);
-      if (!focusables || focusables.length === 0) return;
+      if (!focusables || focusables.length === 0) {
+        // Everything inside is disabled mid-sign-out: hold the trap shut
+        // rather than letting Tab reach the page behind.
+        e.preventDefault();
+        return;
+      }
       const first = focusables[0];
       const last = focusables[focusables.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
+      const active = document.activeElement;
+      if (!modalRef.current?.contains(active)) {
+        // Focus fell to body (the focused button disabled itself) — pull it
+        // back inside instead of tabbing the page behind the dialog.
+        e.preventDefault();
+        first.focus();
+        return;
+      }
+      if (e.shiftKey && active === first) {
         e.preventDefault();
         last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
+      } else if (!e.shiftKey && active === last) {
         e.preventDefault();
         first.focus();
       }
@@ -112,7 +129,14 @@ function SignOutModal({ onCancel }: { onCancel: () => void }) {
               setError(false);
               setSigningOut(true);
               try {
-                await signOut();
+                // A returned value (instead of the redirect throwing) means
+                // the server-side sign-out failed and the session may still
+                // be live — surface it (review ruling, 2026-08-05).
+                const result = await signOut();
+                if (result && !result.ok) {
+                  setSigningOut(false);
+                  setError(true);
+                }
               } catch (err) {
                 if (isRedirectError(err)) throw err;
                 setSigningOut(false);

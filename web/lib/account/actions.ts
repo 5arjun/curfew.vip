@@ -1,8 +1,10 @@
 "use server";
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { PHONE_ON_FILE_COOKIE } from "@/lib/supabase/phone-gate";
+import { hasRecentInboxProof } from "./recovery";
 
 // Server actions for the Settings screen (Story 3.10). Every mutation the
 // screen can perform lives here: the DJ-name autosave (AC-16), the
@@ -19,8 +21,10 @@ export type UpdateDjNameResult = { ok: true } | { ok: false };
 
 export async function updateDjName(name: string): Promise<UpdateDjNameResult> {
   // Server-side backstop for D-3's ≤40 rule (the input's maxLength is the
-  // front line; the column CHECK is the last line).
-  if (typeof name !== "string" || name.length > 40) {
+  // front line; the column CHECK is the last line). Counted in code points
+  // to match the CHECK's char_length — a ≤40-char name with astral
+  // characters (D-3 allows any) must not be rejected here.
+  if (typeof name !== "string" || [...name].length > 40) {
     return { ok: false };
   }
 
@@ -83,6 +87,10 @@ export type UpdatePasswordResult = { ok: true } | { ok: false; error: string };
 /**
  * Sets the new password for the recovery session `/auth/reset` established.
  * Minimum length mirrors the signup form's own floor (6).
+ *
+ * Gated on a recent inbox-proof AMR claim (code-review ruling, Arjun
+ * 2026-08-05): a session alone is not enough — without this, any hijacked or
+ * left-open session could set a new password without knowing the old one.
  */
 export async function updatePassword(password: string): Promise<UpdatePasswordResult> {
   if (typeof password !== "string" || password.length < 6) {
@@ -91,6 +99,13 @@ export async function updatePassword(password: string): Promise<UpdatePasswordRe
 
   try {
     const supabase = await createClient();
+
+    const { data: claimsData } = await supabase.auth.getClaims();
+    const amr = (claimsData?.claims as { amr?: unknown } | undefined)?.amr;
+    if (!hasRecentInboxProof(amr, Date.now())) {
+      return { ok: false, error: "Reset link expired — request a new one." };
+    }
+
     const { error } = await supabase.auth.updateUser({ password });
     if (error) {
       return { ok: false, error: "Password not changed — try again." };
@@ -101,20 +116,28 @@ export async function updatePassword(password: string): Promise<UpdatePasswordRe
   }
 }
 
+export type SignOutResult = { ok: false };
+
 /**
  * The product's first sign-out (D-16). Confirm ceremony lives in the client
  * dialog; by the time this runs the DJ has already said yes. The redirect
- * throws (Next control flow), so it sits outside the catch.
+ * throws (Next control flow), so it sits outside the try.
+ *
+ * Failure is SURFACED, not swallowed (code-review ruling, Arjun 2026-08-05):
+ * landing on /login with still-valid auth cookies is a false safety signal
+ * on a shared machine, and the modal's "you're still signed in" state was
+ * built for exactly this return value.
  */
-export async function signOut(): Promise<void> {
+export async function signOut(): Promise<SignOutResult | void> {
   try {
     const supabase = await createClient();
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+    if (error) return { ok: false };
   } catch {
-    // A failed server-side sign-out still redirects: the client's cookies
-    // are cleared by signOut() when it succeeds, and landing on /login is
-    // the honest destination either way — retrying from there is calmer
-    // than stranding the DJ on a half-signed-out Settings page.
+    return { ok: false };
   }
+  // The phone-gate pass is this DJ's, not the browser's: clear it so the
+  // next account signing in here gets re-checked (AC-19 / D-9).
+  (await cookies()).delete(PHONE_ON_FILE_COOKIE);
   redirect("/login");
 }

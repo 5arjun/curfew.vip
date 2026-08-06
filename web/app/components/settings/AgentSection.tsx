@@ -13,7 +13,11 @@ import { settingsAgentLine } from "./agent-status-copy";
 
 export function AgentSection({ snapshot }: { snapshot: AgentStatusSnapshot }) {
   const line = settingsAgentLine(snapshot);
-  const agentVersion = snapshot.row?.agent_version ?? null;
+  // Gated on the line's kind, not just the row: a clock-skewed (future-
+  // stamped) beat carries a version while the status honestly says "No
+  // agent linked" — a Version row two lines under that would contradict it
+  // (AC-3's "nothing true to say" rule).
+  const agentVersion = line.kind === "none" ? null : (snapshot.row?.agent_version ?? null);
 
   return (
     <section className="st-card dz-shell" aria-labelledby="st-agent-label">

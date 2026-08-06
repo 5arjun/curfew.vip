@@ -5,6 +5,7 @@ import { maskPhone } from "@/lib/account/phone-mask";
 import { SilkBackdrop } from "@/app/components/dashboard/SilkBackdrop";
 import { Avatar } from "@/app/components/ui/Avatar";
 import { AgentSection } from "@/app/components/settings/AgentSection";
+import { settingsAgentLine } from "@/app/components/settings/agent-status-copy";
 import { DjNameRow } from "@/app/components/settings/DjNameRow";
 import { PasswordResetRow } from "@/app/components/settings/PasswordResetRow";
 import { ProvidersRow } from "@/app/components/settings/ProvidersRow";
@@ -37,7 +38,12 @@ export default async function SettingsPage() {
   }
 
   const headerName = profile.djName || profile.oauthName;
-  const agentVersion = agentStatus.row?.agent_version ?? null;
+  // Same gating as AgentSection: no Version fact while the status line says
+  // "No agent linked" (clock-skewed beat) — AC-3's "nothing true to say".
+  const agentVersion =
+    settingsAgentLine(agentStatus).kind === "none"
+      ? null
+      : (agentStatus.row?.agent_version ?? null);
   // About (D-14): with Sentry unprovisioned on both sides, these strings are
   // the only diagnostic a DJ can hand over. Build hash present on Vercel
   // deploys only — locally the row shows the version alone.
@@ -78,8 +84,16 @@ export default async function SettingsPage() {
             <span className="st-row-label">Phone</span>
             <div className="st-row-cell">
               <span className="st-row-value">
-                {profile.phone ? maskPhone(profile.phone) : "Not on file"}
-                {profile.phone && <span className="st-affix">verified · locked</span>}
+                {/* "Not on file" is a confirmed fact; a failed djs read is
+                    not that fact — render the honest unknown instead. */}
+                {profile.djsReadFailed
+                  ? "—"
+                  : profile.phone
+                    ? maskPhone(profile.phone)
+                    : "Not on file"}
+                {!profile.djsReadFailed && profile.phone && (
+                  <span className="st-affix">verified · locked</span>
+                )}
               </span>
               <p className="st-row-note">Changing your number needs verification — coming later.</p>
             </div>

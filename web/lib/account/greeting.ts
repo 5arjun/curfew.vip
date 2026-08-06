@@ -14,8 +14,8 @@ export function resolveFirstName(
 ): string | null {
   const raw =
     (typeof djName === "string" && djName.trim() !== "" && djName) ||
-    (typeof userMetadata?.full_name === "string" && userMetadata.full_name) ||
-    (typeof userMetadata?.name === "string" && userMetadata.name) ||
+    (typeof userMetadata?.full_name === "string" && userMetadata.full_name.trim() !== "" && userMetadata.full_name) ||
+    (typeof userMetadata?.name === "string" && userMetadata.name.trim() !== "" && userMetadata.name) ||
     null;
   if (!raw) return null;
   const first = raw.trim().split(/\s+/)[0];

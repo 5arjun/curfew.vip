@@ -11,7 +11,12 @@
 -- The column is nullable on purpose: a pre-D-11 agent beats without a
 -- version, and the web hides the row entirely when none has ever arrived.
 
-alter table public.agent_status add column agent_version text;
+-- The CHECK duplicates the RPC's cap on purpose (same defense depth as
+-- djs.dj_name's column CHECK): the value renders verbatim on Settings/About,
+-- and a future writer — or a superseding function that forgets the cap —
+-- must not be able to poison it.
+alter table public.agent_status add column agent_version text
+  constraint agent_status_agent_version_len check (char_length(agent_version) <= 32);
 
 -- Adding a parameter is a SIGNATURE change: `create or replace` on a new
 -- signature would create a second overload alongside the old one, and with
@@ -78,5 +83,9 @@ end;
 $$;
 
 -- Grant execute on the NEW signature (the drop above took the old grant with
--- it) — never a table write grant (AD-20).
+-- it) — never a table write grant (AD-20). Functions are born with EXECUTE
+-- granted to PUBLIC; revoke it so anon's inability to call this is a real
+-- ACL fact, not just the in-function auth.uid() check (the isolation test's
+-- Case 5 now passes for its stated reason).
+revoke execute on function public.set_agent_status(text, text) from public, anon;
 grant execute on function public.set_agent_status(text, text) to authenticated;

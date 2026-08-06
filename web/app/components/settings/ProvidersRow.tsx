@@ -80,12 +80,30 @@ export function ProvidersRow({ providers }: { providers: string[] }) {
         provider,
         options: { redirectTo: `${window.location.origin}/auth/callback` },
       });
-      if (error) setError(AUTH_FAILURE_COPY.generic);
+      if (error) {
+        setError(AUTH_FAILURE_COPY.generic);
+        setPending(null);
+      }
+      // No pending reset on success: linkIdentity has already initiated the
+      // full-page redirect — re-enabling "+ Link" here would invite a second
+      // ceremony mid-navigation.
     } catch {
       setError(AUTH_FAILURE_COPY.generic);
-    } finally {
       setPending(null);
     }
+  }
+
+  // Dismissing the browser's passkey prompt is a decision, not a failure —
+  // WebAuthn reports it as NotAllowedError (thrown or wrapped, depending on
+  // the client's version), and rendering the generic error line for it
+  // would scold a deliberate cancel.
+  function isPasskeyCancel(err: unknown): boolean {
+    return (
+      (err instanceof DOMException && err.name === "NotAllowedError") ||
+      (typeof err === "object" &&
+        err !== null &&
+        (err as { name?: unknown }).name === "NotAllowedError")
+    );
   }
 
   async function addPasskey() {
@@ -95,13 +113,13 @@ export function ProvidersRow({ providers }: { providers: string[] }) {
     try {
       const { error } = await supabase.auth.registerPasskey();
       if (error) {
-        setError(AUTH_FAILURE_COPY.generic);
+        if (!isPasskeyCancel(error)) setError(AUTH_FAILURE_COPY.generic);
         return;
       }
       setPasskeyAdded(true);
       setHasPasskey(true);
-    } catch {
-      setError(AUTH_FAILURE_COPY.generic);
+    } catch (err) {
+      if (!isPasskeyCancel(err)) setError(AUTH_FAILURE_COPY.generic);
     } finally {
       setRegisteringPasskey(false);
     }

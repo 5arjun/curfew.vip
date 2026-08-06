@@ -19,17 +19,23 @@ import {
 
 const SHOW_MS = 2000;
 
-const SavedContext = createContext<{ announce: () => void; visible: boolean }>({
+const SavedContext = createContext<{ announce: () => void; visible: boolean; seq: number }>({
   announce: () => {},
   visible: false,
+  seq: 0,
 });
 
 export function SettingsSavedProvider({ children }: { children: ReactNode }) {
   const [visible, setVisible] = useState(false);
+  // Bumped per announce so the status region's TEXT changes even when a
+  // save lands inside the previous one's 2s window — aria-live announces
+  // text changes, and "Saved." → "Saved." is not one.
+  const [seq, setSeq] = useState(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const announce = useCallback(() => {
     setVisible(true);
+    setSeq((n) => n + 1);
     if (timer.current != null) clearTimeout(timer.current);
     timer.current = setTimeout(() => setVisible(false), SHOW_MS);
   }, []);
@@ -41,7 +47,9 @@ export function SettingsSavedProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  return <SavedContext.Provider value={{ announce, visible }}>{children}</SavedContext.Provider>;
+  return (
+    <SavedContext.Provider value={{ announce, visible, seq }}>{children}</SavedContext.Provider>
+  );
 }
 
 /** A row calls this after a confirmed-successful save. */
@@ -57,7 +65,7 @@ export function useAnnounceSaved(): () => void {
  * reader announcement, since an opacity change alone announces nothing.
  */
 export function SavedBadge() {
-  const { visible } = useContext(SavedContext);
+  const { visible, seq } = useContext(SavedContext);
   return (
     <>
       <span
@@ -67,7 +75,9 @@ export function SavedBadge() {
         Saved.
       </span>
       <span className="sr-only" role="status">
-        {visible ? "Saved." : ""}
+        {/* The alternating zero-width space forces a text change per save,
+            so back-to-back saves inside the 2s window each announce. */}
+        {visible ? (seq % 2 === 0 ? "Saved." : "Saved.​") : ""}
       </span>
     </>
   );

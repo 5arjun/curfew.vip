@@ -4,12 +4,21 @@
 // the Supabase server client) — client components receive these values as
 // props, never import this module.
 import { createClient } from "@/lib/supabase/server";
+import { allowedAvatarUrl, monogramLetter } from "./avatar";
+
+export { monogramLetter } from "./avatar";
 
 export type SettingsProfile = {
   email: string | null;
   /** Raw stored phone (masking is the caller's presentation concern). */
   phone: string | null;
   djName: string | null;
+  /**
+   * True when the `djs` row read failed — phone/djName are UNKNOWN, not
+   * absent, and the phone row must render "—", never the confirmed-null
+   * copy "Not on file" (§5 reserves that for a truly phone-less DJ).
+   */
+  djsReadFailed: boolean;
   /** OAuth display name (`user_metadata.full_name ?? name`), if any. */
   oauthName: string | null;
   /** OAuth provider photo (`user_metadata.avatar_url ?? picture`), if any. */
@@ -38,20 +47,24 @@ export async function getSettingsProfile(): Promise<SettingsProfile | null> {
 
     // RLS owner-SELECT means no `.eq("id", …)` filter is needed — auth.uid()
     // is the filter (same note as getAgentStatus).
-    const { data: dj } = await supabase
+    const { data: dj, error: djError } = await supabase
       .from("djs")
       .select("dj_name, phone")
       .maybeSingle<{ dj_name: string | null; phone: string | null }>();
 
     const meta = user.user_metadata as Record<string, unknown> | undefined;
+    // Trim-tested like djName in resolveFirstName: a whitespace-only
+    // `full_name` must not short-circuit past a real `name`.
     const oauthName =
-      (typeof meta?.full_name === "string" && meta.full_name) ||
-      (typeof meta?.name === "string" && meta.name) ||
+      (typeof meta?.full_name === "string" && meta.full_name.trim() !== "" && meta.full_name) ||
+      (typeof meta?.name === "string" && meta.name.trim() !== "" && meta.name) ||
       null;
-    const avatarUrl =
+    // Hostname-validated before it can reach <Image> — see allowedAvatarUrl.
+    const avatarUrl = allowedAvatarUrl(
       (typeof meta?.avatar_url === "string" && meta.avatar_url) ||
-      (typeof meta?.picture === "string" && meta.picture) ||
-      null;
+        (typeof meta?.picture === "string" && meta.picture) ||
+        null,
+    );
 
     const identityProviders = (user.identities ?? []).map((identity) => identity.provider);
     const appMetaProviders = Array.isArray(user.app_metadata?.providers)
@@ -65,6 +78,7 @@ export async function getSettingsProfile(): Promise<SettingsProfile | null> {
       email: user.email ?? null,
       phone: dj?.phone ?? null,
       djName: dj?.dj_name ?? null,
+      djsReadFailed: Boolean(djError),
       oauthName,
       avatarUrl,
       providers,
@@ -93,10 +107,4 @@ export async function getNavAvatar(): Promise<NavAvatar | null> {
     imageUrl: profile.avatarUrl,
     monogram: monogramLetter(profile.djName, profile.email),
   };
-}
-
-/** First letter of the DJ name, else the email, uppercased; "?" only if neither exists. */
-export function monogramLetter(djName: string | null, email: string | null): string {
-  const source = (djName ?? "").trim() || (email ?? "").trim();
-  return source === "" ? "?" : source[0].toUpperCase();
 }

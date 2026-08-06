@@ -27,10 +27,16 @@ export function DjNameRow({ initialName }: { initialName: string | null }) {
   const valueRef = useRef(initialName ?? "");
   const lastSavedRef = useRef(initialName ?? "");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Monotonic save sequence: only the latest in-flight save's result may
-  // touch state, so a slow failure can't overwrite a newer success (or vice
-  // versa) after fast typing.
+  // Monotonic save sequence: only the latest save's result may touch state,
+  // so a slow failure can't overwrite a newer success (or vice versa) after
+  // fast typing.
   const seqRef = useRef(0);
+  // Saves are SERIALIZED (each awaits the one before): the seq alone only
+  // orders client state — two overlapping UPDATEs could commit out of order
+  // server-side, leaving the DB with the stale value while the UI says
+  // "Saved." A superseded save is skipped at dequeue time, so the chain
+  // also never fires a write the DJ has already typed past.
+  const chainRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(
     () => () => {
@@ -39,19 +45,27 @@ export function DjNameRow({ initialName }: { initialName: string | null }) {
     [],
   );
 
-  async function save(value: string) {
+  function save(value: string) {
+    const seq = ++seqRef.current;
+    chainRef.current = chainRef.current.then(() => runSave(value, seq));
+  }
+
+  async function runSave(value: string, seq: number) {
+    if (seq !== seqRef.current) return; // superseded while queued — skip the write
     if (value === lastSavedRef.current) {
       // Typing back to the stored value is a resolution, not a failure.
+      // Compared at DEQUEUE time (after any earlier save settled), so a
+      // revert that raced an in-flight save still lands on the truth.
+      setSaving(false);
       setFailed(false);
       return;
     }
-    const seq = ++seqRef.current;
     setSaving(true);
     const result = await updateDjName(value).catch(() => ({ ok: false as const }));
+    if (result.ok) lastSavedRef.current = value;
     if (seq !== seqRef.current) return;
     setSaving(false);
     if (result.ok) {
-      lastSavedRef.current = value;
       setFailed(false);
       announceSaved();
     } else {
@@ -62,7 +76,7 @@ export function DjNameRow({ initialName }: { initialName: string | null }) {
   function scheduleSave(value: string) {
     valueRef.current = value;
     if (debounceRef.current != null) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => void save(valueRef.current), DEBOUNCE_MS);
+    debounceRef.current = setTimeout(() => save(valueRef.current), DEBOUNCE_MS);
   }
 
   function flush() {
@@ -70,7 +84,7 @@ export function DjNameRow({ initialName }: { initialName: string | null }) {
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
-    void save(valueRef.current);
+    save(valueRef.current);
   }
 
   return (
@@ -94,7 +108,9 @@ export function DjNameRow({ initialName }: { initialName: string | null }) {
           onChange={(e) => scheduleSave(e.target.value)}
           onBlur={flush}
           onKeyDown={(e) => {
-            if (e.key === "Enter") flush();
+            // isComposing: Enter confirming an IME conversion (CJK input)
+            // must not save the half-composed text.
+            if (e.key === "Enter" && !e.nativeEvent.isComposing) flush();
           }}
         />
         {failed && (

@@ -25,6 +25,11 @@ describe("resolveFirstName", () => {
     expect(resolveFirstName("   ", { full_name: "Josh Davis" })).toBe("Josh");
   });
 
+  it("falls through a whitespace-only full_name to name (review patch)", () => {
+    expect(resolveFirstName(null, { full_name: "   ", name: "Josh" })).toBe("Josh");
+    expect(resolveFirstName(null, { full_name: "   ", name: "  " })).toBeNull();
+  });
+
   it("ignores non-string metadata values", () => {
     expect(resolveFirstName(null, { full_name: 42, name: { first: "x" } })).toBeNull();
   });
