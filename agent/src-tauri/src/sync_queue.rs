@@ -370,9 +370,13 @@ fn current_watch_plan(app: &AppHandle) -> crate::watcher::detect::WatchPlan {
 /// progress on. Used only for the pass-level-`Err` branch (no `SyncSummary`
 /// to read `failed_transient` off of in that case).
 fn has_retryable_backlog(conn: &rusqlite::Connection, skip: &HashSet<String>) -> bool {
-    crate::store::rows_pending_sync(conn)
-        .map(|rows| rows.iter().any(|row| !skip.contains(&row.session_identity)))
-        .unwrap_or(false)
+    match crate::store::rows_pending_sync(conn) {
+        Ok(rows) => rows.iter().any(|row| !skip.contains(&row.session_identity)),
+        Err(e) => {
+            eprintln!("curfew-agent: has_retryable_backlog: store read failed (treating as no backlog): {e}");
+            false
+        }
+    }
 }
 
 #[cfg(test)]

@@ -16,7 +16,19 @@ function dayPart(hour: number): "morning" | "afternoon" | "evening" {
 
 function useLocalDayPart(): "morning" | "afternoon" | "evening" {
   return useSyncExternalStore(
-    () => () => {},
+    (onChange) => {
+      const scheduleNextHour = (): ReturnType<typeof setTimeout> => {
+        const now = new Date();
+        const nextHour = new Date(now);
+        nextHour.setHours(now.getHours() + 1, 0, 0, 0);
+        return setTimeout(() => {
+          onChange();
+          timeout = scheduleNextHour();
+        }, nextHour.getTime() - now.getTime());
+      };
+      let timeout = scheduleNextHour();
+      return () => clearTimeout(timeout);
+    },
     () => dayPart(new Date().getHours()),
     () => "evening",
   );

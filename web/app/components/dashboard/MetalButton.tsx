@@ -73,7 +73,15 @@ export function MetalButton({ mode, label, href, onClick, className }: MetalButt
 
     if (!reduced) {
       const rect = e.currentTarget.getBoundingClientRect();
-      const ripple = { x: e.clientX - rect.left, y: e.clientY - rect.top, id: rippleId.current++ };
+      // Keyboard-triggered clicks (Enter/Space) are synthetic MouseEvents with
+      // detail === 0 (no real click count) — clientX/clientY are browser-dependent
+      // for these, so center the ripple on the button instead.
+      const isKeyboardActivated = e.detail === 0;
+      const ripple = {
+        x: isKeyboardActivated ? rect.width / 2 : e.clientX - rect.left,
+        y: isKeyboardActivated ? rect.height / 2 : e.clientY - rect.top,
+        id: rippleId.current++,
+      };
       setRipples((prev) => [...prev, ripple]);
       setTimeout(() => setRipples((prev) => prev.filter((r) => r.id !== ripple.id)), 600);
     }

@@ -18,7 +18,7 @@ import type { SyncPlay } from "./types";
 /** Window size the night is bucketed into. ~10 min (AR-13 shape). INTERIM/global. */
 const WINDOW_SEC = 600;
 /** Below this many *timed* plays, detection is not worth attempting — whole set. INTERIM/global. */
-const MIN_PLAYS_FOR_DETECTION = 6;
+export const MIN_PLAYS_FOR_DETECTION = 6;
 /** A window "clears the floor" only with at least this many plays in it. INTERIM/global. */
 const DENSITY_FLOOR = 3;
 /** …and, when BPM is known for the window, a median at least this fast (excludes a slow warm-up/dinner). INTERIM/global. */

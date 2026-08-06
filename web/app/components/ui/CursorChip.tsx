@@ -59,6 +59,17 @@ export function CursorChip({
   const chipRef = useRef<HTMLDivElement>(null);
   const smooth = useRef({ x: 0, y: 0 });
   const raf = useRef<number | null>(null);
+  const reducedMotion = useRef(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    reducedMotion.current = mq.matches;
+    const onChange = () => {
+      reducedMotion.current = mq.matches;
+    };
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
   // Portals can't SSR — render nothing until hydrated (the canonical
   // useSyncExternalStore is-hydrated snapshot; no setState-in-effect).
   const mounted = useSyncExternalStore(

@@ -107,11 +107,16 @@ const Silk = ({ speed = 5, scale = 1, color = '#7B7481', noiseIntensity = 1.5, r
   );
 
   useEffect(() => {
+    /* eslint-disable react-hooks/immutability -- mutating the useMemo-cached
+       uniforms in place, rather than reallocating them, is the standard
+       react-three-fiber pattern; vendored verbatim from the React Bits
+       registry, not ours to rewrite. */
     uniforms.uSpeed.value = speed;
     uniforms.uScale.value = scale;
     uniforms.uNoiseIntensity.value = noiseIntensity;
     uniforms.uColor.value.setRGB(...hexToNormalizedRGB(color));
     uniforms.uRotation.value = rotation;
+    /* eslint-enable react-hooks/immutability */
   }, [speed, scale, noiseIntensity, color, rotation, uniforms]);
 
   return (
