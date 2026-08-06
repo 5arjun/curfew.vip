@@ -75,8 +75,13 @@ export interface RightColumnModel {
  *      (`detectDancefloor` + `playsInSegment`).
  * A track has to have actually filled a floor to win.
  */
-export const MOST_PLAYED_RECENT_SETS = 5;
-export const MOST_PLAYED_EXTENDED_SETS = 25;
+// 10 and 30 (2026-08-06, Arjun). Raised from 5/25 once the dancefloor filters
+// landed: scoping to floor time is the right correctness fix, but it also
+// shrinks the pool every count is drawn from, and at 5 sets the "recent"
+// window was crowning a track with 2 plays. A window has to be wide enough
+// that repetition means something.
+export const MOST_PLAYED_RECENT_SETS = 10;
+export const MOST_PLAYED_EXTENDED_SETS = 30;
 
 /** Sort key: undated sets sort last rather than poisoning the comparator with
  *  NaN (which would leave the order engine-dependent). */
