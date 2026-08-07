@@ -116,14 +116,44 @@ export interface MonthKeyDiversity {
   breakdown: CategoryTally[];
 }
 
-/** One bucket's (month or week) aggregation across all three metrics. Each
- *  field is `null` (a gap, never a fabricated zero — D-8) when no set in this
+/** Story 4.7 AC-4/AC-6: median on-air seconds per track this bucket, from
+ *  `SyncPlay.played_ms` (~98% populated per Story 3.7 §3d). */
+export interface MonthMixPace {
+  /** `null` when every play in the bucket is missing `played_ms` — a gap
+   *  (D-8), never a fabricated `0`. */
+  medianSeconds: number | null;
+  /** Plays in this bucket missing `played_ms` — never silently folded into
+   *  the median (mirrors `no_genre_count`'s "never omitted" contract). */
+  excludedCount: number;
+}
+
+/** Story 4.7 AC-4/AC-7: harmonic mix rate this bucket, from
+ *  `derived.camelot_mixing_stats` (three raw counts per set; summed here,
+ *  then divided — `shared/` never hands over a pre-divided rate). */
+export interface MonthHarmonicMix {
+  /** `compatible / (compatible + incompatible)` across the bucket's
+   *  surviving sets. `null` when there are zero scored transitions to divide
+   *  — never a fabricated `0%`. */
+  rate: number | null;
+  /** Transitions excluded for missing a key on either side, summed across
+   *  the bucket — disclosed the same way `no_genre_count` is. */
+  excludedNoKey: number;
+}
+
+/** One bucket's (month or week) aggregation across every metric. Each field
+ *  is `null` (a gap, never a fabricated zero — D-8) when no set in this
  *  partition (excluding/including) landed in this bucket, or carries no data
  *  for that particular metric. */
 export interface BucketPoint {
   bpmRange: MonthBpmRange | null;
   genreDiversity: MonthGenreDiversity | null;
   keyDiversity: MonthKeyDiversity | null;
+  /** Story 4.7 AC-4: median of each surviving set's own per-set median BPM
+   *  (`derived.bpm_distribution.median`) — aggregated at the SET level, the
+   *  same level `bpmRange` above merges at, not re-derived from raw plays. */
+  medianBpm: number | null;
+  mixPace: MonthMixPace | null;
+  harmonicMix: MonthHarmonicMix | null;
 }
 
 export interface BucketSeries {
@@ -160,9 +190,25 @@ function isLowConfidence(set: SetRecord): boolean {
   return set.derived.confidence.value < 1.0;
 }
 
+/** Standard median — sorted middle value, or the average of the two middle
+ *  values for an even-length input. `null` for empty input (a gap, D-8). */
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
 function aggregateBucket(sets: SetRecord[]): BucketPoint {
   if (sets.length === 0) {
-    return { bpmRange: null, genreDiversity: null, keyDiversity: null };
+    return {
+      bpmRange: null,
+      genreDiversity: null,
+      keyDiversity: null,
+      medianBpm: null,
+      mixPace: null,
+      harmonicMix: null,
+    };
   }
 
   let min = Infinity;
@@ -223,7 +269,48 @@ function aggregateBucket(sets: SetRecord[]): BucketPoint {
       .sort((a, b) => b.count - a.count),
   };
 
-  return { bpmRange, genreDiversity, keyDiversity };
+  // Median BPM (Story 4.7 AC-4): median of each surviving set's own per-set
+  // median (not re-derived from raw plays) — the same set-level aggregation
+  // discipline `bpmRange` above already uses.
+  const setMedians: number[] = [];
+  for (const s of sets) {
+    if (s.derived.bpm_distribution.count > 0) setMedians.push(s.derived.bpm_distribution.median);
+  }
+  const medianBpm = median(setMedians);
+
+  // Mix pace (Story 4.7 AC-4/AC-6): median on-air seconds per track, from
+  // `played_ms`. A play missing it is excluded from the median and counted,
+  // never silently folded in — the same "never omitted" contract
+  // `no_genre_count` holds to.
+  const paceSeconds: number[] = [];
+  let mixPaceExcluded = 0;
+  for (const s of sets) {
+    for (const p of s.plays) {
+      if (p.played_ms != null) paceSeconds.push(p.played_ms / 1000);
+      else mixPaceExcluded++;
+    }
+  }
+  const mixPace: MonthMixPace = { medianSeconds: median(paceSeconds), excludedCount: mixPaceExcluded };
+
+  // Harmonic mix rate (Story 4.7 AC-4/AC-7): compatible / (compatible +
+  // incompatible) transitions, summed across the bucket's surviving sets'
+  // `camelot_mixing_stats` — three raw counts per set, `web/` divides.
+  let compatible = 0;
+  let incompatible = 0;
+  let excludedNoKey = 0;
+  for (const s of sets) {
+    const m = s.derived.camelot_mixing_stats;
+    compatible += m.compatible_transitions;
+    incompatible += m.incompatible_transitions;
+    excludedNoKey += m.excluded_no_key;
+  }
+  const harmonicDenom = compatible + incompatible;
+  const harmonicMix: MonthHarmonicMix = {
+    rate: harmonicDenom > 0 ? compatible / harmonicDenom : null,
+    excludedNoKey,
+  };
+
+  return { bpmRange, genreDiversity, keyDiversity, medianBpm, mixPace, harmonicMix };
 }
 
 /**
@@ -518,4 +605,80 @@ export function keyDiversitySummary(
     "Key usage",
     "keys",
   );
+}
+
+/* ── Summary tiles (Story 4.7, AC-4/AC-5) ──────────────────────────────────
+   Four aggregate readings above the sections: median BPM, effective genre
+   count, harmonic mix rate, mix pace. Aggregate rather than time-series, so
+   they read honestly off a single bucket (AC-8) — no insufficient-history
+   gate applies to them. */
+
+export interface TileReading {
+  current: number;
+  /** Against the nearest EARLIER bucket carrying a present value for this
+   *  metric (skipping D-8 gaps) — `null` when none exists, never a
+   *  fabricated `0` (AC-5). */
+  delta: number | null;
+}
+
+/** Walks a value series back-to-front: the last present value is `current`,
+ *  the next present value further back is what `delta` is measured against.
+ *  `null` entirely when there is no current value at all. */
+function latestWithDelta(values: Array<number | null>): (TileReading & { index: number }) | null {
+  let currentIndex = -1;
+  for (let i = values.length - 1; i >= 0; i--) {
+    if (values[i] != null) {
+      currentIndex = i;
+      break;
+    }
+  }
+  if (currentIndex === -1) return null;
+  const current = values[currentIndex] as number;
+
+  let delta: number | null = null;
+  for (let i = currentIndex - 1; i >= 0; i--) {
+    if (values[i] != null) {
+      delta = current - (values[i] as number);
+      break;
+    }
+  }
+  return { current, delta, index: currentIndex };
+}
+
+export interface SummaryTiles {
+  medianBpm: TileReading | null;
+  effectiveGenreCount: TileReading | null;
+  harmonicMixRate: TileReading | null;
+  mixPace: TileReading | null;
+  /** Disclosure counts for the CURRENT bucket only (the reading being shown),
+   *  never summed across history — mirrors `no_genre_count`'s "never
+   *  omitted" contract at the tile's own scale. */
+  mixPaceExcludedCount: number;
+  harmonicExcludedNoKey: number;
+}
+
+/** Builds the four summary tiles from one bucket series (the currently
+ *  selected granularity × reveal state — AC-2's page-level controls already
+ *  govern which `points` array this is called with). */
+export function buildSummaryTiles(points: BucketPoint[]): SummaryTiles {
+  const bpmValues = points.map((p) => p.medianBpm);
+  const genreValues = points.map((p) =>
+    p.genreDiversity && p.genreDiversity.index != null ? effectiveDiversity(p.genreDiversity.index) : null,
+  );
+  const harmonicValues = points.map((p) => p.harmonicMix?.rate ?? null);
+  const paceValues = points.map((p) => p.mixPace?.medianSeconds ?? null);
+
+  const bpm = latestWithDelta(bpmValues);
+  const genre = latestWithDelta(genreValues);
+  const harmonic = latestWithDelta(harmonicValues);
+  const pace = latestWithDelta(paceValues);
+
+  return {
+    medianBpm: bpm && { current: bpm.current, delta: bpm.delta },
+    effectiveGenreCount: genre && { current: genre.current, delta: genre.delta },
+    harmonicMixRate: harmonic && { current: harmonic.current, delta: harmonic.delta },
+    mixPace: pace && { current: pace.current, delta: pace.delta },
+    mixPaceExcludedCount: pace ? (points[pace.index].mixPace?.excludedCount ?? 0) : 0,
+    harmonicExcludedNoKey: harmonic ? (points[harmonic.index].harmonicMix?.excludedNoKey ?? 0) : 0,
+  };
 }

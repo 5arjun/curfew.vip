@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   bpmRangeSummary,
   buildStyleEvolution,
+  buildSummaryTiles,
   effectiveDiversity,
   genreDiversitySummary,
   keyDiversitySummary,
@@ -33,6 +34,7 @@ function set(overrides: {
   genreBuckets?: Array<{ genre: string; play_count: number }>;
   noGenreCount?: number;
   plays?: SyncPlay[];
+  mixingStats?: { compatible_transitions: number; incompatible_transitions: number; excluded_no_key: number };
 }): SetRecord {
   const plays = overrides.plays ?? [];
   return {
@@ -48,7 +50,8 @@ function set(overrides: {
         no_genre_count: overrides.noGenreCount ?? 0,
       },
       bpm_distribution: overrides.bpm ?? { count: 0, min: 0, max: 0, mean: 0, median: 0 },
-      camelot_mixing_stats: { compatible_transitions: 0, incompatible_transitions: 0, excluded_no_key: 0 },
+      camelot_mixing_stats:
+        overrides.mixingStats ?? { compatible_transitions: 0, incompatible_transitions: 0, excluded_no_key: 0 },
       set_length_sec: null,
       track_count: plays.length,
       energy_arc: [],
@@ -283,7 +286,7 @@ describe("buildStyleEvolution", () => {
     ];
     const model = buildStyleEvolution(sets);
     expect(model.month.buckets).toEqual(["2026-01"]);
-    expect(model.month.excluding[0]).toEqual({ bpmRange: null, genreDiversity: null, keyDiversity: null });
+    expect(model.month.excluding[0]).toEqual({ bpmRange: null, genreDiversity: null, keyDiversity: null, medianBpm: null, mixPace: null, harmonicMix: null });
     expect(model.month.including[0].bpmRange).toEqual({ min: 120, max: 120 });
   });
 
@@ -400,7 +403,7 @@ describe("buildStyleEvolution", () => {
     const model = buildStyleEvolution(sets);
     expect(model.month.buckets).toEqual(["2026-04", "2026-05", "2026-06"]);
     expect(model.month.excluding[0].bpmRange).toEqual({ min: 120, max: 120 });
-    expect(model.month.excluding[1]).toEqual({ bpmRange: null, genreDiversity: null, keyDiversity: null });
+    expect(model.month.excluding[1]).toEqual({ bpmRange: null, genreDiversity: null, keyDiversity: null, medianBpm: null, mixPace: null, harmonicMix: null });
     expect(model.month.excluding[2].bpmRange).toEqual({ min: 130, max: 130 });
   });
 
@@ -696,5 +699,175 @@ describe("code review 2026-08-06 regressions", () => {
     const buckets = ["2025-06", "2025-07", "2026-06"];
     const values = [null, null, { min: 120, max: 128 }];
     expect(bpmRangeSummary(buckets, values, "month")).toContain("2026");
+  });
+});
+
+describe("median BPM (Story 4.7 AC-4)", () => {
+  it("is the median of each surviving set's own per-set median, not a re-derivation from raw plays", () => {
+    const model = buildStyleEvolution([
+      set({
+        external_id: "a",
+        started_at: "2026-03-04T21:00:00.000Z",
+        bpm: { count: 3, min: 120, max: 128, mean: 124, median: 122 },
+      }),
+      set({
+        external_id: "b",
+        started_at: "2026-03-10T21:00:00.000Z",
+        bpm: { count: 2, min: 124, max: 130, mean: 127, median: 128 },
+      }),
+    ]);
+    expect(model.month.excluding[0].medianBpm).toBe(125); // median of [122, 128]
+  });
+
+  it("excludes a set with an empty BPM distribution (count: 0) rather than treating its median as a real 0", () => {
+    const model = buildStyleEvolution([
+      set({
+        external_id: "a",
+        started_at: "2026-03-04T21:00:00.000Z",
+        bpm: { count: 0, min: 0, max: 0, mean: 0, median: 0 },
+      }),
+    ]);
+    expect(model.month.excluding[0].medianBpm).toBeNull();
+  });
+});
+
+describe("mix pace (Story 4.7 AC-4/AC-6)", () => {
+  it("is the median played_ms across the bucket's plays, converted to seconds", () => {
+    const model = buildStyleEvolution([
+      set({
+        external_id: "a",
+        started_at: "2026-03-04T21:00:00.000Z",
+        plays: [
+          play({ position: 1, played_ms: 180_000 }),
+          play({ position: 2, played_ms: 220_000 }),
+          play({ position: 3, played_ms: 200_000 }),
+        ],
+      }),
+    ]);
+    expect(model.month.excluding[0].mixPace?.medianSeconds).toBe(200);
+    expect(model.month.excluding[0].mixPace?.excludedCount).toBe(0);
+  });
+
+  it("excludes plays missing played_ms from the median AND discloses the count — never silently folded in", () => {
+    const model = buildStyleEvolution([
+      set({
+        external_id: "a",
+        started_at: "2026-03-04T21:00:00.000Z",
+        plays: [
+          play({ position: 1, played_ms: 180_000 }),
+          play({ position: 2, played_ms: null }),
+          play({ position: 3, played_ms: undefined }),
+        ],
+      }),
+    ]);
+    expect(model.month.excluding[0].mixPace?.medianSeconds).toBe(180);
+    expect(model.month.excluding[0].mixPace?.excludedCount).toBe(2);
+  });
+
+  it("is null (a gap, not a fabricated 0) when every play is missing played_ms", () => {
+    const model = buildStyleEvolution([
+      set({
+        external_id: "a",
+        started_at: "2026-03-04T21:00:00.000Z",
+        plays: [play({ position: 1, played_ms: null })],
+      }),
+    ]);
+    expect(model.month.excluding[0].mixPace?.medianSeconds).toBeNull();
+    expect(model.month.excluding[0].mixPace?.excludedCount).toBe(1);
+  });
+});
+
+describe("harmonic mix rate (Story 4.7 AC-4/AC-7)", () => {
+  it("is compatible / (compatible + incompatible), summed across the bucket's sets", () => {
+    const model = buildStyleEvolution([
+      set({
+        external_id: "a",
+        started_at: "2026-03-04T21:00:00.000Z",
+        mixingStats: { compatible_transitions: 6, incompatible_transitions: 2, excluded_no_key: 1 },
+      }),
+      set({
+        external_id: "b",
+        started_at: "2026-03-10T21:00:00.000Z",
+        mixingStats: { compatible_transitions: 2, incompatible_transitions: 2, excluded_no_key: 0 },
+      }),
+    ]);
+    // (6+2) / (6+2+2+2) = 8/12
+    expect(model.month.excluding[0].harmonicMix?.rate).toBeCloseTo(8 / 12);
+    expect(model.month.excluding[0].harmonicMix?.excludedNoKey).toBe(1);
+  });
+
+  it("is null (never a fabricated 0%) when there are zero scored transitions", () => {
+    const model = buildStyleEvolution([
+      set({
+        external_id: "a",
+        started_at: "2026-03-04T21:00:00.000Z",
+        mixingStats: { compatible_transitions: 0, incompatible_transitions: 0, excluded_no_key: 3 },
+      }),
+    ]);
+    expect(model.month.excluding[0].harmonicMix?.rate).toBeNull();
+    expect(model.month.excluding[0].harmonicMix?.excludedNoKey).toBe(3);
+  });
+});
+
+describe("buildSummaryTiles (Story 4.7 AC-4/AC-5)", () => {
+  it("reads the current period as the latest bucket carrying a value, with a delta against the nearest earlier one", () => {
+    const model = buildStyleEvolution([
+      set({
+        external_id: "jan",
+        started_at: "2026-01-04T21:00:00.000Z",
+        bpm: { count: 1, min: 120, max: 120, mean: 120, median: 120 },
+      }),
+      set({
+        external_id: "mar",
+        started_at: "2026-03-04T21:00:00.000Z",
+        bpm: { count: 1, min: 128, max: 128, mean: 128, median: 128 },
+      }),
+    ]);
+    const tiles = buildSummaryTiles(model.month.excluding);
+    // Feb is a real gap (D-8) between the two dated sets — delta must still
+    // skip it and compare against January, not treat the gap as "no previous".
+    expect(tiles.medianBpm).toEqual({ current: 128, delta: 8 });
+  });
+
+  it("renders no delta at all — never a fabricated 0 — when there is no earlier bucket to compare against", () => {
+    const model = buildStyleEvolution([
+      set({
+        external_id: "only",
+        started_at: "2026-03-04T21:00:00.000Z",
+        bpm: { count: 1, min: 120, max: 120, mean: 120, median: 120 },
+      }),
+    ]);
+    const tiles = buildSummaryTiles(model.month.excluding);
+    expect(tiles.medianBpm).toEqual({ current: 120, delta: null });
+  });
+
+  it("is entirely null for a metric with no data anywhere in the series, not a fabricated reading", () => {
+    const model = buildStyleEvolution([
+      set({
+        external_id: "only",
+        started_at: "2026-03-04T21:00:00.000Z",
+        bpm: { count: 0, min: 0, max: 0, mean: 0, median: 0 },
+      }),
+    ]);
+    const tiles = buildSummaryTiles(model.month.excluding);
+    expect(tiles.medianBpm).toBeNull();
+  });
+
+  it("discloses the CURRENT bucket's own excluded counts, not a sum across history", () => {
+    const model = buildStyleEvolution([
+      set({
+        external_id: "jan",
+        started_at: "2026-01-04T21:00:00.000Z",
+        plays: [play({ position: 1, played_ms: null }), play({ position: 2, played_ms: null })],
+      }),
+      set({
+        external_id: "mar",
+        started_at: "2026-03-04T21:00:00.000Z",
+        plays: [play({ position: 1, played_ms: 200_000 }), play({ position: 2, played_ms: null })],
+      }),
+    ]);
+    const tiles = buildSummaryTiles(model.month.excluding);
+    expect(tiles.mixPace?.current).toBe(200);
+    expect(tiles.mixPaceExcludedCount).toBe(1); // March's own exclusion, not Jan's 2 + March's 1
   });
 });

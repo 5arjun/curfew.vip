@@ -1,30 +1,32 @@
-"use client";
-
 import {
   liveConversionRateSummary,
   liveWindowPhrase,
   undatedDisclosure,
+  type ConversionWindow,
   type LiveConversionRate,
-  type LiveWindow,
 } from "@/lib/sets/libraryConversion";
 import { AnimateNumber } from "@/app/components/ui/AnimateNumber";
 import { LedPips } from "@/app/components/ui/LedPips";
-import { LiveWindowDropdown, useLiveWindowSelection } from "./LiveWindowDropdown";
 
 /** LED pip count for the meter (AC-2) — matches `StatsColumn`'s harmonic hero,
  *  the shipped UX-DR11 reference this story reuses rather than reinvents. */
 const PIP_COUNT = 10;
 
 /**
- * The conversion-rate LED-pip meter (Story 4.3, AC-1/AC-2/AC-3/AC-4) —
- * Library Utilization's first real content.
+ * The conversion-rate LED-pip meter (Story 4.3, AC-1/AC-2/AC-3/AC-4).
  *
  * `rates` carries every selectable window's result **precomputed** (page.tsx
- * builds all of `LIVE_CONVERSION_WINDOWS` up front) — the dropdown just picks
- * one, matching this codebase's established D-13 discipline (`TrendChart`'s
- * window toggle): no recompute happens on selection, only a lookup. `"use
- * client"` is required for the dropdown's own state, unlike this story's
- * original single-window version.
+ * builds all of `CONVERSION_WINDOWS` up front); `window` selects which one to
+ * read — matching this codebase's established D-13 discipline (`TrendChart`'s
+ * window toggle): no recompute happens on selection, only a lookup.
+ *
+ * **Story 4.7, AC-3:** this component no longer owns the window control or
+ * its persisted selection — it used to render its own `LiveWindowDropdown`
+ * and call `useLiveWindowSelection()` directly, on a scale independent of
+ * the trend chart this story moves onto the same page. `LibraryUtilizationView`
+ * now owns the ONE shared selection and renders the ONE shared dropdown
+ * above both this meter and the moved trend, passing `window` down as a
+ * plain prop — so the two can never disagree on screen.
  *
  * AC-3's window definition is stated twice, deliberately: once in the visible
  * readout sentence, once in `aria-label` via {@link liveConversionRateSummary}
@@ -33,8 +35,13 @@ const PIP_COUNT = 10;
  * accessible text-equivalent can never drift apart (Story 4.1's review
  * lesson).
  */
-export function ConversionRateMeter({ rates }: { rates: Record<LiveWindow, LiveConversionRate> }) {
-  const [window, setWindow] = useLiveWindowSelection();
+export function ConversionRateMeter({
+  rates,
+  window,
+}: {
+  rates: Record<ConversionWindow, LiveConversionRate>;
+  window: ConversionWindow;
+}) {
   const rate = rates[window];
   const summary = liveConversionRateSummary(rate);
   // AC-4: the SAME undated-track disclosure 4.2's trend chart uses, with
@@ -53,10 +60,7 @@ export function ConversionRateMeter({ rates }: { rates: Record<LiveWindow, LiveC
   return (
     <section className="lu-module dz-shell" aria-label={summary}>
       <span className="dz-dots" aria-hidden="true" />
-      <div className="lu-stat-head">
-        <p className="lu-stat-label">Conversion rate</p>
-        <LiveWindowDropdown value={window} onChange={setWindow} />
-      </div>
+      <p className="lu-stat-label">Conversion rate</p>
       {rate.added > 0 ? (
         <>
           <LedPips litCount={litPips} totalCount={PIP_COUNT} />

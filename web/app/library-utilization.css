@@ -55,7 +55,6 @@
   gap: 8px;
   padding: 18px 20px;
   border-radius: 22px;
-  max-width: 440px;
 }
 
 .lu-stat-head {
@@ -71,6 +70,40 @@
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--color-abyss-text-45);
+}
+
+/* ─── Conversion pair (Story 4.7, AC-3) — the meter (Story 4.3) and the
+   moved library-conversion trend (Story 4.2), grouped under ONE heading and
+   ONE window control rather than stacked as two unrelated modules. */
+.lu-conversion {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lu-conversion-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 4px;
+}
+
+.lu-conversion-body {
+  display: grid;
+  grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+@media (max-width: 900px) {
+  .lu-conversion-body {
+    grid-template-columns: 1fr;
+  }
+}
+
+.lu-trend {
+  min-width: 0;
 }
 
 /* The window dropdown (Arjun, 2026-08-07) — a native <select>, styled to sit
