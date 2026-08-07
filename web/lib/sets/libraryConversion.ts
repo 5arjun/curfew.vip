@@ -73,6 +73,17 @@ export type LiveWindow = (typeof LIVE_CONVERSION_WINDOWS)[number];
 /** The meter's first-visit default (Arjun, 2026-08-07 — was 90 via {@link DEFAULT_CONVERSION_WINDOW}). */
 export const DEFAULT_LIVE_WINDOW: LiveWindow = 60;
 
+/**
+ * How a DJ would actually say a live window ("2 weeks", not "14 days") —
+ * the ONE place that special-case lives, so the visible caption and
+ * {@link liveConversionRateSummary}'s `aria-label` text can never drift
+ * apart the way a duplicated `window === 14 ? ... : ...` ternary would let
+ * them (caught in Story 4.3's own review).
+ */
+export function liveWindowPhrase(window: number): string {
+  return window === 14 ? "2 weeks" : `${window} days`;
+}
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
@@ -370,14 +381,20 @@ export interface LiveConversionRate {
  * history {@link buildLibraryConversion} reads (AC-1, AC-3, AC-4). `nowMs` is
  * injected, never read from the clock — the same hard rule this file's header
  * states for every function here.
+ *
+ * `sets` is diffed into a first-play index internally UNLESS the caller
+ * already has one (e.g. the page precomputing every {@link LIVE_CONVERSION_WINDOWS}
+ * entry up front, per D-13) — pass it as `precomputedFirstPlay` so the O(sets)
+ * pass isn't repeated once per window (Story 4.3 review).
  */
 export function buildLiveConversionRate(
   events: LibraryAddEvent[],
   sets: SetRecord[],
   nowMs: number,
   window: LiveWindow = DEFAULT_LIVE_WINDOW,
+  precomputedFirstPlay?: Map<string, number>,
 ): LiveConversionRate {
-  const firstPlay = firstPlayByTrack(sets);
+  const firstPlay = precomputedFirstPlay ?? firstPlayByTrack(sets);
   const windowStartMs = nowMs - window * DAY_MS;
 
   // One event per track is the DB's own guarantee (unique (dj_id, track_id)),
@@ -499,10 +516,11 @@ export function libraryConversionSummary(
  * leaving the active window implicit.
  */
 export function liveConversionRateSummary(rate: LiveConversionRate): string {
+  const windowPhrase = liveWindowPhrase(rate.window);
   if (rate.added === 0) {
-    return `No tracks added in the last ${rate.window} days.`;
+    return `No tracks added in the last ${windowPhrase}.`;
   }
-  return `${rate.played} of ${rate.added} tracks added in the last ${rate.window} days have been played in a set (${pct(rate.rate ?? 0)}).`;
+  return `${rate.played} of ${rate.added} tracks added in the last ${windowPhrase} have been played in a set (${pct(rate.rate ?? 0)}).`;
 }
 
 /**

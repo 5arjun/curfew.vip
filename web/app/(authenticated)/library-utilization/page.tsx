@@ -1,5 +1,5 @@
 import { getLibraryAddEvents, getRecentSets } from "@/lib/sets";
-import { buildLiveConversionRate, LIVE_CONVERSION_WINDOWS } from "@/lib/sets/libraryConversion";
+import { buildLiveConversionRate, firstPlayByTrack, LIVE_CONVERSION_WINDOWS } from "@/lib/sets/libraryConversion";
 import { SilkBackdrop } from "@/app/components/dashboard/SilkBackdrop";
 import { ConversionRateMeter } from "@/app/components/library-utilization/ConversionRateMeter";
 
@@ -23,10 +23,13 @@ export default async function LibraryUtilizationPage() {
   // Every selectable window is precomputed here, up front — the dropdown
   // (Arjun, 2026-08-07) just looks one up, matching D-13's "no work happens
   // on click" discipline the trend chart's own window toggle established.
+  // `firstPlay` is built once and shared across all three windows (Story 4.3
+  // review) rather than each `buildLiveConversionRate` call re-diffing `sets`.
+  const firstPlay = firstPlayByTrack(sets);
   const rates = Object.fromEntries(
     LIVE_CONVERSION_WINDOWS.map((window) => [
       window,
-      buildLiveConversionRate(addEvents.events, sets, addEvents.readAtMs, window),
+      buildLiveConversionRate(addEvents.events, sets, addEvents.readAtMs, window, firstPlay),
     ]),
   ) as Record<(typeof LIVE_CONVERSION_WINDOWS)[number], ReturnType<typeof buildLiveConversionRate>>;
 

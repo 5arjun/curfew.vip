@@ -106,7 +106,7 @@ Nothing else combines all three pieces: Serato Playlists uploads history but has
 - **Camelot wheel** — The harmonic-mixing key notation system used for key-compatibility stats (FR-6).
 - **Layer 2 enrichment** — Optional, after-the-fact context (venue, crowd size, event type, notes) a DJ can add to a Set from the website (§4.6). Never required for core dashboard value.
 - **Segment** — A labeled time-range within a single Set (e.g. dancefloor / dinner / performance), for multi-context Sets like weddings (§4.5).
-- **Conversion rate** — % of tracks added to a DJ's library that have been played at least once in a Set, over a rolling 90-day window (FR-11). *(Window length confirmed 2026-07-21, Arjun — see FR-11.)*
+- **Conversion rate** — % of tracks added to a DJ's library that have been played at least once in a Set, over a rolling window, default 60 days and selectable to 30 days or 2 weeks (FR-11). *(Originally 90 days, confirmed 2026-07-21; superseded 2026-08-07, Arjun — see FR-11.)*
 - **Aging shelf** — Library tracks unplayed for 3+ months (FR-12).
 - **Per-track hide** — Marking an individual track within a Set as hidden; renders as a redacted placeholder rather than being omitted (FR-22).
 - **Visibility tier** — A Set's sharing level: public, friends-only, or private (FR-23).
@@ -210,33 +210,35 @@ Raw Serato genre tags are mapped to a normalized taxonomy before display.
 
 ### 4.3 Style Evolution *(Phase 1 — Launch)*
 
-**Description:** Trend view showing how a DJ's playing style shifts over time, plus whether newly-acquired library tracks are actually making it into sets.
+**Description:** Trend view showing how a DJ's playing style shifts over time — tempo, genre, and key usage — presented as three always-visible sections (Tempo / Genre / Key) with a summary-tile row above them, rather than one chart multiplexed behind a metric toggle. *(Sectioned composition + tile row synced 2026-08-07 from epics.md Story 4.7, a post-PRD extension agreed in the 2026-08-07 design session; supersedes the original single-chart-behind-a-toggle design implied by the original FR-9 wording.)*
 
 **Functional Requirements:**
 
 #### FR-9: Trend view
 
-DJ can view BPM range, genre diversity, and key-usage patterns month-over-month across their synced set history.
+DJ can view BPM range, genre diversity, and key-usage patterns month-over-month across their synced set history, rendered as three always-visible sections (Tempo, Genre, Key) with a summary-tile row above them — median BPM, effective genre count (2^H), harmonic mix rate, and mix pace — each tile showing its current-period value and its delta against the previous period.
 
 **Consequences (testable):**
 - Sessions below the FR-27 confidence threshold are excluded from the trend by default, but **visibly, never silently** — the view surfaces an "N low-confidence sessions hidden — show them?" affordance the DJ can use to reveal them. A real set is never erased from the DJ's own history without their knowledge. *(Resolved 2026-07-20 — see FR-27 notes.)*
-
-#### FR-10: Library-to-setlist correlation
-
-DJ can see whether recently-added library tracks are making it into their sets, as a trend line over time. (Underlying conversion-rate computation lives in Library Utilization, §4.4.)
+- A DJ with no prior period to compare against sees each tile's value with **no delta at all** — never a fabricated flat value standing in for a real measurement. *(Synced 2026-08-07 from epics.md Story 4.7 AC-5.)*
+- Summary tiles are aggregate, not time-series, so they read honestly off a single set: a DJ with ≥1 set but <2 months of history still sees the tile row, even while the trend sections themselves show the insufficient-history state. *(Synced 2026-08-07 from epics.md Story 4.7 AC-8.)*
 
 ### 4.4 Library Utilization *(Phase 1 — Launch)*
 
-**Description:** Surfaces whether a DJ's library spending translates into actual playing — conversion rate, aging shelf, and time-to-first-play, all derived from library and session data with no manual input.
+**Description:** Surfaces whether a DJ's library spending translates into actual playing — whether recently-added tracks make it into sets, conversion rate, aging shelf, and time-to-first-play, all derived from library and session data with no manual input.
 
 **Functional Requirements:**
+
+#### FR-10: Library-to-setlist correlation
+
+DJ can see whether recently-added library tracks are making it into their sets, as a trend line over time, displayed alongside the FR-11 conversion-rate meter and sharing its rolling-window control rather than each carrying an independent toggle that could disagree with the other. *(Moved from §4.3 to §4.4 — ruled 2026-08-07: this is the one Style Evolution metric that is actually about the DJ's library rather than their playing, and placing the trend next to the meter prevents the two from ever showing conflicting numbers on screen. See epics.md Story 4.7 AC-3, closing Story 4.2's open D-11 decision.)*
 
 #### FR-11: Conversion rate
 
 DJ can view the % of tracks added to their library that have been played at least once in a set, over a rolling window.
 
 **Consequences (testable):**
-- Rolling window length is **90 days**. *(Resolved 2026-07-21, Arjun.)*
+- Rolling window length is **60 days by default, selectable to 30 days or 2 weeks**. *(Originally resolved 2026-07-21 at a fixed 90 days; superseded 2026-08-07, Arjun, live in the browser — see epics.md Story 4.3 completion notes and 4-3-conversion-rate-led-pip-meter.md's post-review section.)*
 
 #### FR-12: Aging shelf
 
@@ -247,7 +249,7 @@ DJ can view library tracks unplayed for 3+ months (from add date or last play).
 DJ can view the elapsed time between a track being added to the library and its first play in a set.
 
 **Notes:**
-- `[ASSUMPTION]` FR-11–FR-13 depend on a reliable "date added to library" timestamp field from Serato's library DB. Domain research's field-coverage table didn't explicitly confirm this field; flagged for architecture-stage validation (see `addendum.md`).
+- `[ASSUMPTION]` FR-10–FR-13 depend on a reliable "date added to library" timestamp field from Serato's library DB. Domain research's field-coverage table didn't explicitly confirm this field; flagged for architecture-stage validation (see `addendum.md`).
 
 ### 4.5 Set Segments *(Phase 1 — Launch)*
 
@@ -504,7 +506,7 @@ Scope is split into two phases (§1 Vision). Phase 2 isn't a backlog item — it
 
 ## 12. Assumptions Index
 
-- §4.4 (FR-11–FR-13) — Library Utilization depends on a reliable "date added to library" field from Serato's DB, not explicitly confirmed by domain research.
+- §4.4 (FR-10–FR-13) — Library Utilization depends on a reliable "date added to library" field from Serato's DB, not explicitly confirmed by domain research.
 - §10 (Success Metrics) — No numeric targets set for any SM; carried from the brief, to be filled in once real usage data exists.
 - §5.1 (Performance) — Proposed local-parse/stat-compute numeric targets (≤500ms/set, ≤10s p95/library, idle CPU≈0) are not yet confirmed by Arjun.
 

@@ -126,17 +126,3 @@
   font-size: 11.5px;
   color: var(--color-abyss-text-45);
 }
-
-.lu-empty {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  padding: 16px 18px;
-  border-radius: 22px;
-}
-
-.lu-empty-copy {
-  margin: 0;
-  font-size: 13.5px;
-  color: var(--color-abyss-text-72);
-}

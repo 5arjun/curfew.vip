@@ -2,6 +2,7 @@
 
 import {
   liveConversionRateSummary,
+  liveWindowPhrase,
   undatedDisclosure,
   type LiveConversionRate,
   type LiveWindow,
@@ -43,7 +44,11 @@ export function ConversionRateMeter({ rates }: { rates: Record<LiveWindow, LiveC
     { noAddDateCount: rate.noAddDateCount, pendingCohortCount: 0 },
     rate.window,
   );
-  const litPips = rate.rate == null ? 0 : Math.round(rate.rate * PIP_COUNT);
+  // `floor`, not `round`: a 96% rate must show 9 lit pips, not a false-full
+  // 10 — the percentage readout right next to it is the tie-breaker a DJ
+  // would notice disagreeing (Story 4.3 review). True 100% is the only way
+  // to reach all `PIP_COUNT` pips lit.
+  const litPips = rate.rate == null ? 0 : Math.floor(rate.rate * PIP_COUNT);
 
   return (
     <section className="lu-module dz-shell" aria-label={summary}>
@@ -59,7 +64,7 @@ export function ConversionRateMeter({ rates }: { rates: Record<LiveWindow, LiveC
             <span className="lu-stat-value">
               <AnimateNumber value={Math.round((rate.rate ?? 0) * 100)} suffix="%" />
             </span>{" "}
-            of tracks added in the last {rate.window === 14 ? "2 weeks" : `${rate.window} days`} have
+            of tracks added in the last {liveWindowPhrase(rate.window)} have
             been played in a set
           </p>
           {rate.lowConfidence && (
@@ -70,7 +75,7 @@ export function ConversionRateMeter({ rates }: { rates: Record<LiveWindow, LiveC
         </>
       ) : (
         <p className="lu-stat-empty" aria-hidden="true">
-          No tracks added in the last {rate.window === 14 ? "2 weeks" : `${rate.window} days`}.
+          No tracks added in the last {liveWindowPhrase(rate.window)}.
         </p>
       )}
       {disclosure && <p className="lu-disclosure">{disclosure}</p>}

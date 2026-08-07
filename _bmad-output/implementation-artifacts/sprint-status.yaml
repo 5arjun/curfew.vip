@@ -276,7 +276,7 @@ development_status:
   # agent 380/380 + 9 golden/doc, cargo fmt/clippy -D warnings clean; web
   # 289/289, tsc/eslint/next build clean. Real-browser walkthrough
   # (Playwright) at 1440px and 375x812, zero console errors.
-  4-3-conversion-rate-led-pip-meter: review
+  4-3-conversion-rate-led-pip-meter: done
   4-4-aging-shelf-with-prep-crate-action: backlog
   4-5-time-to-first-play: backlog
   # [LAUNCH BLOCKER, previously unstoried] Ruled by Arjun 2026-08-07: web/'s
@@ -324,6 +324,87 @@ development_status:
   # own and whether you use it.
   4-7-sectioned-style-evolution-summary-tiles: backlog
   4-8-genre-share-stream-camelot-wheel: backlog
+  # [ADDED 2026-08-07, same Arjun session] Library Utilization's turn. 4-9 is
+  # the page composition + the utilization stats that need ZERO agent work
+  # (repeat-track rate, set-similarity heatmap, workhorses by sets-appeared-in,
+  # one-and-done, rotation size) — it discharges the epic-header note's "more
+  # components wanted / first named candidate: repeat tracks between sets."
+  # 4-10 is track lookup + a /track/[track_id] detail route mirroring
+  # /set/[id]: tags, play counts, the sets it appeared in (linked), a
+  # clock-time strip, typical ride time from played_ms, and mix neighbours
+  # (what you played immediately before/after it, from `position` alone —
+  # nothing else in the product answers this). Both are pure web/.
+  #
+  # ⚑ FINDING THIS SESSION, previously unrecorded, and it blocks 4-4 harder
+  # than it blocks either of the above. Verified against shared/src/index.ts
+  # and agent/src-tauri/src/store.rs: the agent's local library_tracks table
+  # is track_id + timestamps ONLY (no title/artist/bpm/key/genre), baseline
+  # rows are structurally unsyncable (WHERE is_baseline = 0), and
+  # SyncLibraryAddEvent carries only { track_id, added_at }. So THE CLOUD CAN
+  # COUNT AN ADDED-BUT-NEVER-PLAYED TRACK BUT CAN NEVER NAME ONE. That is a
+  # SECOND, DISTINCT blocker on 4-4 (aging shelf) on top of the last-play
+  # cold-start problem Decision B already flagged — the shelf must render
+  # named rows with a prep-crate action, and even restricted to post-install
+  # tracks it would render a list of hashes. It also caps 4-3's shipped meter
+  # at a number the DJ cannot act on (34% converted, 66% unnameable). The fix
+  # is a roster+metadata sync (agent + additive shared/ type + cloud table +
+  # Story 3.3 queue carry), which would be the THIRD amendment to AD-8 after
+  # AD-20/AD-21 and MUST be checked against Story 2.7's local-only raw-data
+  # boundary — it is the first time the cloud would hold a full inventory of
+  # the library rather than only what was played. It does NOT un-break
+  # 4-4/4-5's Decision B problem (it fixes which tracks EXIST, not plays
+  # Curfew never SAW). Written up in full after Story 4.10 in epics.md and
+  # assigned to 4-4 as its owner. The genre/BPM COVERAGE-GAP components
+  # ("you own 30% house, you play 12%" — the most definitionally-utilization
+  # stats available) are parked against it.
+  #
+  # ANSWERED THIS SESSION (Arjun asked; worth not re-deriving): tracks added
+  # but not yet played ARE synced and ARE the conversion denominator — that is
+  # exactly what library_track_events exists for. "We never see the full
+  # library" refers only to the D-1 pre-install BASELINE, a different set.
+  # Conversion is honest by construction because it only ever asks about
+  # tracks added AFTER install, which is the go-forward set that is synced.
+  4-9-library-utilization-composition-play-side-stats: backlog
+  4-10-track-lookup-and-track-detail: backlog
+  # [ADDED 2026-08-07] 4-11 STORIES THE ABOVE FINDING. Promoted from "a note
+  # owned by 4-4" to its own story sequenced BEFORE 4-4, because it has THREE
+  # consumers (4-3's meter, 4-4's shelf, 4-10's search) and a prerequisite
+  # serving three should not live inside one.
+  #
+  # COST MEASURED, AND IT IS ASYMMETRIC — this is the story's key decision.
+  # TIER A (title+artist) is nearly free: DateAddedIndex::all_tracks() ALREADY
+  # returns (path, date_added, title, artist) for the whole library, and
+  # capture::scan_library_adds DISCARDS title/artist one line after hashing
+  # them into track_id (capture.rs:267). One filter_map, two columns, plus the
+  # contract/cloud/web carry. Tier A alone unblocks all three consumers.
+  # TIER B (bpm/key/genre) is a real whole-library joiner enrichment pass
+  # against NFR-1's <=10s p95 budget, and buys exactly ONE thing: the
+  # coverage-gap components. RECOMMENDED: ship Tier A, park Tier B.
+  #
+  # DECISIONS THIS STORY FORCES (all written into its ACs):
+  #   - Baseline add-dates must NEVER reach cohort math. Baseline tracks carry
+  #     real pre-install added_at; if those leak into conversion, old months
+  #     retroactively populate against a still-go-forward numerator, read ~0%,
+  #     and SILENTLY CHANGE NUMBERS THE DJ HAS ALREADY SEEN. Invariant + test.
+  #   - Roster is CURRENT-STATE and mutable (today's ON CONFLICT DO NOTHING
+  #     never updates, so a re-tagged track never refreshes) while plays stay
+  #     immutable as-played. Deliberate divergence; must be written down.
+  #   - Deletions: nothing tracks removal today, so the aging shelf would
+  #     recommend prepping deleted tracks. Recommended mark-absent-with-
+  #     timestamp, never hard-delete.
+  #   - AD-8 third amendment (proposed as AD-22) after AD-20/AD-21.
+  #   - Story 2.7 local-only raw-data boundary must be RULED, not assumed. The
+  #     permitting argument: SyncPlay already sends title/artist, so this is a
+  #     volume change not a category change (no paths, no raw files). Feeds
+  #     Epic 6 privacy work (ai-16).
+  #
+  # ⚑ SEPARATE ALREADY-SHIPPED GAP FOUND WHILE MEASURING: scan_library_adds'
+  # own doc comment concedes that a catalogued track with no resolvable title
+  # OR artist is "silently excluded from this scan entirely" — a live breach of
+  # the never-silently-dropped discipline, ALREADY SHIPPED IN 4-3, where it
+  # also silently shrinks the conversion denominator with no disclosed count.
+  # 4-11 AC-6 closes it; measure the real-library percentage while there.
+  4-11-library-roster-sync: backlog
   epic-4-retrospective: optional
 
   # ---- Epic 5: Set Segments & Layer 2 Enrichment ----

@@ -178,7 +178,10 @@ pub fn track_id_from_title_artist(title: Option<&str>, artist: Option<&str>) -> 
 
     // A `\u{1e}` (ASCII record separator) delimiter: vanishingly unlikely to
     // appear in real metadata (unlike `|`/`-`/`:`), so `("A", "B|C")` and
-    // `("A|B", "C")` cannot collide into the same hash input.
+    // `("A|B", "C")` cannot collide into the same hash input — EXCEPT if the
+    // literal byte somehow appeared in the source text itself, which the
+    // guard below rules out rather than merely relying on unlikeliness
+    // (Story 4.3 review).
     let mut bytes = Vec::with_capacity(title.len() + artist.len() + 1);
     bytes.extend_from_slice(title.as_bytes());
     bytes.push(0x1e);
@@ -186,14 +189,28 @@ pub fn track_id_from_title_artist(title: Option<&str>, artist: Option<&str>) -> 
     Some(fnv1a_hex(&bytes))
 }
 
-/// The lookup-key fold [`track_id_from_title_artist`] matches on — trim then
-/// lowercase, the same fold `genre::normalize` already applies. A
-/// whitespace-only input is "no meaningful value," not a real one (identical
-/// reasoning to `genre::normalize`), so it resolves to absent rather than an
-/// empty-string identity input.
+/// The lookup-key fold [`track_id_from_title_artist`] matches on — trim,
+/// collapse internal whitespace runs, then lowercase. Case/edge-whitespace
+/// folding mirrors `genre::normalize`'s existing fold; the internal-whitespace
+/// collapse is this function's own addition (Story 4.3 review) — a title or
+/// artist re-typed with a doubled space between words (a real cross-source
+/// drift, e.g. a catalog tag vs. an embedded ID3 tag) must still resolve to
+/// the same identity. A whitespace-only input is "no meaningful value," not a
+/// real one (identical reasoning to `genre::normalize`), so it resolves to
+/// absent rather than an empty-string identity input. A value containing the
+/// literal `\u{1e}` delimiter byte [`track_id_from_title_artist`] joins on is
+/// also rejected outright — vanishingly unlikely in real metadata, but
+/// resolving to absent rather than let it shift the delimiter boundary and
+/// collide two different (title, artist) pairs.
 fn normalize_identity_text(value: &str) -> Option<String> {
+    if value.contains('\u{1e}') {
+        return None;
+    }
     let folded = value.trim().to_lowercase();
-    (!folded.is_empty()).then_some(folded)
+    if folded.is_empty() {
+        return None;
+    }
+    Some(folded.split_whitespace().collect::<Vec<_>>().join(" "))
 }
 
 /// The volume-root-relative form of an absolute play-log path — the legacy
@@ -218,6 +235,13 @@ pub struct LibraryScanOutcome {
     pub baselined: usize,
     /// Genuine go-forward adds queued as `SyncLibraryAddEvent`s (Task 4).
     pub added: usize,
+    /// Catalogued rows this scan saw but could not identify at all (no
+    /// resolvable title or artist, AD-11) and therefore silently excluded —
+    /// same category of gap AC-4 disclosed for missing `tadd`/`uadd`, applied
+    /// at the whole-track level (Story 4.3 review). Agent-local for now: no
+    /// synced field exists yet to carry this into the web disclosure, so this
+    /// is currently visible via agent logs/tests only, not the dashboard.
+    pub excluded_no_identity: usize,
 }
 
 /// Diffs the DJ's current library against everything this agent has already
@@ -253,6 +277,25 @@ pub struct LibraryScanOutcome {
 /// `NOT NULL` primary key) and is silently excluded from this scan entirely —
 /// the same "absent, never guessed" discipline as every other gap in this
 /// pipeline, just applied at the whole-track level instead of one field.
+///
+/// **Cross-drive collision (Story 4.3 review):** the same track catalogued on
+/// two drives (exactly what Decision E-2 exists to unify) now yields two
+/// `(portable_path, added_at, title, artist)` rows that hash to one
+/// `track_id`. [`dedupe_by_identity`] resolves that deterministically
+/// (earliest known `added_at` wins) before anything is recorded, rather than
+/// leaving the winner to whatever order `DateAddedIndex::all_tracks` happens
+/// to iterate in.
+///
+/// **Already-deployed-agent upgrade (Story 4.3 review):** an agent with
+/// pre-4.3 `library_tracks` rows (keyed by the retired path hash) has
+/// `library_track_count != 0`, so without special handling every currently
+/// catalogued track — including ones added well after the *original*
+/// baseline and already synced under the old identity — would miss
+/// `known_track_ids` (nothing there uses the new hash) and get re-emitted as
+/// a fresh add-event. On first encounter with a pre-existing, not-yet-migrated
+/// store, this function instead does what a true first run does: record
+/// everything currently identifiable as baseline (never synced) and mark the
+/// cutover done, so only genuinely new tracks from here on are real adds.
 pub fn scan_library_adds(
     conn: &rusqlite::Connection,
     dates: &DateAddedIndex,
@@ -263,18 +306,38 @@ pub fn scan_library_adds(
         return Ok(LibraryScanOutcome::default());
     }
 
-    let identified: Vec<(String, Option<i64>)> = catalogued
-        .into_iter()
-        .filter_map(|(_portable_path, added_at, title, artist)| {
-            track_id_from_title_artist(title.as_deref(), artist.as_deref()).map(|id| (id, added_at))
-        })
-        .collect();
+    let mut excluded_no_identity = 0usize;
+    let identified: Vec<(String, Option<i64>)> =
+        dedupe_by_identity(catalogued.into_iter().filter_map(
+            |(_portable_path, added_at, title, artist)| match track_id_from_title_artist(
+                title.as_deref(),
+                artist.as_deref(),
+            ) {
+                Some(id) => Some((id, added_at)),
+                None => {
+                    excluded_no_identity += 1;
+                    None
+                }
+            },
+        ));
 
     if crate::store::library_track_count(conn)? == 0 {
         let baselined = crate::store::record_library_tracks(conn, &identified, true, now)?;
+        crate::store::mark_identity_migration_done(conn)?;
         return Ok(LibraryScanOutcome {
             baselined,
             added: 0,
+            excluded_no_identity,
+        });
+    }
+
+    if !crate::store::identity_migration_done(conn)? {
+        let baselined = crate::store::record_library_tracks(conn, &identified, true, now)?;
+        crate::store::mark_identity_migration_done(conn)?;
+        return Ok(LibraryScanOutcome {
+            baselined,
+            added: 0,
+            excluded_no_identity,
         });
     }
 
@@ -290,7 +353,40 @@ pub fn scan_library_adds(
 
     let baselined = crate::store::record_library_tracks(conn, &pre_baseline, true, now)?;
     let added = crate::store::record_library_tracks(conn, &fresh, false, now)?;
-    Ok(LibraryScanOutcome { baselined, added })
+    Ok(LibraryScanOutcome {
+        baselined,
+        added,
+        excluded_no_identity,
+    })
+}
+
+/// Collapses duplicate `track_id`s from [`scan_library_adds`]'s identified
+/// list — the shape a cross-drive duplicate takes now that identity is
+/// title+artist rather than path (Story 4.3 review) — to one row each,
+/// deterministically: the earliest known `added_at` wins (a `None` never
+/// displaces a real date, and only displaces another `None` to keep the
+/// choice total). Order-independent, so re-scans agree with themselves
+/// regardless of `HashMap` iteration order upstream.
+fn dedupe_by_identity(
+    entries: impl Iterator<Item = (String, Option<i64>)>,
+) -> Vec<(String, Option<i64>)> {
+    let mut by_id: std::collections::HashMap<String, Option<i64>> =
+        std::collections::HashMap::new();
+    for (id, added_at) in entries {
+        by_id
+            .entry(id)
+            .and_modify(|existing| {
+                if let (Some(new), Some(current)) = (added_at, *existing) {
+                    if new < current {
+                        *existing = Some(new);
+                    }
+                } else if existing.is_none() && added_at.is_some() {
+                    *existing = added_at;
+                }
+            })
+            .or_insert(added_at);
+    }
+    by_id.into_iter().collect()
 }
 
 /// Legacy's local dedup key: no `history_session`-equivalent table exists for
@@ -766,6 +862,10 @@ mod tests {
         );
         let id = id.expect("both fields present resolves");
         assert_ne!(id, "Song X", "the raw title must never survive the hash");
+        assert!(
+            !id.contains("arjun"),
+            "the raw artist must never survive the hash"
+        );
         assert_eq!(id.len(), 16, "fnv1a_hex's fixed 16-hex-char form");
     }
 
@@ -794,6 +894,51 @@ mod tests {
     fn track_id_from_title_artist_whitespace_only_field_is_absent() {
         assert_eq!(track_id_from_title_artist(Some("   "), Some("Arjun")), None);
         assert_eq!(track_id_from_title_artist(Some("Song"), Some("   ")), None);
+    }
+
+    /// Story 4.3 review: an internal (not just leading/trailing) whitespace
+    /// run must not split one track into two identities — a real drift
+    /// between a catalog tag and an embedded ID3 tag for the same track.
+    #[test]
+    fn track_id_from_title_artist_collapses_internal_whitespace() {
+        let a = track_id_from_title_artist(Some("Deep House Jam"), Some("DJ Arjun"));
+        let b = track_id_from_title_artist(Some("Deep  House   Jam"), Some("DJ  Arjun"));
+        assert_eq!(a, b, "internal whitespace runs must fold to one space");
+    }
+
+    /// Story 4.3 review: a literal `\u{1e}` byte in either field must not be
+    /// able to shift the delimiter boundary and collide two different
+    /// (title, artist) pairs into one hash.
+    #[test]
+    fn track_id_from_title_artist_rejects_the_delimiter_byte() {
+        assert_eq!(
+            track_id_from_title_artist(Some("A\u{1e}B"), Some("C")),
+            None,
+            "a delimiter byte in title resolves to absent, not a shifted-boundary hash"
+        );
+        assert_eq!(
+            track_id_from_title_artist(Some("A"), Some("B\u{1e}C")),
+            None,
+            "a delimiter byte in artist resolves to absent, not a shifted-boundary hash"
+        );
+    }
+
+    /// Restored after Story 4.3's identity switch dropped the only test
+    /// covering `portable_form` (review finding): it no longer feeds track
+    /// identity, but it is still the date-added join key — a `.session`
+    /// log's absolute path and `database V2`'s stored relative path for the
+    /// SAME track must still land on one `portable_form` output, or every
+    /// legacy play's date-added lookup would silently miss.
+    #[test]
+    fn portable_form_normalizes_absolute_and_relative_to_the_same_join_key() {
+        assert_eq!(
+            portable_form("/Users/arjun/Music/x.mp3"),
+            portable_form("Users/arjun/Music/x.mp3")
+        );
+        assert_eq!(
+            portable_form("Users/arjun/Music/x.mp3"),
+            "Users/arjun/Music/x.mp3"
+        );
     }
 
     /// D-1 / AC-4, the single easiest way to get this story catastrophically
@@ -996,6 +1141,102 @@ mod tests {
         assert_eq!(pending.len(), 1);
         assert_eq!(pending[0].track_id, undated);
         assert_eq!(pending[0].added_at, None, "absent, never a fabricated date");
+    }
+
+    /// Story 4.3 review: a track catalogued on two drives now hashes to one
+    /// `track_id` under two different `added_at`s (the drive-split scenario
+    /// Decision E-2 exists to unify). The winner must be deterministic
+    /// (earliest `added_at`) regardless of which drive's row the caller sees
+    /// first, and only one `library_tracks` row must ever be recorded for it.
+    #[test]
+    fn a_track_on_two_drives_records_one_row_with_the_earliest_added_at() {
+        let (_file, conn) = TempStore::open("cross-drive");
+        let dates = DateAddedIndex::fixed_with_identity(std::collections::HashMap::from([
+            (
+                "Users/arjun/Music/a.mp3".to_string(),
+                (
+                    1_600_000_100,
+                    Some("Deep House Jam".to_string()),
+                    Some("DJ Arjun".to_string()),
+                ),
+            ),
+            (
+                "A Indian/a.mp3".to_string(),
+                (
+                    1_600_000_000, // the earlier of the two — must win
+                    Some("Deep House Jam".to_string()),
+                    Some("DJ Arjun".to_string()),
+                ),
+            ),
+        ]));
+
+        let outcome = scan_library_adds(&conn, &dates, BASELINE_NOW).expect("scan");
+        assert_eq!(outcome.baselined, 1, "one identity, one recorded row");
+
+        assert_eq!(
+            crate::store::library_track_count(&conn).expect("count"),
+            1,
+            "no duplicate/conflicting row for the shared track_id"
+        );
+    }
+
+    /// Story 4.3 review: an agent with pre-existing `library_tracks` rows
+    /// (from before this story's identity switch) must not re-emit its whole
+    /// already-synced library as fresh add-events on the first post-upgrade
+    /// scan — the one-time `identity_migration_done` guard re-baselines
+    /// everything currently identifiable instead.
+    #[test]
+    fn an_already_deployed_agent_re_baselines_once_on_the_identity_cutover() {
+        let (_file, conn) = TempStore::open("upgrade");
+        // Simulate pre-4.3 state: a row recorded under the retired path-hash
+        // scheme, with no `identity_migration_done` flag set.
+        crate::store::record_library_tracks(
+            &conn,
+            &[("old-path-hash-deadbeef".to_string(), Some(1_500_000_000))],
+            false,
+            1_500_000_000,
+        )
+        .expect("seed pre-4.3 row");
+        assert!(!crate::store::identity_migration_done(&conn).expect("flag read"));
+
+        // A track added well after any plausible original baseline — exactly
+        // the case that would otherwise flood as a spurious fresh add-event.
+        let dates = library(&[(
+            "Users/arjun/Music/new.mp3",
+            BASELINE_NOW - 1_000,
+            "New Track",
+            "New Artist",
+        )]);
+
+        let outcome = scan_library_adds(&conn, &dates, BASELINE_NOW).expect("cutover scan");
+        assert_eq!(
+            outcome.added, 0,
+            "the cutover scan re-baselines silently, never emits a fresh add-event"
+        );
+        assert_eq!(outcome.baselined, 1);
+        assert!(crate::store::identity_migration_done(&conn).expect("flag read"));
+
+        // A genuinely new track on the NEXT scan behaves normally again.
+        let grown = library(&[
+            (
+                "Users/arjun/Music/new.mp3",
+                BASELINE_NOW - 1_000,
+                "New Track",
+                "New Artist",
+            ),
+            (
+                "Users/arjun/Music/newer.mp3",
+                BASELINE_NOW + 10,
+                "Newer Track",
+                "Newer Artist",
+            ),
+        ]);
+        let outcome =
+            scan_library_adds(&conn, &grown, BASELINE_NOW + 20).expect("post-cutover scan");
+        assert_eq!(
+            outcome.added, 1,
+            "back to normal add-detection after the cutover"
+        );
     }
 
     /// The second shape of D-1's trap: a USB volume unmounted when the

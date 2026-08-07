@@ -87,7 +87,54 @@ CREATE TABLE IF NOT EXISTS library_tracks (
   is_baseline            INTEGER NOT NULL,      -- 1 = first-run snapshot, never synced (D-1)
   synced_at              INTEGER                -- NULL until the add-event batch syncs (Task 4)
 );
+
+-- Story 4.3 review follow-up: a tiny opaque flag store for one-time,
+-- go-forward migrations that `CREATE TABLE IF NOT EXISTS` alone can't express
+-- (a *behavior* cutover, not a schema change). First use:
+-- `IDENTITY_V2_MIGRATED_KEY` — an agent with pre-4.3 `library_tracks` rows
+-- (keyed by the retired path-hash `track_id`) would otherwise have every
+-- currently-catalogued track miss `known_track_ids` on its first post-upgrade
+-- scan (none of the new title+artist hashes match the old rows), silently
+-- re-emitting every track added since the ORIGINAL baseline as a fresh
+-- add-event. This key lets `capture::scan_library_adds` recognize "identity
+-- scheme just changed under me" and re-baseline once instead.
+CREATE TABLE IF NOT EXISTS agent_meta (
+  key    TEXT PRIMARY KEY,
+  value  TEXT NOT NULL
+);
 "#;
+
+/// The one-time identity-scheme-cutover flag (Story 4.3 review). Set once
+/// [`mark_identity_migration_done`] runs; checked by
+/// `capture::scan_library_adds` before it trusts `known_track_ids` against a
+/// possibly-pre-4.3 `library_tracks` table.
+const IDENTITY_V2_MIGRATED_KEY: &str = "identity_v2_migrated";
+
+/// Whether the title+artist identity cutover (Decision E-2) has already been
+/// reconciled against whatever `library_tracks` rows this agent had on file
+/// beforehand. `false` on a brand-new store too — harmless, since
+/// `scan_library_adds`'s own `library_track_count == 0` check takes priority
+/// for a genuinely first-ever scan.
+pub fn identity_migration_done(conn: &Connection) -> Result<bool, StoreError> {
+    Ok(conn
+        .query_row(
+            "SELECT 1 FROM agent_meta WHERE key = ?1",
+            [IDENTITY_V2_MIGRATED_KEY],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some())
+}
+
+/// Records that the title+artist identity cutover has been reconciled, so it
+/// is never re-triggered on a later, ordinary scan.
+pub fn mark_identity_migration_done(conn: &Connection) -> Result<(), StoreError> {
+    conn.execute(
+        "INSERT INTO agent_meta (key, value) VALUES (?1, '1') ON CONFLICT(key) DO NOTHING",
+        [IDENTITY_V2_MIGRATED_KEY],
+    )?;
+    Ok(())
+}
 
 /// Everything that can go wrong opening or writing to the local store. Mirrors
 /// the `Display`/`std::error::Error`, small-enum idiom used throughout this

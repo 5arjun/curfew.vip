@@ -694,10 +694,15 @@ describe("live conversion rate summary (AC-2, AC-3)", () => {
     expect(liveConversionRateSummary(rate)).toContain("last 30 days");
   });
 
-  it("reflects the 2-weeks window (14 days) in its own copy", () => {
+  it("reflects the 2-weeks window (14 days) as '2 weeks', matching the visible caption", () => {
+    // Story 4.3 review: the aria-label (this summary) and the visible caption
+    // must say the SAME thing for the 14-day window, or a screen-reader user
+    // hears "14 days" while a sighted user reads "2 weeks" — a real drift the
+    // review caught. Both now go through `liveWindowPhrase`.
     const addedIso = localIso(2026, 5, 1);
     const now = new Date(addedIso).getTime() + 5 * DAY_MS;
     const rate = buildLiveConversionRate([added("t", addedIso)], [], now, 14);
-    expect(liveConversionRateSummary(rate)).toContain("last 14 days");
+    expect(liveConversionRateSummary(rate)).toContain("last 2 weeks");
+    expect(liveConversionRateSummary(rate)).not.toContain("14 days");
   });
 });
