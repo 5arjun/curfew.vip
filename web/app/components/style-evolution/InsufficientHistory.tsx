@@ -23,15 +23,24 @@ export function InsufficientHistory({
 }
 
 /**
- * The library-conversion chip's insufficient-history copy (AC-3), in the same
- * positive, console-voice register as the line above (EXPERIENCE.md:91).
+ * The library-conversion trend's insufficient-history copy (Story 4.2 AC-3;
+ * moved to `/library-utilization` by Story 4.7 AC-3), in the same positive,
+ * console-voice register as the line above (EXPERIENCE.md:91).
  *
  * Deliberately explains the wait rather than just reporting it: on day one
  * after this ships EVERY DJ sees this state, by construction — the agent takes
  * a silent baseline of the existing library and only counts tracks added from
- * then on (D-1), and a cohort needs its full 90 days before it can be scored
+ * then on (D-1), and a cohort needs its full window before it can be scored
  * (D-9). "Not enough data" with no reason reads as a bug; naming the clock
  * reads as a promise.
+ *
+ * Takes the window rather than hardcoding it (code review, 2026-08-07): this
+ * was a fixed string promising "their 90 days", and Story 4.7's AC-3 scale
+ * reconciliation retired 90 entirely (windows are now 60/30/14, default 60) —
+ * so the one piece of copy whose whole job is naming the clock was naming a
+ * clock that no longer exists at any selectable setting. The wait genuinely
+ * changes with the selection, so the sentence has to as well.
  */
-export const LIBRARY_INSUFFICIENT_COPY =
-  "Curfew is watching what you add from here on. Once two months of new tracks have had their 90 days, this fills in.";
+export function libraryInsufficientCopy(window: number): string {
+  return `Curfew is watching what you add from here on. Once two months of new tracks have had their ${window} days, this fills in.`;
+}

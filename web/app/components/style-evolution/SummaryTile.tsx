@@ -1,4 +1,4 @@
-import type { Granularity, SummaryTiles, TileReading } from "@/lib/sets/styleEvolution";
+import { tileBucketLabel, type Granularity, type SummaryTiles, type TileReading } from "@/lib/sets/styleEvolution";
 
 // Summary tile row (Story 4.7, AC-4/AC-5/AC-8/AC-9) — four aggregate
 // readings above the sections: median BPM, effective genre count, harmonic
@@ -34,8 +34,25 @@ function mmss(totalSeconds: number): string {
   return `${m}:${`${rem}`.padStart(2, "0")}`;
 }
 
-function comparisonLabel(granularity: Granularity): string {
-  return granularity === "month" ? "previous month" : "previous week";
+/**
+ * What the delta is measured against, NAMED — "June", "week of Jun 22".
+ *
+ * This used to be a flat `"previous month"`/`"previous week"` (code review,
+ * 2026-08-07): `latestWithDelta` skips D-8 gaps when picking the comparison
+ * bucket, so on the committed fixture three of the four tiles compare August
+ * against JUNE while claiming "previous month", and at week granularity the
+ * median-BPM tile spans five weeks. AC-9 requires the tile to state what the
+ * delta is against; naming the bucket is the only version of that which is
+ * true whether or not a gap was skipped.
+ *
+ * The year is carried only when the two buckets straddle one — the same
+ * "disambiguate, don't decorate" rule `spansMultipleYears` applies to the
+ * axis, scoped here to the one comparison actually being made.
+ */
+function comparisonLabel(reading: TileReading, granularity: Granularity): string | null {
+  if (reading.deltaBucket == null) return null;
+  const withYear = reading.deltaBucket.slice(0, 4) !== reading.currentBucket.slice(0, 4);
+  return tileBucketLabel(reading.deltaBucket, granularity, withYear);
 }
 
 interface TileSpec {
@@ -46,6 +63,9 @@ interface TileSpec {
   /** The visible/aria delta string, e.g. "+4 BPM" — `null` renders no delta
    *  markup at all (AC-5). */
   deltaText: string | null;
+  /** The named bucket `deltaText` is measured against — `null` exactly when
+   *  `deltaText` is. */
+  comparison: string | null;
   /** An always-visible disclosure line under the tile (AC-6/AC-7's "never
    *  omitted" counts) — `null` when there is nothing to disclose. */
   hint: string | null;
@@ -55,30 +75,27 @@ function tileSpec(
   key: string,
   label: string,
   reading: TileReading | null,
+  granularity: Granularity,
   fmt: (v: number) => string,
   deltaFmt: (d: number) => string,
   hint: string | null,
 ): TileSpec {
-  if (!reading) return { key, label, valueText: "—", deltaText: null, hint };
+  if (!reading) return { key, label, valueText: "—", deltaText: null, comparison: null, hint };
   return {
     key,
     label,
     valueText: fmt(reading.current),
     deltaText: reading.delta == null ? null : deltaFmt(reading.delta),
+    comparison: comparisonLabel(reading, granularity),
     hint,
   };
 }
 
-function SummaryTile({
-  label,
-  valueText,
-  deltaText,
-  comparison,
-  hint,
-}: Omit<TileSpec, "key"> & { comparison: string }) {
-  const ariaLabel = deltaText
-    ? `${label}: ${valueText}, ${deltaText} from ${comparison}${hint ? `. ${hint}` : ""}`
-    : `${label}: ${valueText}${hint ? `. ${hint}` : ""}`;
+function SummaryTile({ label, valueText, deltaText, comparison, hint }: Omit<TileSpec, "key">) {
+  const ariaLabel =
+    deltaText && comparison
+      ? `${label}: ${valueText}, ${deltaText} from ${comparison}${hint ? `. ${hint}` : ""}`
+      : `${label}: ${valueText}${hint ? `. ${hint}` : ""}`;
 
   return (
     <section className="se-tile dz-shell" aria-label={ariaLabel}>
@@ -92,7 +109,7 @@ function SummaryTile({
       {/* AC-5: no delta markup at all when there is nothing to compare
           against — never an empty string, never a "—" that would read as a
           real measured flatline. */}
-      {deltaText && (
+      {deltaText && comparison && (
         <p className="se-tile-delta" aria-hidden="true">
           {deltaText} vs {comparison}
         </p>
@@ -107,13 +124,12 @@ function SummaryTile({
 }
 
 export function SummaryTileRow({ tiles, granularity }: { tiles: SummaryTiles; granularity: Granularity }) {
-  const comparison = comparisonLabel(granularity);
-
   const specs: TileSpec[] = [
     tileSpec(
       "bpm",
       "Median BPM",
       tiles.medianBpm,
+      granularity,
       (v) => `${Math.round(v)} BPM`,
       (d) => `${signed(d, 0)} BPM`,
       null,
@@ -122,6 +138,7 @@ export function SummaryTileRow({ tiles, granularity }: { tiles: SummaryTiles; gr
       "genre",
       "Effective genres",
       tiles.effectiveGenreCount,
+      granularity,
       (v) => v.toFixed(1),
       (d) => signed(d, 1),
       null,
@@ -130,6 +147,7 @@ export function SummaryTileRow({ tiles, granularity }: { tiles: SummaryTiles; gr
       "harmonic",
       "Harmonic mix rate",
       tiles.harmonicMixRate,
+      granularity,
       (v) => `${Math.round(v * 100)}%`,
       (d) => `${signed(d * 100, 0)}pp`,
       tiles.harmonicExcludedNoKey > 0
@@ -140,6 +158,7 @@ export function SummaryTileRow({ tiles, granularity }: { tiles: SummaryTiles; gr
       "pace",
       "Mix pace",
       tiles.mixPace,
+      granularity,
       (v) => `${mmss(v)} / track`,
       (d) => `${signed(d, 0)}s`,
       tiles.mixPaceExcludedCount > 0
@@ -151,7 +170,7 @@ export function SummaryTileRow({ tiles, granularity }: { tiles: SummaryTiles; gr
   return (
     <div className="se-tiles">
       {specs.map(({ key, ...spec }) => (
-        <SummaryTile key={key} {...spec} comparison={comparison} />
+        <SummaryTile key={key} {...spec} />
       ))}
     </div>
   );

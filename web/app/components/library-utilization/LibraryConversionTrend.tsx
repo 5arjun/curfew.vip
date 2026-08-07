@@ -7,7 +7,7 @@ import {
   type ConversionWindow,
   type LibraryConversionModel,
 } from "@/lib/sets/libraryConversion";
-import { InsufficientHistory, LIBRARY_INSUFFICIENT_COPY } from "@/app/components/style-evolution/InsufficientHistory";
+import { InsufficientHistory, libraryInsufficientCopy } from "@/app/components/style-evolution/InsufficientHistory";
 import { TrendChart } from "@/app/components/style-evolution/TrendChart";
 
 /**
@@ -47,7 +47,7 @@ export function LibraryConversionTrend({
   return (
     <div className="lu-trend">
       {!hasEnoughCohorts(library, window) ? (
-        <InsufficientHistory copy={LIBRARY_INSUFFICIENT_COPY} />
+        <InsufficientHistory copy={libraryInsufficientCopy(window)} />
       ) : (
         <TrendChart
           buckets={buckets}

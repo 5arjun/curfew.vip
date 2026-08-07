@@ -55,7 +55,7 @@ export function StyleEvolutionView({ model }: { model: StyleEvolutionModel }) {
 
   // AC-4/AC-5: aggregate, not time-series — reads honestly off a single
   // bucket, so it does not depend on the AC-8 gate below at all.
-  const tiles = useMemo(() => buildSummaryTiles(points), [points]);
+  const tiles = useMemo(() => buildSummaryTiles(series.buckets, points), [series.buckets, points]);
 
   // AC-5/AC-6: plays with no genre/key are excluded from the entropy
   // calculation but their count is always disclosed alongside the chart —
@@ -81,6 +81,14 @@ export function StyleEvolutionView({ model }: { model: StyleEvolutionModel }) {
   // the tile row above never does — it is aggregate and reads honestly off
   // one set, which is the whole reason it renders outside this gate.
   const sectionsReady = model.monthsSpannedAll >= 2;
+
+  // AC-8 narrows the gate for a DJ with "≥1 set but <2 months" — it does NOT
+  // touch the 0-set case, which is a separate, unaffected state (the story's
+  // own Dev Notes say so explicitly). Without this branch the tile row still
+  // rendered for a DJ who has never synced anything: four "—" placeholders
+  // and a granularity toggle acting on nothing, above the empty state. Found
+  // at code review, 2026-08-07.
+  if (model.setCount === 0) return <InsufficientHistory />;
 
   return (
     <>
@@ -135,12 +143,17 @@ export function StyleEvolutionView({ model }: { model: StyleEvolutionModel }) {
             />
             {keyDisclosure && <p className="se-disclosure">{keyDisclosure}</p>}
           </section>
-
-          {undatedDisclosure && <p className="se-disclosure">{undatedDisclosure}</p>}
         </>
       ) : (
         <InsufficientHistory />
       )}
+
+      {/* Outside the gate on purpose (code review, 2026-08-07): a DJ whose
+          sets are ALL undated has `monthsSpannedAll === 0`, so this line —
+          the one thing that explains why every reading above is empty — was
+          the only branch that could say so, and it sat inside the branch that
+          never renders in that case. */}
+      {undatedDisclosure && <p className="se-disclosure">{undatedDisclosure}</p>}
     </>
   );
 }

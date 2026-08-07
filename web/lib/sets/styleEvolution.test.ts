@@ -823,10 +823,18 @@ describe("buildSummaryTiles (Story 4.7 AC-4/AC-5)", () => {
         bpm: { count: 1, min: 128, max: 128, mean: 128, median: 128 },
       }),
     ]);
-    const tiles = buildSummaryTiles(model.month.excluding);
+    const tiles = buildSummaryTiles(model.month.buckets, model.month.excluding);
     // Feb is a real gap (D-8) between the two dated sets — delta must still
     // skip it and compare against January, not treat the gap as "no previous".
-    expect(tiles.medianBpm).toEqual({ current: 128, delta: 8 });
+    expect(tiles.medianBpm).toEqual({
+      current: 128,
+      currentBucket: "2026-03",
+      delta: 8,
+      // The whole point of carrying this (code review, 2026-08-07): the tile
+      // must be able to say "vs January". A flat "vs previous month" would be
+      // a lie here — the previous MONTH is February, which has no reading.
+      deltaBucket: "2026-01",
+    });
   });
 
   it("renders no delta at all — never a fabricated 0 — when there is no earlier bucket to compare against", () => {
@@ -837,8 +845,15 @@ describe("buildSummaryTiles (Story 4.7 AC-4/AC-5)", () => {
         bpm: { count: 1, min: 120, max: 120, mean: 120, median: 120 },
       }),
     ]);
-    const tiles = buildSummaryTiles(model.month.excluding);
-    expect(tiles.medianBpm).toEqual({ current: 120, delta: null });
+    const tiles = buildSummaryTiles(model.month.buckets, model.month.excluding);
+    expect(tiles.medianBpm).toEqual({
+      current: 120,
+      currentBucket: "2026-03",
+      delta: null,
+      // `null` in lockstep with `delta` — the tile renders no delta markup at
+      // all, so there is no bucket to name.
+      deltaBucket: null,
+    });
   });
 
   it("is entirely null for a metric with no data anywhere in the series, not a fabricated reading", () => {
@@ -849,7 +864,7 @@ describe("buildSummaryTiles (Story 4.7 AC-4/AC-5)", () => {
         bpm: { count: 0, min: 0, max: 0, mean: 0, median: 0 },
       }),
     ]);
-    const tiles = buildSummaryTiles(model.month.excluding);
+    const tiles = buildSummaryTiles(model.month.buckets, model.month.excluding);
     expect(tiles.medianBpm).toBeNull();
   });
 
@@ -866,8 +881,77 @@ describe("buildSummaryTiles (Story 4.7 AC-4/AC-5)", () => {
         plays: [play({ position: 1, played_ms: 200_000 }), play({ position: 2, played_ms: null })],
       }),
     ]);
-    const tiles = buildSummaryTiles(model.month.excluding);
+    const tiles = buildSummaryTiles(model.month.buckets, model.month.excluding);
     expect(tiles.mixPace?.current).toBe(200);
     expect(tiles.mixPaceExcludedCount).toBe(1); // March's own exclusion, not Jan's 2 + March's 1
+  });
+});
+
+describe("summary-tile code-review 2026-08-07 regressions", () => {
+  it("names the bucket a delta is measured against, so the tile never has to claim 'previous month'", () => {
+    // The defect this guards: `latestWithDelta` skips D-8 gaps by design, but
+    // the tile's copy asserted a flat "previous month". On the committed
+    // fixture that made three of four tiles say "vs previous month" over an
+    // August-vs-JUNE comparison, in both the visible line and the aria-label.
+    const model = buildStyleEvolution([
+      set({
+        external_id: "nov",
+        started_at: "2025-11-04T21:00:00.000Z",
+        bpm: { count: 1, min: 120, max: 120, mean: 120, median: 120 },
+      }),
+      set({
+        external_id: "aug",
+        started_at: "2026-08-04T21:00:00.000Z",
+        bpm: { count: 1, min: 126, max: 126, mean: 126, median: 126 },
+      }),
+    ]);
+    const tiles = buildSummaryTiles(model.month.buckets, model.month.excluding);
+    expect(tiles.medianBpm?.currentBucket).toBe("2026-08");
+    expect(tiles.medianBpm?.deltaBucket).toBe("2025-11");
+    // Nine months apart and across a year boundary — the exact case a fixed
+    // "previous month" string misreports.
+    expect(tiles.medianBpm?.delta).toBe(6);
+  });
+
+  it("still discloses the excluded-play count when NO bucket has a mix pace at all (AC-6's 'never omitted')", () => {
+    // The worst case for the disclosure contract: 100% of plays excluded, so
+    // there is no current bucket to hang the count on. Reporting 0 there drops
+    // the count precisely when it explains everything on screen.
+    const model = buildStyleEvolution([
+      set({
+        external_id: "only",
+        started_at: "2026-03-04T21:00:00.000Z",
+        plays: [play({ position: 1, played_ms: null }), play({ position: 2, played_ms: undefined })],
+      }),
+    ]);
+    const tiles = buildSummaryTiles(model.month.buckets, model.month.excluding);
+    expect(tiles.mixPace).toBeNull();
+    expect(tiles.mixPaceExcludedCount).toBe(2);
+  });
+
+  it("still discloses excluded_no_key when NO bucket has a scoreable transition (AC-7, same contract)", () => {
+    const model = buildStyleEvolution([
+      set({
+        external_id: "only",
+        started_at: "2026-03-04T21:00:00.000Z",
+        mixingStats: { compatible_transitions: 0, incompatible_transitions: 0, excluded_no_key: 9 },
+      }),
+    ]);
+    const tiles = buildSummaryTiles(model.month.buckets, model.month.excluding);
+    expect(tiles.harmonicMixRate).toBeNull();
+    expect(tiles.harmonicExcludedNoKey).toBe(9);
+  });
+
+  it("carries a set count so AC-8's tile row can tell 'no history' from 'one month of history'", () => {
+    // AC-8 narrows the gate for a DJ with ">=1 set but <2 months" and
+    // explicitly does NOT touch the 0-set case. The view is handed only this
+    // model, so without a count it rendered four "—" tiles at a DJ who has
+    // never synced anything.
+    expect(buildStyleEvolution([]).setCount).toBe(0);
+    expect(
+      buildStyleEvolution([set({ external_id: "a", started_at: "2026-03-04T21:00:00.000Z" })]).setCount,
+    ).toBe(1);
+    // Undated sets count too — they exist, they just cannot be bucketed.
+    expect(buildStyleEvolution([set({ external_id: "a", started_at: null })]).setCount).toBe(1);
   });
 });

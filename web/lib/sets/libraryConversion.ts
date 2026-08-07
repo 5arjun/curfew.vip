@@ -206,10 +206,13 @@ export function convertedWithinWindow(
  * The whole model, from synced add-events plus play history (AC-1, AC-7).
  *
  * Cohorts are keyed by the local month a track was ADDED — deliberately a
- * different x-axis from Style Evolution's other three metrics, which bucket by
- * the month a set was PLAYED. Only one metric is ever on screen at a time
- * (`MetricChipToggle`), so the two never share a plot and cannot be misread as
- * the same axis.
+ * different x-axis from Style Evolution's three trend metrics, which bucket by
+ * the month a set was PLAYED. That used to be kept safe by `MetricChipToggle`
+ * putting only one metric on screen at a time; Story 4.7 deleted the chip and
+ * made all three Style Evolution sections visible at once, so the separation
+ * is now STRUCTURAL instead: this metric lives on `/library-utilization` and
+ * the other three on `/style-evolution`, two different pages that never share
+ * a plot or an axis.
  *
  * Every window in {@link CONVERSION_WINDOWS} is computed in one pass (D-13):
  * the expensive half — building the first-play index and bucketing the events —
