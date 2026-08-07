@@ -11,7 +11,8 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
-    "./schema/sync-payload.schema.json": "./schema/sync-payload.schema.json"
+    "./schema/sync-payload.schema.json": "./schema/sync-payload.schema.json",
+    "./schema/sync-library-add-events.schema.json": "./schema/sync-library-add-events.schema.json"
   },
   "files": [
     "src",

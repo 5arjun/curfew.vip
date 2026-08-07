@@ -125,6 +125,24 @@ export interface SyncPlay {
    * catalogue covers the track.
    */
   library_added_at?: string | null;
+  /**
+   * Opaque, portable track identity — `fnv1a_hex` of the track's
+   * volume-root-relative path (`agent/src-tauri/src/capture.rs::track_id`,
+   * Story 4.2 D-2). **This is the "purpose-built (possibly hashed/opaque)
+   * per-track identity field" Story 1.10's Open Question #1 anticipated for
+   * exactly this use** (see this interface's own doc comment above) — now
+   * resolved by Story 4.2.
+   *
+   * Lets a play join back to its [`SyncLibraryAddEvent`] by identity rather
+   * than by fragile title/artist matching, which is what makes FR-10's
+   * library-to-setlist correlation (and FR-11's conversion rate) computable at
+   * all. The raw path is still never sent — hashing is what keeps the
+   * no-local-FS-layout posture intact while making identity joinable.
+   *
+   * Added post-freeze (Story 4.2), optional per AD-15; `null` when the source
+   * carried no portable path to hash.
+   */
+  track_id?: string | null;
 }
 
 /**
@@ -215,8 +233,68 @@ export interface SyncPayload {
   };
 }
 
+/* ---- Library add-events (Story 4.2, AD-21) ---------------------------------- */
+
+/**
+ * One go-forward library add-event: a track that entered the DJ's library
+ * *after* Curfew first looked at it (Story 4.2, D-4).
+ *
+ * **Why this is not a field on [`SyncPayload`].** `SyncPayload` is
+ * one-`PUT`-per-set (AD-4) and every field on it is set-scoped. An add-event
+ * is not tied to a set at all — the whole point is that it records a track
+ * that was *acquired*, whether or not it was ever played. Bolting it onto the
+ * per-set payload would mean an add-event could only ever reach the cloud on
+ * the coincidence of a set being synced, and would silently re-send the same
+ * events on every re-sync of that set. So it is a wholly separate payload on a
+ * wholly separate path, and `SyncPayload`'s shape and `PUT /sets/:set_id`
+ * idempotency contract are untouched.
+ *
+ * **Go-forward only, never a backfill.** The agent takes a silent local
+ * baseline of the existing library on first run and emits nothing for it
+ * (D-1) — the same discipline Epic 4's Decision B already set for plays.
+ * Nothing here ever reconstructs when a track already in the library was
+ * acquired.
+ */
+export interface SyncLibraryAddEvent {
+  /** Opaque `fnv1a_hex` track identity (D-2) — the same value [`SyncPlay.track_id`] carries. Never the raw path. */
+  track_id: string;
+  /**
+   * ISO 8601 (UTC) — when the DJ's library first saw this track, from
+   * `database V2`'s `tadd`/`uadd` (the same source and the same ~94%
+   * drive-dependent coverage ceiling as [`SyncPlay.library_added_at`]).
+   *
+   * `null` when no reachable catalogue covers the track — never guessed
+   * (AD-11). Such tracks are excluded from cohort math and their count is
+   * always disclosed to the DJ rather than silently dropped (D-10).
+   */
+  added_at: string | null;
+}
+
+/**
+ * The batch envelope the agent `POST`s. A batch (not one request per track)
+ * because a DJ importing a crate adds hundreds of tracks at once, and because
+ * the cloud write is idempotent on `(dj_id, track_id)` — so a batch redelivered
+ * by the at-least-once offline queue (Story 3.3) is a no-op, exactly like a
+ * re-`PUT` set.
+ */
+export interface SyncLibraryAddEventBatch {
+  /** Contract version this batch was produced against. */
+  contract_version: ContractVersion;
+  /** Semver of the agent that produced the batch — same traceability role as `SyncPayload.agent_version`. */
+  agent_version: string;
+  events: SyncLibraryAddEvent[];
+}
+
 /**
  * Relative path (from this package root) to the JSON-schema artifact the Rust
  * agent consumes. Kept as a constant so both sides reference one source of truth.
  */
 export const SYNC_PAYLOAD_SCHEMA_PATH = "schema/sync-payload.schema.json" as const;
+
+/**
+ * Same role as [`SYNC_PAYLOAD_SCHEMA_PATH`], for the Story 4.2 add-event batch
+ * — a second language-neutral artifact rather than an extension of the first,
+ * mirroring the two payloads' deliberate separation above.
+ */
+export const SYNC_LIBRARY_ADD_EVENTS_SCHEMA_PATH =
+  "schema/sync-library-add-events.schema.json" as const;

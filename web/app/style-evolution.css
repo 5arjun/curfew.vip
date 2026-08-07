@@ -265,6 +265,14 @@
    users). ────────────────────────────────────────────────────────────────── */
 .se-chart-info {
   position: relative;
+  /* z-index promotes the whole subtree (button + its enlarged ::after hit
+     area + the tip) into its own stacking context above .se-chart-plot's
+     positioned descendants (.se-chart-hit, z-index:auto). Without it, a
+     positioned z-index:auto descendant of a LATER sibling in the tree
+     (.se-chart-plot comes after .se-chart-head) paints on top regardless of
+     visual position — which is what left only the button's own top-left
+     corner hit-testable (SC 2.5.8 regression, see deferred-work.md). */
+  z-index: 20;
   display: inline-flex;
 }
 
@@ -422,6 +430,23 @@
   background: var(--color-abyss-glint);
 }
 
+/* Added/Played bar legend (Arjun, 2026-08-07) — a small square, not the
+   2px line dash above, since it stands for a bar not a stroke. */
+.se-legend-swatch--bar {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.se-legend-swatch--added {
+  background: var(--chart-cat-1);
+}
+
+.se-legend-swatch--played {
+  background: var(--color-abyss-accent);
+  box-shadow: 0 0 6px var(--color-abyss-accent-glow);
+}
+
 .se-chart-plot {
   position: relative;
   flex: 1;
@@ -573,6 +598,24 @@
   pointer-events: none;
 }
 
+/* Added/Played bars (Arjun, 2026-08-07): a fixed pair, not a hoverable
+   ranked category — `pointer-events: none` (overriding the base rule's
+   `auto`) so they never steal hover from the per-bucket `.se-chart-hit`
+   column underneath, which already surfaces both counts via the cursor
+   chip (`libraryHoverDetail`). Colors match the legend swatches above. */
+.se-chart-bar--added {
+  background: var(--chart-cat-1);
+  pointer-events: none;
+  cursor: default;
+}
+
+.se-chart-bar--played {
+  background: var(--color-abyss-accent);
+  box-shadow: 0 0 6px var(--color-abyss-accent-glow);
+  pointer-events: none;
+  cursor: default;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .se-chart-bar {
     transition: opacity var(--motion-duration-fast) var(--motion-ease-standard);
@@ -625,6 +668,49 @@
   background: var(--color-abyss-glint);
   box-shadow: none;
   opacity: 0.8;
+}
+
+/* Story 4.2 low-confidence disclosure (deferred-work.md): a cohort whose
+   `added` count is too small to trust plots differently from a well-sampled
+   one — still on the line (D-9 never drops a completed cohort), just
+   visibly dimmer. */
+.se-chart-dot--low-confidence {
+  opacity: 0.55;
+  box-shadow: none;
+}
+
+/* Its own layer, positioned at the SAME left/top as the dot it flags
+   (`xs[i]` / `mapY(lineValues[i], lineDomain)`, same coordinates
+   `.se-chart-dots` uses) — see the flag block's own comment in
+   TrendChart.tsx for why this isn't nested inside `.se-chart-dot` anymore:
+   z-index 6, above `.se-chart-cursor-dot`'s 5, so the badge never
+   disappears under the cursor ball on hover. */
+.se-chart-flags {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+}
+
+/* --color-flag: a dedicated, more saturated gold pole — --color-spark read
+   muted/off-tone at this badge's size once anything sat near/behind it
+   (Arjun, 2026-08-07). --color-flag-ring separates the badge from whatever
+   it overlaps, so it never blends into the cursor ball or the line. */
+.se-chart-dot-flag {
+  position: absolute;
+  margin: -9px 0 0 2px;
+  display: grid;
+  place-items: center;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+  background: var(--color-flag);
+  box-shadow: 0 0 0 1.5px var(--color-flag-ring);
+  color: var(--color-on-flag);
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
 }
 
 /* The set-detail chart's own chrome-sphere cursor ball, reused verbatim

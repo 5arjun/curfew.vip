@@ -904,6 +904,7 @@ mod tests {
             in_library: false,
             played_ms: None,
             library_added_at,
+            track_id: None,
         }
     }
 

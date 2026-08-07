@@ -75,6 +75,18 @@
   --color-spark: #e0a44a;
   --color-on-spark: #2e1804;
 
+  /* Color: flag — a saturated, high-chroma gold reserved for a single use:
+     Style Evolution's low-confidence-cohort badge (`.se-chart-dot-flag`).
+     Deliberately more saturated than --color-spark, which read muted/brown
+     at the badge's small size once anything sat near or behind it (Arjun,
+     2026-08-07) — this is a distinct, brighter pole, not a spark retint.
+     --color-flag-ring is a translucent void tone, used only as a 1.5px
+     separating ring so the badge reads as sitting ON TOP of whatever it
+     overlaps, never blended into it. */
+  --color-flag: #ffd23f;
+  --color-on-flag: #241800;
+  --color-flag-ring: rgba(4, 6, 10, 0.6);
+
   /* Color: secondary / tertiary — reserved, not yet in active use.
      Cool blue-neutral, retinted to sit on the blue-black base. */
   --color-secondary: #c5c8ce;

@@ -77,6 +77,10 @@
           "description": "ISO 8601 — library date-added via database V2 tadd/uadd by portable path (Story 3.7 §3d). Added post-freeze, optional per AD-15; null when no reachable catalogue covers the track.",
           "type": ["string", "null"],
           "format": "date-time"
+        },
+        "track_id": {
+          "description": "Opaque fnv1a_hex track identity (Story 4.2, D-2) — hashed from the volume-root-relative path, never the raw path. Joins a play to its SyncLibraryAddEvent by identity; this is the identity field Story 1.10's Open Question #1 anticipated. Added post-freeze, optional per AD-15; null when the source carried no portable path to hash.",
+          "type": ["string", "null"]
         }
       }
     },

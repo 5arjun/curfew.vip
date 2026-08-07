@@ -83,6 +83,24 @@ impl DateAddedIndex {
         }
     }
 
+    /// Whether the catalogues have actually been read yet this index's
+    /// lifetime. Story 4.2 (D-3) uses this as its "the library was read on
+    /// this tick" signal: the add-scan piggybacks on a load some capture
+    /// already paid for, and stays silent on the overwhelming majority of
+    /// ticks that capture nothing.
+    pub fn is_loaded(&self) -> bool {
+        self.catalogues.get().is_some()
+    }
+
+    /// Forces the lazy catalogue load. Called by the *legacy* capture path
+    /// (Story 4.2), which reads `database V2` through its own
+    /// [`LegacyLibrary`] rather than this index and so would otherwise never
+    /// trip [`is_loaded`](Self::is_loaded) — leaving a legacy-only DJ with no
+    /// add-detection at all. Same file, already warm in the OS page cache.
+    pub fn ensure_loaded(&self) {
+        let _ = self.loaded_catalogues();
+    }
+
     fn loaded_catalogues(&self) -> &[LegacyLibrary] {
         self.catalogues.get_or_init(|| {
             let Some(home) = &self.home else {
@@ -122,6 +140,41 @@ impl DateAddedIndex {
         self.loaded_catalogues()
             .iter()
             .find_map(|catalogue| catalogue.date_added_for(path))
+    }
+
+    /// Every track every *reachable* catalogue holds, as
+    /// `(portable path, date_added)` — the whole-library view Story 4.2's
+    /// go-forward add-detection diffs against its local baseline (D-3).
+    ///
+    /// Deliberately the same index, the same lazily-loaded catalogues, and the
+    /// same reachability rules as [`date_added_for`](Self::date_added_for): a
+    /// track on an unmounted volume is simply not in this list, exactly as its
+    /// date reads absent above. Story 4.2's caller relies on that — a library
+    /// that shrinks because a drive was unplugged must never look like tracks
+    /// were *removed*, and a drive that reappears must never look like its
+    /// whole contents were *added* (see `capture::scan_library_adds`).
+    ///
+    /// Earlier catalogues win on a duplicate portable path, matching
+    /// `date_added_for`'s `find_map` order.
+    ///
+    /// Paths are rendered with `to_string_lossy`: a filename is not guaranteed
+    /// to be valid Unicode (Story 1.2 findings §5/D2), and dropping such a
+    /// track would silently under-count the library rather than merely give it
+    /// an approximate identity.
+    pub fn all_tracks(&self) -> Vec<(String, Option<i64>)> {
+        let mut seen: HashMap<String, Option<i64>> = HashMap::new();
+        for (path, date_added) in &self.fixed {
+            seen.insert(path.clone(), Some(*date_added));
+        }
+        if self.home.is_some() {
+            for catalogue in self.loaded_catalogues() {
+                for (path, date_added) in catalogue.entries() {
+                    seen.entry(path.to_string_lossy().into_owned())
+                        .or_insert(date_added);
+                }
+            }
+        }
+        seen.into_iter().collect()
     }
 }
 

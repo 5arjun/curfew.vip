@@ -858,6 +858,24 @@ So that I understand how long tracks sit before they debut.
 3. **Given** the metric across the library, **Then** an aggregate view (e.g. distribution/median) is shown.
 4. **Given** a track missing both `tadd` and `uadd` (~6% of tracks, per Architecture Spine Open Questions #2), **Then** time-to-first-play renders as "Unknown" (per FR-2's Unknown convention) and is excluded from the aggregate view — never computed against a missing timestamp. *(Architecture Spine OQ#2 graceful-fallback requirement; SM-C1)*
 
+### Story 4.6: Web read path — swap the committed fixture for Supabase
+
+As a DJ,
+I want the dashboard, Set Detail, and Style Evolution/Library Utilization pages to show my real synced data,
+So that the sets and library adds the agent has been syncing since Epic 3 actually appear, instead of the same committed fixture every DJ sees.
+
+> **⚑ Launch blocker, unstoried until now.** Flagged during Story 4.2 review (`deferred-work.md`): the agent write path has been live since Epic 3 (`sync_set` → `sessions`/`sets`/`plays`) and Story 4.2 added `sync_library_add_events` → `library_track_events`, but `web/lib/sets/index.ts` — the one seam every page reads through (Story 3.6 Task 4, AC-13/SM-1) — still serves `getRecentSets`, `getSetById`, `deleteSet`, and `getLibraryAddEvents` from the committed `recent-sets.fixture.json` / `library-add-events.fixture.json`, exactly as Decision A intended as the *day-one stand-in*. Only `getAgentStatus` (Story 3.9) reads Supabase for real. Without this story, production data accumulates that the product can never display. Ruled by Arjun 2026-08-07 to be sequenced here, before Epic 5, rather than left to accrete further against an epic it doesn't belong to.
+
+**Acceptance Criteria:**
+
+1. **Given** the data-access seam in `web/lib/sets/index.ts`, **Then** `getRecentSets`, `getSetById`, `deleteSet`, and `getLibraryAddEvents` read from Supabase (`sessions`/`sets`/`plays`/`library_track_events`, all owner-SELECT via RLS per AD-7) instead of the committed fixtures — no `dj_id` filter needed or wanted, `auth.uid()` is the filter, matching `getAgentStatus`'s existing precedent exactly. *(Decision A's swap point; AD-7)*
+2. **Given** every component that currently imports from this seam (dashboard, Set Detail, Style Evolution — `library-utilization/page.tsx` is still a Story 3.5 stub and not yet a caller), **Then** none of them change — the seam's function signatures and return shapes are preserved so the swap is invisible above this file, per the seam's own founding contract ("only the function bodies below change"). *(Story 3.6 Task 4, AC-13/SM-1)*
+3. **Given** a DJ with no synced sets or add-events yet (a brand-new account, or Epic 3/4's own dev/test accounts before the agent has run), **Then** each function returns the same empty/`null` shape the fixture stage returns today, rendering the existing insufficient-history / empty-dashboard states — never a thrown error. *(Mirrors `getLibraryAddEvents`'s existing "day one, every DJ is empty by construction" contract)*
+4. **Given** a genuine Supabase read failure (missing env, broken RLS, network), **Then** it fails calmly and resiliently exactly like `getAgentStatus` does today — rendered identically to "nothing synced yet" in production, but logged loudly in non-production so a real regression cannot sit invisible indefinitely. *(Mirrors `getAgentStatus`'s existing resilience contract)*
+5. **Given** `deleteSet`, **Then** it performs a real hard delete against Supabase (not the fixture stage's in-memory `store` mutation), scoped by RLS so a DJ can only ever delete their own row. *(AC-12's original "removal path" intent, now against the real store)*
+6. **Given** the committed fixtures (`recent-sets.fixture.json`, `library-add-events.fixture.json`) and their generator scripts (`build-fixture.mjs`, `build-library-fixture.mjs`), **Then** a decision is made and recorded on whether they are retired, or kept solely as local-dev/test fixtures decoupled from the production seam — not left ambiguous about which one `web/lib/sets/index.ts` actually serves. *(Prevents the same "which one is real" ambiguity this story exists to close)*
+7. **Given** the full test suite, **Then** existing seam-consuming component tests are updated to mock/stub the Supabase client rather than relying on fixture data being served automatically, and the seam itself gains coverage for the empty-state and failure-state paths (AC-3/AC-4). *(Standing gate discipline, ai-8)*
+
 ## Epic 5: Set Segments & Layer 2 Enrichment
 
 A DJ can add meaning on top of an immutable as-played set — labeled time-range segments (algorithm-suggested, confirmed via drag or keyboard, or added manually), per-segment stat slices, and Layer 2 enrichment (venue / crowd / event / notes, with optional off-by-default location suggestion). All overlays are web-authored and cloud-only; nothing here is ever required for core dashboard stats. *(UJ-7, UJ-4-lite)*

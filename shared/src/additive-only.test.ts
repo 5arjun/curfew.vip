@@ -1,15 +1,38 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve as resolvePath } from "node:path";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 const packageRoot = resolvePath(dirname(fileURLToPath(import.meta.url)), "..");
-const baseline = JSON.parse(
-  readFileSync(resolvePath(packageRoot, "schema/sync-payload.schema.frozen-baseline.json"), "utf8"),
-);
-const current = JSON.parse(
-  readFileSync(resolvePath(packageRoot, "schema/sync-payload.schema.json"), "utf8"),
-);
+
+const readSchema = (name: string) =>
+  JSON.parse(readFileSync(resolvePath(packageRoot, "schema", name), "utf8"));
+
+/**
+ * Every wire artifact under the AD-15 additive-only guard, each paired with
+ * the frozen snapshot it may only ever grow away from.
+ *
+ * Story 4.2 added the second entry: its `SyncLibraryAddEventBatch` is a new,
+ * separate payload (AD-21's sanctioned second agent write), and it gets the
+ * same CI regression protection from birth rather than inheriting none just
+ * because it wasn't part of Story 1.10's original freeze.
+ */
+const SCHEMA_PAIRS = [
+  {
+    name: "sync-payload.schema.json",
+    baseline: readSchema("sync-payload.schema.frozen-baseline.json"),
+    current: readSchema("sync-payload.schema.json"),
+  },
+  {
+    name: "sync-library-add-events.schema.json",
+    baseline: readSchema("sync-library-add-events.schema.frozen-baseline.json"),
+    current: readSchema("sync-library-add-events.schema.json"),
+  },
+] as const;
+
+/** The pair currently under assertion — the roots `$ref`s resolve against. */
+let baseline: any = SCHEMA_PAIRS[0].baseline;
+let current: any = SCHEMA_PAIRS[0].current;
 
 /** Resolves a (possibly chained) `$ref` (`"#/$defs/xxx"`) against its own schema root. */
 function resolveRef(node: any, root: any): any {
@@ -124,7 +147,12 @@ function assertAdditiveOnly(path: string, baselineNode: any, currentNode: any): 
   }
 }
 
-describe("sync-payload.schema.json additive-only guard (AC-3, AD-15)", () => {
+describe.each(SCHEMA_PAIRS)("$name additive-only guard (AC-3, AD-15)", (pair) => {
+  beforeEach(() => {
+    baseline = pair.baseline;
+    current = pair.current;
+  });
+
   it("keeps every baseline property, required entry, and type present in the current schema", () => {
     assertAdditiveOnly("root", baseline, current);
   });
@@ -136,6 +164,45 @@ describe("sync-payload.schema.json additive-only guard (AC-3, AD-15)", () => {
         `$defs.${defName} was removed from the frozen baseline`,
       ).toBeDefined();
       assertAdditiveOnly(`$defs.${defName}`, baseline.$defs[defName], current.$defs[defName]);
+    }
+  });
+});
+
+/**
+ * The guard's own regression test: a hand-built "someone narrowed a field"
+ * mutation must actually fail. Without this, every assertion above could be
+ * silently vacuous (`describe.each` + shared roots is exactly the shape that
+ * goes quietly inert) and nobody would notice until a real narrowing shipped.
+ */
+describe("the additive-only guard itself", () => {
+  it("rejects a narrowed field, a dropped property, and a newly-required field", () => {
+    const original = { baseline, current };
+    try {
+      baseline = {
+        type: "object",
+        required: ["a"],
+        properties: { a: { type: ["string", "null"] }, b: { type: "string" } },
+      };
+
+      current = {
+        type: "object",
+        required: ["a"],
+        properties: { a: { type: "string" }, b: { type: "string" } },
+      };
+      expect(() => assertAdditiveOnly("root", baseline, current)).toThrow();
+
+      current = { type: "object", required: ["a"], properties: { a: { type: ["string", "null"] } } };
+      expect(() => assertAdditiveOnly("root", baseline, current)).toThrow();
+
+      current = {
+        type: "object",
+        required: ["a", "b"],
+        properties: { a: { type: ["string", "null"] }, b: { type: "string" } },
+      };
+      expect(() => assertAdditiveOnly("root", baseline, current)).toThrow();
+    } finally {
+      baseline = original.baseline;
+      current = original.current;
     }
   });
 });

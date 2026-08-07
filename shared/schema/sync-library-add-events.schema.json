@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://curfew.app/schema/sync-library-add-events.json",
+  "title": "Curfew Library Add-Event Batch",
+  "description": "Additive-only forever from Story 4.2 onward, same AD-15 discipline as sync-payload.schema.json. The SECOND sanctioned agent write (AD-21, after AD-20's status heartbeat) — a go-forward record of tracks entering the DJ's library, deliberately separate from the one-PUT-per-set SyncPayload (AD-4) because an add-event is not set-scoped. Language-neutral mirror of SyncLibraryAddEventBatch in @curfew/shared.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_version", "agent_version", "events"],
+  "properties": {
+    "contract_version": {
+      "description": "Contract version this batch was produced against.",
+      "type": "integer",
+      "const": 1
+    },
+    "agent_version": {
+      "description": "Semver of the producing agent — same traceability role as SyncPayload.agent_version.",
+      "type": "string"
+    },
+    "events": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/library_add_event" }
+    }
+  },
+  "$defs": {
+    "library_add_event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["track_id", "added_at"],
+      "properties": {
+        "track_id": {
+          "description": "Opaque fnv1a_hex track identity (Story 4.2, D-2) — hashed from the volume-root-relative path, never the raw path. The same value SyncPlay.track_id carries, so a play joins its add-event by identity.",
+          "type": "string",
+          "minLength": 1
+        },
+        "added_at": {
+          "description": "ISO 8601 (UTC) — when the library first saw this track, from database V2's tadd/uadd (same ~94% drive-dependent coverage ceiling as SyncPlay.library_added_at). null when no reachable catalogue covers the track — never guessed (AD-11); such tracks are excluded from cohort math and their count is always disclosed (D-10).",
+          "type": ["string", "null"],
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

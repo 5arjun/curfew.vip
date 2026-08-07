@@ -12,6 +12,14 @@ export const METRIC_CHIPS: Array<{ key: TrendMetric; label: string }> = [
   { key: "bpm", label: "BPM Range" },
   { key: "genre", label: "Genre Diversity" },
   { key: "key", label: "Key Usage" },
+  // Story 4.2 (FR-10, D-11 confirmed with Arjun 2026-08-07): the fourth chip.
+  // Appended rather than inserted — chip order is the FR-9 order and a DJ's
+  // muscle memory for the first three should not shift because a fourth
+  // arrived. It shares the chip row and the chart component but NOT the
+  // x-axis: this one buckets by the month a track was added, the other three
+  // by the month a set was played. Only one is ever on screen at a time, so
+  // the two axes never appear together and cannot be misread as one.
+  { key: "library", label: "Library Conversion" },
 ];
 
 function isTrendMetric(v: unknown): v is TrendMetric {

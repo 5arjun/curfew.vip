@@ -224,6 +224,19 @@ impl LegacyLibrary {
     pub(crate) fn date_added_for(&self, played_path: &Path) -> Option<i64> {
         self.get(played_path)?.date_added
     }
+
+    /// Every catalogued track as `(stored path, date_added)` — the whole-library
+    /// read Story 4.2's go-forward add-detection needs (D-3), as opposed to
+    /// [`date_added_for`](Self::date_added_for)'s single-path lookup.
+    ///
+    /// The key is returned exactly as the catalogue stored it (root-relative,
+    /// no leading `/`) — that *is* the portable path convention Story 4.2's
+    /// track identity hashes (D-2), so no normalization happens here.
+    pub(crate) fn entries(&self) -> impl Iterator<Item = (&Path, Option<i64>)> {
+        self.tracks
+            .iter()
+            .map(|(path, track)| (path.as_path(), track.date_added))
+    }
 }
 
 /// Resolves one played track against a loaded legacy library (AC-1, AC-3, AC-4).

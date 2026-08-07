@@ -17,7 +17,9 @@
 // reads Supabase directly through the same seam so the swap point stays in one
 // file.
 import fixture from "./recent-sets.fixture.json";
+import addEventFixture from "./library-add-events.fixture.json";
 import type { AgentStatusRow, AgentStatusSnapshot } from "./agentStatus";
+import type { LibraryAddEvent } from "./libraryConversion";
 import type { SetRecord } from "./types";
 
 // A mutable working copy of the fixture so the delete seam (AC-12) has somewhere
@@ -35,6 +37,41 @@ let store: SetRecord[] = structuredClone(fixture) as SetRecord[];
  */
 export async function getRecentSets(): Promise<SetRecord[]> {
   return [...store].sort((a, b) => (b.started_at ?? "").localeCompare(a.started_at ?? ""));
+}
+
+/**
+ * Library add-events plus the moment they were read (Story 4.2, FR-10).
+ *
+ * Carries the clock for the same reason `AgentStatusSnapshot` does: whether a
+ * month-added cohort has finished its 90-day window is a question about *now*,
+ * and `buildLibraryConversion` is a pure function that must be handed the time
+ * rather than read it (Story 4.1's review: a `Date.now()` inside a "pure"
+ * function is what made that suite machine-dependent). Reading it here also
+ * keeps it out of a component render, which `react-hooks/purity` rightly
+ * rejects.
+ */
+export interface LibraryAddEventSnapshot {
+  events: LibraryAddEvent[];
+  readAtMs: number;
+}
+
+/**
+ * Every library add-event synced for this DJ (Story 4.2, FR-10) — the
+ * denominator Style Evolution's library-conversion trend is computed against.
+ *
+ * Same seam discipline as `getRecentSets` above: fixture-backed today
+ * (`build-library-fixture.mjs`, derived from the DJ's own captured plays),
+ * swapped for a `library_track_events` select when the cloud read path lands.
+ * RLS is owner-SELECT-only, so that query will need no `dj_id` filter either —
+ * `auth.uid()` is the filter.
+ *
+ * Returns an empty list rather than throwing when nothing has ever synced: on
+ * day one after this ships, EVERY DJ is in that state by construction (D-1's
+ * baseline emits zero events), and it renders as the insufficient-history
+ * copy, not as a broken page.
+ */
+export async function getLibraryAddEvents(): Promise<LibraryAddEventSnapshot> {
+  return { events: addEventFixture as LibraryAddEvent[], readAtMs: Date.now() };
 }
 
 /** One set by its `external_id`, or `null` if it does not exist (or was deleted). */
@@ -102,3 +139,4 @@ export async function getAgentStatus(): Promise<AgentStatusSnapshot> {
 
 export type { SetRecord } from "./types";
 export type { AgentStatusRow, AgentStatusSnapshot } from "./agentStatus";
+export type { LibraryAddEvent } from "./libraryConversion";

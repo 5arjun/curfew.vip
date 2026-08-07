@@ -12,6 +12,13 @@ import {
   type MonthGenreDiversity,
   type MonthKeyDiversity,
 } from "@/lib/sets/styleEvolution";
+import {
+  DEFAULT_CONVERSION_WINDOW,
+  isLowConfidenceCohort,
+  libraryConversionSummary,
+  type ConversionWindow,
+  type LibraryConversionModel,
+} from "@/lib/sets/libraryConversion";
 import { parseCamelot } from "@/lib/sets/setDetail";
 import { createMonotoneYAt, monotonePath, type CurveXY } from "@/lib/sets/energyArc";
 import { CursorChip, useCursorChipTarget } from "@/app/components/ui/CursorChip";
@@ -59,7 +66,7 @@ import { CursorChip, useCursorChipTarget } from "@/app/components/ui/CursorChip"
 // undistorted rounded cap plus its own hover target for free — which also
 // retires the hand-aligned hit-row the SVG version needed.
 
-export type TrendMetric = "bpm" | "genre" | "key";
+export type TrendMetric = "bpm" | "genre" | "key" | "library";
 
 const VIEW = { width: 1000, height: 260, padding: 28 };
 const Y_AXIS_GUTTER = 58; // left margin reserved for the y-axis labels
@@ -113,6 +120,17 @@ function bucketDetail(key: string, granularity: Granularity): string {
   if (granularity === "month") return monthName(y, m);
   const d = Number(key.split("-")[2]);
   return new Date(y, m - 1, d).toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+/** Library-metric hover-chip detail. Leads with the exact counts (Arjun,
+ *  2026-08-07: the bare percentage alone left "how many tracks are we even
+ *  talking about" undiscoverable without the added-vs-played bars' own
+ *  scale label to cross-reference) — every month, not only low-confidence
+ *  ones, so a DJ never has to guess whether a number is being withheld. */
+function libraryHoverDetail(played: number, added: number, window: ConversionWindow): string {
+  if (added === 0) return "no tracks added";
+  const pct = Math.round((played / added) * 100);
+  return `${played} of ${added} tracks played within ${window} days (${pct}%)`;
 }
 
 function xForIndex(i: number, count: number): number {
@@ -239,7 +257,23 @@ const METRIC_TITLE: Record<TrendMetric, string> = {
   bpm: "BPM Range",
   genre: "Genre Diversity",
   key: "Key Usage",
+  library: "Library Conversion",
 };
+
+// Story 4.2 (D-7): the library-conversion metric reuses this component's
+// SINGLE-LINE path wholesale — same runs/bridges/dots/curve, same CursorChip,
+// same caption idiom. Three things about it are genuinely different, and each
+// is branched explicitly rather than folded into the diversity path:
+//
+//   1. Its x-axis buckets are months tracks were ADDED, not months sets were
+//      PLAYED. The caller passes the right `buckets` for the selected metric,
+//      so nothing here has to know — but it is why the two can never share a
+//      plot, and why only one metric is ever on screen at a time.
+//   2. Its y-axis is a percentage with a real 0 and a real 100, not a count
+//      with a floor of 1 — so it gets its own domain rather than `lineDomain`.
+//   3. It has no category composition, so no bars: `breakdowns` stays empty
+//      and `hasBars` is false, which the existing code already handles.
+const PCT_DOMAIN: YDomain = { min: 0, max: 100 };
 
 // "Effective genres/keys" (D-1/D-2 Shannon entropy, converted via
 // `effectiveDiversity`) — a deterministic, directly-interpretable count
@@ -275,6 +309,9 @@ export function TrendChart({
   bpmSeries,
   genreSeries,
   keySeries,
+  librarySeries,
+  libraryModel,
+  conversionWindow = DEFAULT_CONVERSION_WINDOW,
 }: {
   buckets: string[];
   granularity: Granularity;
@@ -282,6 +319,17 @@ export function TrendChart({
   bpmSeries: Array<MonthBpmRange | null>;
   genreSeries: Array<MonthGenreDiversity | null>;
   keySeries: Array<MonthKeyDiversity | null>;
+  /** Story 4.2: per-cohort conversion rates (0–1), parallel to `buckets` when
+   *  `metric === "library"`. The caller passes the ADD-month buckets for that
+   *  metric — see `PCT_DOMAIN`'s note above. */
+  librarySeries?: Array<number | null>;
+  /** Story 4.2: the model the library caption is generated from (AC-2's one
+   *  generator). Absent for the other three metrics. */
+  libraryModel?: LibraryConversionModel;
+  /** Story 4.2 (D-13): the selected conversion window, in days. Named in the
+   *  caption, the subtitle, and the hover chip — never left implicit, since
+   *  the same chart reads differently at 90 and at 30. */
+  conversionWindow?: ConversionWindow;
 }) {
   // THE one Chart Summary string per metric (visible caption + aria
   // text-equivalent + render-failure fallback — AC-4).
@@ -290,10 +338,20 @@ export function TrendChart({
       ? bpmRangeSummary(buckets, bpmSeries, granularity)
       : metric === "genre"
         ? genreDiversitySummary(buckets, genreSeries, granularity)
-        : keyDiversitySummary(buckets, keySeries, granularity);
+        : metric === "key"
+          ? keyDiversitySummary(buckets, keySeries, granularity)
+          : libraryModel
+            ? libraryConversionSummary(libraryModel, conversionWindow)
+            : "No library additions tracked yet.";
 
   return (
-    <TrendChartErrorBoundary caption={caption} resetKey={`${metric}:${granularity}:${buckets.length}`}>
+    <TrendChartErrorBoundary
+      caption={caption}
+      // The window belongs in the reset key for the same reason metric and
+      // granularity do: changing it changes what is drawn, so a boundary
+      // tripped by one window must not stay tripped for the next.
+      resetKey={`${metric}:${granularity}:${conversionWindow}:${buckets.length}`}
+    >
       <TrendChartPlot
         buckets={buckets}
         granularity={granularity}
@@ -301,6 +359,9 @@ export function TrendChart({
         bpmSeries={bpmSeries}
         genreSeries={genreSeries}
         keySeries={keySeries}
+        librarySeries={librarySeries}
+        libraryModel={libraryModel}
+        conversionWindow={conversionWindow}
         caption={caption}
       />
     </TrendChartErrorBoundary>
@@ -316,6 +377,9 @@ function TrendChartPlot({
   bpmSeries,
   genreSeries,
   keySeries,
+  librarySeries,
+  libraryModel,
+  conversionWindow = DEFAULT_CONVERSION_WINDOW,
   caption,
 }: {
   buckets: string[];
@@ -324,6 +388,9 @@ function TrendChartPlot({
   bpmSeries: Array<MonthBpmRange | null>;
   genreSeries: Array<MonthGenreDiversity | null>;
   keySeries: Array<MonthKeyDiversity | null>;
+  librarySeries?: Array<number | null>;
+  libraryModel?: LibraryConversionModel;
+  conversionWindow?: ConversionWindow;
   caption: string;
 }) {
   const xs = useMemo(() => buckets.map((_, i) => xForIndex(i, buckets.length)), [buckets]);
@@ -338,8 +405,48 @@ function TrendChartPlot({
     if (metric === "genre")
       return genreSeries.map((v) => (v && v.index != null ? effectiveDiversity(v.index) : null));
     if (metric === "key") return keySeries.map((v) => (v && v.index != null ? effectiveDiversity(v.index) : null));
+    // Story 4.2: rate 0–1 → percent, so the plotted quantity, the axis label,
+    // the hover chip, and the caption all speak in the same unit.
+    if (metric === "library") return (librarySeries ?? []).map((v) => (v == null ? null : v * 100));
     return [];
-  }, [metric, genreSeries, keySeries]);
+  }, [metric, genreSeries, keySeries, librarySeries]);
+
+  // Story 4.2 low-confidence disclosure: `buckets[i]` is `libraryBuckets[i]`
+  // is `libraryModel.windows[conversionWindow].cohorts[i].bucket` (all three
+  // built from the same array in `StyleEvolutionView`, in the same order),
+  // so the cohort's `added` count is a direct index lookup — no re-matching
+  // by bucket key needed.
+  const libraryAddedByIndex: number[] = useMemo(() => {
+    if (metric !== "library" || !libraryModel) return [];
+    const cohorts = libraryModel.windows[conversionWindow].cohorts;
+    return buckets.map((_, i) => cohorts[i]?.added ?? 0);
+  }, [metric, libraryModel, conversionWindow, buckets]);
+
+  /** Same index alignment as `libraryAddedByIndex` above — how many of that
+   *  cohort's added tracks were actually played within the window (Arjun,
+   *  2026-08-07: show added-vs-played as its own pair of bars, the same
+   *  underlying numbers the line's percentage is already computed from). */
+  const libraryPlayedByIndex: number[] = useMemo(() => {
+    if (metric !== "library" || !libraryModel) return [];
+    const cohorts = libraryModel.windows[conversionWindow].cohorts;
+    return buckets.map((_, i) => cohorts[i]?.converted ?? 0);
+  }, [metric, libraryModel, conversionWindow, buckets]);
+
+  // Scaled against the taller of the two series across every visible month —
+  // "added" is always ≥ "played" per cohort, but the TALLEST bar overall
+  // could be either one depending on how the window's completed cohorts
+  // land, so this doesn't just take libraryAddedByIndex's own max.
+  const libraryBarMax = useMemo(() => {
+    if (metric !== "library") return 0;
+    let max = 0;
+    for (let i = 0; i < buckets.length; i++) {
+      if ((libraryAddedByIndex[i] ?? 0) > max) max = libraryAddedByIndex[i];
+      if ((libraryPlayedByIndex[i] ?? 0) > max) max = libraryPlayedByIndex[i];
+    }
+    return max;
+  }, [metric, buckets, libraryAddedByIndex, libraryPlayedByIndex]);
+  const libraryBarScale = libraryBarMax || 1;
+  const hasLibraryBars = metric === "library" && libraryBarMax > 0;
 
   /* ── Category composition, drawn as the grouped bars behind the line ───── */
 
@@ -349,6 +456,9 @@ function TrendChartPlot({
   // bar shrinks to the new scale — animated, not a jump.
   const [showOther, setShowOther] = useState(false);
 
+  // Library conversion has no category composition to draw — an empty
+  // breakdown leaves `hasBars` false and the bar layer unrendered, with no
+  // extra branch needed anywhere below.
   const breakdowns: Array<CategoryTally[] | null> = useMemo(() => {
     if (metric === "genre") return genreSeries.map((v) => v?.breakdown ?? null);
     if (metric === "key") return keySeries.map((v) => v?.breakdown ?? null);
@@ -481,7 +591,14 @@ function TrendChartPlot({
     for (const v of lineValues) if (v != null && v > max) max = v;
     return max;
   }, [lineValues]);
-  const lineDomain = useMemo<YDomain>(() => ({ min: 1, max: lineMax <= 1 ? 2 : lineMax * 1.15 }), [lineMax]);
+  // A conversion rate is a percentage: a real 0 and a real 100, fixed, never
+  // rescaled to the data. "40% of what I bought got played" has to be readable
+  // against the whole scale — an auto-fitted axis would make 38% vs 41% look
+  // like a collapse.
+  const lineDomain = useMemo<YDomain>(
+    () => (metric === "library" ? PCT_DOMAIN : { min: 1, max: lineMax <= 1 ? 2 : lineMax * 1.15 }),
+    [metric, lineMax],
+  );
 
   /* ── Runs, bridges, points ─────────────────────────────────────────────── */
 
@@ -600,6 +717,47 @@ function TrendChartPlot({
             <span className="se-legend-swatch se-legend-swatch--min" aria-hidden="true" />
             <span>Slowest track</span>
           </div>
+        ) : metric === "library" ? (
+          // States WHAT is plotted; the explainer holds the two things a DJ
+          // would otherwise have to guess — which month a point belongs to
+          // (the one the tracks were BOUGHT in, not played in), and why the
+          // line stops short of today.
+          <>
+            <p className="se-chart-subtitle">
+              Share of each month&rsquo;s new tracks played within {conversionWindow} days
+              <span className="se-chart-info">
+                <button
+                  type="button"
+                  className="se-chart-info-btn"
+                  aria-label="What the library conversion trend measures"
+                  aria-describedby={tipId}
+                  aria-expanded={tipOpen}
+                  onClick={() => setTipOpen((open) => !open)}
+                  onBlur={() => setTipOpen(false)}
+                >
+                  <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                    <circle className="se-chart-info-ring" cx="8" cy="8" r="7" />
+                    <circle className="se-chart-info-dot" cx="8" cy="4.6" r="0.95" />
+                    <path className="se-chart-info-stem" d="M8 7.1v4.6" />
+                  </svg>
+                </button>
+                <span role="tooltip" id={tipId} className="se-chart-info-tip">
+                  Each point is the month you ADDED the tracks, not the month you played them. The most recent months
+                  are missing on purpose — they haven&rsquo;t had their full {conversionWindow} days yet. Shortening
+                  the window asks a harder question (how FAST new music reaches a set), so rates fall — but more
+                  months qualify, so the line reaches closer to today.
+                </span>
+              </span>
+            </p>
+            {hasLibraryBars && (
+              <div className="se-chart-legend">
+                <span className="se-legend-swatch se-legend-swatch--bar se-legend-swatch--added" aria-hidden="true" />
+                <span>Added</span>
+                <span className="se-legend-swatch se-legend-swatch--bar se-legend-swatch--played" aria-hidden="true" />
+                <span>Played</span>
+              </div>
+            )}
+          </>
         ) : (
           // The definition used to sit here in full and ran the width of the
           // card. Now the label states WHAT is plotted and the explainer holds
@@ -654,6 +812,22 @@ function TrendChartPlot({
               {Math.round(bpmDataRange.min) !== Math.round(bpmDataRange.max) && (
                 <span className="se-chart-ylabel" style={{ top: pctY(mapY(bpmDataRange.min, bandDomain)) }}>
                   {Math.round(bpmDataRange.min)}
+                </span>
+              )}
+            </>
+          ) : metric === "library" ? (
+            // Fixed 0/50/100 ticks, matching the fixed domain above — the
+            // reference points that make a rate legible at a glance.
+            <>
+              {[100, 50, 0].map((tick) => (
+                <span key={tick} className="se-chart-ylabel" style={{ top: pctY(mapY(tick, lineDomain)) }}>
+                  {tick}%
+                </span>
+              ))}
+              {hasLibraryBars && (
+                <span className="se-chart-ylabel se-chart-ylabel--bars" style={{ top: pctY(yBarsLabel) }}>
+                  {libraryBarMax}
+                  <span className="se-chart-ylabel-noun"> tracks</span>
                 </span>
               )}
             </>
@@ -746,6 +920,45 @@ function TrendChartPlot({
                       />
                     );
                   })}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Added-vs-played bars (Arjun, 2026-08-07): reuses the exact same
+            group/bar geometry the genre/key composition bars use above
+            (`.se-chart-bars`/`.se-chart-group`/`.se-chart-bar`,
+            `barGroupWidth`/`barBottomPct`/`barBandPct`) — a fixed two-series
+            pair rather than a ranked/capped category list, so it gets its
+            own small render path instead of being forced through
+            `ranked`/`groups`/`showOther`, which exist for the "top N of
+            many, fold the rest into Other" shape genre/key actually has. */}
+        {hasLibraryBars && (
+          <div className="se-chart-bars" aria-hidden="true">
+            {buckets.map((b, bi) => {
+              const added = libraryAddedByIndex[bi] ?? 0;
+              const played = libraryPlayedByIndex[bi] ?? 0;
+              if (added === 0 && played === 0) return null;
+              return (
+                <div
+                  key={b}
+                  className="se-chart-group"
+                  style={{
+                    left: pctX(xs[bi]),
+                    width: pctX(barGroupWidth),
+                    bottom: `${barBottomPct}%`,
+                    height: `${barBandPct}%`,
+                  }}
+                >
+                  <span
+                    className="se-chart-bar se-chart-bar--added"
+                    style={{ height: `${(added / libraryBarScale) * 100}%` }}
+                  />
+                  <span
+                    className="se-chart-bar se-chart-bar--played"
+                    style={{ height: `${(played / libraryBarScale) * 100}%` }}
+                  />
                 </div>
               );
             })}
@@ -892,8 +1105,18 @@ function TrendChartPlot({
             }
             const v = lineValues[i];
             if (v == null) return null;
+            // Low-confidence cohorts still plot (D-9's own line never drops
+            // a completed cohort) but read as de-emphasised, not equal to a
+            // well-sampled one — see `libraryAddedByIndex` above. The flag
+            // badge itself renders in `.se-chart-flags` below, not here — see
+            // that block's comment for why.
+            const lowConfidence = metric === "library" && isLowConfidenceCohort(libraryAddedByIndex[i] ?? 0);
             return (
-              <span key={b} className="se-chart-dot" style={{ left: pctX(xs[i]), top: pctY(mapY(v, lineDomain)) }} />
+              <span
+                key={b}
+                className={lowConfidence ? "se-chart-dot se-chart-dot--low-confidence" : "se-chart-dot"}
+                style={{ left: pctX(xs[i]), top: pctY(mapY(v, lineDomain)) }}
+              />
             );
           })}
         </div>
@@ -913,6 +1136,31 @@ function TrendChartPlot({
           }
           aria-hidden="true"
         />
+
+        {/* Low-confidence flag badges, their OWN layer above the cursor ball
+            (`.se-chart-dots` sits below `.se-chart-cursor-dot` at z-index 3
+            vs. 5 — a badge rendered inside `.se-chart-dots` got its
+            stacking capped there and partly disappeared under the ball on
+            hover, exactly the bug the badge exists to prevent). Kept as a
+            separate small layer rather than raising `.se-chart-dots` itself,
+            which would wrongly put every ordinary dot above the cursor too. */}
+        {metric === "library" && (
+          <div className="se-chart-flags" aria-hidden="true">
+            {buckets.map((b, i) => {
+              const v = lineValues[i];
+              if (v == null || !isLowConfidenceCohort(libraryAddedByIndex[i] ?? 0)) return null;
+              return (
+                <span
+                  key={b}
+                  className="se-chart-dot-flag"
+                  style={{ left: pctX(xs[i]), top: pctY(mapY(v, lineDomain)) }}
+                >
+                  !
+                </span>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="se-chart-ticks" aria-hidden="true">
@@ -965,9 +1213,15 @@ function TrendChartPlot({
                 ? bpmSeries[hover.bucketIndex]
                   ? `${Math.round(bpmSeries[hover.bucketIndex]!.min)}–${Math.round(bpmSeries[hover.bucketIndex]!.max)} BPM`
                   : "no data"
-                : lineValues[hover.bucketIndex] != null
-                  ? `${(lineValues[hover.bucketIndex] as number).toFixed(1)} effective ${UNIT_NOUN[metric]}`
-                  : "no data"}
+                : lineValues[hover.bucketIndex] == null
+                  ? "no data"
+                  : metric === "library"
+                    ? libraryHoverDetail(
+                        libraryPlayedByIndex[hover.bucketIndex] ?? 0,
+                        libraryAddedByIndex[hover.bucketIndex] ?? 0,
+                        conversionWindow,
+                      )
+                    : `${(lineValues[hover.bucketIndex] as number).toFixed(1)} effective ${UNIT_NOUN[metric]}`}
           </p>
         )}
       </CursorChip>
