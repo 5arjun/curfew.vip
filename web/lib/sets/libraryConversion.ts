@@ -294,6 +294,106 @@ export function isLowConfidenceCohort(added: number): boolean {
   return added < LOW_CONFIDENCE_COHORT_SIZE;
 }
 
+/**
+ * Story 4.3 (AC-1, AC-3, AC-4), Decision E-1: the pip meter's **live,
+ * current-window** stat. Deliberately a **separate** computation from
+ * {@link buildLibraryConversion} above, not a read of `model.windows[90]` —
+ * see the story's Context & Authority section (Decision E-1) for why: the
+ * cohort model structurally *excludes* any cohort whose window has not fully
+ * elapsed yet ({@link isCohortComplete}), which is exactly the population
+ * this meter is about ("tracks added in the last 90 days").
+ *
+ * Denominator = every dated add-event whose `added_at` falls in
+ * `[nowMs - window*day, nowMs]` — no {@link isCohortComplete} gate: a track
+ * added yesterday is already in the denominator, unlike the cohort model
+ * where its whole month would not plot for another `window` days. Numerator
+ * = however many of those have EVER been played, with no upper time bound
+ * (unlike {@link convertedWithinWindow}'s `[added, added + window]` cap) —
+ * that cap exists in the cohort model to make "did this track convert
+ * *within its own window*" a well-defined per-cohort question; this meter
+ * asks a different question ("has it been played at all, yet"), so a play
+ * landing after the window has closed still counts.
+ *
+ * A play strictly BEFORE its track's `added_at` is still excluded, matching
+ * {@link convertedWithinWindow}'s existing precedent: it is a clock/catalogue
+ * inconsistency (the same track resolved from a different drive, say), never
+ * real evidence the DJ played a track after acquiring it.
+ */
+export interface LiveConversionRate {
+  /** Which window this rate was computed for. */
+  window: ConversionWindow;
+  /** Dated tracks added within the trailing window as of `nowMs`. The denominator. */
+  added: number;
+  /** How many of `added` have a play at or after their own `added_at`. */
+  played: number;
+  /** `played / added`, 0–1. `null` when `added` is 0 — nothing to divide, never a fabricated 0%. */
+  rate: number | null;
+  /** Whether `added` is small enough to read as low-confidence (D-13 precedent, {@link isLowConfidenceCohort}). */
+  lowConfidence: boolean;
+  /**
+   * Tracks with no resolvable `tadd`/`uadd` at all (AC-4) — the SAME
+   * window-independent count {@link buildLibraryConversion}'s
+   * `noAddDateCount` reports, over the same `events`. An undated track's true
+   * add date is unknowable, so it is excluded here exactly as there: never
+   * guessed into the window, never silently folded into `added`.
+   */
+  noAddDateCount: number;
+}
+
+/**
+ * Builds {@link LiveConversionRate} from the same synced add-events and play
+ * history {@link buildLibraryConversion} reads (AC-1, AC-3, AC-4). `nowMs` is
+ * injected, never read from the clock — the same hard rule this file's header
+ * states for every function here.
+ */
+export function buildLiveConversionRate(
+  events: LibraryAddEvent[],
+  sets: SetRecord[],
+  nowMs: number,
+  window: ConversionWindow = DEFAULT_CONVERSION_WINDOW,
+): LiveConversionRate {
+  const firstPlay = firstPlayByTrack(sets);
+  const windowStartMs = nowMs - window * DAY_MS;
+
+  // One event per track is the DB's own guarantee (unique (dj_id, track_id)),
+  // but de-duping here too keeps this pure function honest against any caller
+  // that hands it a redelivered batch — mirrors `buildLibraryConversion`.
+  const seen = new Set<string>();
+  let noAddDateCount = 0;
+  let added = 0;
+  let played = 0;
+
+  for (const event of events) {
+    if (seen.has(event.track_id)) continue;
+    seen.add(event.track_id);
+
+    const addedMs = msOf(event.added_at);
+    if (addedMs === null) {
+      noAddDateCount++;
+      continue;
+    }
+    // Outside the trailing window — either added too long ago, or (clock
+    // skew) an add date that has not happened yet from `nowMs`'s vantage.
+    // Neither belongs in "added in the last `window` days".
+    if (addedMs < windowStartMs || addedMs > nowMs) continue;
+
+    added++;
+    const firstPlayMs = firstPlay.get(event.track_id);
+    if (firstPlayMs !== undefined && firstPlayMs >= addedMs) {
+      played++;
+    }
+  }
+
+  return {
+    window,
+    added,
+    played,
+    rate: added === 0 ? null : played / added,
+    lowConfidence: isLowConfidenceCohort(added),
+    noAddDateCount,
+  };
+}
+
 /* ── Chart summary — one generator, three duties (AC-2) ────────────────── */
 
 /** "March 2026" / "March" for a cohort's month key. Mirrors `styleEvolution`'s
@@ -366,25 +466,46 @@ export function libraryConversionSummary(
 }
 
 /**
- * The always-visible coverage disclosure (AC-7 / D-10). Returns `null` when
- * there is genuinely nothing to disclose, so a clean library never carries a
- * caveat it hasn't earned.
+ * The pip meter's chart-summary string (Story 4.3, AC-2/AC-3) — same "one
+ * generator, three duties" discipline as {@link libraryConversionSummary}:
+ * one function backs the visible caption, the `aria-label`, and (should the
+ * meter ever grow a render-failure fallback) that fallback too. Names the
+ * window explicitly (AC-3), matching `TrendChart`'s D-13 precedent of never
+ * leaving the active window implicit.
+ */
+export function liveConversionRateSummary(rate: LiveConversionRate): string {
+  if (rate.added === 0) {
+    return `No tracks added in the last ${rate.window} days.`;
+  }
+  return `${rate.played} of ${rate.added} tracks added in the last ${rate.window} days have been played in a set (${pct(rate.rate ?? 0)}).`;
+}
+
+/**
+ * The always-visible coverage disclosure (AC-7 / D-10; reused for Story 4.3's
+ * meter, AC-4). Returns `null` when there is genuinely nothing to disclose,
+ * so a clean library never carries a caveat it hasn't earned.
  *
  * Two separate honesty debts, deliberately in one line: tracks whose add-date
  * no reachable catalogue could resolve (excluded from the math entirely), and
  * cohorts still inside their conversion window (excluded from the line, D-9).
  * Both are omissions the DJ can see the shape of; neither is ever folded into
  * a number silently.
+ *
+ * Takes the two counts directly (not a {@link LibraryConversionModel}) so
+ * {@link LiveConversionRate} — which has no cohorts and therefore no
+ * `pendingCohortCount` concept — can reuse this exact generator (Story 4.3
+ * Task 2) rather than a second one: pass `pendingCohortCount: 0` and the
+ * second clause simply never fires.
  */
 export function undatedDisclosure(
-  model: LibraryConversionModel,
+  counts: { noAddDateCount: number; pendingCohortCount: number },
   window: ConversionWindow,
 ): string | null {
-  const { pendingCohortCount } = model.windows[window];
+  const { noAddDateCount, pendingCohortCount } = counts;
   const parts: string[] = [];
-  if (model.noAddDateCount > 0) {
+  if (noAddDateCount > 0) {
     parts.push(
-      `${model.noAddDateCount} ${model.noAddDateCount === 1 ? "track has" : "tracks have"} no known add date`,
+      `${noAddDateCount} ${noAddDateCount === 1 ? "track has" : "tracks have"} no known add date`,
     );
   }
   if (pendingCohortCount > 0) {

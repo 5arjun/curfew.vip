@@ -97,7 +97,14 @@ export function StyleEvolutionView({
   // loud. Its own generator, not folded into `disclosure` above, because the
   // two describe different exclusions on different axes.
   const libraryDisclosure = useMemo(
-    () => undatedDisclosure(library, conversionWindow),
+    () =>
+      undatedDisclosure(
+        {
+          noAddDateCount: library.noAddDateCount,
+          pendingCohortCount: library.windows[conversionWindow].pendingCohortCount,
+        },
+        conversionWindow,
+      ),
     [library, conversionWindow],
   );
 

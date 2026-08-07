@@ -1,10 +1,35 @@
-// Temporary stub (Story 3.5 Task 5.2) — throwaway, exists only so FloatingNav
-// can be manually verified end-to-end in a running dev server. The relevant
-// Epic 4 story builds the real Library Utilization page and supersedes this file.
-export default function LibraryUtilizationPage() {
+import { getLibraryAddEvents, getRecentSets } from "@/lib/sets";
+import { buildLiveConversionRate } from "@/lib/sets/libraryConversion";
+import { SilkBackdrop } from "@/app/components/dashboard/SilkBackdrop";
+import { ConversionRateMeter } from "@/app/components/library-utilization/ConversionRateMeter";
+
+// Library Utilization (Story 4.3, AC-5) — supersedes the Story 3.5 throwaway
+// stub. Reads through the SAME data-access seam `style-evolution/page.tsx`
+// uses (`getRecentSets`, `getLibraryAddEvents`); this route's first real
+// content, so no per-page conventions to match beyond that data-seam pattern.
+//
+// Unlike Style Evolution's trend chart, the meter needs no page-level
+// insufficient-history gate: it is a live snapshot, not a multi-point trend,
+// so "zero tracks added in the window" is just one more state the meter
+// itself already renders honestly (`ConversionRateMeter`'s own empty branch)
+// rather than a condition sparse enough to misrepresent.
+export default async function LibraryUtilizationPage() {
+  const [sets, addEvents] = await Promise.all([getRecentSets(), getLibraryAddEvents()]);
+  // Decision E-1: the LIVE current-window rate, not a read of the Story 4.2
+  // cohort model — see `buildLiveConversionRate`'s own doc comment. The clock
+  // comes from the data seam (`readAtMs`), never read in render (Story 4.1's
+  // review lesson; `react-hooks/purity` rejects `Date.now()` here besides).
+  const rate = buildLiveConversionRate(addEvents.events, sets, addEvents.readAtMs);
+
   return (
-    <h1 className="text-headline-md p-8">
-      Library Utilization — placeholder, a future Epic 4 story builds the real page
-    </h1>
+    <main className="lu">
+      <SilkBackdrop />
+      <header className="lu-header">
+        <h1 className="lu-title">Library Utilization</h1>
+        <p className="lu-subtitle">How much of your library actually makes it to the dancefloor.</p>
+      </header>
+
+      <ConversionRateMeter rate={rate} />
+    </main>
   );
 }

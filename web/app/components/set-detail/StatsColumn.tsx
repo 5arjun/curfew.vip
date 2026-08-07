@@ -16,6 +16,7 @@ import {
 import type { SetRecord } from "@/lib/sets/types";
 import { AnimateNumber } from "@/app/components/ui/AnimateNumber";
 import { CursorChip, useCursorChipTarget } from "@/app/components/ui/CursorChip";
+import { LedPips } from "@/app/components/ui/LedPips";
 import type { Focus, OverlayKind, ScopeFrame } from "./model";
 import { MetalRim } from "./MetalRim";
 import { OverlayPanel } from "./Overlays";
@@ -99,11 +100,7 @@ export function StatsColumn({
             <p className="sd-stat-label">In key</p>
             {keyedTransitions > 0 ? (
               <>
-                <div className="sd-pips" aria-hidden="true">
-                  {Array.from({ length: PIP_COUNT }, (_, i) => (
-                    <span key={i} className="sd-pip" data-lit={i < litPips || undefined} />
-                  ))}
-                </div>
+                <LedPips litCount={litPips} totalCount={PIP_COUNT} />
                 <p className="sd-stat-readout">
                   <span className="sd-stat-value">
                     <AnimateNumber value={smoothPct ?? 0} suffix="%" />

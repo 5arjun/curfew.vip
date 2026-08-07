@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildLibraryConversion,
+  buildLiveConversionRate,
   convertedWithinWindow,
   CONVERSION_WINDOWS,
   DEFAULT_CONVERSION_WINDOW,
@@ -9,6 +10,7 @@ import {
   isCohortComplete,
   isLowConfidenceCohort,
   libraryConversionSummary,
+  liveConversionRateSummary,
   LOW_CONFIDENCE_COHORT_SIZE,
   undatedDisclosure,
   type ConversionWindow,
@@ -20,6 +22,12 @@ import {
  *  specifically about the D-13 window toggle. */
 const at = (m: LibraryConversionModel, w: ConversionWindow = DEFAULT_CONVERSION_WINDOW) =>
   m.windows[w];
+
+/** `undatedDisclosure` now takes the two counts directly (Story 4.3, so
+ *  {@link LiveConversionRate} can reuse it too) — this projects them off a
+ *  {@link LibraryConversionModel} the way `StyleEvolutionView` does. */
+const disclosureFor = (m: LibraryConversionModel, w: ConversionWindow = DEFAULT_CONVERSION_WINDOW) =>
+  undatedDisclosure({ noAddDateCount: m.noAddDateCount, pendingCohortCount: at(m, w).pendingCohortCount }, w);
 import type { SetRecord, SyncPlay } from "./types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -229,7 +237,7 @@ describe("cohort-recency honesty (D-9)", () => {
     );
 
     expect(at(model).pendingCohortCount).toBe(2);
-    expect(undatedDisclosure(model, DEFAULT_CONVERSION_WINDOW)).toContain("still inside the 90-day window");
+    expect(disclosureFor(model)).toContain("still inside the 90-day window");
   });
 });
 
@@ -255,15 +263,15 @@ describe("unknown-add-date disclosure (D-10 / AC-7)", () => {
 
   it("says nothing at all when there is nothing to disclose", () => {
     const model = buildLibraryConversion([added("a", localIso(2026, 1, 1))], [], NOW);
-    expect(undatedDisclosure(model, DEFAULT_CONVERSION_WINDOW)).toBeNull();
+    expect(disclosureFor(model)).toBeNull();
   });
 
   it("uses singular and plural phrasing correctly", () => {
     const one = buildLibraryConversion([added("a", null)], [], NOW);
-    expect(undatedDisclosure(one, DEFAULT_CONVERSION_WINDOW)).toBe("1 track has no known add date — not counted here.");
+    expect(disclosureFor(one)).toBe("1 track has no known add date — not counted here.");
 
     const two = buildLibraryConversion([added("a", null), added("b", null)], [], NOW);
-    expect(undatedDisclosure(two, DEFAULT_CONVERSION_WINDOW)).toBe("2 tracks have no known add date — not counted here.");
+    expect(disclosureFor(two)).toBe("2 tracks have no known add date — not counted here.");
   });
 
   it("joins both disclosures when both apply", () => {
@@ -273,7 +281,7 @@ describe("unknown-add-date disclosure (D-10 / AC-7)", () => {
       [],
       now,
     );
-    expect(undatedDisclosure(model, DEFAULT_CONVERSION_WINDOW)).toBe(
+    expect(disclosureFor(model)).toBe(
       "1 track has no known add date, and 1 recent month is still inside the 90-day window — not counted here.",
     );
   });
@@ -495,8 +503,8 @@ describe("the conversion-window toggle (D-13)", () => {
   it("names the selected window in the pending-cohort disclosure too", () => {
     const now = new Date(2026, 4, 15).getTime();
     const model = buildLibraryConversion([added("a", localIso(2026, 4, 1))], [], now);
-    expect(undatedDisclosure(model, 90)).toContain("90-day window");
-    expect(undatedDisclosure(model, 30)).toContain("30-day window");
+    expect(disclosureFor(model, 90)).toContain("90-day window");
+    expect(disclosureFor(model, 30)).toContain("30-day window");
   });
 
   it("gates insufficient-history per window, not globally", () => {
@@ -522,5 +530,152 @@ describe("the conversion-window toggle (D-13)", () => {
     for (const w of CONVERSION_WINDOWS) {
       expect(model.windows[w].cohorts[0].added).toBe(1);
     }
+  });
+});
+
+describe("live conversion rate (Story 4.3, Decision E-1, AC-1/AC-3/AC-4)", () => {
+  it("counts a track added and played inside the window", () => {
+    const addedIso = localIso(2026, 5, 1);
+    const addMs = new Date(addedIso).getTime();
+    const now = addMs + 10 * DAY_MS;
+    const sets = [set([play({ track_id: "t", started_at: new Date(addMs + 5 * DAY_MS).toISOString() })])];
+
+    const rate = buildLiveConversionRate([added("t", addedIso)], sets, now, 90);
+
+    expect(rate).toMatchObject({ window: 90, added: 1, played: 1, rate: 1, noAddDateCount: 0 });
+  });
+
+  it("counts a track added but never played", () => {
+    const addedIso = localIso(2026, 5, 1);
+    const now = new Date(addedIso).getTime() + 10 * DAY_MS;
+
+    const rate = buildLiveConversionRate([added("t", addedIso)], [], now, 90);
+
+    expect(rate).toMatchObject({ added: 1, played: 0, rate: 0 });
+  });
+
+  it("excludes a track added outside the trailing window", () => {
+    const now = new Date(2026, 5, 1).getTime();
+    const tooOld = now - 91 * DAY_MS;
+
+    const rate = buildLiveConversionRate([added("t", new Date(tooOld).toISOString())], [], now, 90);
+
+    expect(rate).toMatchObject({ added: 0, played: 0, rate: null });
+  });
+
+  it("excludes an undated track from the denominator AND counts it in noAddDateCount (AC-4)", () => {
+    const now = new Date(2026, 5, 1).getTime();
+
+    const rate = buildLiveConversionRate(
+      [added("dated", localIso(2026, 4, 20)), added("undated", null)],
+      [],
+      now,
+      90,
+    );
+
+    expect(rate.added).toBe(1);
+    expect(rate.noAddDateCount).toBe(1);
+  });
+
+  it("window-boundary: counts a track added exactly `window` days ago, excludes one day further back", () => {
+    const now = new Date(2026, 5, 1).getTime();
+    const onBoundary = new Date(now - 90 * DAY_MS).toISOString();
+    const pastBoundary = new Date(now - 91 * DAY_MS).toISOString();
+
+    const rate = buildLiveConversionRate(
+      [added("on-boundary", onBoundary), added("past-boundary", pastBoundary)],
+      [],
+      now,
+      90,
+    );
+
+    expect(rate.added).toBe(1);
+  });
+
+  it("does not count a play from BEFORE the add date, matching convertedWithinWindow's precedent", () => {
+    const addedIso = localIso(2026, 5, 10);
+    const addMs = new Date(addedIso).getTime();
+    const now = addMs + 5 * DAY_MS;
+    const sets = [set([play({ track_id: "t", started_at: new Date(addMs - DAY_MS).toISOString() })])];
+
+    const rate = buildLiveConversionRate([added("t", addedIso)], sets, now, 90);
+
+    expect(rate).toMatchObject({ added: 1, played: 0 });
+  });
+
+  it("counts a play landing AFTER the window has closed — no upper bound unlike the cohort model", () => {
+    // The add itself is still inside the trailing 90-day window as of `now`,
+    // but the play happened more than 90 days after the add — the cohort
+    // model's convertedWithinWindow would reject this; the live meter must not.
+    const addedIso = localIso(2026, 1, 1);
+    const addMs = new Date(addedIso).getTime();
+    const now = addMs + 89 * DAY_MS;
+    const sets = [set([play({ track_id: "t", started_at: new Date(addMs + 120 * DAY_MS).toISOString() })])];
+
+    const rate = buildLiveConversionRate([added("t", addedIso)], sets, now, 90);
+
+    expect(rate).toMatchObject({ added: 1, played: 1 });
+  });
+
+  it("de-dupes a redelivered add-event rather than double-counting", () => {
+    const addedIso = localIso(2026, 5, 1);
+    const now = new Date(addedIso).getTime() + 1 * DAY_MS;
+
+    const rate = buildLiveConversionRate([added("t", addedIso), added("t", addedIso)], [], now, 90);
+
+    expect(rate.added).toBe(1);
+  });
+
+  it("rate is null (never a fabricated 0%) when nothing was added in the window", () => {
+    const rate = buildLiveConversionRate([], [], NOW, 90);
+    expect(rate).toMatchObject({ added: 0, played: 0, rate: null });
+  });
+
+  it("flags low confidence below LOW_CONFIDENCE_COHORT_SIZE, reusing the cohort model's threshold", () => {
+    const now = new Date(2026, 5, 1).getTime();
+    const events = Array.from({ length: LOW_CONFIDENCE_COHORT_SIZE - 1 }, (_, i) =>
+      added(`t${i}`, localIso(2026, 4, 20)),
+    );
+
+    const rate = buildLiveConversionRate(events, [], now, 90);
+
+    expect(rate.added).toBe(LOW_CONFIDENCE_COHORT_SIZE - 1);
+    expect(rate.lowConfidence).toBe(true);
+    expect(isLowConfidenceCohort(rate.added)).toBe(true);
+  });
+
+  it("reuses undatedDisclosure for its own copy, with pendingCohortCount forced to 0", () => {
+    const now = new Date(2026, 5, 1).getTime();
+    const rate = buildLiveConversionRate([added("dated", localIso(2026, 4, 20)), added("undated", null)], [], now, 90);
+
+    expect(undatedDisclosure({ noAddDateCount: rate.noAddDateCount, pendingCohortCount: 0 }, rate.window)).toBe(
+      "1 track has no known add date — not counted here.",
+    );
+  });
+});
+
+describe("live conversion rate summary (AC-2, AC-3)", () => {
+  it("names the window and states counts, not just a bare percentage", () => {
+    const addedIso = localIso(2026, 5, 1);
+    const addMs = new Date(addedIso).getTime();
+    const now = addMs + 10 * DAY_MS;
+    const sets = [set([play({ track_id: "t", started_at: new Date(addMs + 5 * DAY_MS).toISOString() })])];
+    const rate = buildLiveConversionRate([added("t", addedIso), added("u", addedIso)], sets, now, 90);
+
+    expect(liveConversionRateSummary(rate)).toBe(
+      "1 of 2 tracks added in the last 90 days have been played in a set (50%).",
+    );
+  });
+
+  it("says nothing was added, rather than a fabricated 0%, when the denominator is empty", () => {
+    const rate = buildLiveConversionRate([], [], NOW, 90);
+    expect(liveConversionRateSummary(rate)).toBe("No tracks added in the last 90 days.");
+  });
+
+  it("reflects a non-default window in its own copy", () => {
+    const addedIso = localIso(2026, 5, 1);
+    const now = new Date(addedIso).getTime() + 10 * DAY_MS;
+    const rate = buildLiveConversionRate([added("t", addedIso)], [], now, 30);
+    expect(liveConversionRateSummary(rate)).toContain("last 30 days");
   });
 });

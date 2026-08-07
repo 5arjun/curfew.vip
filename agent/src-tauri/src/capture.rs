@@ -143,31 +143,69 @@ fn fnv1a_hex(bytes: &[u8]) -> String {
     format!("{hash:016x}")
 }
 
-/// Story 4.2 (D-2): a track's opaque, portable identity — `fnv1a_hex` of its
-/// volume-root-relative path, the same hash [`legacy_session_identity`] already
-/// uses for session identity. Reused rather than reinvented: "deterministic and
-/// cross-build-stable" is the only property either use needs.
+/// Story 4.3 (Decision E-2): a track's opaque identity — `fnv1a_hex` over its
+/// normalized title and artist. **Supersedes** the Story 4.2 (D-2) path-based
+/// `track_id` this replaced: hashing the volume-root-relative path meant the
+/// same song split across two unrelated identities whenever it lived on more
+/// than one drive (a laptop copy and a gig USB), which on Arjun's own real
+/// data deflated whole cohorts' worth of conversion-rate months to 0%
+/// (`deferred-work.md:262`). Title+artist does not care which drive the file
+/// is on.
 ///
-/// The raw path is never sent — this hash *is* the "purpose-built (possibly
-/// hashed/opaque) per-track identity field" Story 1.10's Open Question #1
-/// anticipated, and it keeps the same privacy posture that already excludes
-/// `EnrichedPlay.path` from `SyncPlay`.
+/// The raw title/artist are never sent — this hash *is* the "purpose-built
+/// (possibly hashed/opaque) per-track identity field" Story 1.10's Open
+/// Question #1 anticipated.
 ///
-/// The input must be the **portable** (no-leading-`/`, volume-root-relative)
-/// path, which is what both `database V2` stores as `pfil` and Serato 4+
-/// records as `portable_id` — so the same track hashes identically whether it
-/// was seen through a library scan or a play log, on any machine that mounts
-/// the same drive.
-pub fn track_id(portable_path: &str) -> String {
-    fnv1a_hex(portable_path.as_bytes())
+/// **Normalization: trim + case-fold only, no Unicode canonicalization.**
+/// Mirrors `genre::normalize`'s existing fold (`raw.trim().to_lowercase()`)
+/// rather than inventing a second convention. Deliberately does **not** run
+/// NFC/NFKC normalization (would need a new `unicode-normalization` crate
+/// dependency) — two byte-distinct-but-visually-identical strings
+/// (precomposed vs. combining-character accents) still hash to two different
+/// identities. Accepted as a known gap, not fixed here: `genre::normalize` has
+/// the identical limitation today, and this story's scope is the path/drive
+/// split (Decision E-2), not every possible metadata-encoding split.
+///
+/// **Both title and artist must resolve, or there is no identity at all**
+/// (`None`, never a fabricated partial hash, AD-11) — one field alone is too
+/// little signal to trust: an untitled track from one artist and an untitled
+/// track from a different artist would otherwise collide under a title-only
+/// hash, and two different songs by an unindexed/blank artist would collide
+/// under an artist-only hash.
+pub fn track_id_from_title_artist(title: Option<&str>, artist: Option<&str>) -> Option<String> {
+    let title = normalize_identity_text(title?)?;
+    let artist = normalize_identity_text(artist?)?;
+
+    // A `\u{1e}` (ASCII record separator) delimiter: vanishingly unlikely to
+    // appear in real metadata (unlike `|`/`-`/`:`), so `("A", "B|C")` and
+    // `("A|B", "C")` cannot collide into the same hash input.
+    let mut bytes = Vec::with_capacity(title.len() + artist.len() + 1);
+    bytes.extend_from_slice(title.as_bytes());
+    bytes.push(0x1e);
+    bytes.extend_from_slice(artist.as_bytes());
+    Some(fnv1a_hex(&bytes))
+}
+
+/// The lookup-key fold [`track_id_from_title_artist`] matches on — trim then
+/// lowercase, the same fold `genre::normalize` already applies. A
+/// whitespace-only input is "no meaningful value," not a real one (identical
+/// reasoning to `genre::normalize`), so it resolves to absent rather than an
+/// empty-string identity input.
+fn normalize_identity_text(value: &str) -> Option<String> {
+    let folded = value.trim().to_lowercase();
+    (!folded.is_empty()).then_some(folded)
 }
 
 /// The volume-root-relative form of an absolute play-log path — the legacy
-/// format's bridge to [`track_id`]'s portable-path contract. `database V2`
-/// stores `Users/arjun/Music/x.mp3` where a `.session` log records
-/// `/Users/arjun/Music/x.mp3` (Story 1.2 findings §5/D4), so identity would
-/// split across the two sources without this. An already-relative path is
-/// returned unchanged.
+/// format's bridge to `database V2`'s own path convention, which the
+/// `tadd`/`uadd` date-added lookup ([`DateAddedIndex::date_added_for`]) keys
+/// on. `database V2` stores `Users/arjun/Music/x.mp3` where a `.session` log
+/// records `/Users/arjun/Music/x.mp3` (Story 1.2 findings §5/D4), so that
+/// lookup would miss every legacy play without this. An already-relative path
+/// is returned unchanged.
+///
+/// No longer feeds track identity as of Story 4.3 (Decision E-2, see
+/// [`track_id_from_title_artist`]) — this is now purely the date-added join key.
 fn portable_form(path: &str) -> &str {
     path.strip_prefix('/').unwrap_or(path)
 }
@@ -208,6 +246,13 @@ pub struct LibraryScanOutcome {
 /// An empty/unreachable catalogue set is a no-op, never an empty baseline: an
 /// agent that first runs with the DJ's USB unplugged must still take a real
 /// baseline the first time it can actually see the library.
+///
+/// **Story 4.3 (Decision E-2):** identity is now [`track_id_from_title_artist`],
+/// not the catalogue path. A catalogued track missing a resolvable title or
+/// artist has no identity to record under (`library_tracks.track_id` is a
+/// `NOT NULL` primary key) and is silently excluded from this scan entirely —
+/// the same "absent, never guessed" discipline as every other gap in this
+/// pipeline, just applied at the whole-track level instead of one field.
 pub fn scan_library_adds(
     conn: &rusqlite::Connection,
     dates: &DateAddedIndex,
@@ -220,7 +265,9 @@ pub fn scan_library_adds(
 
     let identified: Vec<(String, Option<i64>)> = catalogued
         .into_iter()
-        .map(|(portable_path, added_at)| (track_id(&portable_path), added_at))
+        .filter_map(|(_portable_path, added_at, title, artist)| {
+            track_id_from_title_artist(title.as_deref(), artist.as_deref()).map(|id| (id, added_at))
+        })
         .collect();
 
     if crate::store::library_track_count(conn)? == 0 {
@@ -508,10 +555,14 @@ fn assemble(
             in_library: joined.in_library,
             played_ms: enriched_play.played_ms,
             library_added_at: enriched_play.library_added_at,
-            // Story 4.2 (D-2/AC-5): the opaque identity that lets this play
-            // join back to its library add-event. Absent when the source
-            // carried no portable path to hash — never a fabricated key.
-            track_id: joined.portable_path.as_deref().map(track_id),
+            // Story 4.2 (AC-5), identity per Story 4.3 (Decision E-2): the
+            // opaque identity that lets this play join back to its library
+            // add-event. Absent when the source carried no resolvable title
+            // or artist to hash — never a fabricated key.
+            track_id: track_id_from_title_artist(
+                enriched_play.title.as_deref(),
+                enriched_play.artist.as_deref(),
+            ),
         })
         .collect();
 
@@ -670,38 +721,79 @@ mod tests {
         }
     }
 
-    fn library(entries: &[(&str, i64)]) -> DateAddedIndex {
-        DateAddedIndex::fixed(
+    /// `entries` is `(path, epoch, title, artist)` — path stays purely a
+    /// human-readable label in these tests (Story 4.3: identity is hashed from
+    /// title+artist, not the path), kept so failures still read like "which
+    /// track".
+    fn library(entries: &[(&str, i64, &str, &str)]) -> DateAddedIndex {
+        DateAddedIndex::fixed_with_identity(
             entries
                 .iter()
-                .map(|(path, epoch)| ((*path).to_string(), *epoch))
+                .map(|(path, epoch, title, artist)| {
+                    (
+                        (*path).to_string(),
+                        (
+                            *epoch,
+                            Some((*title).to_string()),
+                            Some((*artist).to_string()),
+                        ),
+                    )
+                })
                 .collect(),
         )
+    }
+
+    /// Shorthand for the id a `library()` entry's title+artist resolves to —
+    /// used to assert against `scan_library_adds`' recorded rows without
+    /// repeating `.expect(...)` at every call site.
+    fn id_for(title: &str, artist: &str) -> String {
+        track_id_from_title_artist(Some(title), Some(artist)).expect("both fields present")
     }
 
     const BASELINE_NOW: i64 = 1_700_000_000;
 
     #[test]
-    fn track_id_is_deterministic_and_never_the_raw_path() {
-        let id = track_id("Users/arjun/Music/x.mp3");
-        assert_eq!(id, track_id("Users/arjun/Music/x.mp3"), "deterministic");
-        assert_ne!(id, track_id("Users/arjun/Music/y.mp3"));
-        assert!(
-            !id.contains("arjun"),
-            "the raw path must never survive the hash"
+    fn track_id_from_title_artist_is_deterministic_and_never_the_raw_input() {
+        let id = track_id_from_title_artist(Some("Song X"), Some("Arjun"));
+        assert_eq!(
+            id,
+            track_id_from_title_artist(Some("Song X"), Some("Arjun")),
+            "deterministic"
         );
+        assert_ne!(
+            id,
+            track_id_from_title_artist(Some("Song Y"), Some("Arjun"))
+        );
+        let id = id.expect("both fields present resolves");
+        assert_ne!(id, "Song X", "the raw title must never survive the hash");
         assert_eq!(id.len(), 16, "fnv1a_hex's fixed 16-hex-char form");
     }
 
+    /// AD-11: one field alone is too little signal to trust as an identity —
+    /// absent, never a fabricated partial hash.
     #[test]
-    fn legacy_absolute_and_serato4_portable_paths_hash_to_one_identity() {
-        // The same track seen through a `.session` log (absolute) and through
-        // `history_entry.portable_id` (relative) must be ONE track, or every
-        // legacy play would fail to join its own add-event.
-        assert_eq!(
-            track_id(portable_form("/Users/arjun/Music/x.mp3")),
-            track_id("Users/arjun/Music/x.mp3")
-        );
+    fn track_id_from_title_artist_requires_both_fields() {
+        assert_eq!(track_id_from_title_artist(None, Some("Arjun")), None);
+        assert_eq!(track_id_from_title_artist(Some("Song"), None), None);
+        assert_eq!(track_id_from_title_artist(None, None), None);
+        assert!(track_id_from_title_artist(Some("Song"), Some("Arjun")).is_some());
+    }
+
+    /// The fold matches `genre::normalize`'s own precedent exactly: case and
+    /// surrounding whitespace must not split one track into two identities.
+    #[test]
+    fn track_id_from_title_artist_folds_case_and_whitespace() {
+        let a = track_id_from_title_artist(Some("Deep House Jam"), Some("DJ Arjun"));
+        let b = track_id_from_title_artist(Some("  deep house jam  "), Some("dj arjun"));
+        assert_eq!(a, b, "case/whitespace fold must match");
+    }
+
+    /// A whitespace-only field is "no meaningful value," same as
+    /// `genre::normalize`'s identical rule — not a real title/artist to hash.
+    #[test]
+    fn track_id_from_title_artist_whitespace_only_field_is_absent() {
+        assert_eq!(track_id_from_title_artist(Some("   "), Some("Arjun")), None);
+        assert_eq!(track_id_from_title_artist(Some("Song"), Some("   ")), None);
     }
 
     /// D-1 / AC-4, the single easiest way to get this story catastrophically
@@ -711,9 +803,19 @@ mod tests {
     fn first_run_seeds_the_whole_library_silently_and_emits_zero_add_events() {
         let (_file, conn) = TempStore::open("first-run");
         let dates = library(&[
-            ("Users/arjun/Music/a.mp3", 1_600_000_000),
-            ("Users/arjun/Music/b.mp3", 1_600_000_001),
-            ("A Indian/c.mp3", 1_600_000_002),
+            (
+                "Users/arjun/Music/a.mp3",
+                1_600_000_000,
+                "Track A",
+                "Artist A",
+            ),
+            (
+                "Users/arjun/Music/b.mp3",
+                1_600_000_001,
+                "Track B",
+                "Artist B",
+            ),
+            ("A Indian/c.mp3", 1_600_000_002, "Track C", "Artist C"),
         ]);
 
         let outcome = scan_library_adds(&conn, &dates, BASELINE_NOW).expect("scan");
@@ -734,16 +836,60 @@ mod tests {
         );
     }
 
+    /// A catalogued track with no resolvable title or artist has no identity
+    /// to record under and is silently excluded — never crashes the scan, and
+    /// never fabricates a partial-input identity for it.
+    #[test]
+    fn a_track_with_no_title_or_artist_is_excluded_from_the_scan_entirely() {
+        let (_file, conn) = TempStore::open("untitled");
+        let dates = DateAddedIndex::fixed_with_identity(std::collections::HashMap::from([
+            (
+                "Users/arjun/Music/a.mp3".to_string(),
+                (
+                    1_600_000_000,
+                    Some("Track A".to_string()),
+                    Some("Artist A".to_string()),
+                ),
+            ),
+            (
+                "Users/arjun/Music/untitled.mp3".to_string(),
+                (1_600_000_001, None, None),
+            ),
+        ]));
+
+        let outcome = scan_library_adds(&conn, &dates, BASELINE_NOW).expect("scan");
+
+        assert_eq!(
+            outcome.baselined, 1,
+            "only the identifiable track is recorded"
+        );
+    }
+
     #[test]
     fn a_genuinely_new_track_on_a_later_scan_emits_exactly_one_event() {
         let (_file, conn) = TempStore::open("new-track");
-        let dates = library(&[("Users/arjun/Music/a.mp3", 1_600_000_000)]);
+        let dates = library(&[(
+            "Users/arjun/Music/a.mp3",
+            1_600_000_000,
+            "Track A",
+            "Artist A",
+        )]);
         scan_library_adds(&conn, &dates, BASELINE_NOW).expect("baseline");
 
         // A track added AFTER the baseline was taken — a real go-forward add.
         let grown = library(&[
-            ("Users/arjun/Music/a.mp3", 1_600_000_000),
-            ("Users/arjun/Music/new.mp3", BASELINE_NOW + 86_400),
+            (
+                "Users/arjun/Music/a.mp3",
+                1_600_000_000,
+                "Track A",
+                "Artist A",
+            ),
+            (
+                "Users/arjun/Music/new.mp3",
+                BASELINE_NOW + 86_400,
+                "New Track",
+                "New Artist",
+            ),
         ]);
         let outcome = scan_library_adds(&conn, &grown, BASELINE_NOW + 90_000).expect("scan");
 
@@ -751,7 +897,7 @@ mod tests {
         assert_eq!(outcome.baselined, 0);
         let pending = crate::store::library_add_events_pending_sync(&conn).expect("pending");
         assert_eq!(pending.len(), 1);
-        assert_eq!(pending[0].track_id, track_id("Users/arjun/Music/new.mp3"));
+        assert_eq!(pending[0].track_id, id_for("New Track", "New Artist"));
         assert_eq!(pending[0].added_at, Some(BASELINE_NOW + 86_400));
     }
 
@@ -759,8 +905,18 @@ mod tests {
     fn rescanning_an_unchanged_library_emits_nothing() {
         let (_file, conn) = TempStore::open("unchanged");
         let dates = library(&[
-            ("Users/arjun/Music/a.mp3", 1_600_000_000),
-            ("Users/arjun/Music/b.mp3", 1_600_000_001),
+            (
+                "Users/arjun/Music/a.mp3",
+                1_600_000_000,
+                "Track A",
+                "Artist A",
+            ),
+            (
+                "Users/arjun/Music/b.mp3",
+                1_600_000_001,
+                "Track B",
+                "Artist B",
+            ),
         ]);
         scan_library_adds(&conn, &dates, BASELINE_NOW).expect("baseline");
 
@@ -777,12 +933,27 @@ mod tests {
     #[test]
     fn a_new_track_is_emitted_once_and_never_re_emitted() {
         let (_file, conn) = TempStore::open("emit-once");
-        let dates = library(&[("Users/arjun/Music/a.mp3", 1_600_000_000)]);
+        let dates = library(&[(
+            "Users/arjun/Music/a.mp3",
+            1_600_000_000,
+            "Track A",
+            "Artist A",
+        )]);
         scan_library_adds(&conn, &dates, BASELINE_NOW).expect("baseline");
 
         let grown = library(&[
-            ("Users/arjun/Music/a.mp3", 1_600_000_000),
-            ("Users/arjun/Music/new.mp3", BASELINE_NOW + 10),
+            (
+                "Users/arjun/Music/a.mp3",
+                1_600_000_000,
+                "Track A",
+                "Artist A",
+            ),
+            (
+                "Users/arjun/Music/new.mp3",
+                BASELINE_NOW + 10,
+                "New Track",
+                "New Artist",
+            ),
         ]);
         scan_library_adds(&conn, &grown, BASELINE_NOW + 20).expect("first sight");
         let second = scan_library_adds(&conn, &grown, BASELINE_NOW + 30).expect("second sight");
@@ -804,10 +975,15 @@ mod tests {
         let (_file, conn) = TempStore::open("no-date");
         // Seed a baseline through the same code path, then hand-insert an
         // undated track the way a catalogue with no `tadd`/`uadd` would.
-        let dates = library(&[("Users/arjun/Music/a.mp3", 1_600_000_000)]);
+        let dates = library(&[(
+            "Users/arjun/Music/a.mp3",
+            1_600_000_000,
+            "Track A",
+            "Artist A",
+        )]);
         scan_library_adds(&conn, &dates, BASELINE_NOW).expect("baseline");
 
-        let undated = track_id("A Indian/undated.mp3");
+        let undated = id_for("Undated Track", "Undated Artist");
         crate::store::record_library_tracks(
             &conn,
             &[(undated.clone(), None)],
@@ -829,14 +1005,39 @@ mod tests {
     #[test]
     fn a_late_mounting_volume_seeds_silently_rather_than_flooding_a_cohort() {
         let (_file, conn) = TempStore::open("late-mount");
-        let boot_only = library(&[("Users/arjun/Music/a.mp3", 1_600_000_000)]);
+        let boot_only = library(&[(
+            "Users/arjun/Music/a.mp3",
+            1_600_000_000,
+            "Track A",
+            "Artist A",
+        )]);
         scan_library_adds(&conn, &boot_only, BASELINE_NOW).expect("baseline");
 
         let usb_mounted = library(&[
-            ("Users/arjun/Music/a.mp3", 1_600_000_000),
-            ("A Indian/old-1.mp3", BASELINE_NOW - 86_400), // pre-dates the baseline
-            ("A Indian/old-2.mp3", 1_500_000_000),
-            ("A Indian/genuinely-new.mp3", BASELINE_NOW + 86_400),
+            (
+                "Users/arjun/Music/a.mp3",
+                1_600_000_000,
+                "Track A",
+                "Artist A",
+            ),
+            (
+                "A Indian/old-1.mp3",
+                BASELINE_NOW - 86_400, // pre-dates the baseline
+                "Old Track 1",
+                "Old Artist 1",
+            ),
+            (
+                "A Indian/old-2.mp3",
+                1_500_000_000,
+                "Old Track 2",
+                "Old Artist 2",
+            ),
+            (
+                "A Indian/genuinely-new.mp3",
+                BASELINE_NOW + 86_400,
+                "Genuinely New",
+                "New Artist",
+            ),
         ]);
         let outcome = scan_library_adds(&conn, &usb_mounted, BASELINE_NOW + 90_000).expect("scan");
 
@@ -844,7 +1045,7 @@ mod tests {
         assert_eq!(outcome.added, 1, "only the genuinely-new track converts");
         let pending = crate::store::library_add_events_pending_sync(&conn).expect("pending");
         assert_eq!(pending.len(), 1);
-        assert_eq!(pending[0].track_id, track_id("A Indian/genuinely-new.mp3"));
+        assert_eq!(pending[0].track_id, id_for("Genuinely New", "New Artist"));
     }
 
     /// An unplugged drive shrinks the library. That is not a deletion, and
@@ -853,12 +1054,22 @@ mod tests {
     fn an_unmounted_volume_neither_deletes_nor_re_adds_on_return() {
         let (_file, conn) = TempStore::open("unmount");
         let both = library(&[
-            ("Users/arjun/Music/a.mp3", 1_600_000_000),
-            ("A Indian/usb.mp3", 1_600_000_001),
+            (
+                "Users/arjun/Music/a.mp3",
+                1_600_000_000,
+                "Track A",
+                "Artist A",
+            ),
+            ("A Indian/usb.mp3", 1_600_000_001, "USB Track", "USB Artist"),
         ]);
         scan_library_adds(&conn, &both, BASELINE_NOW).expect("baseline");
 
-        let boot_only = library(&[("Users/arjun/Music/a.mp3", 1_600_000_000)]);
+        let boot_only = library(&[(
+            "Users/arjun/Music/a.mp3",
+            1_600_000_000,
+            "Track A",
+            "Artist A",
+        )]);
         assert_eq!(
             scan_library_adds(&conn, &boot_only, BASELINE_NOW + 10).expect("unplugged"),
             LibraryScanOutcome::default()
@@ -882,7 +1093,12 @@ mod tests {
         );
         assert_eq!(crate::store::library_track_count(&conn).expect("count"), 0);
 
-        let reachable = library(&[("A Indian/a.mp3", 1_600_000_000)]);
+        let reachable = library(&[(
+            "A Indian/a.mp3",
+            1_600_000_000,
+            "Reachable Track",
+            "Reachable Artist",
+        )]);
         let outcome = scan_library_adds(&conn, &reachable, BASELINE_NOW + 10).expect("scan");
         assert_eq!(outcome.baselined, 1, "the real first sight is the baseline");
         assert_eq!(outcome.added, 0);

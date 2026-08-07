@@ -64,9 +64,10 @@ CREATE TABLE IF NOT EXISTS parse_failures (
 );
 
 -- Story 4.2, Task 1 (D-1/D-2/D-3): every library track this agent has ever
--- seen, keyed by the opaque `fnv1a_hex` track identity (`capture::track_id`)
--- -- never the raw path, which stays local by the same privacy posture that
--- keeps `EnrichedPlay.path` off the wire. A new table rather than an
+-- seen, keyed by the opaque `fnv1a_hex` track identity
+-- (`capture::track_id_from_title_artist`, title+artist as of Story 4.3
+-- Decision E-2) -- never the raw path, which stays local by the same privacy
+-- posture that keeps `EnrichedPlay.path` off the wire. A new table rather than an
 -- `ALTER TABLE`, same `CREATE TABLE IF NOT EXISTS` reasoning as
 -- `parse_failures` above.
 --
@@ -80,7 +81,7 @@ CREATE TABLE IF NOT EXISTS parse_failures (
 -- the queue is a NULL column, not a second table), so Task 4's drain reuses
 -- Story 3.3's loop rather than adding a parallel queue mechanism.
 CREATE TABLE IF NOT EXISTS library_tracks (
-  track_id               TEXT PRIMARY KEY,      -- fnv1a_hex of the portable path (D-2)
+  track_id               TEXT PRIMARY KEY,      -- fnv1a_hex of normalized title+artist (Story 4.3, Decision E-2; was the portable path, D-2)
   first_seen_locally_at  INTEGER NOT NULL,      -- unix epoch seconds, agent wall-clock
   added_at               INTEGER,               -- library tadd/uadd epoch seconds; NULL = unresolvable, never guessed
   is_baseline            INTEGER NOT NULL,      -- 1 = first-run snapshot, never synced (D-1)
@@ -713,9 +714,10 @@ pub struct CapturedPlay {
     pub library_added_at: Option<i64>,
     /// Opaque `fnv1a_hex` track identity (Story 4.2, D-2 — mirrors
     /// `SyncPlay.track_id`), letting a play join back to its library add-event
-    /// by identity instead of fragile title/artist matching. Hashed from the
-    /// portable path; the raw path itself never reaches the store's wire DTO
-    /// or the cloud. `None` when the play carries no portable path to hash.
+    /// by identity. Hashed from normalized title+artist as of Story 4.3
+    /// (Decision E-2; was the portable path under D-2) — neither the raw path
+    /// nor the raw title/artist reach the store's wire DTO or the cloud.
+    /// `None` when the play carries no resolvable title/artist to hash.
     /// `#[serde(default)]` for the same pre-4.2-row round-trip reason as
     /// `played_ms`/`library_added_at` above.
     #[serde(default)]
@@ -817,7 +819,8 @@ pub struct CapturedConfidence {
 /// drain pass consumes, mirroring [`rows_pending_sync`]'s shape for sets.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PendingLibraryAddEvent {
-    /// Opaque `fnv1a_hex` track identity (`capture::track_id`, D-2).
+    /// Opaque `fnv1a_hex` track identity (`capture::track_id_from_title_artist`,
+    /// Story 4.3 Decision E-2; D-2 originally).
     pub track_id: String,
     /// Library date-added, unix epoch seconds. `None` when `tadd`/`uadd` was
     /// unreachable for this track — carried as absent, never guessed (AD-11).

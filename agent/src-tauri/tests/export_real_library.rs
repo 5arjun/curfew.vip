@@ -16,11 +16,13 @@
 //! sees a track, the agent would have too — which is the point of exporting
 //! through it rather than reimplementing the read.
 //!
-//! **It emits no paths.** Identity is [`capture::track_id`] — `fnv1a_hex` of
-//! the volume-root-relative path — the same opaque value that crosses the wire
-//! (D-2). The raw path never leaves this process, so the output carries no
-//! local username or folder structure and is safe to commit, exactly like the
-//! set fixture's derived stats are.
+//! **It emits no paths.** Identity is [`capture::track_id_from_title_artist`]
+//! — `fnv1a_hex` of normalized title+artist (Story 4.3, Decision E-2; was the
+//! volume-root-relative path under D-2) — the same opaque value that crosses
+//! the wire. Neither the raw path nor the raw title/artist leave this process,
+//! so the output carries no local username, folder structure, or song
+//! metadata, and is safe to commit, exactly like the set fixture's derived
+//! stats are.
 //!
 //! This is NOT a CI test: skipped entirely unless `CURFEW_REAL_HOME` is set, so
 //! `cargo test` in CI (which has no real Serato data, and never commits any) is
@@ -43,13 +45,14 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use agent_lib::capture::track_id;
+use agent_lib::capture::track_id_from_title_artist;
 use agent_lib::joiner::date_added::DateAddedIndex;
 use serde::Serialize;
 
 #[derive(Serialize)]
 struct ExportedLibraryTrack {
-    /// Opaque `fnv1a_hex` identity (D-2) — never the path.
+    /// Opaque `fnv1a_hex` identity (Story 4.3, Decision E-2; D-2 originally)
+    /// — never the path, title, or artist.
     track_id: String,
     /// Unix epoch seconds from `database V2`'s `tadd`/`uadd`; `null` when the
     /// catalogue holds no date for this track (the real ~6% gap). `web/`
@@ -76,13 +79,22 @@ fn export_real_library_catalogue() {
          and are the drives you expect actually mounted?"
     );
 
-    // BTreeMap: dedup by identity (two catalogues can hold the same portable
-    // path) and emit in a stable order, so re-running against an unchanged
-    // library produces a byte-identical file and the committed fixture diffs
-    // cleanly.
+    // BTreeMap: dedup by identity (two catalogues can hold the same track, and
+    // now also the same track under two different volume-relative paths — the
+    // whole point of Decision E-2) and emit in a stable order, so re-running
+    // against an unchanged library produces a byte-identical file and the
+    // committed fixture diffs cleanly.
     let mut by_id: BTreeMap<String, Option<i64>> = BTreeMap::new();
-    for (portable_path, added_at) in tracks {
-        let id = track_id(&portable_path);
+    let mut no_identity = 0usize;
+    let total = tracks.len();
+    for (_portable_path, added_at, title, artist) in tracks {
+        // Same "absent, never guessed" discipline as `capture::scan_library_adds`:
+        // a track with no resolvable title/artist has no identity to record
+        // under and is silently excluded, not fabricated a partial identity.
+        let Some(id) = track_id_from_title_artist(title.as_deref(), artist.as_deref()) else {
+            no_identity += 1;
+            continue;
+        };
         // First write wins, matching the cloud's own `on conflict do nothing`:
         // a duplicate must never downgrade a resolved date to `None`.
         by_id.entry(id).or_insert(added_at);
@@ -97,11 +109,14 @@ fn export_real_library_catalogue() {
     let undated = exported.len() - dated;
     // Coverage is the number worth seeing before trusting anything built on
     // this: a low dated-count usually means an unmounted drive, not a DJ who
-    // never tagged their library.
+    // never tagged their library. `no_identity` is the Decision E-2-specific
+    // gap: catalogue rows with no usable title/artist at all, out of `total`
+    // rows read before dedup.
     println!(
-        "library: {} tracks ({dated} with an add date, {undated} without — {:.0}% coverage)",
+        "library: {} tracks ({dated} with an add date, {undated} without — {:.0}% coverage); \
+         {no_identity}/{total} catalogue rows had no resolvable title+artist and were excluded",
         exported.len(),
-        100.0 * dated as f64 / exported.len() as f64
+        100.0 * dated as f64 / exported.len().max(1) as f64
     );
 
     if let Some(oldest) = exported.iter().filter_map(|t| t.added_at).min() {

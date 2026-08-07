@@ -36,6 +36,20 @@ use std::sync::OnceLock;
 
 use super::legacy::LegacyLibrary;
 
+/// One [`fixed`](DateAddedIndex::fixed)/[`fixed_with_identity`](DateAddedIndex::fixed_with_identity)
+/// entry: date-added epoch (always known for a fixed entry) plus the Story 4.3
+/// title/artist identity input, `None` for plain `fixed`.
+type FixedEntry = (i64, Option<String>, Option<String>);
+
+/// [`DateAddedIndex::all_tracks`]'s internal accumulator value — like
+/// [`FixedEntry`], but `date_added` is optional (a reachable catalogue can
+/// hold a track with no resolvable `tadd`/`uadd`).
+type LibraryIdentity = (Option<i64>, Option<String>, Option<String>);
+
+/// [`DateAddedIndex::all_tracks`]'s public return shape: portable path plus
+/// its [`LibraryIdentity`].
+pub type LibraryEntry = (String, Option<i64>, Option<String>, Option<String>);
+
 /// A queryable set of `database V2` catalogues, keyed by portable path.
 ///
 /// Construction decides the mode: [`live`](Self::live) discovers and loads
@@ -51,8 +65,13 @@ pub struct DateAddedIndex {
     /// Lazily-loaded catalogues, tried in order. Deterministic: boot-drive
     /// library first, then mounted volumes sorted by name.
     catalogues: OnceLock<Vec<LegacyLibrary>>,
-    /// Test/fixed entries, keyed by the exact portable path string.
-    fixed: HashMap<String, i64>,
+    /// Test/fixed entries, keyed by the exact portable path string, to
+    /// `(date_added, title, artist)`. `title`/`artist` (Story 4.3) are only
+    /// populated by [`fixed_with_identity`](Self::fixed_with_identity); plain
+    /// [`fixed`](Self::fixed) leaves them `None`, which every pre-4.3 caller of
+    /// `fixed` is unaffected by — none of them exercise [`all_tracks`](Self::all_tracks),
+    /// only the path-keyed [`date_added_for`](Self::date_added_for) lookup.
+    fixed: HashMap<String, FixedEntry>,
 }
 
 impl DateAddedIndex {
@@ -74,8 +93,22 @@ impl DateAddedIndex {
     }
 
     /// A filesystem-free index over explicit `portable path → epoch seconds`
-    /// entries. An empty map is the "no catalogue reachable" case.
+    /// entries. An empty map is the "no catalogue reachable" case. Carries no
+    /// title/artist — fine for every caller of this constructor, all of which
+    /// only exercise [`date_added_for`](Self::date_added_for)'s path lookup.
     pub fn fixed(entries: HashMap<String, i64>) -> Self {
+        Self::fixed_with_identity(
+            entries
+                .into_iter()
+                .map(|(path, epoch)| (path, (epoch, None, None)))
+                .collect(),
+        )
+    }
+
+    /// Story 4.3: like [`fixed`](Self::fixed), but also carries the title/artist
+    /// [`all_tracks`](Self::all_tracks) needs to exercise the title+artist
+    /// identity hash without touching disk.
+    pub fn fixed_with_identity(entries: HashMap<String, FixedEntry>) -> Self {
         Self {
             home: None,
             catalogues: OnceLock::new(),
@@ -131,7 +164,7 @@ impl DateAddedIndex {
     /// The library date-added for one portable path, or `None` when no
     /// reachable catalogue (nor fixed entry) covers it — absent, never guessed.
     pub fn date_added_for(&self, portable_path: &str) -> Option<i64> {
-        if let Some(epoch) = self.fixed.get(portable_path) {
+        if let Some((epoch, _, _)) = self.fixed.get(portable_path) {
             return Some(*epoch);
         }
         // Fixed mode (no home) never touches the filesystem.
@@ -143,8 +176,12 @@ impl DateAddedIndex {
     }
 
     /// Every track every *reachable* catalogue holds, as
-    /// `(portable path, date_added)` — the whole-library view Story 4.2's
-    /// go-forward add-detection diffs against its local baseline (D-3).
+    /// `(portable path, date_added, title, artist)` — the whole-library view
+    /// Story 4.2's go-forward add-detection diffs against its local baseline
+    /// (D-3). `title`/`artist` (Story 4.3, Decision E-2) are what
+    /// `capture::scan_library_adds` hashes identity from — the path itself is
+    /// still returned (it remains the dedup key within this method, and the
+    /// per-track date-added source), but is no longer the identity input.
     ///
     /// Deliberately the same index, the same lazily-loaded catalogues, and the
     /// same reachability rules as [`date_added_for`](Self::date_added_for): a
@@ -161,20 +198,25 @@ impl DateAddedIndex {
     /// to be valid Unicode (Story 1.2 findings §5/D2), and dropping such a
     /// track would silently under-count the library rather than merely give it
     /// an approximate identity.
-    pub fn all_tracks(&self) -> Vec<(String, Option<i64>)> {
-        let mut seen: HashMap<String, Option<i64>> = HashMap::new();
-        for (path, date_added) in &self.fixed {
-            seen.insert(path.clone(), Some(*date_added));
+    pub fn all_tracks(&self) -> Vec<LibraryEntry> {
+        let mut seen: HashMap<String, LibraryIdentity> = HashMap::new();
+        for (path, (epoch, title, artist)) in &self.fixed {
+            seen.insert(path.clone(), (Some(*epoch), title.clone(), artist.clone()));
         }
         if self.home.is_some() {
             for catalogue in self.loaded_catalogues() {
-                for (path, date_added) in catalogue.entries() {
-                    seen.entry(path.to_string_lossy().into_owned())
-                        .or_insert(date_added);
+                for (path, date_added, title, artist) in catalogue.entries() {
+                    seen.entry(path.to_string_lossy().into_owned()).or_insert((
+                        date_added,
+                        title.map(str::to_string),
+                        artist.map(str::to_string),
+                    ));
                 }
             }
         }
-        seen.into_iter().collect()
+        seen.into_iter()
+            .map(|(path, (date_added, title, artist))| (path, date_added, title, artist))
+            .collect()
     }
 }
 
@@ -204,5 +246,46 @@ mod tests {
     fn empty_index_is_the_no_catalogue_case() {
         let index = DateAddedIndex::fixed(HashMap::new());
         assert_eq!(index.date_added_for("Users/arjun/Music/a.mp3"), None);
+    }
+
+    /// Story 4.3: `all_tracks` surfaces title/artist for whatever
+    /// `fixed_with_identity` supplied — the fixture-free way
+    /// `capture::scan_library_adds`'s tests exercise the title+artist hash.
+    #[test]
+    fn all_tracks_surfaces_identity_from_fixed_with_identity() {
+        let index = DateAddedIndex::fixed_with_identity(HashMap::from([(
+            "Users/arjun/Music/a.mp3".to_string(),
+            (
+                1_644_628_114,
+                Some("Some Title".to_string()),
+                Some("Some Artist".to_string()),
+            ),
+        )]));
+
+        let tracks = index.all_tracks();
+        assert_eq!(tracks.len(), 1);
+        let (path, date_added, title, artist) = &tracks[0];
+        assert_eq!(path, "Users/arjun/Music/a.mp3");
+        assert_eq!(*date_added, Some(1_644_628_114));
+        assert_eq!(title.as_deref(), Some("Some Title"));
+        assert_eq!(artist.as_deref(), Some("Some Artist"));
+    }
+
+    /// Plain `fixed` (no identity) still participates in `all_tracks` — just
+    /// with `title`/`artist` absent, exactly as a caller that never migrated to
+    /// `fixed_with_identity` would expect.
+    #[test]
+    fn all_tracks_from_plain_fixed_has_no_identity() {
+        let index = DateAddedIndex::fixed(HashMap::from([(
+            "Users/arjun/Music/a.mp3".to_string(),
+            1_644_628_114,
+        )]));
+
+        let tracks = index.all_tracks();
+        assert_eq!(tracks.len(), 1);
+        let (_, date_added, title, artist) = &tracks[0];
+        assert_eq!(*date_added, Some(1_644_628_114));
+        assert_eq!(*title, None);
+        assert_eq!(*artist, None);
     }
 }

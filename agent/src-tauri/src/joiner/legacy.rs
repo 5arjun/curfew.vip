@@ -97,6 +97,14 @@ pub struct LibraryTrack {
     /// or the string form is not a plain epoch number (never guess a date
     /// format, AD-11).
     pub date_added: Option<i64>,
+    /// Song title, raw and un-normalized (Story 4.3, Decision E-2: the
+    /// title+artist identity switch input). `Field::SongTitle`'s `sng` tag —
+    /// already parsed by `triseratops::library::database`, just unused before
+    /// this story.
+    pub title: Option<String>,
+    /// Artist, raw and un-normalized (Story 4.3, Decision E-2). `Field::Artist`'s
+    /// `art` tag — same "already available, unused" story as `title` above.
+    pub artist: Option<String>,
 }
 
 /// A loaded `database V2` catalogue, indexed by the file path it stores for each track.
@@ -163,6 +171,8 @@ impl LegacyLibrary {
                     Field::BPM(s) => track.bpm = s.parse::<f64>().ok().and_then(sane_bpm),
                     Field::Key(s) => track.key = non_empty(s),
                     Field::Genre(s) => track.genre = non_empty(s),
+                    Field::SongTitle(s) => track.title = non_empty(s),
+                    Field::Artist(s) => track.artist = non_empty(s),
                     // Date-added (Story 3.7 §3d): `uadd` u32 epoch, `0` = never set.
                     Field::DateAdded(epoch) if epoch > 0 => {
                         track.date_added = Some(i64::from(epoch));
@@ -225,17 +235,27 @@ impl LegacyLibrary {
         self.get(played_path)?.date_added
     }
 
-    /// Every catalogued track as `(stored path, date_added)` — the whole-library
-    /// read Story 4.2's go-forward add-detection needs (D-3), as opposed to
-    /// [`date_added_for`](Self::date_added_for)'s single-path lookup.
+    /// Every catalogued track as `(stored path, date_added, title, artist)` —
+    /// the whole-library read Story 4.2's go-forward add-detection needs (D-3),
+    /// as opposed to [`date_added_for`](Self::date_added_for)'s single-path
+    /// lookup. `title`/`artist` (Story 4.3, Decision E-2) are what
+    /// `capture::scan_library_adds` now hashes identity from, replacing the
+    /// path this method's key column used to double as an identity input for.
     ///
     /// The key is returned exactly as the catalogue stored it (root-relative,
-    /// no leading `/`) — that *is* the portable path convention Story 4.2's
-    /// track identity hashes (D-2), so no normalization happens here.
-    pub(crate) fn entries(&self) -> impl Iterator<Item = (&Path, Option<i64>)> {
-        self.tracks
-            .iter()
-            .map(|(path, track)| (path.as_path(), track.date_added))
+    /// no leading `/`) — still the portable path convention used for the
+    /// per-path `date_added_for` lookup; no normalization happens here.
+    pub(crate) fn entries(
+        &self,
+    ) -> impl Iterator<Item = (&Path, Option<i64>, Option<&str>, Option<&str>)> {
+        self.tracks.iter().map(|(path, track)| {
+            (
+                path.as_path(),
+                track.date_added,
+                track.title.as_deref(),
+                track.artist.as_deref(),
+            )
+        })
     }
 }
 
@@ -329,6 +349,7 @@ mod tests {
         track_record(&[
             path_field(path),
             text_field(b"sng", "Some Title"),
+            text_field(b"art", "Some Artist"),
             text_field(b"bpm", bpm),
             text_field(b"key", key),
             text_field(b"gen", genre),
@@ -461,6 +482,46 @@ mod tests {
             Some(124.5),
             "the populated field still resolves"
         );
+    }
+
+    /// Story 4.3 (Decision E-2): `entries()` surfaces title/artist alongside
+    /// date_added — the input `capture::track_id_from_title_artist` hashes,
+    /// now that identity no longer keys off the stored path.
+    #[test]
+    fn entries_includes_title_and_artist_parsed_from_the_catalogue() {
+        let library = library_from(&[full_track(
+            "Users/arjun/Music/a.mp3",
+            "128.00",
+            "1A",
+            "House",
+        )]);
+
+        let (_, _, title, artist) = library
+            .entries()
+            .find(|(path, ..)| *path == Path::new("Users/arjun/Music/a.mp3"))
+            .expect("indexed track present");
+
+        assert_eq!(title, Some("Some Title"));
+        assert_eq!(artist, Some("Some Artist"));
+    }
+
+    /// AC-4's "gap in one column must not cost the track its other fields" applies to
+    /// title/artist too: a record missing `sng`/`art` still resolves via `entries()`,
+    /// just with those two absent rather than fabricated.
+    #[test]
+    fn entries_reports_missing_title_or_artist_as_absent() {
+        let library = library_from(&[track_record(&[
+            path_field("Users/arjun/Music/untitled.mp3"),
+            text_field(b"bpm", "120.00"),
+        ])]);
+
+        let (_, _, title, artist) = library
+            .entries()
+            .find(|(path, ..)| *path == Path::new("Users/arjun/Music/untitled.mp3"))
+            .expect("indexed track present");
+
+        assert_eq!(title, None);
+        assert_eq!(artist, None);
     }
 
     /// A play whose path is nowhere in the catalogue is off-library: no membership, no

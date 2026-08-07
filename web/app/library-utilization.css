@@ -1,0 +1,102 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Library Utilization (Story 4.3) — reuses the Abyss Cyan liquid-glass shell
+   (`.dz-shell`/`.dz-dots`, dashboard.css) and Set Detail's LED-pip visual
+   (`.sd-pips`/`.sd-pip`, set-detail.css) verbatim for the conversion-rate
+   meter — the shipped UX-DR11 pattern, not a second one (Task 3). This file
+   only styles the page shell and the meter's own surrounding chrome. Classes
+   are prefixed `lu-` (library utilization) so they can't collide.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.lu {
+  position: relative;
+  min-height: 100dvh;
+  width: 100%;
+  max-width: var(--container-max);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: var(--space-lg) var(--space-gutter) calc(var(--space-xxl) + env(safe-area-inset-bottom));
+  font-family: var(--font-hanken-grotesk);
+  color: var(--color-abyss-text);
+}
+
+@media (min-width: 900.02px) {
+  .lu {
+    max-width: none;
+    padding-left: calc(var(--nav-rail-inset) + var(--nav-rail-width) + var(--space-gutter));
+  }
+}
+
+.lu-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lu-title {
+  margin: 0;
+  font-size: clamp(24px, 3vw, 34px);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+}
+
+.lu-subtitle {
+  margin: 0;
+  font-family: var(--font-inter);
+  font-size: 14px;
+  color: var(--color-abyss-text-45);
+}
+
+.lu-module {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px 20px;
+  border-radius: 22px;
+  max-width: 420px;
+}
+
+.lu-stat-label {
+  font-family: var(--font-geist-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-abyss-text-45);
+}
+
+.lu-stat-readout {
+  font-size: 13.5px;
+  color: var(--color-abyss-text-72);
+}
+
+.lu-stat-value {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--color-abyss-text);
+}
+
+.lu-stat-empty {
+  font-size: 13px;
+  color: var(--color-abyss-text-45);
+}
+
+.lu-disclosure {
+  font-size: 11.5px;
+  color: var(--color-abyss-text-45);
+}
+
+.lu-empty {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 18px;
+  border-radius: 22px;
+}
+
+.lu-empty-copy {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--color-abyss-text-72);
+}
