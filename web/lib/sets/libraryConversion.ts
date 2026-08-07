@@ -603,7 +603,7 @@ export function undatedDisclosure(
  * One qualifying track's debut story. A discriminated union rather than a
  * nullable `elapsedMs` (AC-3): "never played yet" and "played, 0ms after
  * add" are different facts, and collapsing "never played" to `null`/`0`
- * would either vanish it from a median silently or corrupt the median with a
+ * would either vanish it from the average silently or corrupt it with a
  * fabricated instant debut.
  */
 export type TimeToFirstPlayEntry =
@@ -614,23 +614,23 @@ export type TimeToFirstPlayEntry =
 export interface TimeToFirstPlayModel {
   /** One entry per dated add-event (AC-5 excludes undated ones — see `noAddDateCount`). */
   entries: TimeToFirstPlayEntry[];
-  /** Median elapsed time across `status: "played"` entries only. `null` when none exist. */
-  medianElapsedMs: number | null;
-  /** Qualifying tracks never played (AC-3) — always shown, never folded into the median. */
+  /** Mean elapsed time across `status: "played"` entries only. `null` when none exist. */
+  averageElapsedMs: number | null;
+  /** Qualifying tracks never played (AC-3) — always shown, never folded into the average. */
   neverPlayedCount: number;
   /**
-   * Median time the never-played population has been sitting unplayed, as of
+   * Mean time the never-played population has been sitting unplayed, as of
    * `nowMs`. `null` when nothing is unplayed. Exists so the never-played count
    * can be stated with its age rather than lumping a track added an hour ago
    * in with one ignored for two years (Story 4.5 review, Arjun's ruling
    * 2026-08-07 — the "days since add, unplayed" framing Dev Notes anticipated).
    */
-  neverPlayedMedianAgeMs: number | null;
+  neverPlayedAverageAgeMs: number | null;
   /**
    * Tracks whose only observed plays PREDATE their add date — a
    * clock/catalogue inconsistency (the same track resolved from another
    * drive, say), not a debut and not evidence the track was never played.
-   * Excluded from the median AND from `neverPlayedCount`, because asserting
+   * Excluded from the average AND from `neverPlayedCount`, because asserting
    * "hasn't been played yet" about a track the DJ demonstrably played is a
    * false statement, not a conservative one (Story 4.5 review).
    */
@@ -641,7 +641,7 @@ export interface TimeToFirstPlayModel {
 }
 
 /**
- * Below this many qualifying tracks (AC-4), the median is de-emphasised in
+ * Below this many qualifying tracks (AC-4), the average is de-emphasised in
  * favour of the insufficient-history state rather than plotted as a
  * distribution drawn from a handful of points. A product default, not a
  * derived value — same footing as {@link LOW_CONFIDENCE_COHORT_SIZE}, but a
@@ -652,16 +652,16 @@ export interface TimeToFirstPlayModel {
 export const MIN_TIME_TO_FIRST_PLAY_TRACKS = 5;
 
 /**
- * Minimum number of tracks that must actually have DEBUTED before a median is
+ * Minimum number of tracks that must actually have DEBUTED before an average is
  * shown at all. A product default, same footing as
  * {@link MIN_TIME_TO_FIRST_PLAY_TRACKS} above.
  *
  * This is the second half of AC-4, and the first shipped version was missing
  * it (Story 4.5 review): gating only on population size let a DJ with 500
- * qualifying tracks and a single debut see an unqualified "median" drawn from
+ * qualifying tracks and a single debut see an unqualified "average" drawn from
  * n=1. AC-4's wording is "*rather than a distribution drawn from a handful of
  * points*", which a population-size gate structurally cannot enforce, because
- * never-played tracks pass the gate and contribute nothing to the median.
+ * never-played tracks pass the gate and contribute nothing to the average.
  */
 export const MIN_TIME_TO_FIRST_PLAY_DEBUTS = 5;
 
@@ -671,7 +671,7 @@ export const MIN_TIME_TO_FIRST_PLAY_DEBUTS = 5;
  * Deliberately a POPULATION gate, not a debut gate: a DJ whose qualifying
  * tracks mostly haven't debuted yet should still see the honest "N tracks
  * haven't been played yet" state, not have the module hidden for the very
- * reason it would be interesting. Whether the *median* is shown is a separate
+ * reason it would be interesting. Whether the *average* is shown is a separate
  * question — see {@link hasEnoughTimeToFirstPlayDebuts}.
  */
 export function hasEnoughTimeToFirstPlayTracks(model: TimeToFirstPlayModel): boolean {
@@ -680,23 +680,34 @@ export function hasEnoughTimeToFirstPlayTracks(model: TimeToFirstPlayModel): boo
 
 /**
  * AC-4's second gate — whether enough tracks have actually debuted for a
- * median to mean anything. Below this, the module still renders (see above),
- * but reports the never-played population instead of a thin median.
+ * average to mean anything. Below this, the module still renders (see above),
+ * but reports the never-played population instead of a thin average.
  */
 export function hasEnoughTimeToFirstPlayDebuts(model: TimeToFirstPlayModel): boolean {
   return playedCountOf(model) >= MIN_TIME_TO_FIRST_PLAY_DEBUTS;
 }
 
-/** Tracks with a real, computed debut — the median's actual sample size. */
+/** Tracks with a real, computed debut — the average's actual sample size. */
 export function playedCountOf(model: TimeToFirstPlayModel): number {
   return model.entries.filter((e) => e.status === "played").length;
 }
 
-function median(values: number[]): number | null {
+/**
+ * Arithmetic mean. **Chosen over the median 2026-08-07 (Arjun), knowing the
+ * trade — recorded so it is not re-litigated as an oversight.**
+ *
+ * This distribution is heavily right-skewed: on the committed fixture the
+ * median debut is ~51 minutes while the mean is ~14 days, because a handful
+ * of tracks that sat 239–349 days drag it. **84% of debuts are faster than
+ * the mean**, so the average describes almost no individual track, where the
+ * median described the typical one. Arjun's call was that a plausible-looking
+ * number beats a technically-better one a DJ refuses to believe — a product
+ * judgment about trust, not a statistical claim. Revisit if the tail changes
+ * shape once Story 4.6's real read path lands.
+ */
+function mean(values: number[]): number | null {
   if (values.length === 0) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  return values.reduce((sum, v) => sum + v, 0) / values.length;
 }
 
 /**
@@ -747,7 +758,7 @@ export function buildTimeToFirstPlay(
     // play. Testing the global minimum (the first shipped version) discarded
     // every track that had both a pre-add play and a real post-add debut:
     // measured at 18 of 523 on the committed fixture, with elapsed values up
-    // to 78.5 days silently dropped from the median and counted into
+    // to 78.5 days silently dropped from the average and counted into
     // "haven't been played yet" instead. Task 1's own wording is the correct
     // predicate: "if a play exists at or after `added_at`".
     const trackPlays = plays.get(event.track_id);
@@ -773,9 +784,9 @@ export function buildTimeToFirstPlay(
 
   return {
     entries,
-    medianElapsedMs: median(playedElapsed),
+    averageElapsedMs: mean(playedElapsed),
     neverPlayedCount,
-    neverPlayedMedianAgeMs: median(neverPlayedAges),
+    neverPlayedAverageAgeMs: mean(neverPlayedAges),
     playedBeforeAddCount,
     noAddDateCount,
   };
@@ -823,21 +834,21 @@ export function timeToFirstPlaySummary(model: TimeToFirstPlayModel): string {
   const playedCount = playedCountOf(model);
   const unplayed = model.neverPlayedCount;
 
-  // Below the debut floor there is no median worth stating, whatever the
+  // Below the debut floor there is no average worth stating, whatever the
   // population size — AC-4's "rather than a distribution drawn from a handful
   // of points" (Story 4.5 review). Report the waiting population instead.
   if (!hasEnoughTimeToFirstPlayDebuts(model)) {
     if (unplayed === 0) return "No tracks have debuted yet.";
-    const age = model.neverPlayedMedianAgeMs;
+    const age = model.neverPlayedAverageAgeMs;
     const waiting = `${unplayed} ${unplayed === 1 ? "track has" : "tracks have"} been added but not played yet`;
-    return age === null ? `${waiting}.` : `${waiting} — a median of ${formatElapsed(age)} on the shelf.`;
+    return age === null ? `${waiting}.` : `${waiting} — averaging ${formatElapsed(age)} on the shelf.`;
   }
 
   // `playedCount >= MIN_TIME_TO_FIRST_PLAY_DEBUTS` guarantees a non-null
-  // median; asserting it beats a `?? 0` fallback, which would silently invent
+  // average; asserting it beats a `?? 0` fallback, which would silently invent
   // the smallest possible value if the invariant ever broke.
-  const elapsed = formatElapsed(model.medianElapsedMs as number);
-  const debuts = `${playedCount === 1 ? "1 track has" : `${playedCount} tracks have`} debuted, a median of ${elapsed} after being added`;
+  const elapsed = formatElapsed(model.averageElapsedMs as number);
+  const debuts = `${playedCount === 1 ? "1 track has" : `${playedCount} tracks have`} debuted, an average of ${elapsed} after being added`;
   if (unplayed === 0) return `${debuts}.`;
   return `${debuts} — ${unplayed} ${unplayed === 1 ? "other hasn't" : "others haven't"} been played yet.`;
 }

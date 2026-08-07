@@ -42,6 +42,29 @@
 
 generated: 2026-07-21
 last_updated: 2026-08-07
+# 2026-08-07: story 4-5 post-review follow-up (Arjun, same session) -- MEAN
+# INSTEAD OF MEDIAN, plus a shorter readout. The review's corrected median
+# read 51 minutes, which Arjun judged implausible on sight; the mean reads 2
+# weeks. Inside AC-4's own "e.g. distribution/median" latitude, so not a
+# deviation. TRADE RECORDED rather than assumed, because it will look like an
+# oversight later: the distribution is heavily right-skewed (p50 0.036d, p90
+# 18d, max 349d), so 84% of debuts (196/233) are FASTER than the mean -- the
+# average describes almost no individual track where the median described the
+# typical one. The call was about trust, not statistics: a figure a DJ
+# refuses to believe is worse than one that is slightly unrepresentative.
+# Guarded by a dedicated skewed-fixture test, because the existing odd/even
+# cases use symmetric data where mean and median agree and would not catch a
+# silent revert. Readout shortened from "51 minutes median from add to first
+# spin, across the 233 tracks that have debuted" to "2 weeks average across
+# 233 debuts" -- "from add to first spin" dropped because the module label
+# directly above already says it, but the debut-count scoping KEPT in short
+# form, since dropping it would have reintroduced the very review finding it
+# was added to fix (a bare average tells a sighted user the number covers the
+# whole library while the accessible name correctly scopes it). Gate:
+# 327/327, clean tsc/eslint/next build, verified against a live dev server on
+# the committed fixture rather than only asserted in tests. Note for whoever
+# revisits: worth re-examining once Story 4.6's real read path changes the
+# tail's shape. epic-4 unchanged (in-progress). 4-5 stays in-progress.
 # 2026-08-07: story 4-5 CODE REVIEW (3 adversarial layers: Blind Hunter, Edge
 # Case Hunter, Acceptance Auditor, plus a population-boundary audit Arjun
 # asked for by name). 17 findings: 11 patched, 5 decisions ruled live, 1

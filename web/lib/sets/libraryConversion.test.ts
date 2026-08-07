@@ -729,7 +729,7 @@ describe("time-to-first-play (Story 4.5, AC-1/AC-2/AC-3/AC-5)", () => {
     const model = buildTimeToFirstPlay([added("t", addedIso)], sets, NOW);
 
     expect(model.entries).toEqual([{ trackId: "t", addedMs: addMs, status: "played", elapsedMs: 3 * DAY_MS }]);
-    expect(model.medianElapsedMs).toBe(3 * DAY_MS);
+    expect(model.averageElapsedMs).toBe(3 * DAY_MS);
     expect(model.neverPlayedCount).toBe(0);
   });
 
@@ -752,7 +752,7 @@ describe("time-to-first-play (Story 4.5, AC-1/AC-2/AC-3/AC-5)", () => {
 
     expect(model.entries).toEqual([{ trackId: "t", addedMs: addMs, status: "played", elapsedMs: 5 * DAY_MS }]);
     expect(model.neverPlayedCount).toBe(0);
-    expect(model.medianElapsedMs).toBe(5 * DAY_MS);
+    expect(model.averageElapsedMs).toBe(5 * DAY_MS);
   });
 
   it("classifies a track whose ONLY plays predate its add date distinctly, never as never-played", () => {
@@ -767,7 +767,7 @@ describe("time-to-first-play (Story 4.5, AC-1/AC-2/AC-3/AC-5)", () => {
     // AC-3 honesty: saying "hasn't been played yet" about a track the DJ
     // demonstrably played is a false statement, not a conservative one.
     expect(model.neverPlayedCount).toBe(0);
-    expect(model.medianElapsedMs).toBeNull();
+    expect(model.averageElapsedMs).toBeNull();
   });
 
   it("counts a play exactly AT the add date as an instant debut, not an inconsistency", () => {
@@ -794,7 +794,7 @@ describe("time-to-first-play (Story 4.5, AC-1/AC-2/AC-3/AC-5)", () => {
 
     const model = buildTimeToFirstPlay([added("t", addedIso)], [], addMs + 10 * DAY_MS);
 
-    expect(model.neverPlayedMedianAgeMs).toBe(10 * DAY_MS);
+    expect(model.neverPlayedAverageAgeMs).toBe(10 * DAY_MS);
   });
 
   it("drops a future-dated add as clock skew, matching buildLiveConversionRate", () => {
@@ -816,7 +816,7 @@ describe("time-to-first-play (Story 4.5, AC-1/AC-2/AC-3/AC-5)", () => {
     expect(model.noAddDateCount).toBe(1);
   });
 
-  it("computes the median across an odd number of played tracks", () => {
+  it("averages across an odd number of played tracks", () => {
     const addedIso = localIso(2026, 1, 1);
     const addMs = new Date(addedIso).getTime();
     const sets = [
@@ -828,10 +828,10 @@ describe("time-to-first-play (Story 4.5, AC-1/AC-2/AC-3/AC-5)", () => {
     ];
     const events = [added("a", addedIso), added("b", addedIso), added("c", addedIso)];
 
-    expect(buildTimeToFirstPlay(events, sets, NOW).medianElapsedMs).toBe(5 * DAY_MS);
+    expect(buildTimeToFirstPlay(events, sets, NOW).averageElapsedMs).toBe(5 * DAY_MS);
   });
 
-  it("computes the median across an even number of played tracks (average of the two middle values)", () => {
+  it("averages across an even number of played tracks", () => {
     const addedIso = localIso(2026, 1, 1);
     const addMs = new Date(addedIso).getTime();
     const sets = [
@@ -842,15 +842,36 @@ describe("time-to-first-play (Story 4.5, AC-1/AC-2/AC-3/AC-5)", () => {
     ];
     const events = [added("a", addedIso), added("b", addedIso)];
 
-    expect(buildTimeToFirstPlay(events, sets, NOW).medianElapsedMs).toBe(2 * DAY_MS);
+    expect(buildTimeToFirstPlay(events, sets, NOW).averageElapsedMs).toBe(2 * DAY_MS);
   });
 
-  it("returns a null median with zero qualifying entries", () => {
+  it("reports the MEAN, not the median, on a right-skewed distribution", () => {
+    // Guards the 2026-08-07 mean-over-median ruling against a silent revert:
+    // the two agree on symmetric data (the odd/even cases above pass either
+    // way), so only a skewed fixture can tell them apart. Debuts at 1, 1, 1,
+    // 1 and 96 days — median 1 day, mean 20.
+    const addedIso = localIso(2026, 1, 1);
+    const addMs = new Date(addedIso).getTime();
+    const days = [1, 1, 1, 1, 96];
+    const events = days.map((_, i) => added(`t${i}`, addedIso));
+    const sets = [
+      set(
+        days.map((d, i) => play({ track_id: `t${i}`, started_at: new Date(addMs + d * DAY_MS).toISOString() })),
+      ),
+    ];
+
+    const model = buildTimeToFirstPlay(events, sets, NOW);
+
+    expect(model.averageElapsedMs).toBe(20 * DAY_MS);
+    expect(timeToFirstPlaySummary(model)).toContain("an average of 3 weeks");
+  });
+
+  it("returns a null average with zero qualifying entries", () => {
     expect(buildTimeToFirstPlay([], [], NOW)).toMatchObject({
       entries: [],
-      medianElapsedMs: null,
+      averageElapsedMs: null,
       neverPlayedCount: 0,
-      neverPlayedMedianAgeMs: null,
+      neverPlayedAverageAgeMs: null,
       playedBeforeAddCount: 0,
       noAddDateCount: 0,
     });
@@ -895,9 +916,9 @@ describe("time-to-first-play (Story 4.5, AC-1/AC-2/AC-3/AC-5)", () => {
     expect(hasEnoughTimeToFirstPlayTracks(buildTimeToFirstPlay(at, [], NOW))).toBe(true);
   });
 
-  it("gates the MEDIAN separately, on tracks that actually debuted (AC-4)", () => {
+  it("gates the AVERAGE separately, on tracks that actually debuted (AC-4)", () => {
     // The regression this test exists for: a large population with a single
-    // debut cleared the old single gate and rendered a median from n=1.
+    // debut cleared the old single gate and rendered an average from n=1.
     const addedIso = localIso(2026, 1, 1);
     const addMs = new Date(addedIso).getTime();
     const events = Array.from({ length: 20 }, (_, i) => added(`t${i}`, addedIso));
@@ -976,30 +997,30 @@ describe("time-to-first-play summary (AC-2, AC-3, AC-4)", () => {
     return buildTimeToFirstPlay(events, sets, NOW);
   }
 
-  it("states the debut count, the median and the never-played count together", () => {
+  it("states the debut count, the average and the never-played count together", () => {
     expect(timeToFirstPlaySummary(modelWith(5, 3, 1))).toBe(
-      "5 tracks have debuted, a median of 3 days after being added — 1 other hasn't been played yet.",
+      "5 tracks have debuted, an average of 3 days after being added — 1 other hasn't been played yet.",
     );
   });
 
   it("omits the never-played clause when every qualifying track has debuted", () => {
     expect(timeToFirstPlaySummary(modelWith(5, 3))).toBe(
-      "5 tracks have debuted, a median of 3 days after being added.",
+      "5 tracks have debuted, an average of 3 days after being added.",
     );
   });
 
-  it("never interpolates a bare adverbial phrase — a sub-day median reads as a noun phrase", () => {
+  it("never interpolates a bare adverbial phrase — a sub-day average reads as a noun phrase", () => {
     // The regression this test exists for: "a median of same day to debut".
     const summary = timeToFirstPlaySummary(modelWith(5, 0));
-    expect(summary).toBe("5 tracks have debuted, a median of under a minute after being added.");
+    expect(summary).toBe("5 tracks have debuted, an average of under a minute after being added.");
     expect(summary).not.toContain("same day");
   });
 
-  it("reports the waiting population, never a thin median, below the debut floor", () => {
+  it("reports the waiting population, never a thin average, below the debut floor", () => {
     const model = modelWith(1, 30, 9);
     expect(hasEnoughTimeToFirstPlayTracks(model)).toBe(true);
     expect(timeToFirstPlaySummary(model)).toBe(
-      "9 tracks have been added but not played yet — a median of 5 months on the shelf.",
+      "9 tracks have been added but not played yet — averaging 5 months on the shelf.",
     );
   });
 
