@@ -55,7 +55,14 @@
   gap: 8px;
   padding: 18px 20px;
   border-radius: 22px;
-  max-width: 420px;
+  max-width: 440px;
+}
+
+.lu-stat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .lu-stat-label {
@@ -64,6 +71,39 @@
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--color-abyss-text-45);
+}
+
+/* The window dropdown (Arjun, 2026-08-07) — a native <select>, styled to sit
+   quietly in the module header next to the label. */
+.lu-window-select {
+  padding: 4px 24px 4px 10px;
+  border: 1px solid var(--color-abyss-hairline);
+  border-radius: var(--radius-full);
+  background: var(--color-abyss-raised);
+  color: var(--color-abyss-text-72);
+  font-family: var(--font-inter);
+  font-size: 12px;
+  font-weight: 550;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%23808a94' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  transition:
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lu-window-select:hover {
+  color: var(--color-abyss-text);
+  background-color: var(--color-abyss-shell-glass);
+}
+
+.lu-window-select:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 6px var(--color-abyss-accent-glow);
 }
 
 .lu-stat-readout {

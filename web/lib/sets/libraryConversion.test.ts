@@ -5,12 +5,14 @@ import {
   convertedWithinWindow,
   CONVERSION_WINDOWS,
   DEFAULT_CONVERSION_WINDOW,
+  DEFAULT_LIVE_WINDOW,
   firstPlayByTrack,
   hasEnoughCohorts,
   isCohortComplete,
   isLowConfidenceCohort,
   libraryConversionSummary,
   liveConversionRateSummary,
+  LIVE_CONVERSION_WINDOWS,
   LOW_CONFIDENCE_COHORT_SIZE,
   undatedDisclosure,
   type ConversionWindow,
@@ -534,31 +536,37 @@ describe("the conversion-window toggle (D-13)", () => {
 });
 
 describe("live conversion rate (Story 4.3, Decision E-1, AC-1/AC-3/AC-4)", () => {
-  it("counts a track added and played inside the window", () => {
+  it("counts a track added and played inside the window, defaulting to DEFAULT_LIVE_WINDOW", () => {
     const addedIso = localIso(2026, 5, 1);
     const addMs = new Date(addedIso).getTime();
     const now = addMs + 10 * DAY_MS;
     const sets = [set([play({ track_id: "t", started_at: new Date(addMs + 5 * DAY_MS).toISOString() })])];
 
-    const rate = buildLiveConversionRate([added("t", addedIso)], sets, now, 90);
+    const rate = buildLiveConversionRate([added("t", addedIso)], sets, now);
 
-    expect(rate).toMatchObject({ window: 90, added: 1, played: 1, rate: 1, noAddDateCount: 0 });
+    expect(rate).toMatchObject({
+      window: DEFAULT_LIVE_WINDOW,
+      added: 1,
+      played: 1,
+      rate: 1,
+      noAddDateCount: 0,
+    });
   });
 
   it("counts a track added but never played", () => {
     const addedIso = localIso(2026, 5, 1);
     const now = new Date(addedIso).getTime() + 10 * DAY_MS;
 
-    const rate = buildLiveConversionRate([added("t", addedIso)], [], now, 90);
+    const rate = buildLiveConversionRate([added("t", addedIso)], [], now, 60);
 
     expect(rate).toMatchObject({ added: 1, played: 0, rate: 0 });
   });
 
   it("excludes a track added outside the trailing window", () => {
     const now = new Date(2026, 5, 1).getTime();
-    const tooOld = now - 91 * DAY_MS;
+    const tooOld = now - 61 * DAY_MS;
 
-    const rate = buildLiveConversionRate([added("t", new Date(tooOld).toISOString())], [], now, 90);
+    const rate = buildLiveConversionRate([added("t", new Date(tooOld).toISOString())], [], now, 60);
 
     expect(rate).toMatchObject({ added: 0, played: 0, rate: null });
   });
@@ -570,7 +578,7 @@ describe("live conversion rate (Story 4.3, Decision E-1, AC-1/AC-3/AC-4)", () =>
       [added("dated", localIso(2026, 4, 20)), added("undated", null)],
       [],
       now,
-      90,
+      60,
     );
 
     expect(rate.added).toBe(1);
@@ -579,14 +587,14 @@ describe("live conversion rate (Story 4.3, Decision E-1, AC-1/AC-3/AC-4)", () =>
 
   it("window-boundary: counts a track added exactly `window` days ago, excludes one day further back", () => {
     const now = new Date(2026, 5, 1).getTime();
-    const onBoundary = new Date(now - 90 * DAY_MS).toISOString();
-    const pastBoundary = new Date(now - 91 * DAY_MS).toISOString();
+    const onBoundary = new Date(now - 60 * DAY_MS).toISOString();
+    const pastBoundary = new Date(now - 61 * DAY_MS).toISOString();
 
     const rate = buildLiveConversionRate(
       [added("on-boundary", onBoundary), added("past-boundary", pastBoundary)],
       [],
       now,
-      90,
+      60,
     );
 
     expect(rate.added).toBe(1);
@@ -598,21 +606,21 @@ describe("live conversion rate (Story 4.3, Decision E-1, AC-1/AC-3/AC-4)", () =>
     const now = addMs + 5 * DAY_MS;
     const sets = [set([play({ track_id: "t", started_at: new Date(addMs - DAY_MS).toISOString() })])];
 
-    const rate = buildLiveConversionRate([added("t", addedIso)], sets, now, 90);
+    const rate = buildLiveConversionRate([added("t", addedIso)], sets, now, 60);
 
     expect(rate).toMatchObject({ added: 1, played: 0 });
   });
 
   it("counts a play landing AFTER the window has closed — no upper bound unlike the cohort model", () => {
-    // The add itself is still inside the trailing 90-day window as of `now`,
-    // but the play happened more than 90 days after the add — the cohort
+    // The add itself is still inside the trailing 60-day window as of `now`,
+    // but the play happened more than 60 days after the add — the cohort
     // model's convertedWithinWindow would reject this; the live meter must not.
     const addedIso = localIso(2026, 1, 1);
     const addMs = new Date(addedIso).getTime();
-    const now = addMs + 89 * DAY_MS;
-    const sets = [set([play({ track_id: "t", started_at: new Date(addMs + 120 * DAY_MS).toISOString() })])];
+    const now = addMs + 59 * DAY_MS;
+    const sets = [set([play({ track_id: "t", started_at: new Date(addMs + 90 * DAY_MS).toISOString() })])];
 
-    const rate = buildLiveConversionRate([added("t", addedIso)], sets, now, 90);
+    const rate = buildLiveConversionRate([added("t", addedIso)], sets, now, 60);
 
     expect(rate).toMatchObject({ added: 1, played: 1 });
   });
@@ -621,13 +629,13 @@ describe("live conversion rate (Story 4.3, Decision E-1, AC-1/AC-3/AC-4)", () =>
     const addedIso = localIso(2026, 5, 1);
     const now = new Date(addedIso).getTime() + 1 * DAY_MS;
 
-    const rate = buildLiveConversionRate([added("t", addedIso), added("t", addedIso)], [], now, 90);
+    const rate = buildLiveConversionRate([added("t", addedIso), added("t", addedIso)], [], now, 60);
 
     expect(rate.added).toBe(1);
   });
 
   it("rate is null (never a fabricated 0%) when nothing was added in the window", () => {
-    const rate = buildLiveConversionRate([], [], NOW, 90);
+    const rate = buildLiveConversionRate([], [], NOW, 60);
     expect(rate).toMatchObject({ added: 0, played: 0, rate: null });
   });
 
@@ -637,7 +645,7 @@ describe("live conversion rate (Story 4.3, Decision E-1, AC-1/AC-3/AC-4)", () =>
       added(`t${i}`, localIso(2026, 4, 20)),
     );
 
-    const rate = buildLiveConversionRate(events, [], now, 90);
+    const rate = buildLiveConversionRate(events, [], now, 60);
 
     expect(rate.added).toBe(LOW_CONFIDENCE_COHORT_SIZE - 1);
     expect(rate.lowConfidence).toBe(true);
@@ -646,11 +654,18 @@ describe("live conversion rate (Story 4.3, Decision E-1, AC-1/AC-3/AC-4)", () =>
 
   it("reuses undatedDisclosure for its own copy, with pendingCohortCount forced to 0", () => {
     const now = new Date(2026, 5, 1).getTime();
-    const rate = buildLiveConversionRate([added("dated", localIso(2026, 4, 20)), added("undated", null)], [], now, 90);
+    const rate = buildLiveConversionRate([added("dated", localIso(2026, 4, 20)), added("undated", null)], [], now, 60);
 
     expect(undatedDisclosure({ noAddDateCount: rate.noAddDateCount, pendingCohortCount: 0 }, rate.window)).toBe(
       "1 track has no known add date — not counted here.",
     );
+  });
+
+  it.each(LIVE_CONVERSION_WINDOWS)("accepts every selectable live window (%i days)", (window) => {
+    const addedIso = localIso(2026, 5, 1);
+    const now = new Date(addedIso).getTime() + 1 * DAY_MS;
+    const rate = buildLiveConversionRate([added("t", addedIso)], [], now, window);
+    expect(rate).toMatchObject({ window, added: 1 });
   });
 });
 
@@ -660,16 +675,16 @@ describe("live conversion rate summary (AC-2, AC-3)", () => {
     const addMs = new Date(addedIso).getTime();
     const now = addMs + 10 * DAY_MS;
     const sets = [set([play({ track_id: "t", started_at: new Date(addMs + 5 * DAY_MS).toISOString() })])];
-    const rate = buildLiveConversionRate([added("t", addedIso), added("u", addedIso)], sets, now, 90);
+    const rate = buildLiveConversionRate([added("t", addedIso), added("u", addedIso)], sets, now, 60);
 
     expect(liveConversionRateSummary(rate)).toBe(
-      "1 of 2 tracks added in the last 90 days have been played in a set (50%).",
+      "1 of 2 tracks added in the last 60 days have been played in a set (50%).",
     );
   });
 
   it("says nothing was added, rather than a fabricated 0%, when the denominator is empty", () => {
-    const rate = buildLiveConversionRate([], [], NOW, 90);
-    expect(liveConversionRateSummary(rate)).toBe("No tracks added in the last 90 days.");
+    const rate = buildLiveConversionRate([], [], NOW, 60);
+    expect(liveConversionRateSummary(rate)).toBe("No tracks added in the last 60 days.");
   });
 
   it("reflects a non-default window in its own copy", () => {
@@ -677,5 +692,12 @@ describe("live conversion rate summary (AC-2, AC-3)", () => {
     const now = new Date(addedIso).getTime() + 10 * DAY_MS;
     const rate = buildLiveConversionRate([added("t", addedIso)], [], now, 30);
     expect(liveConversionRateSummary(rate)).toContain("last 30 days");
+  });
+
+  it("reflects the 2-weeks window (14 days) in its own copy", () => {
+    const addedIso = localIso(2026, 5, 1);
+    const now = new Date(addedIso).getTime() + 5 * DAY_MS;
+    const rate = buildLiveConversionRate([added("t", addedIso)], [], now, 14);
+    expect(liveConversionRateSummary(rate)).toContain("last 14 days");
   });
 });

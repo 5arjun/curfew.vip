@@ -1,5 +1,5 @@
 import { getLibraryAddEvents, getRecentSets } from "@/lib/sets";
-import { buildLiveConversionRate } from "@/lib/sets/libraryConversion";
+import { buildLiveConversionRate, LIVE_CONVERSION_WINDOWS } from "@/lib/sets/libraryConversion";
 import { SilkBackdrop } from "@/app/components/dashboard/SilkBackdrop";
 import { ConversionRateMeter } from "@/app/components/library-utilization/ConversionRateMeter";
 
@@ -19,7 +19,16 @@ export default async function LibraryUtilizationPage() {
   // cohort model — see `buildLiveConversionRate`'s own doc comment. The clock
   // comes from the data seam (`readAtMs`), never read in render (Story 4.1's
   // review lesson; `react-hooks/purity` rejects `Date.now()` here besides).
-  const rate = buildLiveConversionRate(addEvents.events, sets, addEvents.readAtMs);
+  //
+  // Every selectable window is precomputed here, up front — the dropdown
+  // (Arjun, 2026-08-07) just looks one up, matching D-13's "no work happens
+  // on click" discipline the trend chart's own window toggle established.
+  const rates = Object.fromEntries(
+    LIVE_CONVERSION_WINDOWS.map((window) => [
+      window,
+      buildLiveConversionRate(addEvents.events, sets, addEvents.readAtMs, window),
+    ]),
+  ) as Record<(typeof LIVE_CONVERSION_WINDOWS)[number], ReturnType<typeof buildLiveConversionRate>>;
 
   return (
     <main className="lu">
@@ -29,7 +38,7 @@ export default async function LibraryUtilizationPage() {
         <p className="lu-subtitle">How much of your library actually makes it to the dancefloor.</p>
       </header>
 
-      <ConversionRateMeter rate={rate} />
+      <ConversionRateMeter rates={rates} />
     </main>
   );
 }

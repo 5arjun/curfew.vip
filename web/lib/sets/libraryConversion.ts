@@ -39,7 +39,15 @@ import type { SetRecord } from "./types";
 export const CONVERSION_WINDOWS = [90, 60, 30] as const;
 export type ConversionWindow = (typeof CONVERSION_WINDOWS)[number];
 
-/** D-8's locked window — the first-visit default and the value Story 4.3's meter must match. */
+/**
+ * D-8's locked window — the trend chart's first-visit default.
+ *
+ * **No longer the pip meter's default** (Arjun, 2026-08-07, post-launch of
+ * this trend chart): the meter switched to a 60/30/14 scale of its own (see
+ * {@link LIVE_CONVERSION_WINDOWS}), a deliberate divergence from the
+ * "trend and meter never disagree" framing D-8 originally set — the two
+ * features are allowed to measure different things now.
+ */
 export const DEFAULT_CONVERSION_WINDOW: ConversionWindow = 90;
 
 /**
@@ -47,6 +55,23 @@ export const DEFAULT_CONVERSION_WINDOW: ConversionWindow = 90;
  * Prefer {@link DEFAULT_CONVERSION_WINDOW}.
  */
 export const CONVERSION_WINDOW_DAYS = DEFAULT_CONVERSION_WINDOW;
+
+/**
+ * Selectable windows for the pip meter's LIVE current-window rate (Arjun,
+ * 2026-08-07: "instead of 90 do 60 and add a drop down... 30 days or 2
+ * weeks"). A separate scale from {@link CONVERSION_WINDOWS} on purpose — the
+ * meter and the trend chart above are independent features as of this
+ * change, each free to pick the window granularity that suits how it's
+ * actually used (a live snapshot reads naturally at shorter, more recent
+ * windows; a month-bucketed trend needs the longer ones to have enough
+ * cohorts). 14 is "2 weeks" in the dropdown copy, not "14 days" — matching
+ * how a DJ would actually say it.
+ */
+export const LIVE_CONVERSION_WINDOWS = [60, 30, 14] as const;
+export type LiveWindow = (typeof LIVE_CONVERSION_WINDOWS)[number];
+
+/** The meter's first-visit default (Arjun, 2026-08-07 — was 90 via {@link DEFAULT_CONVERSION_WINDOW}). */
+export const DEFAULT_LIVE_WINDOW: LiveWindow = 60;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -297,11 +322,11 @@ export function isLowConfidenceCohort(added: number): boolean {
 /**
  * Story 4.3 (AC-1, AC-3, AC-4), Decision E-1: the pip meter's **live,
  * current-window** stat. Deliberately a **separate** computation from
- * {@link buildLibraryConversion} above, not a read of `model.windows[90]` —
+ * {@link buildLibraryConversion} above, not a read of `model.windows[...]` —
  * see the story's Context & Authority section (Decision E-1) for why: the
  * cohort model structurally *excludes* any cohort whose window has not fully
  * elapsed yet ({@link isCohortComplete}), which is exactly the population
- * this meter is about ("tracks added in the last 90 days").
+ * this meter is about ("tracks added in the last N days").
  *
  * Denominator = every dated add-event whose `added_at` falls in
  * `[nowMs - window*day, nowMs]` — no {@link isCohortComplete} gate: a track
@@ -320,8 +345,8 @@ export function isLowConfidenceCohort(added: number): boolean {
  * real evidence the DJ played a track after acquiring it.
  */
 export interface LiveConversionRate {
-  /** Which window this rate was computed for. */
-  window: ConversionWindow;
+  /** Which window this rate was computed for — see {@link LIVE_CONVERSION_WINDOWS}. */
+  window: LiveWindow;
   /** Dated tracks added within the trailing window as of `nowMs`. The denominator. */
   added: number;
   /** How many of `added` have a play at or after their own `added_at`. */
@@ -350,7 +375,7 @@ export function buildLiveConversionRate(
   events: LibraryAddEvent[],
   sets: SetRecord[],
   nowMs: number,
-  window: ConversionWindow = DEFAULT_CONVERSION_WINDOW,
+  window: LiveWindow = DEFAULT_LIVE_WINDOW,
 ): LiveConversionRate {
   const firstPlay = firstPlayByTrack(sets);
   const windowStartMs = nowMs - window * DAY_MS;
@@ -496,10 +521,15 @@ export function liveConversionRateSummary(rate: LiveConversionRate): string {
  * `pendingCohortCount` concept — can reuse this exact generator (Story 4.3
  * Task 2) rather than a second one: pass `pendingCohortCount: 0` and the
  * second clause simply never fires.
+ *
+ * `window` is a bare `number`, not {@link ConversionWindow}: the cohort model
+ * and the live meter ({@link LiveWindow}) now select from two different
+ * window scales, and this generator only ever interpolates the value into a
+ * sentence — it has no reason to care which scale it came from.
  */
 export function undatedDisclosure(
   counts: { noAddDateCount: number; pendingCohortCount: number },
-  window: ConversionWindow,
+  window: number,
 ): string | null {
   const { noAddDateCount, pendingCohortCount } = counts;
   const parts: string[] = [];
