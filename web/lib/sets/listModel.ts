@@ -12,6 +12,7 @@ import {
   formatTimeRange,
   topGenres,
 } from "./format";
+import { HERO_MIN_TRACKS } from "./hero";
 import type { SetRecord, SyncPlay } from "./types";
 
 export interface SetTrack {
@@ -39,6 +40,12 @@ export interface SetRowModel {
   tracklist: SetTrack[];
   /** Local day key "2026-06-21" — calendar cross-linking (D10). */
   dayKey: string;
+  /** Story 3.7 spec §3g: "low-confidence/no-dancefloor" — either the FR-27
+      confidence signal (`derived.confidence.value < 1.0`) or too few tracks
+      to be a real dancefloor (same `HERO_MIN_TRACKS` bar hero.ts already
+      uses to keep a soundcheck out of the hero slot). Hidden from the
+      archive by default (Style Evolution's pattern), never silently. */
+  isLowConfidence: boolean;
   /** Epoch ms of started_at — sort by date (D12 filters). */
   startedAtMs: number;
   /** Whole-set length in seconds (0 when unknown) — sort by set length. */
@@ -64,6 +71,21 @@ function setTracklist(plays: SyncPlay[]): SetTrack[] {
     title: p.title ?? "Unknown",
     artist: p.artist ?? "Unknown",
   }));
+}
+
+/**
+ * The product-wide "this set isn't a real gig" rule (spec §3g): a rehearsal-
+ * grade confidence signal, OR too few tracks for dancefloor detection to have
+ * anything to work with (`HERO_MIN_TRACKS` === `MIN_PLAYS_FOR_DETECTION`).
+ *
+ * Exported so the set list and the most-played card share ONE definition.
+ * They used to diverge: the list hid these sets while the card beside it
+ * still counted their plays, which is how a 1-play soundcheck ended up
+ * crowning the most-played track.
+ */
+export function isLowConfidenceSet(set: SetRecord): boolean {
+  const trackCount = set.derived.track_count ?? set.plays.length;
+  return set.derived.confidence.value < 1.0 || trackCount < HERO_MIN_TRACKS;
 }
 
 export function buildSetRows(sets: SetRecord[]): SetRowModel[] {
@@ -102,6 +124,7 @@ export function buildSetRows(sets: SetRecord[]): SetRowModel[] {
       genreChips: topGenres(floor.genre_breakdown),
       tracklist: setTracklist(set.plays),
       dayKey: localDayKey(set.started_at),
+      isLowConfidence: isLowConfidenceSet(set),
       startedAtMs: Number.isNaN(startedAtMs) ? 0 : startedAtMs,
       lengthSec: set.derived.set_length_sec ?? 0,
       haystack,

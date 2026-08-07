@@ -75,6 +75,18 @@
   --color-spark: #e0a44a;
   --color-on-spark: #2e1804;
 
+  /* Color: flag — a saturated, high-chroma gold reserved for a single use:
+     Style Evolution's low-confidence-cohort badge (`.se-chart-dot-flag`).
+     Deliberately more saturated than --color-spark, which read muted/brown
+     at the badge's small size once anything sat near or behind it (Arjun,
+     2026-08-07) — this is a distinct, brighter pole, not a spark retint.
+     --color-flag-ring is a translucent void tone, used only as a 1.5px
+     separating ring so the badge reads as sitting ON TOP of whatever it
+     overlaps, never blended into it. */
+  --color-flag: #ffd23f;
+  --color-on-flag: #241800;
+  --color-flag-ring: rgba(4, 6, 10, 0.6);
+
   /* Color: secondary / tertiary — reserved, not yet in active use.
      Cool blue-neutral, retinted to sit on the blue-black base. */
   --color-secondary: #c5c8ce;
@@ -436,4 +448,27 @@
   /* The ref's click ripple: white 40% → clear radial. */
   --color-metal-ripple: #ffffff66;
   --color-metal-ripple-fade: #ffffff00;
+
+  /* Categorical chart palette (Style Evolution genre-breakdown bars, added
+     post-launch-review 2026-08-06) — the `dataviz` skill's validated
+     8-hue default (fixed order, blue/orange/aqua/yellow/magenta/green/
+     violet/red), re-validated against THIS app's actual dark chart surface
+     (`#0a0e13`, the `.dz-shell` glass fill) rather than the skill's generic
+     reference surface: all six checks pass (lightness band, chroma floor,
+     worst adjacent CVD ΔE 8.4, worst adjacent normal-vision ΔE 19.3, all
+     ≥3:1 contrast). Only the first 6 slots are used here (5-6 genres is the
+     UI's own cap) — a strict prefix of an already-adjacent-validated order,
+     so truncating the tail never reopens a failing pair. Key-breakdown bars
+     reuse the existing `--camelot-*` wheel instead (an exact, already-
+     established mapping — genres have no such precedent). */
+  --chart-cat-1: #3987e5;
+  --chart-cat-2: #d95926;
+  --chart-cat-3: #199e70;
+  --chart-cat-4: #c98500;
+  --chart-cat-5: #d55181;
+  --chart-cat-6: #008300;
+  /* "Other" (categories folded past the top-6 cap) — a muted neutral,
+     deliberately outside the categorical order so it never impersonates a
+     real category. */
+  --chart-cat-other: #5b6773;
 }

@@ -407,6 +407,143 @@ fn sync_one(
     Ok(())
 }
 
+// ---- Story 4.2: library add-event batch sync (AD-21) -----------------------
+
+/// How many add-events go up in one RPC call. A DJ importing a crate can add
+/// hundreds of tracks at once; batching keeps that to a handful of calls, and
+/// capping the batch keeps any single request (and any single retry) bounded.
+const ADD_EVENT_BATCH_SIZE: usize = 200;
+
+/// The wire body for `POST {SUPABASE_URL}/rest/v1/rpc/sync_library_add_events`.
+/// Mirrors `SyncLibraryAddEventBatch` in `@curfew/shared` and the migration's
+/// parameter list; `dj_id` is deliberately absent — the function derives it
+/// from `auth.uid()` and never trusts a client-supplied copy, exactly like
+/// `sync_set`.
+///
+/// `added_at` is unix epoch seconds on the wire (this codebase's convention at
+/// this boundary, same as `SyncSetRequest.started_at`), cast server-side via
+/// `to_timestamp()`. `None` stays `null` — never a guessed date (AD-11).
+#[derive(Debug, Serialize)]
+struct SyncLibraryAddEventWire {
+    track_id: String,
+    added_at: Option<i64>,
+}
+
+/// Wraps the `sync_library_add_events` RPC — same trait-injection pattern as
+/// [`SyncClient`] so tests never make a real network call.
+pub trait LibraryAddEventClient {
+    fn sync_library_add_events(
+        &self,
+        access_token: &str,
+        request_body: &serde_json::Value,
+    ) -> Result<(), SyncError>;
+}
+
+impl LibraryAddEventClient for SupabaseSyncClient {
+    fn sync_library_add_events(
+        &self,
+        access_token: &str,
+        request_body: &serde_json::Value,
+    ) -> Result<(), SyncError> {
+        let url = format!(
+            "{}/rest/v1/rpc/sync_library_add_events",
+            debug_sync_base_url()
+        );
+        let response = self
+            .http
+            .post(&url)
+            .header("apikey", crate::config::SUPABASE_PUBLISHABLE_KEY)
+            .header("Authorization", format!("Bearer {access_token}"))
+            .json(request_body)
+            .send()
+            .map_err(SyncError::Http)?;
+
+        if !response.status().is_success() {
+            return Err(SyncError::Rejected(response.status()));
+        }
+        Ok(())
+    }
+}
+
+/// Outcome of one [`sync_pending_library_add_events`] pass. Deliberately
+/// simpler than [`SyncSummary`]: there is no per-row circuit breaker here
+/// because there is no per-row permanent-failure class to break on — an
+/// add-event is two scalar fields with no derived blob to be corrupt, no
+/// time-bounds to be missing, and no server-computed id to mismatch.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct AddEventSyncSummary {
+    pub attempted: usize,
+    pub synced: usize,
+}
+
+/// Drains the local add-event queue (`library_tracks` rows that are a genuine
+/// go-forward add and not yet synced) in batches (Story 4.2, Task 4, AD-21).
+///
+/// Reuses this module's existing token fetch and the same at-least-once /
+/// idempotent discipline as [`sync_pending_sessions`]: rows are only stamped
+/// `synced_at` after the cloud accepted them, so a batch lost mid-flight is
+/// simply re-sent, and the `(dj_id, track_id)` upsert makes the redelivery a
+/// no-op server-side.
+///
+/// D-1's "zero add-events on first run" is not enforced here — it is enforced
+/// structurally, by `store::library_add_events_pending_sync`'s own
+/// `is_baseline = 0` clause, so no caller can bypass it.
+pub fn sync_pending_library_add_events(
+    conn: &rusqlite::Connection,
+    tokens: &Mutex<Option<TokenPair>>,
+    token_store: &dyn TokenStore,
+    auth_client: &dyn AuthClient,
+    client: &dyn LibraryAddEventClient,
+) -> Result<AddEventSyncSummary, SyncError> {
+    let pending = store::library_add_events_pending_sync(conn).map_err(SyncError::Store)?;
+    // Cheapest possible early-out: an agent with nothing to send must not pay
+    // for a token fetch (and must not surface an auth failure) every pass.
+    if pending.is_empty() {
+        return Ok(AddEventSyncSummary::default());
+    }
+
+    let access_token =
+        get_valid_access_token(tokens, token_store, auth_client).map_err(SyncError::Auth)?;
+
+    let mut summary = AddEventSyncSummary {
+        attempted: pending.len(),
+        ..Default::default()
+    };
+
+    for batch in pending.chunks(ADD_EVENT_BATCH_SIZE) {
+        let events: Vec<SyncLibraryAddEventWire> = batch
+            .iter()
+            .map(|event| SyncLibraryAddEventWire {
+                track_id: event.track_id.clone(),
+                added_at: event.added_at,
+            })
+            .collect();
+        let request_body = serde_json::json!({ "events": serde_json::to_value(&events).map_err(SyncError::Corrupt)? });
+
+        // A failed batch stops the pass rather than pressing on: every
+        // remaining batch would fail the same way (the failure is the
+        // connection or the token, not this batch's contents), and the rows
+        // keep `synced_at NULL` for the next drain — the same "leave it
+        // pending" posture `sync_one` takes.
+        if let Err(e) = client.sync_library_add_events(&access_token, &request_body) {
+            #[cfg(debug_assertions)]
+            eprintln!("curfew-agent: library add-event batch sync failed: {e}");
+            return Err(e);
+        }
+
+        let synced_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let track_ids: Vec<String> = batch.iter().map(|e| e.track_id.clone()).collect();
+        store::mark_library_add_events_synced(conn, &track_ids, synced_at)
+            .map_err(SyncError::Store)?;
+        summary.synced += batch.len();
+    }
+
+    Ok(summary)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -519,6 +656,7 @@ mod tests {
             in_library: true,
             played_ms: None,
             library_added_at: None,
+            track_id: None,
         }]
     }
 
@@ -948,5 +1086,220 @@ mod tests {
             1,
             "the skipped row still appears as pending -- skipping never deletes/hides it from the store"
         );
+    }
+
+    // ---- Story 4.2 Task 4: library add-event batch drain (AD-21) ----------
+
+    /// Records every batch body it was handed, so a test can assert on the
+    /// exact wire shape rather than only on the summary. Same hand-rolled
+    /// double convention as `FakeSyncClient` above.
+    #[derive(Default)]
+    struct FakeAddEventClient {
+        bodies: Mutex<Vec<serde_json::Value>>,
+        fail_after: Option<usize>,
+    }
+
+    impl FakeAddEventClient {
+        fn failing_after(calls: usize) -> Self {
+            Self {
+                fail_after: Some(calls),
+                ..Default::default()
+            }
+        }
+        fn bodies(&self) -> Vec<serde_json::Value> {
+            self.bodies.lock().unwrap().clone()
+        }
+    }
+
+    impl LibraryAddEventClient for FakeAddEventClient {
+        fn sync_library_add_events(
+            &self,
+            _access_token: &str,
+            body: &serde_json::Value,
+        ) -> Result<(), SyncError> {
+            let mut bodies = self.bodies.lock().unwrap();
+            if let Some(limit) = self.fail_after {
+                if bodies.len() >= limit {
+                    return Err(SyncError::Http(
+                        reqwest::blocking::Client::new()
+                            .get("http://127.0.0.1:1")
+                            .send()
+                            .expect_err("a refused connect is the transient-failure fixture"),
+                    ));
+                }
+            }
+            bodies.push(body.clone());
+            Ok(())
+        }
+    }
+
+    fn add_event_auth() -> (Mutex<Option<TokenPair>>, FakeTokenStore, FakeAuthClient) {
+        (
+            Mutex::new(Some(TokenPair {
+                access_token: fixture_jwt(&dj(9).to_string()),
+                refresh_token: "rt".into(),
+                expires_at: 9_999_999_999,
+            })),
+            FakeTokenStore::default(),
+            FakeAuthClient,
+        )
+    }
+
+    #[test]
+    fn a_successful_add_event_drain_stamps_synced_at_and_stops_returning_the_rows() {
+        let file = TempStoreFile::new("add-events");
+        let conn = open_at(&file.0).expect("store opens");
+        store::record_library_tracks(
+            &conn,
+            &[
+                ("aaaaaaaaaaaaaaaa".to_string(), Some(1_772_323_200)),
+                ("bbbbbbbbbbbbbbbb".to_string(), None),
+            ],
+            false,
+            1_700_000_000,
+        )
+        .unwrap();
+
+        let (tokens, token_store, auth_client) = add_event_auth();
+        let client = FakeAddEventClient::default();
+
+        let summary =
+            sync_pending_library_add_events(&conn, &tokens, &token_store, &auth_client, &client)
+                .expect("drain succeeds");
+
+        assert_eq!(summary.attempted, 2);
+        assert_eq!(summary.synced, 2);
+        assert!(
+            store::library_add_events_pending_sync(&conn)
+                .unwrap()
+                .is_empty(),
+            "a synced add-event must no longer appear as pending"
+        );
+
+        let bodies = client.bodies();
+        assert_eq!(bodies.len(), 1, "both events ride one batch");
+        let events = bodies[0]["events"].as_array().expect("events array");
+        assert_eq!(events[0]["track_id"], "aaaaaaaaaaaaaaaa");
+        assert_eq!(events[0]["added_at"], 1_772_323_200_i64);
+        assert!(
+            events[1]["added_at"].is_null(),
+            "an unresolvable date goes up as null, never a guessed epoch"
+        );
+    }
+
+    /// D-1/AC-4 at the sync boundary: even if every other guard failed, a
+    /// baseline row is structurally unreachable from the drain.
+    #[test]
+    fn baseline_rows_are_never_drained_however_many_passes_run() {
+        let file = TempStoreFile::new("add-events-baseline");
+        let conn = open_at(&file.0).expect("store opens");
+        store::record_library_tracks(
+            &conn,
+            &[
+                ("aaaaaaaaaaaaaaaa".to_string(), Some(1_600_000_000)),
+                ("bbbbbbbbbbbbbbbb".to_string(), Some(1_600_000_001)),
+            ],
+            true,
+            1_700_000_000,
+        )
+        .unwrap();
+
+        let (tokens, token_store, auth_client) = add_event_auth();
+        let client = FakeAddEventClient::default();
+
+        let summary =
+            sync_pending_library_add_events(&conn, &tokens, &token_store, &auth_client, &client)
+                .expect("drain succeeds");
+
+        assert_eq!(summary, AddEventSyncSummary::default());
+        assert!(
+            client.bodies().is_empty(),
+            "AC-4: a first-run baseline must not cost even one network call"
+        );
+    }
+
+    #[test]
+    fn a_failed_batch_leaves_its_rows_pending_for_the_next_pass() {
+        let file = TempStoreFile::new("add-events-fail");
+        let conn = open_at(&file.0).expect("store opens");
+        store::record_library_tracks(
+            &conn,
+            &[("aaaaaaaaaaaaaaaa".to_string(), None)],
+            false,
+            1_700_000_000,
+        )
+        .unwrap();
+
+        let (tokens, token_store, auth_client) = add_event_auth();
+        let client = FakeAddEventClient::failing_after(0);
+
+        let result =
+            sync_pending_library_add_events(&conn, &tokens, &token_store, &auth_client, &client);
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().retry_class(),
+            RetryClass::Transient,
+            "a refused connection is worth retrying, not a permanent skip"
+        );
+        assert_eq!(
+            store::library_add_events_pending_sync(&conn).unwrap().len(),
+            1,
+            "a failed batch must stay queued -- at-least-once, never at-most-once"
+        );
+    }
+
+    /// The pass must be free for the overwhelmingly common case of nothing to
+    /// send: an unlinked or idle agent must not fetch a token (or surface an
+    /// auth error) on every single drain tick.
+    #[test]
+    fn an_empty_queue_costs_no_token_fetch_and_no_network_call() {
+        let file = TempStoreFile::new("add-events-empty");
+        let conn = open_at(&file.0).expect("store opens");
+
+        let no_tokens = Mutex::new(None);
+        let client = FakeAddEventClient::default();
+
+        let summary = sync_pending_library_add_events(
+            &conn,
+            &no_tokens,
+            &FakeTokenStore::default(),
+            &FakeAuthClient,
+            &client,
+        )
+        .expect("an empty queue is not an error even with no token at all");
+
+        assert_eq!(summary, AddEventSyncSummary::default());
+        assert!(client.bodies().is_empty());
+    }
+
+    #[test]
+    fn a_large_queue_is_split_into_bounded_batches() {
+        let file = TempStoreFile::new("add-events-batching");
+        let conn = open_at(&file.0).expect("store opens");
+        let tracks: Vec<(String, Option<i64>)> = (0..ADD_EVENT_BATCH_SIZE + 5)
+            .map(|i| (format!("{i:016x}"), None))
+            .collect();
+        store::record_library_tracks(&conn, &tracks, false, 1_700_000_000).unwrap();
+
+        let (tokens, token_store, auth_client) = add_event_auth();
+        let client = FakeAddEventClient::default();
+
+        let summary =
+            sync_pending_library_add_events(&conn, &tokens, &token_store, &auth_client, &client)
+                .expect("drain succeeds");
+
+        assert_eq!(summary.synced, ADD_EVENT_BATCH_SIZE + 5);
+        let bodies = client.bodies();
+        assert_eq!(
+            bodies.len(),
+            2,
+            "a crate import is batched, not one call per track"
+        );
+        assert_eq!(
+            bodies[0]["events"].as_array().unwrap().len(),
+            ADD_EVENT_BATCH_SIZE
+        );
+        assert_eq!(bodies[1]["events"].as_array().unwrap().len(), 5);
     }
 }

@@ -4,10 +4,11 @@
 // take the hero slot just because it was captured last. Everything else falls
 // to the archive, order preserved (getRecentSets already sorts newest-first).
 import type { SetRecord } from "./types";
+import { MIN_PLAYS_FOR_DETECTION } from "./dancefloor";
 
-// A set needs at least this many tracks to earn the hero. Mirrors dancefloor
+// A set needs at least this many tracks to earn the hero. Shares dancefloor
 // detection's MIN_PLAYS_FOR_DETECTION — below it there is no night to narrate.
-export const HERO_MIN_TRACKS = 6;
+export const HERO_MIN_TRACKS = MIN_PLAYS_FOR_DETECTION;
 
 function trackCount(set: SetRecord): number {
   return set.derived.track_count ?? set.plays.length;

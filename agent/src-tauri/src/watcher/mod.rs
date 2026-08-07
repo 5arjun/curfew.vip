@@ -313,6 +313,7 @@ fn advance_legacy(
     tx: &mpsc::Sender<notify::Result<notify::Event>>,
     store_conn: Option<&Connection>,
     pending: &mut HashMap<PathBuf, LegacyPendingSession>,
+    dates: &crate::joiner::date_added::DateAddedIndex,
 ) {
     if let (Some(new_source), Some(existing)) = (new_source, state.as_ref()) {
         if existing.source.serato_dir != new_source.serato_dir {
@@ -341,7 +342,12 @@ fn advance_legacy(
                 connect_legacy(watch_state, tx, store_conn, pending);
             }
             if let Some(conn) = store_conn {
-                recheck_legacy_quiet_periods(conn, &watch_state.source.library_root, pending);
+                recheck_legacy_quiet_periods(
+                    conn,
+                    &watch_state.source.library_root,
+                    pending,
+                    dates,
+                );
             }
         }
         None => {
@@ -503,6 +509,7 @@ fn watch_loop(app: AppHandle) {
             &tx,
             store_conn.as_ref(),
             &mut legacy_pending,
+            &dates,
         );
 
         // AC-5: the combined drive-reachability signal, written through the
@@ -553,7 +560,41 @@ fn watch_loop(app: AppHandle) {
             Err(mpsc::RecvTimeoutError::Timeout) => {} // reconnect poll tick
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
+
+        // Story 4.2 (D-3, AC-4/AC-5): go-forward library add-detection,
+        // piggybacked on the library read a capture just paid for — never a
+        // second watcher or a second query path.
+        //
+        // Sits at the very end of the iteration, after *both* capture routes
+        // (the poll-driven `advance_*` calls above and the event-driven
+        // `check_for_new_sessions` in the branch above): `dates` is rebuilt
+        // fresh each tick, so a check placed earlier would miss every
+        // event-driven capture and never see it on the next tick either.
+        //
+        // `is_loaded` is the whole cost control — on the overwhelming majority
+        // of ticks nothing captured, no catalogue was read, and this is one
+        // branch. Failures are debug-logged only: the diff is against durable
+        // local state, so a missed scan simply re-runs at the next capture,
+        // and nothing here may take down the watch loop.
+        if dates.is_loaded() {
+            if let Some(conn) = &store_conn {
+                log_store_err(
+                    "scan_library_adds",
+                    crate::capture::scan_library_adds(conn, &dates, now_unix()).map(|_| ()),
+                );
+            }
+        }
     }
+}
+
+/// Agent wall-clock, unix epoch seconds — the `first_seen_locally_at` stamp
+/// Story 4.2's library scan records. Mirrors `store.rs`'s own private
+/// `now_unix` rather than widening that one's visibility for a single caller.
+fn now_unix() -> i64 {
+    SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 /// A legacy `.session` file this agent has seen but not yet captured (Story
@@ -855,6 +896,7 @@ fn recheck_legacy_quiet_periods(
     store_conn: &Connection,
     library_root: &Path,
     pending: &mut HashMap<PathBuf, LegacyPendingSession>,
+    dates: &crate::joiner::date_added::DateAddedIndex,
 ) {
     let now = SystemTime::now();
     let elapsed: Vec<PathBuf> = pending
@@ -877,6 +919,12 @@ fn recheck_legacy_quiet_periods(
             &session_identity,
             &crate::error_reporting::SentryReporter,
         ) {
+            // Story 4.2 (D-3): the legacy capture path reads `database V2`
+            // through its own `LegacyLibrary`, not through `dates`, so without
+            // this the add-scan below would never fire for a legacy-only DJ.
+            // Forces the same catalogue read the serato4 path already pays for
+            // at capture time — never on a tick that captured nothing.
+            dates.ensure_loaded();
             pending.remove(&session_path);
         }
     }

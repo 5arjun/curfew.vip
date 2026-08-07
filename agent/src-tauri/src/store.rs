@@ -62,6 +62,30 @@ CREATE TABLE IF NOT EXISTS parse_failures (
   failed_at             INTEGER NOT NULL,      -- unix epoch seconds, agent wall-clock
   last_error            TEXT NOT NULL
 );
+
+-- Story 4.2, Task 1 (D-1/D-2/D-3): every library track this agent has ever
+-- seen, keyed by the opaque `fnv1a_hex` track identity (`capture::track_id`)
+-- -- never the raw path, which stays local by the same privacy posture that
+-- keeps `EnrichedPlay.path` off the wire. A new table rather than an
+-- `ALTER TABLE`, same `CREATE TABLE IF NOT EXISTS` reasoning as
+-- `parse_failures` above.
+--
+-- `is_baseline = 1` marks the first-run silent snapshot (D-1): those rows
+-- record what was ALREADY in the library when Curfew first looked, and are
+-- never emitted as add-events -- otherwise a DJ's entire back-catalogue would
+-- flood month one and break the same go-forward frame Decision B set for
+-- plays. Only a track first seen on a LATER scan is a real add.
+--
+-- `synced_at` mirrors `captured_sessions`'s own pending-sync convention (AD-5:
+-- the queue is a NULL column, not a second table), so Task 4's drain reuses
+-- Story 3.3's loop rather than adding a parallel queue mechanism.
+CREATE TABLE IF NOT EXISTS library_tracks (
+  track_id               TEXT PRIMARY KEY,      -- fnv1a_hex of the portable path (D-2)
+  first_seen_locally_at  INTEGER NOT NULL,      -- unix epoch seconds, agent wall-clock
+  added_at               INTEGER,               -- library tadd/uadd epoch seconds; NULL = unresolvable, never guessed
+  is_baseline            INTEGER NOT NULL,      -- 1 = first-run snapshot, never synced (D-1)
+  synced_at              INTEGER                -- NULL until the add-event batch syncs (Task 4)
+);
 "#;
 
 /// Everything that can go wrong opening or writing to the local store. Mirrors
@@ -687,6 +711,15 @@ pub struct CapturedPlay {
     /// for the same pre-3.7-row round-trip reason as `played_ms` above.
     #[serde(default)]
     pub library_added_at: Option<i64>,
+    /// Opaque `fnv1a_hex` track identity (Story 4.2, D-2 — mirrors
+    /// `SyncPlay.track_id`), letting a play join back to its library add-event
+    /// by identity instead of fragile title/artist matching. Hashed from the
+    /// portable path; the raw path itself never reaches the store's wire DTO
+    /// or the cloud. `None` when the play carries no portable path to hash.
+    /// `#[serde(default)]` for the same pre-4.2-row round-trip reason as
+    /// `played_ms`/`library_added_at` above.
+    #[serde(default)]
+    pub track_id: Option<String>,
 }
 
 /// Mirrors `EnrichedPlay.genre: Option<NormalizedGenre>` — raw + subgenre +
@@ -776,6 +809,121 @@ pub struct CapturedConfidence {
     pub value: f64,
     pub track_count: usize,
     pub long_gap_count: usize,
+}
+
+/* ---- Library add-events (Story 4.2, Task 1/4) ----------------------------- */
+
+/// One library track pending an add-event sync — the local-queue read Task 4's
+/// drain pass consumes, mirroring [`rows_pending_sync`]'s shape for sets.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PendingLibraryAddEvent {
+    /// Opaque `fnv1a_hex` track identity (`capture::track_id`, D-2).
+    pub track_id: String,
+    /// Library date-added, unix epoch seconds. `None` when `tadd`/`uadd` was
+    /// unreachable for this track — carried as absent, never guessed (AD-11).
+    pub added_at: Option<i64>,
+}
+
+/// How many library tracks this agent has on file at all — the first-run test
+/// (D-1). Zero means Curfew has never looked at this library, so the very next
+/// scan is a silent baseline, not a month's worth of "newly added" tracks.
+pub fn library_track_count(conn: &Connection) -> Result<i64, StoreError> {
+    Ok(conn.query_row("SELECT COUNT(*) FROM library_tracks", [], |row| row.get(0))?)
+}
+
+/// Every track identity already on file, in whatever state — the diff's
+/// left-hand side. A track here is never re-emitted as an add-event, however
+/// it first arrived (baseline or a real add).
+pub fn known_track_ids(conn: &Connection) -> Result<std::collections::HashSet<String>, StoreError> {
+    let mut stmt = conn.prepare("SELECT track_id FROM library_tracks")?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+    rows.collect::<rusqlite::Result<std::collections::HashSet<_>>>()
+        .map_err(StoreError::from)
+}
+
+/// When the first-run baseline (D-1) was taken, or `None` if it never was.
+///
+/// Used to keep D-1's promise honest against a *second* shape of the same trap:
+/// a volume that was unmounted at baseline time and mounts later would
+/// otherwise present its entire contents as brand-new adds. A track whose own
+/// `tadd`/`uadd` predates this timestamp demonstrably existed before Curfew
+/// first looked, so it seeds silently too (see `capture::scan_library_adds`).
+pub fn library_baseline_at(conn: &Connection) -> Result<Option<i64>, StoreError> {
+    Ok(conn.query_row(
+        "SELECT MIN(first_seen_locally_at) FROM library_tracks WHERE is_baseline = 1",
+        [],
+        |row| row.get::<_, Option<i64>>(0),
+    )?)
+}
+
+/// Records library tracks the agent has now seen.
+///
+/// `is_baseline` decides whether these are D-1 baseline rows (never synced) or
+/// genuine go-forward adds (queued for Task 4's drain). `ON CONFLICT DO
+/// NOTHING` on the `track_id` primary key is the whole re-emit guard: a track
+/// already on file — in either state — is never recorded, never re-queued, and
+/// never has its recorded `added_at` overwritten by a later scan that happened
+/// to resolve it differently.
+///
+/// Returns how many rows were genuinely new.
+pub fn record_library_tracks(
+    conn: &Connection,
+    tracks: &[(String, Option<i64>)],
+    is_baseline: bool,
+    first_seen_locally_at: i64,
+) -> Result<usize, StoreError> {
+    let mut inserted = 0;
+    let mut stmt = conn.prepare(
+        "INSERT INTO library_tracks (track_id, first_seen_locally_at, added_at, is_baseline, synced_at)
+         VALUES (?1, ?2, ?3, ?4, NULL)
+         ON CONFLICT(track_id) DO NOTHING",
+    )?;
+    for (track_id, added_at) in tracks {
+        inserted += stmt.execute(rusqlite::params![
+            track_id,
+            first_seen_locally_at,
+            added_at,
+            i64::from(is_baseline),
+        ])?;
+    }
+    Ok(inserted)
+}
+
+/// Every add-event eligible for a sync attempt: a genuine go-forward add
+/// (`is_baseline = 0`) that has not synced yet. Baseline rows are structurally
+/// unreachable from here — D-1's "zero add-events on first run" is enforced by
+/// this `WHERE` clause, not by caller discipline.
+pub fn library_add_events_pending_sync(
+    conn: &Connection,
+) -> Result<Vec<PendingLibraryAddEvent>, StoreError> {
+    let mut stmt = conn.prepare(
+        "SELECT track_id, added_at FROM library_tracks
+         WHERE is_baseline = 0 AND synced_at IS NULL
+         ORDER BY first_seen_locally_at ASC, track_id ASC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(PendingLibraryAddEvent {
+            track_id: row.get(0)?,
+            added_at: row.get(1)?,
+        })
+    })?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(StoreError::from)
+}
+
+/// Stamps `synced_at` on a batch of add-events after the cloud accepted them.
+/// Mirrors [`mark_synced`]'s role for sets; a `track_id` matching no row is a
+/// no-op, same as there.
+pub fn mark_library_add_events_synced(
+    conn: &Connection,
+    track_ids: &[String],
+    synced_at: i64,
+) -> Result<(), StoreError> {
+    let mut stmt = conn.prepare("UPDATE library_tracks SET synced_at = ?1 WHERE track_id = ?2")?;
+    for track_id in track_ids {
+        stmt.execute(rusqlite::params![synced_at, track_id])?;
+    }
+    Ok(())
 }
 
 /// Mirrors `SyncSetDerived`'s shape — same field groupings (most-played
@@ -890,6 +1038,7 @@ mod tests {
             in_library: true,
             played_ms: Some(240_000),
             library_added_at: Some(1_644_628_114),
+            track_id: Some("a1b2c3d4e5f60718".into()),
         }]
     }
 
@@ -991,6 +1140,7 @@ mod tests {
             genre: None,
             camelot_key: None,
             in_library: false,
+            track_id: None,
         });
         upsert_captured(
             &conn,

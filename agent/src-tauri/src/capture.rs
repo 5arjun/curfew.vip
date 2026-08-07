@@ -143,6 +143,109 @@ fn fnv1a_hex(bytes: &[u8]) -> String {
     format!("{hash:016x}")
 }
 
+/// Story 4.2 (D-2): a track's opaque, portable identity — `fnv1a_hex` of its
+/// volume-root-relative path, the same hash [`legacy_session_identity`] already
+/// uses for session identity. Reused rather than reinvented: "deterministic and
+/// cross-build-stable" is the only property either use needs.
+///
+/// The raw path is never sent — this hash *is* the "purpose-built (possibly
+/// hashed/opaque) per-track identity field" Story 1.10's Open Question #1
+/// anticipated, and it keeps the same privacy posture that already excludes
+/// `EnrichedPlay.path` from `SyncPlay`.
+///
+/// The input must be the **portable** (no-leading-`/`, volume-root-relative)
+/// path, which is what both `database V2` stores as `pfil` and Serato 4+
+/// records as `portable_id` — so the same track hashes identically whether it
+/// was seen through a library scan or a play log, on any machine that mounts
+/// the same drive.
+pub fn track_id(portable_path: &str) -> String {
+    fnv1a_hex(portable_path.as_bytes())
+}
+
+/// The volume-root-relative form of an absolute play-log path — the legacy
+/// format's bridge to [`track_id`]'s portable-path contract. `database V2`
+/// stores `Users/arjun/Music/x.mp3` where a `.session` log records
+/// `/Users/arjun/Music/x.mp3` (Story 1.2 findings §5/D4), so identity would
+/// split across the two sources without this. An already-relative path is
+/// returned unchanged.
+fn portable_form(path: &str) -> &str {
+    path.strip_prefix('/').unwrap_or(path)
+}
+
+/// What one library scan actually did (Story 4.2, Task 1) — returned rather
+/// than logged so the caller and the tests can both assert on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct LibraryScanOutcome {
+    /// Tracks recorded as the silent first-run baseline (D-1). Never synced.
+    pub baselined: usize,
+    /// Genuine go-forward adds queued as `SyncLibraryAddEvent`s (Task 4).
+    pub added: usize,
+}
+
+/// Diffs the DJ's current library against everything this agent has already
+/// seen, recording genuine go-forward adds (D-1/D-2/D-3, AC-4/AC-5).
+///
+/// **Piggybacks on the existing library read** (D-3): `dates` is the very
+/// [`DateAddedIndex`] the capture path already builds for the `tadd`/`uadd`
+/// join (Story 3.7 §3d), so this opens no second connection and no dedicated
+/// watcher — it just asks the already-loaded catalogues for all their tracks
+/// instead of one.
+///
+/// **First run seeds silently** (D-1, AC-4). With nothing on file, every track
+/// currently in the library is recorded as baseline and **zero** add-events are
+/// emitted: a DJ who has dug for a decade before installing Curfew must never
+/// see their back-catalogue appear as "added this month". The go-forward frame
+/// Decision B set for plays applies identically to adds.
+///
+/// **A late-mounting volume is the same trap in a second shape**, so it gets
+/// the same answer: on a later scan, a track whose own `tadd`/`uadd` predates
+/// the baseline timestamp is recorded silently too, because it demonstrably
+/// existed before Curfew first looked. That guard uses the library's own
+/// recorded date — never a guess — and a track with *no* resolvable date is
+/// still emitted (it carries no cohort weight downstream by D-10; suppressing
+/// it would hide the very count D-10 exists to disclose).
+///
+/// An empty/unreachable catalogue set is a no-op, never an empty baseline: an
+/// agent that first runs with the DJ's USB unplugged must still take a real
+/// baseline the first time it can actually see the library.
+pub fn scan_library_adds(
+    conn: &rusqlite::Connection,
+    dates: &DateAddedIndex,
+    now: i64,
+) -> Result<LibraryScanOutcome, crate::store::StoreError> {
+    let catalogued = dates.all_tracks();
+    if catalogued.is_empty() {
+        return Ok(LibraryScanOutcome::default());
+    }
+
+    let identified: Vec<(String, Option<i64>)> = catalogued
+        .into_iter()
+        .map(|(portable_path, added_at)| (track_id(&portable_path), added_at))
+        .collect();
+
+    if crate::store::library_track_count(conn)? == 0 {
+        let baselined = crate::store::record_library_tracks(conn, &identified, true, now)?;
+        return Ok(LibraryScanOutcome {
+            baselined,
+            added: 0,
+        });
+    }
+
+    let known = crate::store::known_track_ids(conn)?;
+    let baseline_at = crate::store::library_baseline_at(conn)?;
+    let (pre_baseline, fresh): (Vec<_>, Vec<_>) = identified
+        .into_iter()
+        .filter(|(id, _)| !known.contains(id))
+        .partition(|(_, added_at)| match (added_at, baseline_at) {
+            (Some(added), Some(baseline)) => *added < baseline,
+            _ => false,
+        });
+
+    let baselined = crate::store::record_library_tracks(conn, &pre_baseline, true, now)?;
+    let added = crate::store::record_library_tracks(conn, &fresh, false, now)?;
+    Ok(LibraryScanOutcome { baselined, added })
+}
+
 /// Legacy's local dedup key: no `history_session`-equivalent table exists for
 /// this format, so identity is derived from the session's own first-play
 /// identity (AD-16's literal phrase) — `first_play`'s path + start_time,
@@ -263,7 +366,13 @@ pub fn build_legacy(
         .plays
         .into_iter()
         .map(|play| {
-            let joined = crate::joiner::legacy::join(&play, &library);
+            let mut joined = crate::joiner::legacy::join(&play, &library);
+            // Story 4.2 (D-2): legacy's join key is the play's *absolute* path,
+            // so the portable form is derived here — serato4 gets the same
+            // value straight off `history_entry.portable_id`. Set for every
+            // play with a path, in-library or not: a track that later enters
+            // the library must hash to the same identity it always had.
+            joined.portable_path = play.path.as_deref().map(|p| portable_form(p).to_string());
             let joined = fill_gaps(joined, play.path.as_deref());
             (play, joined)
         })
@@ -399,6 +508,10 @@ fn assemble(
             in_library: joined.in_library,
             played_ms: enriched_play.played_ms,
             library_added_at: enriched_play.library_added_at,
+            // Story 4.2 (D-2/AC-5): the opaque identity that lets this play
+            // join back to its library add-event. Absent when the source
+            // carried no portable path to hash — never a fabricated key.
+            track_id: joined.portable_path.as_deref().map(track_id),
         })
         .collect();
 
@@ -530,6 +643,249 @@ mod tests {
     /// tests that are not about the `database V2` lookup.
     fn no_dates() -> DateAddedIndex {
         DateAddedIndex::fixed(std::collections::HashMap::new())
+    }
+
+    // ---- Story 4.2: track identity + library add-detection -----------------
+
+    /// A throwaway on-disk store — `store::open_at` runs the real schema, so
+    /// these tests exercise the actual `library_tracks` table, not a mock.
+    /// Mirrors `sync_queue.rs`'s own `TempStoreFile` helper.
+    struct TempStore(std::path::PathBuf);
+    impl TempStore {
+        fn open(tag: &str) -> (Self, Connection) {
+            use std::sync::atomic::{AtomicUsize, Ordering};
+            static COUNTER: AtomicUsize = AtomicUsize::new(0);
+            let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!(
+                "curfew_library_scan_{tag}_{}_{n}.sqlite",
+                std::process::id()
+            ));
+            let conn = crate::store::open_at(&path).expect("store opens");
+            (Self(path), conn)
+        }
+    }
+    impl Drop for TempStore {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+
+    fn library(entries: &[(&str, i64)]) -> DateAddedIndex {
+        DateAddedIndex::fixed(
+            entries
+                .iter()
+                .map(|(path, epoch)| ((*path).to_string(), *epoch))
+                .collect(),
+        )
+    }
+
+    const BASELINE_NOW: i64 = 1_700_000_000;
+
+    #[test]
+    fn track_id_is_deterministic_and_never_the_raw_path() {
+        let id = track_id("Users/arjun/Music/x.mp3");
+        assert_eq!(id, track_id("Users/arjun/Music/x.mp3"), "deterministic");
+        assert_ne!(id, track_id("Users/arjun/Music/y.mp3"));
+        assert!(
+            !id.contains("arjun"),
+            "the raw path must never survive the hash"
+        );
+        assert_eq!(id.len(), 16, "fnv1a_hex's fixed 16-hex-char form");
+    }
+
+    #[test]
+    fn legacy_absolute_and_serato4_portable_paths_hash_to_one_identity() {
+        // The same track seen through a `.session` log (absolute) and through
+        // `history_entry.portable_id` (relative) must be ONE track, or every
+        // legacy play would fail to join its own add-event.
+        assert_eq!(
+            track_id(portable_form("/Users/arjun/Music/x.mp3")),
+            track_id("Users/arjun/Music/x.mp3")
+        );
+    }
+
+    /// D-1 / AC-4, the single easiest way to get this story catastrophically
+    /// wrong: a DJ who has dug for years must not see their whole
+    /// back-catalogue appear as "added this month" the first time Curfew runs.
+    #[test]
+    fn first_run_seeds_the_whole_library_silently_and_emits_zero_add_events() {
+        let (_file, conn) = TempStore::open("first-run");
+        let dates = library(&[
+            ("Users/arjun/Music/a.mp3", 1_600_000_000),
+            ("Users/arjun/Music/b.mp3", 1_600_000_001),
+            ("A Indian/c.mp3", 1_600_000_002),
+        ]);
+
+        let outcome = scan_library_adds(&conn, &dates, BASELINE_NOW).expect("scan");
+
+        assert_eq!(
+            outcome.baselined, 3,
+            "the entire existing library is baseline"
+        );
+        assert_eq!(
+            outcome.added, 0,
+            "AC-4: zero add-events on a first-ever run"
+        );
+        assert!(
+            crate::store::library_add_events_pending_sync(&conn)
+                .expect("pending")
+                .is_empty(),
+            "not one baseline track may reach the sync queue"
+        );
+    }
+
+    #[test]
+    fn a_genuinely_new_track_on_a_later_scan_emits_exactly_one_event() {
+        let (_file, conn) = TempStore::open("new-track");
+        let dates = library(&[("Users/arjun/Music/a.mp3", 1_600_000_000)]);
+        scan_library_adds(&conn, &dates, BASELINE_NOW).expect("baseline");
+
+        // A track added AFTER the baseline was taken — a real go-forward add.
+        let grown = library(&[
+            ("Users/arjun/Music/a.mp3", 1_600_000_000),
+            ("Users/arjun/Music/new.mp3", BASELINE_NOW + 86_400),
+        ]);
+        let outcome = scan_library_adds(&conn, &grown, BASELINE_NOW + 90_000).expect("scan");
+
+        assert_eq!(outcome.added, 1);
+        assert_eq!(outcome.baselined, 0);
+        let pending = crate::store::library_add_events_pending_sync(&conn).expect("pending");
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].track_id, track_id("Users/arjun/Music/new.mp3"));
+        assert_eq!(pending[0].added_at, Some(BASELINE_NOW + 86_400));
+    }
+
+    #[test]
+    fn rescanning_an_unchanged_library_emits_nothing() {
+        let (_file, conn) = TempStore::open("unchanged");
+        let dates = library(&[
+            ("Users/arjun/Music/a.mp3", 1_600_000_000),
+            ("Users/arjun/Music/b.mp3", 1_600_000_001),
+        ]);
+        scan_library_adds(&conn, &dates, BASELINE_NOW).expect("baseline");
+
+        for tick in 1..=3 {
+            let outcome = scan_library_adds(&conn, &dates, BASELINE_NOW + tick).expect("rescan");
+            assert_eq!(
+                outcome,
+                LibraryScanOutcome::default(),
+                "rescan {tick} is a no-op"
+            );
+        }
+    }
+
+    #[test]
+    fn a_new_track_is_emitted_once_and_never_re_emitted() {
+        let (_file, conn) = TempStore::open("emit-once");
+        let dates = library(&[("Users/arjun/Music/a.mp3", 1_600_000_000)]);
+        scan_library_adds(&conn, &dates, BASELINE_NOW).expect("baseline");
+
+        let grown = library(&[
+            ("Users/arjun/Music/a.mp3", 1_600_000_000),
+            ("Users/arjun/Music/new.mp3", BASELINE_NOW + 10),
+        ]);
+        scan_library_adds(&conn, &grown, BASELINE_NOW + 20).expect("first sight");
+        let second = scan_library_adds(&conn, &grown, BASELINE_NOW + 30).expect("second sight");
+
+        assert_eq!(second.added, 0, "already on file — never queued twice");
+        assert_eq!(
+            crate::store::library_add_events_pending_sync(&conn)
+                .expect("pending")
+                .len(),
+            1
+        );
+    }
+
+    /// D-4/AC-5: an unreachable `tadd`/`uadd` is carried as absent, never
+    /// guessed — and absence must not suppress the event itself, because D-10
+    /// exists precisely to disclose how many such tracks there are.
+    #[test]
+    fn a_track_with_no_resolvable_add_date_still_emits_with_added_at_none() {
+        let (_file, conn) = TempStore::open("no-date");
+        // Seed a baseline through the same code path, then hand-insert an
+        // undated track the way a catalogue with no `tadd`/`uadd` would.
+        let dates = library(&[("Users/arjun/Music/a.mp3", 1_600_000_000)]);
+        scan_library_adds(&conn, &dates, BASELINE_NOW).expect("baseline");
+
+        let undated = track_id("A Indian/undated.mp3");
+        crate::store::record_library_tracks(
+            &conn,
+            &[(undated.clone(), None)],
+            false,
+            BASELINE_NOW + 10,
+        )
+        .expect("record");
+
+        let pending = crate::store::library_add_events_pending_sync(&conn).expect("pending");
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].track_id, undated);
+        assert_eq!(pending[0].added_at, None, "absent, never a fabricated date");
+    }
+
+    /// The second shape of D-1's trap: a USB volume unmounted when the
+    /// baseline was taken, mounted later. Its tracks are new to the local
+    /// store but demonstrably predate the baseline, so they seed silently
+    /// rather than flooding a cohort with a decade of digging.
+    #[test]
+    fn a_late_mounting_volume_seeds_silently_rather_than_flooding_a_cohort() {
+        let (_file, conn) = TempStore::open("late-mount");
+        let boot_only = library(&[("Users/arjun/Music/a.mp3", 1_600_000_000)]);
+        scan_library_adds(&conn, &boot_only, BASELINE_NOW).expect("baseline");
+
+        let usb_mounted = library(&[
+            ("Users/arjun/Music/a.mp3", 1_600_000_000),
+            ("A Indian/old-1.mp3", BASELINE_NOW - 86_400), // pre-dates the baseline
+            ("A Indian/old-2.mp3", 1_500_000_000),
+            ("A Indian/genuinely-new.mp3", BASELINE_NOW + 86_400),
+        ]);
+        let outcome = scan_library_adds(&conn, &usb_mounted, BASELINE_NOW + 90_000).expect("scan");
+
+        assert_eq!(outcome.baselined, 2, "pre-baseline tracks seed silently");
+        assert_eq!(outcome.added, 1, "only the genuinely-new track converts");
+        let pending = crate::store::library_add_events_pending_sync(&conn).expect("pending");
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].track_id, track_id("A Indian/genuinely-new.mp3"));
+    }
+
+    /// An unplugged drive shrinks the library. That is not a deletion, and
+    /// re-plugging it is not a thousand new adds.
+    #[test]
+    fn an_unmounted_volume_neither_deletes_nor_re_adds_on_return() {
+        let (_file, conn) = TempStore::open("unmount");
+        let both = library(&[
+            ("Users/arjun/Music/a.mp3", 1_600_000_000),
+            ("A Indian/usb.mp3", 1_600_000_001),
+        ]);
+        scan_library_adds(&conn, &both, BASELINE_NOW).expect("baseline");
+
+        let boot_only = library(&[("Users/arjun/Music/a.mp3", 1_600_000_000)]);
+        assert_eq!(
+            scan_library_adds(&conn, &boot_only, BASELINE_NOW + 10).expect("unplugged"),
+            LibraryScanOutcome::default()
+        );
+        assert_eq!(
+            scan_library_adds(&conn, &both, BASELINE_NOW + 20).expect("replugged"),
+            LibraryScanOutcome::default(),
+            "a returning volume's tracks are already on file"
+        );
+    }
+
+    /// An agent whose very first run happens with the DJ's drive unplugged
+    /// must still take a real baseline the first time it can actually see the
+    /// library — not lock in an empty one and then call everything an add.
+    #[test]
+    fn an_unreachable_library_is_a_no_op_not_an_empty_baseline() {
+        let (_file, conn) = TempStore::open("unreachable");
+        assert_eq!(
+            scan_library_adds(&conn, &no_dates(), BASELINE_NOW).expect("scan"),
+            LibraryScanOutcome::default()
+        );
+        assert_eq!(crate::store::library_track_count(&conn).expect("count"), 0);
+
+        let reachable = library(&[("A Indian/a.mp3", 1_600_000_000)]);
+        let outcome = scan_library_adds(&conn, &reachable, BASELINE_NOW + 10).expect("scan");
+        assert_eq!(outcome.baselined, 1, "the real first sight is the baseline");
+        assert_eq!(outcome.added, 0);
     }
 
     // ---- Session identity -------------------------------------------------

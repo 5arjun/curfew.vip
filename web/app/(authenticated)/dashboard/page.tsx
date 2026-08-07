@@ -99,7 +99,7 @@ export default async function DashboardPage({
 
         <RightColumn>
           <GlassCalendar marks={right.marks} />
-          <MostPlayedCard week={right.mostPlayed.week} month={right.mostPlayed.month} />
+          <MostPlayedCard recent={right.mostPlayed.recent} extended={right.mostPlayed.extended} />
           {/* Confidence + odometer as a half-width pair (Arjun's ruling at the
               functional checkpoint) so the whole column holds a 900px viewport
               without scrolling. */}

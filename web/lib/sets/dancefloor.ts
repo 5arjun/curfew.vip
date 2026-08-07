@@ -18,7 +18,7 @@ import type { SyncPlay } from "./types";
 /** Window size the night is bucketed into. ~10 min (AR-13 shape). INTERIM/global. */
 const WINDOW_SEC = 600;
 /** Below this many *timed* plays, detection is not worth attempting — whole set. INTERIM/global. */
-const MIN_PLAYS_FOR_DETECTION = 6;
+export const MIN_PLAYS_FOR_DETECTION = 6;
 /** A window "clears the floor" only with at least this many plays in it. INTERIM/global. */
 const DENSITY_FLOOR = 3;
 /** …and, when BPM is known for the window, a median at least this fast (excludes a slow warm-up/dinner). INTERIM/global. */
@@ -151,10 +151,21 @@ export interface SegmentStats {
  * Genre bucketing mirrors the agent's `stats::genre_breakdown`: normalized
  * bucket, first-seen order, an explicit `no_genre_count` (never folded away).
  */
+/**
+ * The plays that actually fall inside a detected segment. `segment === null`
+ * is the honest whole-set fallback (detection declined, or the run WAS the
+ * night), in which case every play counts.
+ *
+ * Exported so anything scoping to the dancefloor — segment stats, the
+ * most-played card — applies the identical bound rather than re-deriving it.
+ */
+export function playsInSegment(plays: SyncPlay[], segment: DancefloorSegment | null): SyncPlay[] {
+  if (!segment) return plays;
+  return plays.filter((p) => p.started_at != null && p.started_at >= segment.start && p.started_at <= segment.end);
+}
+
 export function segmentStats(plays: SyncPlay[], segment: DancefloorSegment | null): SegmentStats {
-  const inSegment = segment
-    ? plays.filter((p) => p.started_at != null && p.started_at >= segment.start && p.started_at <= segment.end)
-    : plays;
+  const inSegment = playsInSegment(plays, segment);
 
   const order: string[] = [];
   const counts = new Map<string, number>();

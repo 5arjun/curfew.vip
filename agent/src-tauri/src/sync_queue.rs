@@ -181,6 +181,18 @@ fn sync_loop(app: AppHandle) {
             }
         }
 
+        // Story 4.2 / AD-21 — the second sanctioned agent write, riding this
+        // same loop for the same reason the heartbeat does: one drain cadence,
+        // one backoff, one place where "the agent talks to the cloud" happens.
+        // No second poll loop and no second backoff implementation (Task 4).
+        //
+        // Sits before the heartbeat so a pass that has real data to push does
+        // that first. Its own result is folded into the backoff below rather
+        // than discarded — unlike the heartbeat, a failed add-event drain
+        // means genuine data is still queued, which is exactly the signal the
+        // backoff exists to respond to.
+        drain_library_add_events(&app, &conn, &mut backoff);
+
         // Story 3.9 / AD-20 — beat-on-idle, "ride the loop" (Arjun,
         // 2026-08-05). Sits here, once, AFTER both branches above have settled
         // the tray through the coordinator, rather than duplicated inside each
@@ -199,6 +211,52 @@ fn sync_loop(app: AppHandle) {
         beat_status(&app);
 
         std::thread::sleep(backoff.wait());
+    }
+}
+
+/// Drains the library add-event queue once (Story 4.2, Task 4 / AD-21).
+///
+/// Deliberately does **not** touch the tray. `TrayState::Queued`/`Failed`
+/// describe the DJ's *sets* — the thing they are waiting to see on the
+/// dashboard. A backlog of add-events is invisible background bookkeeping that
+/// resolves itself; painting the tray with it would tell a DJ whose sets all
+/// synced fine that something is wrong.
+///
+/// It *does* feed the backoff: a failing drain means real data is still
+/// queued, so the loop should slow down exactly as it does for a failing set
+/// sync. A pass with nothing pending neither backs off nor resets — it has no
+/// evidence either way, and resetting on it would let an empty add-event queue
+/// repeatedly cancel out a genuinely struggling set sync's backoff.
+fn drain_library_add_events(app: &AppHandle, conn: &rusqlite::Connection, backoff: &mut Backoff) {
+    let Some(auth_state) = app.try_state::<crate::auth::AuthState>() else {
+        return;
+    };
+
+    match crate::sync::sync_pending_library_add_events(
+        conn,
+        &auth_state.tokens,
+        &crate::auth::store::KeyringTokenStore,
+        &crate::auth::client::SupabaseAuthClient::new(),
+        &crate::sync::SupabaseSyncClient::new(),
+    ) {
+        Ok(summary) => {
+            if summary.attempted > 0 && summary.synced < summary.attempted {
+                backoff.increase();
+            }
+        }
+        Err(e) => {
+            // Same loud-vs-quiet split as the set-sync path: an offline agent
+            // fails every pass by design and must not spam a release build,
+            // but a permanent failure (a broken token, a rejected contract)
+            // would otherwise be indistinguishable from being offline forever.
+            if e.retry_class() == RetryClass::Permanent {
+                eprintln!("curfew-agent: library add-event drain failed permanently: {e}");
+            } else {
+                #[cfg(debug_assertions)]
+                eprintln!("curfew-agent: library add-event drain failed: {e}");
+            }
+            backoff.increase();
+        }
     }
 }
 
@@ -370,9 +428,13 @@ fn current_watch_plan(app: &AppHandle) -> crate::watcher::detect::WatchPlan {
 /// progress on. Used only for the pass-level-`Err` branch (no `SyncSummary`
 /// to read `failed_transient` off of in that case).
 fn has_retryable_backlog(conn: &rusqlite::Connection, skip: &HashSet<String>) -> bool {
-    crate::store::rows_pending_sync(conn)
-        .map(|rows| rows.iter().any(|row| !skip.contains(&row.session_identity)))
-        .unwrap_or(false)
+    match crate::store::rows_pending_sync(conn) {
+        Ok(rows) => rows.iter().any(|row| !skip.contains(&row.session_identity)),
+        Err(e) => {
+            eprintln!("curfew-agent: has_retryable_backlog: store read failed (treating as no backlog): {e}");
+            false
+        }
+    }
 }
 
 #[cfg(test)]
@@ -523,6 +585,7 @@ mod tests {
             genre: None,
             camelot_key: None,
             in_library: true,
+            track_id: None,
         }]
     }
 

@@ -222,7 +222,9 @@
 }
 
 /* ─── Responsive: release the viewport lock on narrow screens ──────────── */
-@media (max-width: 900px) {
+/* `(width < 900.02px)` is the true complement of the rail's
+   `(min-width: 900.02px)` (globals.css) — no gap, no overlap width. */
+@media (width < 900.02px) {
   .dz {
     height: auto;
     overflow: visible;
@@ -316,7 +318,9 @@
 .dz-hero-stats {
   margin: 0;
   display: flex;
-  gap: clamp(var(--space-lg), 4vw, var(--space-xxl));
+  flex-wrap: wrap;
+  row-gap: var(--space-sm);
+  column-gap: clamp(var(--space-lg), 4vw, var(--space-xxl));
 }
 
 .dz-hero-stat dd {
@@ -684,6 +688,9 @@
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--color-abyss-text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   text-wrap: nowrap;
 }
 
@@ -732,6 +739,40 @@
   line-height: 1.5;
 }
 
+/* Low-confidence sets (FR-27) hidden by default, never silently — a quiet
+   note above the archive rows, not a full empty-state interruption. */
+.dz-list-hidden-note {
+  margin: 0 0 10px;
+  padding: 0 4px;
+  color: var(--color-abyss-text-45);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.dz-list-hidden-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: var(--color-abyss-accent-soft);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.dz-list-hidden-toggle:hover {
+  color: var(--color-abyss-text);
+}
+
+.dz-list-hidden-toggle:focus-visible {
+  outline: none;
+  border-radius: 4px;
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 6px var(--color-abyss-accent-glow);
+}
+
 /* ─── Rows: the ref's 72px song rows, re-tinted ─────────────────────────── */
 .dz-rows {
   list-style: none;
@@ -767,7 +808,9 @@
 .dz-row:focus-visible {
   outline: none;
   border-color: var(--color-abyss-accent-soft);
-  box-shadow: inset 0 0 64px 0 var(--color-abyss-row-hover);
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 6px var(--color-abyss-accent-glow);
 }
 
 .dz-row-when {
@@ -1358,7 +1401,7 @@
   outline: none;
   box-shadow:
     0 0 0 2px var(--color-abyss-accent),
-    0 0 0 5px var(--color-abyss-accent-glow);
+    0 0 0 6px var(--color-abyss-accent-glow);
 }
 
 .cal-month-row {
@@ -1406,7 +1449,7 @@
   outline: none;
   box-shadow:
     0 0 0 2px var(--color-abyss-accent),
-    0 0 0 5px var(--color-abyss-accent-glow);
+    0 0 0 6px var(--color-abyss-accent-glow);
 }
 
 .cal-nav svg {
@@ -1458,7 +1501,7 @@
   outline: none;
   box-shadow:
     0 0 0 2px var(--color-abyss-accent),
-    0 0 0 5px var(--color-abyss-accent-glow);
+    0 0 0 6px var(--color-abyss-accent-glow);
 }
 
 /* Selected: the ref's gradient fill, re-tinted accent-soft → accent. */
@@ -1584,6 +1627,18 @@
 }
 
 /* ─── Most played ───────────────────────────────────────────────────────── */
+/* Static span label, shown in place of the toggle when both windows cover the
+   same sets (a DJ with fewer sets than the wider window reads). Same type as
+   the toggle's buttons, minus the affordance — it is a statement of what was
+   read, not a control. */
+.mp-span {
+  margin: 0;
+  padding: 3px 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-abyss-text-45);
+}
+
 .mp-toggle {
   display: inline-flex;
   gap: 4px;
@@ -1615,7 +1670,7 @@
   outline: none;
   box-shadow:
     0 0 0 2px var(--color-abyss-accent),
-    0 0 0 5px var(--color-abyss-accent-glow);
+    0 0 0 6px var(--color-abyss-accent-glow);
 }
 
 .mp-rows {
@@ -1905,23 +1960,36 @@
   opacity: var(--dz-dot-opacity);
 }
 
+/* Keyboard focus gets the glint on every input type — a tablet+keyboard user
+   has no `hover: hover`, but focus-within is real regardless of pointer. */
+.dz-shell:focus-within {
+  --dz-glint-percent: 20%;
+  --dz-glint-offset: 95deg;
+  --dz-glint-shine: var(--color-abyss-accent-soft);
+}
+
+.dz-shell:focus-within::before,
+.dz-shell:focus-within::after {
+  animation-play-state: running;
+}
+
+.dz-shell:focus-within::after {
+  opacity: 0.6;
+}
+
 @media (hover: hover) and (pointer: fine) {
-  .dz-shell:hover,
-  .dz-shell:focus-within {
+  .dz-shell:hover {
     --dz-glint-percent: 20%;
     --dz-glint-offset: 95deg;
     --dz-glint-shine: var(--color-abyss-accent-soft);
   }
 
   .dz-shell:hover::before,
-  .dz-shell:hover::after,
-  .dz-shell:focus-within::before,
-  .dz-shell:focus-within::after {
+  .dz-shell:hover::after {
     animation-play-state: running;
   }
 
-  .dz-shell:hover::after,
-  .dz-shell:focus-within::after {
+  .dz-shell:hover::after {
     opacity: 0.6;
   }
 }
@@ -2047,6 +2115,9 @@
   .dz-hero-fill {
     animation: none;
     opacity: 0.5;
+  }
+  .cursor-chip {
+    transition: none;
   }
 }
 

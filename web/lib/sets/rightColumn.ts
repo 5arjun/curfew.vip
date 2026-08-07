@@ -2,8 +2,9 @@
 // track/artist over week/month windows, latest-set dancefloor confidence, and
 // the lifetime archive odometer. Built server-side from the frozen seam into
 // serialisable props; formatting follows the DJ's locale/timezone (format.ts).
+import { detectDancefloor, playsInSegment } from "./dancefloor";
 import { formatClock, formatDuration } from "./format";
-import { localDayKey } from "./listModel";
+import { isLowConfidenceSet, localDayKey } from "./listModel";
 import type { SetRecord } from "./types";
 
 export interface DayMarkSet {
@@ -37,30 +38,77 @@ export interface MostPlayedArtistEntry {
 export interface MostPlayedWindow {
   track: MostPlayedEntry | null;
   artist: MostPlayedArtistEntry | null;
+  /** How many sets actually went in — `min(requested, sets available)`. The
+   *  card labels its tabs from this, so a DJ with 8 sets total sees "8 sets"
+   *  rather than a "25 sets" tab that overstates what it read. */
+  setCount: number;
 }
 
 export interface RightColumnModel {
   marks: DayMarks;
-  mostPlayed: { week: MostPlayedWindow; month: MostPlayedWindow };
+  mostPlayed: { recent: MostPlayedWindow; extended: MostPlayedWindow };
   /** Latest set's dancefloor-detection confidence, 0–100, or null with no sets. */
   confidencePct: number | null;
   odometer: { sets: number; hours: number; tracks: number };
 }
 
-const WEEK_MS = 7 * 24 * 3600 * 1000;
-const MONTH_MS = 30 * 24 * 3600 * 1000;
+/**
+ * Most-played counts the last N SETS, not a rolling calendar window.
+ *
+ * It used to be 7 and 30 days (2026-08-06, Arjun: "why isn't the most played
+ * track and artist updating"). A calendar window silently empties out whenever
+ * the DJ hasn't gigged lately: on 2026-08-06 the last real gig was 42 days
+ * back, so both windows saw only a 4-play warm-up and a 1-play soundcheck —
+ * the card crowned a track played exactly once, and adding 2,289 plays of real
+ * history could not move it, because all of it fell outside the window. A gap
+ * between bookings is normal and says nothing about what the DJ plays.
+ * Counting sets means the card always reflects real recent playing.
+ *
+ * Counting SETS alone was not enough, though (code review 2026-08-06): the
+ * window still filled with whatever was most recent, so a soundcheck and a
+ * warm-up could hold the top slot just as firmly as a stale calendar window
+ * had. Two further filters close it, both reusing rules this app already
+ * owns rather than inventing a private definition of "real":
+ *   1. the window is drawn from dancefloor sets only (`isLowConfidenceSet`,
+ *      the same rule the set list hides by — spec §3g), and
+ *   2. within each, only plays inside the detected dancefloor segment count
+ *      (`detectDancefloor` + `playsInSegment`).
+ * A track has to have actually filled a floor to win.
+ */
+// 10 and 30 (2026-08-06, Arjun). Raised from 5/25 once the dancefloor filters
+// landed: scoping to floor time is the right correctness fix, but it also
+// shrinks the pool every count is drawn from, and at 5 sets the "recent"
+// window was crowning a track with 2 plays. A window has to be wide enough
+// that repetition means something.
+export const MOST_PLAYED_RECENT_SETS = 10;
+export const MOST_PLAYED_EXTENDED_SETS = 30;
 
-function mostPlayedInWindow(sets: SetRecord[], sinceMs: number, nowMs: number): MostPlayedWindow {
+/** Sort key: undated sets sort last rather than poisoning the comparator with
+ *  NaN (which would leave the order engine-dependent). */
+function startMs(set: SetRecord): number {
+  const t = set.started_at ? new Date(set.started_at).getTime() : NaN;
+  return Number.isNaN(t) ? -Infinity : t;
+}
+
+function mostPlayedInRecentSets(newestFirst: SetRecord[], count: number): MostPlayedWindow {
   // Aggregated from raw plays across every set in the window (the per-set
   // derived rankings can't be merged rank-wise). CAP-5 discipline holds for
   // the artist row: artist-tagged plays only, no "Unknown" bucket.
   const trackCounts = new Map<string, MostPlayedEntry>();
   const artistCounts = new Map<string, MostPlayedArtistEntry>();
+  const window = newestFirst.slice(0, count);
 
-  for (const set of sets) {
-    const startMs = set.started_at ? new Date(set.started_at).getTime() : NaN;
-    if (Number.isNaN(startMs) || startMs < sinceMs || startMs > nowMs) continue;
-    for (const play of set.plays) {
+  for (const set of window) {
+    // Only what was played ON THE FLOOR counts (2026-08-06, Arjun's code-review
+    // ruling). Switching from a calendar window to a set window stopped the
+    // card going stale between bookings, but it did not stop a warm-up or a
+    // soundcheck from deciding the answer. Two filters do that: `window` is
+    // already restricted to dancefloor sets by the caller, and each set is
+    // scoped here to its detected segment, so tracks spun while the room was
+    // still empty never enter the tally. A `null` segment is the honest
+    // whole-set fallback — detection declined, or the run WAS the night.
+    const floorPlays = playsInSegment(set.plays, detectDancefloor(set.plays));
+    for (const play of floorPlays) {
       const title = play.title;
       const artist = play.artist;
       if (title != null) {
@@ -80,10 +128,10 @@ function mostPlayedInWindow(sets: SetRecord[], sinceMs: number, nowMs: number): 
   const top = <T extends { plays: number }>(m: Map<string, T>): T | null =>
     [...m.values()].sort((a, b) => b.plays - a.plays)[0] ?? null;
 
-  return { track: top(trackCounts), artist: top(artistCounts) };
+  return { track: top(trackCounts), artist: top(artistCounts), setCount: window.length };
 }
 
-export function buildRightColumn(sets: SetRecord[], nowMs: number = Date.now()): RightColumnModel {
+export function buildRightColumn(sets: SetRecord[]): RightColumnModel {
   const marks: DayMarks = {};
   for (const set of sets) {
     const key = localDayKey(set.started_at);
@@ -97,7 +145,28 @@ export function buildRightColumn(sets: SetRecord[], nowMs: number = Date.now()):
     mark.totalSec += set.derived.set_length_sec ?? 0;
   }
 
-  const latest = sets[0] ?? null;
+  // Sorted here rather than trusting the caller's order: `getRecentSets()`
+  // does hand us newest-first today, but "the last N sets" is only meaningful
+  // against an explicit ordering, and an unsorted caller would otherwise pick
+  // the wrong N silently instead of failing.
+  // Compared, not subtracted: two undated sets both map to -Infinity, and
+  // `-Infinity - (-Infinity)` is NaN — the exact engine-dependent ordering
+  // `startMs`'s own doc comment says the sentinel exists to prevent.
+  const newestFirst = [...sets].sort((a, b) => {
+    const av = startMs(a);
+    const bv = startMs(b);
+    return av === bv ? 0 : bv > av ? 1 : -1;
+  });
+
+  // "The last 5 sets" means the last 5 sets that were actually GIGS — the same
+  // `isLowConfidenceSet` rule the set list hides by (spec §3g), so the card and
+  // the list beside it can no longer disagree about what counts. Filtering
+  // before the slice (rather than dropping sets out of it) is what keeps the
+  // window honest: a week of soundchecks used to consume all five slots and
+  // leave the card describing rehearsals.
+  const dancefloorSets = newestFirst.filter((s) => !isLowConfidenceSet(s));
+
+  const latest = newestFirst[0] ?? null;
   const confidencePct = latest
     ? Math.round(Math.max(0, Math.min(1, latest.derived.confidence.value)) * 100)
     : null;
@@ -107,8 +176,8 @@ export function buildRightColumn(sets: SetRecord[], nowMs: number = Date.now()):
   return {
     marks,
     mostPlayed: {
-      week: mostPlayedInWindow(sets, nowMs - WEEK_MS, nowMs),
-      month: mostPlayedInWindow(sets, nowMs - MONTH_MS, nowMs),
+      recent: mostPlayedInRecentSets(dancefloorSets, MOST_PLAYED_RECENT_SETS),
+      extended: mostPlayedInRecentSets(dancefloorSets, MOST_PLAYED_EXTENDED_SETS),
     },
     confidencePct,
     odometer: {

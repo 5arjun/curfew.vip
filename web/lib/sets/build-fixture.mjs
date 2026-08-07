@@ -11,6 +11,14 @@
 // committed; only this derived, non-identifying per-set stat payload is.
 //
 // Usage: node build-fixture.mjs <local-shape-export.json> > recent-sets.fixture.json
+//
+// Story 4.2: `track_id` now comes straight off the export (the agent computes
+// it in `capture::assemble`), so this builder carries real path-derived
+// identity. Run `node build-library-fixture.mjs` AFTERWARDS to produce the
+// matching `library-add-events.fixture.json` — that is the DENOMINATOR half
+// (tracks bought and never played), which no play-derived export can contain.
+// Regenerating this file without that second pass leaves the
+// library-conversion chart joining against a stale add-event list.
 import { readFileSync } from "node:fs";
 
 const toIso = (epochSeconds) =>
@@ -44,6 +52,11 @@ const sets = src
       // epoch→ISO conversion as started_at.
       played_ms: p.played_ms ?? null,
       library_added_at: toIso(p.library_added_at),
+      // Story 4.2 (D-2): the opaque path-derived identity the agent computes
+      // (`capture::track_id`). Carried verbatim — it is already a hash, and it
+      // is what joins a play to its library add-event. Present on every play
+      // from an export taken at or after Story 4.2; `null` on older exports.
+      track_id: p.track_id ?? null,
     })),
     derived: {
       ...s.derived,

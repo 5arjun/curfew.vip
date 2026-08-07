@@ -1454,8 +1454,9 @@
 }
 
 /* ─── Mobile (§3i): stack, bottom-sheet drill-in ───────────────────────── */
-
-@media (max-width: 900px) {
+/* `(width < 900.02px)` is the true complement of `(min-width: 900.02px)`
+   above — no gap, no overlap width (same pattern as globals.css/dashboard.css). */
+@media (width < 900.02px) {
   .sd-header {
     grid-template-columns: 1fr;
   }
