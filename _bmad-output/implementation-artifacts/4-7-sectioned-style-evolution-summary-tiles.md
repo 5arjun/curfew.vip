@@ -4,7 +4,7 @@ baseline_commit: 1c8519be494a90473b9dfdba16e570a6c3cf6fba
 
 # Story 4.7: Sectioned Style Evolution + summary tiles
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -189,6 +189,10 @@ Every gate claim above was independently re-run and **held**: 304/304 vitest, cl
 **R-8 (open, design call) — at 320px the tiles go single-column and push the first chart to y=751**, entirely below the fold on a 720px-tall viewport. AC-1's premise is "read my whole evolution in one glance"; on a phone that costs a full screen of scrolling before any chart appears. 2×2 at ≤480px would keep one in view. `.se-tiles`' `@media (max-width: 480px)` rule is the single knob.
 
 **R-9 (open, design call) — the Median BPM tile headlines "50 BPM, −72 vs June"** on the real fixture, because the latest bucket is a one-play soundcheck. This is the same artifact `bpmRangeSummary`'s interior-arc logic already routes around for the caption (its own comment calls out "50–50, the second of those being a one-play soundcheck"); the tiles have no equivalent guard. Either a minimum-plays floor for a tile reading or reusing the low-confidence exclusion more aggressively would address it.
+
+**R-10 (open, noted late) — the four tiles are landmark regions.** Each renders as `<section aria-label="…">`, so with the three Tempo/Genre/Key sections `/style-evolution` now exposes seven named landmarks, four of them named with a whole sentence. AC-9 only requires the tiles be readable as value + delta + comparison, which they are, so nothing fails — but it is landmark noise for a screen-reader user navigating by region. `<div role="group">`, or moving the label off the `<section>`, fixes it. Recorded here because it was observed during the a11y pass and did not make the first write-up.
+
+**Ruling (Arjun, 2026-08-07): R-6 through R-10 are NON-blocking; story → done.** R-6 was re-examined against SC 2.5.8's exception list and is **compliant** — the "show them" button sits inside the sentence "11 low-confidence sessions hidden — show them", which is the Inline exception verbatim; the defect was that Task 8 never measured or recorded it, not that it fails. R-8 does not breach AC-10, which asks only that sections stack, tiles reflow, and nothing overflows — all three verified. R-7, R-9 and R-10 are product/presentation judgments no AC covers. **All ten ACs verified satisfied.** The five items worth revisiting are carried forward for Story 4.8, which adds a second chart to the Genre and Key sections and will re-open this same layout.
 
 ### File List
 

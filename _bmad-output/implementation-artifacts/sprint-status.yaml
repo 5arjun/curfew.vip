@@ -367,7 +367,36 @@ development_status:
   # search-and-replaced), tsc/eslint/next build clean. epic-4 unchanged
   # (in-progress). 4-7-sectioned-style-evolution-summary-tiles: in-progress ->
   # review.
-  4-7-sectioned-style-evolution-summary-tiles: review
+  # [CODE REVIEW 2026-08-07, independent pass] Gate claims above re-run and
+  # confirmed; the hydration and tap-target fixes were verified by DOM
+  # measurement rather than accepted on the notes' word. Five further defects
+  # found and fixed: (R-1) the summary tiles asserted "vs previous month"
+  # while the delta logic deliberately SKIPS D-8 gaps -- on the committed
+  # fixture that reported an August-vs-JUNE delta as "previous month", and
+  # five weeks as "previous week", in the visible line and the aria-label
+  # both; tiles now NAME the bucket ("vs June", "vs week of Jun 22") per
+  # Arjun's ruling, which is the only phrasing that stays true whether or not
+  # a gap was skipped. (R-2) the AC-6/AC-7 excluded-counts were reported as 0
+  # whenever a metric had no current bucket -- dropping the "never omitted"
+  # count precisely when 100% of the data was excluded. (R-3) AC-8's ">=1 set"
+  # condition was asserted in the completion notes but never implemented; a DJ
+  # with zero sets saw four "--" tiles and a live granularity toggle over
+  # nothing. (R-4) the library trend's empty state still promised "their 90
+  # days" after this very story retired the 90-day window. (R-5) two doc
+  # comments pointed at the deleted MetricChipToggle.tsx.
+  # Four items logged open in the story file and ruled NON-blocking: the
+  # .se-hidden-toggle tap target (63x20, but squarely covered by SC 2.5.8's
+  # Inline exception -- it sits inside a sentence), the tile row showing two
+  # different periods at once, single-column tiles pushing the first chart
+  # below the fold at 320px, and the Median BPM tile headlining a one-play
+  # soundcheck. Also noted, not fixed: the four tiles are <section
+  # aria-label>, so each is a landmark region (7 named regions on the page).
+  # All ten ACs verified satisfied. Gate: 308/308 vitest (4 new regression
+  # tests), tsc/eslint/next build clean, 0 console errors on both pages at
+  # 1440/375/320. Shipped as two commits (implementation, then review) on
+  # story/4-7-sectioned-style-evolution-summary-tiles -> PR #20.
+  # 4-7-sectioned-style-evolution-summary-tiles: review -> done.
+  4-7-sectioned-style-evolution-summary-tiles: done
   4-8-genre-share-stream-camelot-wheel: backlog
   # [ADDED 2026-08-07, same Arjun session] Library Utilization's turn. 4-9 is
   # the page composition + the utilization stats that need ZERO agent work
