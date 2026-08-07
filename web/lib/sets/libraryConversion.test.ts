@@ -2,18 +2,26 @@ import { describe, expect, it } from "vitest";
 import {
   buildLibraryConversion,
   buildLiveConversionRate,
+  buildTimeToFirstPlay,
   convertedWithinWindow,
   CONVERSION_WINDOWS,
   DEFAULT_CONVERSION_WINDOW,
   DEFAULT_LIVE_WINDOW,
   firstPlayByTrack,
   hasEnoughCohorts,
+  hasEnoughTimeToFirstPlayDebuts,
+  hasEnoughTimeToFirstPlayTracks,
   isCohortComplete,
   isLowConfidenceCohort,
   libraryConversionSummary,
   liveConversionRateSummary,
   LIVE_CONVERSION_WINDOWS,
   LOW_CONFIDENCE_COHORT_SIZE,
+  MIN_TIME_TO_FIRST_PLAY_DEBUTS,
+  MIN_TIME_TO_FIRST_PLAY_TRACKS,
+  playedCountOf,
+  playsByTrack,
+  timeToFirstPlaySummary,
   undatedDisclosure,
   type ConversionWindow,
   type LibraryAddEvent,
@@ -704,5 +712,298 @@ describe("live conversion rate summary (AC-2, AC-3)", () => {
     const rate = buildLiveConversionRate([added("t", addedIso)], [], now, 14);
     expect(liveConversionRateSummary(rate)).toContain("last 2 weeks");
     expect(liveConversionRateSummary(rate)).not.toContain("14 days");
+  });
+});
+
+
+describe("time-to-first-play (Story 4.5, AC-1/AC-2/AC-3/AC-5)", () => {
+  // A fixed "now" well after every fixture date below, so the clock-skew
+  // guard never fires except where a test means it to.
+  const NOW = new Date(localIso(2026, 6, 1)).getTime();
+
+  it("computes elapsed time for a track played after its add date", () => {
+    const addedIso = localIso(2026, 1, 1);
+    const addMs = new Date(addedIso).getTime();
+    const sets = [set([play({ track_id: "t", started_at: new Date(addMs + 3 * DAY_MS).toISOString() })])];
+
+    const model = buildTimeToFirstPlay([added("t", addedIso)], sets, NOW);
+
+    expect(model.entries).toEqual([{ trackId: "t", addedMs: addMs, status: "played", elapsedMs: 3 * DAY_MS }]);
+    expect(model.medianElapsedMs).toBe(3 * DAY_MS);
+    expect(model.neverPlayedCount).toBe(0);
+  });
+
+  it("uses the earliest play AT OR AFTER the add date, not the globally earliest play", () => {
+    // The regression this test exists for: a track played both before and
+    // after its add date has a real, computable debut. Reading the global
+    // minimum classified it as never-played and discarded the debut — 18 such
+    // tracks on the committed fixture (Story 4.5 review).
+    const addedIso = localIso(2026, 1, 10);
+    const addMs = new Date(addedIso).getTime();
+    const sets = [
+      set([
+        play({ track_id: "t", started_at: new Date(addMs - 30 * DAY_MS).toISOString() }),
+        play({ track_id: "t", started_at: new Date(addMs + 5 * DAY_MS).toISOString() }),
+        play({ track_id: "t", started_at: new Date(addMs + 40 * DAY_MS).toISOString() }),
+      ]),
+    ];
+
+    const model = buildTimeToFirstPlay([added("t", addedIso)], sets, NOW);
+
+    expect(model.entries).toEqual([{ trackId: "t", addedMs: addMs, status: "played", elapsedMs: 5 * DAY_MS }]);
+    expect(model.neverPlayedCount).toBe(0);
+    expect(model.medianElapsedMs).toBe(5 * DAY_MS);
+  });
+
+  it("classifies a track whose ONLY plays predate its add date distinctly, never as never-played", () => {
+    const addedIso = localIso(2026, 1, 10);
+    const addMs = new Date(addedIso).getTime();
+    const sets = [set([play({ track_id: "t", started_at: new Date(addMs - DAY_MS).toISOString() })])];
+
+    const model = buildTimeToFirstPlay([added("t", addedIso)], sets, NOW);
+
+    expect(model.entries).toEqual([{ trackId: "t", addedMs: addMs, status: "played-before-add" }]);
+    expect(model.playedBeforeAddCount).toBe(1);
+    // AC-3 honesty: saying "hasn't been played yet" about a track the DJ
+    // demonstrably played is a false statement, not a conservative one.
+    expect(model.neverPlayedCount).toBe(0);
+    expect(model.medianElapsedMs).toBeNull();
+  });
+
+  it("counts a play exactly AT the add date as an instant debut, not an inconsistency", () => {
+    const addedIso = localIso(2026, 1, 1);
+    const addMs = new Date(addedIso).getTime();
+    const sets = [set([play({ track_id: "t", started_at: new Date(addMs).toISOString() })])];
+
+    const model = buildTimeToFirstPlay([added("t", addedIso)], sets, NOW);
+
+    expect(model.entries).toEqual([{ trackId: "t", addedMs: addMs, status: "played", elapsedMs: 0 }]);
+  });
+
+  it("represents a qualifying track never played distinctly, not as zero (AC-3)", () => {
+    const addedIso = localIso(2026, 1, 1);
+    const model = buildTimeToFirstPlay([added("t", addedIso)], [], NOW);
+
+    expect(model.entries).toEqual([{ trackId: "t", addedMs: new Date(addedIso).getTime(), status: "never-played" }]);
+    expect(model.neverPlayedCount).toBe(1);
+  });
+
+  it("reports how long the never-played population has been waiting", () => {
+    const addedIso = localIso(2026, 1, 1);
+    const addMs = new Date(addedIso).getTime();
+
+    const model = buildTimeToFirstPlay([added("t", addedIso)], [], addMs + 10 * DAY_MS);
+
+    expect(model.neverPlayedMedianAgeMs).toBe(10 * DAY_MS);
+  });
+
+  it("drops a future-dated add as clock skew, matching buildLiveConversionRate", () => {
+    const model = buildTimeToFirstPlay([added("t", localIso(2026, 9, 1))], [], NOW);
+
+    expect(model.entries).toEqual([]);
+    expect(model.neverPlayedCount).toBe(0);
+    expect(model.noAddDateCount).toBe(0);
+  });
+
+  it("excludes an undated track from entries and the median, counting it in noAddDateCount (AC-5)", () => {
+    const addedIso = localIso(2026, 1, 1);
+    const addMs = new Date(addedIso).getTime();
+    const sets = [set([play({ track_id: "dated", started_at: new Date(addMs + DAY_MS).toISOString() })])];
+
+    const model = buildTimeToFirstPlay([added("dated", addedIso), added("undated", null)], sets, NOW);
+
+    expect(model.entries).toHaveLength(1);
+    expect(model.noAddDateCount).toBe(1);
+  });
+
+  it("computes the median across an odd number of played tracks", () => {
+    const addedIso = localIso(2026, 1, 1);
+    const addMs = new Date(addedIso).getTime();
+    const sets = [
+      set([
+        play({ track_id: "a", started_at: new Date(addMs + 1 * DAY_MS).toISOString() }),
+        play({ track_id: "b", started_at: new Date(addMs + 5 * DAY_MS).toISOString() }),
+        play({ track_id: "c", started_at: new Date(addMs + 9 * DAY_MS).toISOString() }),
+      ]),
+    ];
+    const events = [added("a", addedIso), added("b", addedIso), added("c", addedIso)];
+
+    expect(buildTimeToFirstPlay(events, sets, NOW).medianElapsedMs).toBe(5 * DAY_MS);
+  });
+
+  it("computes the median across an even number of played tracks (average of the two middle values)", () => {
+    const addedIso = localIso(2026, 1, 1);
+    const addMs = new Date(addedIso).getTime();
+    const sets = [
+      set([
+        play({ track_id: "a", started_at: new Date(addMs + 1 * DAY_MS).toISOString() }),
+        play({ track_id: "b", started_at: new Date(addMs + 3 * DAY_MS).toISOString() }),
+      ]),
+    ];
+    const events = [added("a", addedIso), added("b", addedIso)];
+
+    expect(buildTimeToFirstPlay(events, sets, NOW).medianElapsedMs).toBe(2 * DAY_MS);
+  });
+
+  it("returns a null median with zero qualifying entries", () => {
+    expect(buildTimeToFirstPlay([], [], NOW)).toMatchObject({
+      entries: [],
+      medianElapsedMs: null,
+      neverPlayedCount: 0,
+      neverPlayedMedianAgeMs: null,
+      playedBeforeAddCount: 0,
+      noAddDateCount: 0,
+    });
+  });
+
+  it("de-dupes a redelivered add-event rather than double-counting", () => {
+    const addedIso = localIso(2026, 1, 1);
+    expect(buildTimeToFirstPlay([added("t", addedIso), added("t", addedIso)], [], NOW).entries).toHaveLength(1);
+  });
+
+  it("prefers a DATED redelivery over an undated one, whichever arrives first", () => {
+    const addedIso = localIso(2026, 1, 1);
+    const addMs = new Date(addedIso).getTime();
+
+    // Undated first — the first shipped version kept it and permanently
+    // undated the track (Story 4.5 review).
+    const model = buildTimeToFirstPlay([added("t", null), added("t", addedIso)], [], NOW);
+
+    expect(model.noAddDateCount).toBe(0);
+    expect(model.entries).toEqual([{ trackId: "t", addedMs: addMs, status: "never-played" }]);
+  });
+
+  it("keeps the EARLIEST add date when two dated redeliveries disagree", () => {
+    const early = localIso(2026, 1, 1);
+    const late = localIso(2026, 3, 1);
+    const earlyMs = new Date(early).getTime();
+    const sets = [set([play({ track_id: "t", started_at: new Date(earlyMs + 90 * DAY_MS).toISOString() })])];
+
+    // Later-date-wins would understate the elapsed time; matches Story 4.3's
+    // earliest-wins ruling at the agent layer.
+    const model = buildTimeToFirstPlay([added("t", late), added("t", early)], sets, NOW);
+
+    expect(model.entries).toEqual([{ trackId: "t", addedMs: earlyMs, status: "played", elapsedMs: 90 * DAY_MS }]);
+  });
+
+  it("gates the MODULE on total qualifying population (AC-4)", () => {
+    const addedIso = localIso(2026, 1, 1);
+    const below = Array.from({ length: MIN_TIME_TO_FIRST_PLAY_TRACKS - 1 }, (_, i) => added(`t${i}`, addedIso));
+    const at = Array.from({ length: MIN_TIME_TO_FIRST_PLAY_TRACKS }, (_, i) => added(`t${i}`, addedIso));
+
+    expect(hasEnoughTimeToFirstPlayTracks(buildTimeToFirstPlay(below, [], NOW))).toBe(false);
+    expect(hasEnoughTimeToFirstPlayTracks(buildTimeToFirstPlay(at, [], NOW))).toBe(true);
+  });
+
+  it("gates the MEDIAN separately, on tracks that actually debuted (AC-4)", () => {
+    // The regression this test exists for: a large population with a single
+    // debut cleared the old single gate and rendered a median from n=1.
+    const addedIso = localIso(2026, 1, 1);
+    const addMs = new Date(addedIso).getTime();
+    const events = Array.from({ length: 20 }, (_, i) => added(`t${i}`, addedIso));
+    const sets = [set([play({ track_id: "t0", started_at: new Date(addMs + 42 * DAY_MS).toISOString() })])];
+
+    const model = buildTimeToFirstPlay(events, sets, NOW);
+
+    expect(hasEnoughTimeToFirstPlayTracks(model)).toBe(true);
+    expect(hasEnoughTimeToFirstPlayDebuts(model)).toBe(false);
+    expect(playedCountOf(model)).toBe(1);
+  });
+
+  it("clears the debut gate at exactly MIN_TIME_TO_FIRST_PLAY_DEBUTS", () => {
+    const addedIso = localIso(2026, 1, 1);
+    const addMs = new Date(addedIso).getTime();
+    const events = Array.from({ length: MIN_TIME_TO_FIRST_PLAY_DEBUTS }, (_, i) => added(`t${i}`, addedIso));
+    const sets = [
+      set(
+        events.map((_, i) =>
+          play({ track_id: `t${i}`, started_at: new Date(addMs + (i + 1) * DAY_MS).toISOString() }),
+        ),
+      ),
+    ];
+
+    expect(hasEnoughTimeToFirstPlayDebuts(buildTimeToFirstPlay(events, sets, NOW))).toBe(true);
+  });
+
+  it("accepts a precomputed plays index instead of re-deriving it from sets", () => {
+    const addedIso = localIso(2026, 1, 1);
+    const addMs = new Date(addedIso).getTime();
+    const precomputed = new Map([["t", [addMs + 4 * DAY_MS]]]);
+
+    const model = buildTimeToFirstPlay([added("t", addedIso)], [], NOW, precomputed);
+
+    expect(model.entries).toEqual([{ trackId: "t", addedMs: addMs, status: "played", elapsedMs: 4 * DAY_MS }]);
+  });
+});
+
+describe("playsByTrack", () => {
+  it("returns every play per track, ascending, skipping unusable rows", () => {
+    const t0 = new Date(localIso(2026, 1, 3)).getTime();
+    const t1 = new Date(localIso(2026, 1, 1)).getTime();
+    const sets = [
+      set([
+        play({ track_id: "a", started_at: new Date(t0).toISOString() }),
+        play({ track_id: "a", started_at: new Date(t1).toISOString() }),
+        play({ track_id: null, started_at: new Date(t0).toISOString() }),
+      ]),
+    ];
+
+    const index = playsByTrack(sets);
+
+    expect(index.get("a")).toEqual([t1, t0]);
+    expect(index.size).toBe(1);
+  });
+});
+
+describe("time-to-first-play summary (AC-2, AC-3, AC-4)", () => {
+  const NOW = new Date(localIso(2026, 6, 1)).getTime();
+  const addedIso = localIso(2026, 1, 1);
+  const addMs = new Date(addedIso).getTime();
+
+  /** `count` tracks that debuted `days` after being added, plus `unplayed` that never did. */
+  function modelWith(count: number, days: number, unplayed = 0) {
+    const events = [
+      ...Array.from({ length: count }, (_, i) => added(`p${i}`, addedIso)),
+      ...Array.from({ length: unplayed }, (_, i) => added(`u${i}`, addedIso)),
+    ];
+    const sets = [
+      set(
+        Array.from({ length: count }, (_, i) =>
+          play({ track_id: `p${i}`, started_at: new Date(addMs + days * DAY_MS).toISOString() }),
+        ),
+      ),
+    ];
+    return buildTimeToFirstPlay(events, sets, NOW);
+  }
+
+  it("states the debut count, the median and the never-played count together", () => {
+    expect(timeToFirstPlaySummary(modelWith(5, 3, 1))).toBe(
+      "5 tracks have debuted, a median of 3 days after being added — 1 other hasn't been played yet.",
+    );
+  });
+
+  it("omits the never-played clause when every qualifying track has debuted", () => {
+    expect(timeToFirstPlaySummary(modelWith(5, 3))).toBe(
+      "5 tracks have debuted, a median of 3 days after being added.",
+    );
+  });
+
+  it("never interpolates a bare adverbial phrase — a sub-day median reads as a noun phrase", () => {
+    // The regression this test exists for: "a median of same day to debut".
+    const summary = timeToFirstPlaySummary(modelWith(5, 0));
+    expect(summary).toBe("5 tracks have debuted, a median of under a minute after being added.");
+    expect(summary).not.toContain("same day");
+  });
+
+  it("reports the waiting population, never a thin median, below the debut floor", () => {
+    const model = modelWith(1, 30, 9);
+    expect(hasEnoughTimeToFirstPlayTracks(model)).toBe(true);
+    expect(timeToFirstPlaySummary(model)).toBe(
+      "9 tracks have been added but not played yet — a median of 5 months on the shelf.",
+    );
+  });
+
+  it("says nothing has debuted yet when nothing has played at all", () => {
+    expect(timeToFirstPlaySummary(buildTimeToFirstPlay([], [], NOW))).toBe("No tracks have debuted yet.");
   });
 });

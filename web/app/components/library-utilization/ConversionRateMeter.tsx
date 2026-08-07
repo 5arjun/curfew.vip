@@ -3,7 +3,6 @@
 import {
   liveConversionRateSummary,
   liveWindowPhrase,
-  undatedDisclosure,
   type LiveConversionRate,
   type LiveWindow,
 } from "@/lib/sets/libraryConversion";
@@ -37,13 +36,6 @@ export function ConversionRateMeter({ rates }: { rates: Record<LiveWindow, LiveC
   const [window, setWindow] = useLiveWindowSelection();
   const rate = rates[window];
   const summary = liveConversionRateSummary(rate);
-  // AC-4: the SAME undated-track disclosure 4.2's trend chart uses, with
-  // `pendingCohortCount: 0` — this meter has no cohorts, so that clause never
-  // fires (see `undatedDisclosure`'s own doc comment).
-  const disclosure = undatedDisclosure(
-    { noAddDateCount: rate.noAddDateCount, pendingCohortCount: 0 },
-    rate.window,
-  );
   // `floor`, not `round`: a 96% rate must show 9 lit pips, not a false-full
   // 10 — the percentage readout right next to it is the tie-breaker a DJ
   // would notice disagreeing (Story 4.3 review). True 100% is the only way
@@ -78,7 +70,6 @@ export function ConversionRateMeter({ rates }: { rates: Record<LiveWindow, LiveC
           No tracks added in the last {liveWindowPhrase(rate.window)}.
         </p>
       )}
-      {disclosure && <p className="lu-disclosure">{disclosure}</p>}
     </section>
   );
 }

@@ -13,6 +13,7 @@
 // — Story 4.1's review made that non-negotiable: a `Date.now()` inside a
 // "pure" function is what made that suite machine-dependent and let two real
 // bugs through a green gate.
+import { formatElapsed } from "./format";
 import { localMonthKey } from "./styleEvolution";
 import type { SetRecord } from "./types";
 
@@ -202,6 +203,37 @@ export function firstPlayByTrack(sets: SetRecord[]): Map<string, number> {
     }
   }
   return first;
+}
+
+/**
+ * Every play time per track identity, ascending — the sibling index to
+ * {@link firstPlayByTrack}, for the one question a single earliest-play value
+ * cannot answer: "what is the first play *at or after* some per-track date?"
+ *
+ * {@link buildLiveConversionRate} only ever needs the global minimum, so it
+ * keeps using `firstPlayByTrack`. Story 4.5's time-to-first-play needs this
+ * one: a track with a pre-add play AND a genuine post-add debut has a global
+ * minimum that answers the wrong question, and reading it discarded 18 real
+ * debuts on the committed fixture (Story 4.5 review).
+ *
+ * Same skip rules as `firstPlayByTrack` — plays with no `track_id` (every
+ * pre-4.2 row) or no parseable `started_at` cannot participate.
+ */
+export function playsByTrack(sets: SetRecord[]): Map<string, number[]> {
+  const byTrack = new Map<string, number[]>();
+  for (const set of sets) {
+    for (const play of set.plays) {
+      const trackId = play.track_id;
+      if (!trackId) continue;
+      const playedMs = msOf(play.started_at);
+      if (playedMs === null) continue;
+      const existing = byTrack.get(trackId);
+      if (existing === undefined) byTrack.set(trackId, [playedMs]);
+      else existing.push(playedMs);
+    }
+  }
+  for (const times of byTrack.values()) times.sort((a, b) => a - b);
+  return byTrack;
 }
 
 /**
@@ -563,4 +595,249 @@ export function undatedDisclosure(
   }
   if (parts.length === 0) return null;
   return `${parts.join(", and ")} — not counted here.`;
+}
+
+/* ── Time-to-first-play (Story 4.5, FR-13) ──────────────────────────────── */
+
+/**
+ * One qualifying track's debut story. A discriminated union rather than a
+ * nullable `elapsedMs` (AC-3): "never played yet" and "played, 0ms after
+ * add" are different facts, and collapsing "never played" to `null`/`0`
+ * would either vanish it from a median silently or corrupt the median with a
+ * fabricated instant debut.
+ */
+export type TimeToFirstPlayEntry =
+  | { trackId: string; addedMs: number; status: "played"; elapsedMs: number }
+  | { trackId: string; addedMs: number; status: "never-played" }
+  | { trackId: string; addedMs: number; status: "played-before-add" };
+
+export interface TimeToFirstPlayModel {
+  /** One entry per dated add-event (AC-5 excludes undated ones — see `noAddDateCount`). */
+  entries: TimeToFirstPlayEntry[];
+  /** Median elapsed time across `status: "played"` entries only. `null` when none exist. */
+  medianElapsedMs: number | null;
+  /** Qualifying tracks never played (AC-3) — always shown, never folded into the median. */
+  neverPlayedCount: number;
+  /**
+   * Median time the never-played population has been sitting unplayed, as of
+   * `nowMs`. `null` when nothing is unplayed. Exists so the never-played count
+   * can be stated with its age rather than lumping a track added an hour ago
+   * in with one ignored for two years (Story 4.5 review, Arjun's ruling
+   * 2026-08-07 — the "days since add, unplayed" framing Dev Notes anticipated).
+   */
+  neverPlayedMedianAgeMs: number | null;
+  /**
+   * Tracks whose only observed plays PREDATE their add date — a
+   * clock/catalogue inconsistency (the same track resolved from another
+   * drive, say), not a debut and not evidence the track was never played.
+   * Excluded from the median AND from `neverPlayedCount`, because asserting
+   * "hasn't been played yet" about a track the DJ demonstrably played is a
+   * false statement, not a conservative one (Story 4.5 review).
+   */
+  playedBeforeAddCount: number;
+  /** Tracks with no resolvable `tadd`/`uadd` (AC-5) — same window-independent gap
+   *  {@link buildLibraryConversion}'s `noAddDateCount` reports, over the same `events`. */
+  noAddDateCount: number;
+}
+
+/**
+ * Below this many qualifying tracks (AC-4), the median is de-emphasised in
+ * favour of the insufficient-history state rather than plotted as a
+ * distribution drawn from a handful of points. A product default, not a
+ * derived value — same footing as {@link LOW_CONFIDENCE_COHORT_SIZE}, but a
+ * distinct constant: that one bounds a single 90-day cohort's size, this one
+ * bounds a lifetime-to-date qualifying-track count, and reusing one for both
+ * would silently couple two unrelated judgment calls.
+ */
+export const MIN_TIME_TO_FIRST_PLAY_TRACKS = 5;
+
+/**
+ * Minimum number of tracks that must actually have DEBUTED before a median is
+ * shown at all. A product default, same footing as
+ * {@link MIN_TIME_TO_FIRST_PLAY_TRACKS} above.
+ *
+ * This is the second half of AC-4, and the first shipped version was missing
+ * it (Story 4.5 review): gating only on population size let a DJ with 500
+ * qualifying tracks and a single debut see an unqualified "median" drawn from
+ * n=1. AC-4's wording is "*rather than a distribution drawn from a handful of
+ * points*", which a population-size gate structurally cannot enforce, because
+ * never-played tracks pass the gate and contribute nothing to the median.
+ */
+export const MIN_TIME_TO_FIRST_PLAY_DEBUTS = 5;
+
+/**
+ * AC-4's insufficient-history gate — whether the module renders at all.
+ *
+ * Deliberately a POPULATION gate, not a debut gate: a DJ whose qualifying
+ * tracks mostly haven't debuted yet should still see the honest "N tracks
+ * haven't been played yet" state, not have the module hidden for the very
+ * reason it would be interesting. Whether the *median* is shown is a separate
+ * question — see {@link hasEnoughTimeToFirstPlayDebuts}.
+ */
+export function hasEnoughTimeToFirstPlayTracks(model: TimeToFirstPlayModel): boolean {
+  return model.entries.length >= MIN_TIME_TO_FIRST_PLAY_TRACKS;
+}
+
+/**
+ * AC-4's second gate — whether enough tracks have actually debuted for a
+ * median to mean anything. Below this, the module still renders (see above),
+ * but reports the never-played population instead of a thin median.
+ */
+export function hasEnoughTimeToFirstPlayDebuts(model: TimeToFirstPlayModel): boolean {
+  return playedCountOf(model) >= MIN_TIME_TO_FIRST_PLAY_DEBUTS;
+}
+
+/** Tracks with a real, computed debut — the median's actual sample size. */
+export function playedCountOf(model: TimeToFirstPlayModel): number {
+  return model.entries.filter((e) => e.status === "played").length;
+}
+
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+/**
+ * Builds {@link TimeToFirstPlayModel} from the same synced add-events and
+ * play history {@link buildLibraryConversion}/{@link buildLiveConversionRate}
+ * read (AC-1, AC-2, AC-3, AC-5).
+ *
+ * The population boundary (AC-1/AC-2: "tracks added on or after the DJ's
+ * subscription start", per the re-spec) needs no filter written here at
+ * all — see this story's Context & Authority section. `library_track_events`
+ * can only ever contain tracks whose add was observed go-forward (Story
+ * 4.2's D-1 baseline-then-diff design silently absorbs anything older into
+ * the baseline and never emits it as an event), so every `events` row handed
+ * to this function is already inside the population by construction. A
+ * second filter here would be redundant at best.
+ *
+ * Unlike {@link buildLiveConversionRate}, this function takes no `nowMs` —
+ * the population is closed-form from `events`/`sets` alone, with no trailing
+ * window to measure against "now".
+ */
+export function buildTimeToFirstPlay(
+  events: LibraryAddEvent[],
+  sets: SetRecord[],
+  nowMs: number,
+  precomputedPlays?: Map<string, number[]>,
+): TimeToFirstPlayModel {
+  const plays = precomputedPlays ?? playsByTrack(sets);
+
+  let noAddDateCount = 0;
+  let neverPlayedCount = 0;
+  let playedBeforeAddCount = 0;
+  const entries: TimeToFirstPlayEntry[] = [];
+  const neverPlayedAges: number[] = [];
+
+  for (const event of dedupeAddEvents(events)) {
+    const addedMs = msOf(event.added_at);
+    if (addedMs === null) {
+      noAddDateCount++;
+      continue;
+    }
+    // Clock-skew guard, matching `buildLiveConversionRate`'s existing
+    // precedent (`addedMs > nowMs` is dropped there too). Without it the same
+    // future-dated event was excluded by one module on this page and reported
+    // as a never-played failure by the other (Story 4.5 review).
+    if (addedMs > nowMs) continue;
+
+    // The earliest play AT OR AFTER the add date — NOT the globally earliest
+    // play. Testing the global minimum (the first shipped version) discarded
+    // every track that had both a pre-add play and a real post-add debut:
+    // measured at 18 of 523 on the committed fixture, with elapsed values up
+    // to 78.5 days silently dropped from the median and counted into
+    // "haven't been played yet" instead. Task 1's own wording is the correct
+    // predicate: "if a play exists at or after `added_at`".
+    const trackPlays = plays.get(event.track_id);
+    const debutMs = trackPlays?.find((playedMs) => playedMs >= addedMs);
+
+    if (debutMs !== undefined) {
+      entries.push({ trackId: event.track_id, addedMs, status: "played", elapsedMs: debutMs - addedMs });
+    } else if (trackPlays !== undefined && trackPlays.length > 0) {
+      // Observed plays exist, but all of them predate the add date. Not a
+      // debut, and NOT "never played" — see `playedBeforeAddCount`.
+      playedBeforeAddCount++;
+      entries.push({ trackId: event.track_id, addedMs, status: "played-before-add" });
+    } else {
+      neverPlayedCount++;
+      neverPlayedAges.push(nowMs - addedMs);
+      entries.push({ trackId: event.track_id, addedMs, status: "never-played" });
+    }
+  }
+
+  const playedElapsed = entries
+    .filter((e): e is Extract<TimeToFirstPlayEntry, { status: "played" }> => e.status === "played")
+    .map((e) => e.elapsedMs);
+
+  return {
+    entries,
+    medianElapsedMs: median(playedElapsed),
+    neverPlayedCount,
+    neverPlayedMedianAgeMs: median(neverPlayedAges),
+    playedBeforeAddCount,
+    noAddDateCount,
+  };
+}
+
+/**
+ * Collapses redelivered add-events to one row per track identity.
+ *
+ * One event per track is the DB's own guarantee (`unique (dj_id, track_id)`),
+ * so this only matters against a caller handing over a redelivered batch —
+ * but the tie-break is not arbitrary. **A dated row always beats an undated
+ * one, and among dated rows the EARLIEST `added_at` wins.** The first shipped
+ * version kept whichever row appeared first in the array, so an undated
+ * redelivery arriving ahead of a dated one permanently undated the track, and
+ * two dated rows let the later date win — inflating every elapsed time
+ * computed from it (Story 4.5 review).
+ *
+ * This is the same earliest-wins rule Story 4.3 already ruled for the
+ * identical collision at the agent layer (`capture::dedupe_by_identity`),
+ * applied at the read side rather than invented separately.
+ */
+function dedupeAddEvents(events: LibraryAddEvent[]): LibraryAddEvent[] {
+  const best = new Map<string, LibraryAddEvent>();
+  for (const event of events) {
+    const existing = best.get(event.track_id);
+    if (existing === undefined) {
+      best.set(event.track_id, event);
+      continue;
+    }
+    const incomingMs = msOf(event.added_at);
+    if (incomingMs === null) continue;
+    const existingMs = msOf(existing.added_at);
+    if (existingMs === null || incomingMs < existingMs) best.set(event.track_id, event);
+  }
+  return [...best.values()];
+}
+
+/**
+ * The time-to-first-play module's chart-summary string — same "one
+ * generator, three duties" discipline as {@link libraryConversionSummary}/
+ * {@link liveConversionRateSummary}: backs the visible caption and the
+ * `aria-label` from one function, so they can never drift apart.
+ */
+export function timeToFirstPlaySummary(model: TimeToFirstPlayModel): string {
+  const playedCount = playedCountOf(model);
+  const unplayed = model.neverPlayedCount;
+
+  // Below the debut floor there is no median worth stating, whatever the
+  // population size — AC-4's "rather than a distribution drawn from a handful
+  // of points" (Story 4.5 review). Report the waiting population instead.
+  if (!hasEnoughTimeToFirstPlayDebuts(model)) {
+    if (unplayed === 0) return "No tracks have debuted yet.";
+    const age = model.neverPlayedMedianAgeMs;
+    const waiting = `${unplayed} ${unplayed === 1 ? "track has" : "tracks have"} been added but not played yet`;
+    return age === null ? `${waiting}.` : `${waiting} — a median of ${formatElapsed(age)} on the shelf.`;
+  }
+
+  // `playedCount >= MIN_TIME_TO_FIRST_PLAY_DEBUTS` guarantees a non-null
+  // median; asserting it beats a `?? 0` fallback, which would silently invent
+  // the smallest possible value if the invariant ever broke.
+  const elapsed = formatElapsed(model.medianElapsedMs as number);
+  const debuts = `${playedCount === 1 ? "1 track has" : `${playedCount} tracks have`} debuted, a median of ${elapsed} after being added`;
+  if (unplayed === 0) return `${debuts}.`;
+  return `${debuts} — ${unplayed} ${unplayed === 1 ? "other hasn't" : "others haven't"} been played yet.`;
 }
