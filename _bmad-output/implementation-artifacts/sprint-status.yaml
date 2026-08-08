@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-21
-last_updated: 2026-08-07
+last_updated: 2026-08-08
 # 2026-08-07: story 4-5 -- MERGED origin/main (4.6 + 4.11 + 4.7) into the
 # branch. Merge, not rebase: PR #22 is open, matching how 4.11 and 4.7 landed.
 # 6 conflicts (page.tsx, ConversionRateMeter.tsx, libraryConversion.test.ts,
@@ -587,7 +587,61 @@ development_status:
   # 289/289, tsc/eslint/next build clean. Real-browser walkthrough
   # (Playwright) at 1440px and 375x812, zero console errors.
   4-3-conversion-rate-led-pip-meter: done
-  4-4-aging-shelf-with-prep-crate-action: backlog
+  # [STORY CREATED 2026-08-08] Both blockers were already clear on entry (4.11
+  # merged, so the shelf can NAME tracks; the Decision B re-spec landed in
+  # e2ff244). The session's one real ruling was new:
+  #
+  # ⚑ ARJUN RULED THE PREP-CRATE ACTION OUT OF MVP. Rows ship read-only with
+  # NO substitute affordance (no dismiss, no star, no "mark reviewed"). The
+  # finding that forced the question, worth not re-measuring: THERE IS NO
+  # CLOUD->AGENT COMMAND CHANNEL ANYWHERE IN THIS SYSTEM. AD-8 and all three
+  # of its named write amendments (AD-20/AD-21/AD-22) are outbound-only;
+  # nothing pulls instructions down. A real Serato crate write would also be
+  # the first-ever WRITE to Serato (2.7 scopes the agent to reads), against a
+  # binary .crate format, with file-locking hazards while Serato runs -- its
+  # own story or epic. Two cheaper substitutes considered and also declined:
+  # a Curfew-side saved list in Supabase (DJ-writable via RLS, no new AD), and
+  # an .m3u8 export (weak anyway -- AD-2 keeps paths off the wire, so the
+  # roster is title/artist only and Serato must re-match on import).
+  # epics.md AC-2 struck through with the ruling; DOC-SYNC OWED on PRD FR-12's
+  # UJ-6 path (prd.md:89) and EXPERIENCE.md's Components row + UJ-6 step 4,
+  # which all still describe the action (the ai-2/ai-6 accretion shape).
+  #
+  # THREE further gaps closed in the story spec rather than left for review:
+  #   (1) COLD-START STATE, previously unnamed. Both clock branches are
+  #       bounded below by the clamp, so under 90 days of observation NO track
+  #       can qualify -- and EXPERIENCE.md's "Everything you've bought is
+  #       getting played." would be an affirmative FALSE claim to every DJ in
+  #       their first three months, i.e. every DJ at launch. epics.md AC-3
+  #       amended from one empty state to three (not-yet-possible /
+  #       genuinely-clear / nothing-synced).
+  #   (2) OBSERVATION ANCHOR NAMED: the re-spec says
+  #       max(add_date, subscription_start_date) but never said where that
+  #       date comes from. Ruled `djs.created_at` -- the only viable anchor.
+  #       library_roster.created_at is WRONG (the roster only began syncing
+  #       when 4.11 shipped, so it reads as "started watching last Tuesday"
+  #       and clamps the whole shelf empty); earliest sessions.started_at is
+  #       WRONG (a DJ with no synced sets has none, and that is exactly the DJ
+  #       this metric is about). Fail-closed contract attached: if it can't be
+  #       read, the add-date branch is SUPPRESSED, never degraded to raw
+  #       added_at -- that degradation is the pre-fix behaviour.
+  #   (3) ROW CAP: a cold 5,000-track catalogue puts thousands of rows on the
+  #       page. Capped at 100 with the full qualifying count stated out loud
+  #       (SM-C1 no-silent-caps), sorted BEFORE the cap in both directions so
+  #       ascending surfaces the shortest-aging 100 rather than a reversed
+  #       slice of the same 100.
+  #
+  # SCOPE: pure web/. No migration, no shared/ change, no agent change. Task 1
+  # implements getLibraryRoster's real paged Supabase read (the seam's own doc
+  # comment names this story as its owner) and adds getObservationStart; the
+  # two scan-level scalars stay 0 -- they have NO cloud carrier and need a
+  # named decision, already in deferred-work.md.
+  # INHERITED RISKS, all first-consumed here: the observe_catalogue_reach
+  # one-way ratchet (a retired drive silently disables mark_absent_tracks for
+  # the life of the install -> this shelf renders tracks deleted years ago),
+  # AD-22's multi-install oscillation, and absent_at having zero web-side
+  # coverage anywhere (Task 2's test is the first).
+  4-4-aging-shelf-with-prep-crate-action: ready-for-dev
   4-5-time-to-first-play: review
   # [LAUNCH BLOCKER, previously unstoried] Ruled by Arjun 2026-08-07: web/'s
   # read path (getRecentSets/getSetById/deleteSet/getLibraryAddEvents) is
