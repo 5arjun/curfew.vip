@@ -42,6 +42,39 @@
 
 generated: 2026-07-21
 last_updated: 2026-08-07
+# 2026-08-07: story 4-5 -- BOTH remaining review items CLOSED. (1) CLEANUP
+# MIGRATION UNNECESSARY, measured not assumed: read-only supabase db query
+# against prod shows library_track_events 0 rows, plays 0, sets 0, djs 1 --
+# no agent has ever synced, so the stale path-hash stratum the decision was
+# about does not exist. Corroborated agent-side: the local store has only
+# captured_sessions (no library_tracks, no agent_meta), so the 4.2/4.3 agent
+# build has never run and no pre-cutover add-events are queued to drain under
+# the retired identity. The hole reasoned about is real but has zero blast
+# radius; the first agent run baselines under title+artist, clean by
+# construction. Residual note: mark_identity_migration_done only sets a flag,
+# it does NOT purge pending unsynced rows -- unreachable today, worth a guard
+# if an agent install ever precedes the cutover. (2) BROWSER PASS DONE
+# (Playwright, live dev server) at 1440x900 and 375x812 on the committed
+# fixture, plus BOTH gate states driven via temporarily swapped trimmed
+# fixtures (restored, git status verified clean). Zero console errors and
+# zero warnings in every state at both widths; no horizontal overflow;
+# shortened readout wraps to 2 lines and the disclosure to 1 at both widths.
+# THE PASS FOUND 3 DEFECTS THAT TESTS COULD NOT REACH, all fixed: (a) in the
+# insufficient-history branch the section's accessible name announced "3
+# tracks have been added but not played yet -- averaging 10 months on the
+# shelf" while the visible module said only "not enough yet" -- an accessible
+# name making a claim the UI had explicitly declined to make; the summary
+# generator is gate-blind by design, so the component now falls back to
+# naming the region and lets InsufficientHistory's own role=status carry the
+# copy. Same aria/visible drift class the code review caught in the POPULATED
+# branch, in a branch the review could not see. (b) .se-empty carries
+# min-height 260px because on Style Evolution it fills a CHART slot; in a
+# stat module that made it 324px tall beside a 96px meter -- scoped down in
+# library-utilization.css (the "no new CSS" claim's second amendment), now
+# 151px. (c) the below-debut-floor branch's visible text omitted the shelf
+# age its aria-label carried; now byte-identical. Gate: 327/327, clean
+# tsc/eslint/next build. epic-4 unchanged (in-progress).
+# 4-5-time-to-first-play: in-progress -> review.
 # 2026-08-07: story 4-5 post-review follow-up (Arjun, same session) -- MEAN
 # INSTEAD OF MEDIAN, plus a shorter readout. The review's corrected median
 # read 51 minutes, which Arjun judged implausible on sight; the mean reads 2
@@ -404,7 +437,7 @@ development_status:
   # (Playwright) at 1440px and 375x812, zero console errors.
   4-3-conversion-rate-led-pip-meter: done
   4-4-aging-shelf-with-prep-crate-action: backlog
-  4-5-time-to-first-play: in-progress
+  4-5-time-to-first-play: review
   # [LAUNCH BLOCKER, previously unstoried] Ruled by Arjun 2026-08-07: web/'s
   # read path (getRecentSets/getSetById/deleteSet/getLibraryAddEvents) is
   # still fixture-backed while the write path has been live since Epic 3 —

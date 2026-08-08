@@ -50,9 +50,20 @@ const TIME_TO_FIRST_PLAY_INSUFFICIENT_COPY =
  * tracks and one debut clears the first and fails the second.
  */
 export function TimeToFirstPlay({ model }: { model: TimeToFirstPlayModel }) {
-  const summary = timeToFirstPlaySummary(model);
   const playedCount = playedCountOf(model);
   const showAverage = hasEnoughTimeToFirstPlayDebuts(model);
+  const enoughTracks = hasEnoughTimeToFirstPlayTracks(model);
+
+  // Below the population gate the module deliberately states no figure, so the
+  // accessible name must not state one either. `timeToFirstPlaySummary` is
+  // gate-blind by design (it describes the data, not the rendering decision),
+  // and using it here had the section announce "3 tracks have been added but
+  // not played yet — averaging 10 months on the shelf" while the visible
+  // module said only "not enough yet" — an accessible name making a claim the
+  // UI had explicitly declined to make (browser pass, 2026-08-07). The label
+  // falls back to naming the region; `InsufficientHistory`'s own `role="status"`
+  // already carries the explanatory copy to AT.
+  const summary = enoughTracks ? timeToFirstPlaySummary(model) : "Time to first play";
 
   return (
     <section className="lu-module dz-shell" aria-label={summary}>
@@ -61,7 +72,7 @@ export function TimeToFirstPlay({ model }: { model: TimeToFirstPlayModel }) {
         <p className="lu-stat-label">Time to first play</p>
       </div>
 
-      {!hasEnoughTimeToFirstPlayTracks(model) ? (
+      {!enoughTracks ? (
         <InsufficientHistory copy={TIME_TO_FIRST_PLAY_INSUFFICIENT_COPY} />
       ) : showAverage ? (
         <>
@@ -92,7 +103,13 @@ export function TimeToFirstPlay({ model }: { model: TimeToFirstPlayModel }) {
       ) : (
         <p className="lu-stat-empty" aria-hidden="true">
           {model.neverPlayedCount > 0
-            ? `${model.neverPlayedCount} ${model.neverPlayedCount === 1 ? "track has" : "tracks have"} been added but not played yet.`
+            ? `${model.neverPlayedCount} ${model.neverPlayedCount === 1 ? "track has" : "tracks have"} been added but not played yet${
+                // Carries the shelf age the `aria-label` states, so the two
+                // branches say the same thing (browser pass, 2026-08-07).
+                model.neverPlayedAverageAgeMs !== null
+                  ? ` — averaging ${formatElapsed(model.neverPlayedAverageAgeMs)} on the shelf`
+                  : ""
+              }.`
             : "No tracks have debuted yet."}
         </p>
       )}
