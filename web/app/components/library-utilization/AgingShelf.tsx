@@ -112,9 +112,10 @@ export function AgingShelf({ model }: { model: AgingShelfModel }) {
   return (
     <section className="lu-module dz-shell" aria-label={summary}>
       <span className="dz-dots" aria-hidden="true" />
-      {/* No shelf-specific head class any more: the 34px chip leaves the
-          320px header plenty of room, where the 139px `<select>` it replaced
-          wrapped the label onto two lines and needed a wrap rule. */}
+      {/* Plain `.lu-stat-head`, with no shelf-specific wrap handling: the
+          34px chip and the label fit the 320px header together with room to
+          spare (measured). A wider control does not — a 139px one wrapped the
+          label onto two lines. */}
       <div className="lu-stat-head">
         {/* A real `<h2>`, not the `<p className="lu-stat-label">` the three
             modules above use. `deferred-work.md`'s open UI finding is that
