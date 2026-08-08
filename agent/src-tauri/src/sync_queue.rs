@@ -193,6 +193,13 @@ fn sync_loop(app: AppHandle) {
         // backoff exists to respond to.
         drain_library_add_events(&app, &conn, &mut backoff);
 
+        // Story 4.11 / AD-22 — the fourth sanctioned agent write, riding this
+        // same loop for the same reason the add-event drain does: one drain
+        // cadence, one backoff, no second poll loop. Sits immediately after
+        // the add-event drain (both are "library bookkeeping", ordered
+        // together ahead of the heartbeat, which settles the tray last).
+        drain_library_roster(&app, &conn, &mut backoff);
+
         // Story 3.9 / AD-20 — beat-on-idle, "ride the loop" (Arjun,
         // 2026-08-05). Sits here, once, AFTER both branches above have settled
         // the tray through the coordinator, rather than duplicated inside each
@@ -254,6 +261,42 @@ fn drain_library_add_events(app: &AppHandle, conn: &rusqlite::Connection, backof
             } else {
                 #[cfg(debug_assertions)]
                 eprintln!("curfew-agent: library add-event drain failed: {e}");
+            }
+            backoff.increase();
+        }
+    }
+}
+
+/// Drains the library roster queue once (Story 4.11 / AD-22).
+///
+/// Same non-tray-touching, backoff-feeding posture as
+/// [`drain_library_add_events`] and for the identical reason: a roster
+/// backlog is invisible background bookkeeping, not something a DJ is
+/// waiting on their dashboard for, but a failing drain still means real data
+/// is queued and the loop should slow down accordingly.
+fn drain_library_roster(app: &AppHandle, conn: &rusqlite::Connection, backoff: &mut Backoff) {
+    let Some(auth_state) = app.try_state::<crate::auth::AuthState>() else {
+        return;
+    };
+
+    match crate::sync::sync_pending_library_roster(
+        conn,
+        &auth_state.tokens,
+        &crate::auth::store::KeyringTokenStore,
+        &crate::auth::client::SupabaseAuthClient::new(),
+        &crate::sync::SupabaseSyncClient::new(),
+    ) {
+        Ok(summary) => {
+            if summary.attempted > 0 && summary.synced < summary.attempted {
+                backoff.increase();
+            }
+        }
+        Err(e) => {
+            if e.retry_class() == RetryClass::Permanent {
+                eprintln!("curfew-agent: library roster drain failed permanently: {e}");
+            } else {
+                #[cfg(debug_assertions)]
+                eprintln!("curfew-agent: library roster drain failed: {e}");
             }
             backoff.increase();
         }

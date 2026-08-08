@@ -1,5 +1,12 @@
-// Library add-event fixture builder (Story 4.2 Task 5) — the fixture-stage
-// stand-in for the `library_track_events` cloud read.
+// Library add-event fixture builder (Story 4.2 Task 5) — originally the
+// fixture-stage stand-in for the `library_track_events` cloud read.
+//
+// TEST-ONLY as of Story 4.6: `library-add-events.fixture.json` is no longer
+// imported by `web/lib/sets/index.ts`'s production read path — that seam
+// reads `library_track_events` from Supabase directly now. Nothing currently
+// imports this fixture directly for tests (unlike `recent-sets.fixture.json`),
+// but it is kept committed alongside its builder for the same reason: a
+// realistic, non-identifying sample if a future test needs one.
 //
 // THIS IS THE DENOMINATOR HALF, and it is the reason this builder exists
 // separately from `build-fixture.mjs`. That builder is derived from the play

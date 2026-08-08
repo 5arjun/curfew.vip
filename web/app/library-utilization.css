@@ -55,6 +55,23 @@
   gap: 8px;
   padding: 18px 20px;
   border-radius: 22px;
+}
+
+/* Restores the `max-width: 440px` `.lu-module` carried until Story 4.7, for
+   the modules 4.7 did NOT take over. 4.7 dropped that cap correctly for its
+   own sake: the meter moved into `.lu-conversion-body`'s `minmax(0, 340px)`
+   column, which bounds it more tightly than 440px ever did, so the rule was
+   dead weight there. But `.lu-module` is not the meter's private class —
+   Story 4.5's time-to-first-play uses it too, and sits OUTSIDE that grid as a
+   direct child of `.lu` (see `page.tsx`: it is window-independent, so it is
+   deliberately not in the window-governed section). Losing the cap left a
+   single short stat line stretched across the full container width.
+
+   Scoped to direct children of `.lu` rather than restored globally, which
+   would re-cap the meter at 440px in the ≤900px one-column layout where 4.7
+   means it to fill the width. Below 440px viewports this is a no-op, so the
+   375px layout is unchanged either way. */
+.lu > .lu-module {
   max-width: 440px;
 }
 
@@ -90,6 +107,40 @@
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--color-abyss-text-45);
+}
+
+/* ─── Conversion pair (Story 4.7, AC-3) — the meter (Story 4.3) and the
+   moved library-conversion trend (Story 4.2), grouped under ONE heading and
+   ONE window control rather than stacked as two unrelated modules. */
+.lu-conversion {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lu-conversion-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 4px;
+}
+
+.lu-conversion-body {
+  display: grid;
+  grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+@media (max-width: 900px) {
+  .lu-conversion-body {
+    grid-template-columns: 1fr;
+  }
+}
+
+.lu-trend {
+  min-width: 0;
 }
 
 /* The window dropdown (Arjun, 2026-08-07) — a native <select>, styled to sit

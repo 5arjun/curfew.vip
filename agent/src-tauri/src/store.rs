@@ -84,8 +84,12 @@ CREATE TABLE IF NOT EXISTS library_tracks (
   track_id               TEXT PRIMARY KEY,      -- fnv1a_hex of normalized title+artist (Story 4.3, Decision E-2; was the portable path, D-2)
   first_seen_locally_at  INTEGER NOT NULL,      -- unix epoch seconds, agent wall-clock
   added_at               INTEGER,               -- library tadd/uadd epoch seconds; NULL = unresolvable, never guessed
-  is_baseline            INTEGER NOT NULL,      -- 1 = first-run snapshot, never synced (D-1)
-  synced_at              INTEGER                -- NULL until the add-event batch syncs (Task 4)
+  is_baseline            INTEGER NOT NULL,      -- 1 = first-run snapshot, never synced as an add-event (D-1)
+  synced_at              INTEGER,               -- NULL until the add-event batch syncs (AD-21); scoped to that sync ONLY, see roster_synced_at
+  title                  TEXT,                  -- Story 4.11 Tier A: raw, un-normalized (AC-1)
+  artist                 TEXT,                  -- Story 4.11 Tier A: raw, un-normalized (AC-1)
+  absent_at              INTEGER,               -- Story 4.11 AC-5: set when a previously-known track is missing from a scan, cleared if it reappears. Never a hard delete.
+  roster_synced_at       INTEGER                -- Story 4.11 AC-2/AD-22: independent watermark from `synced_at` above -- the roster sync (this table's title/artist/added_at/is_baseline/absent_at) and the add-event batch sync are two different cloud writes to two different tables (this one and `library_track_events`), on two different cadences (roster re-syncs on every tag edit; add-events are baseline-excluded and first-write-wins). Conflating them into one `synced_at` column would make a title fix silently fail to reach the cloud whenever `synced_at` was already non-NULL from the (unrelated) add-event sync.
 );
 
 -- Story 4.3 review follow-up: a tiny opaque flag store for one-time,
@@ -134,6 +138,116 @@ pub fn mark_identity_migration_done(conn: &Connection) -> Result<(), StoreError>
         [IDENTITY_V2_MIGRATED_KEY],
     )?;
     Ok(())
+}
+
+/// Story 4.11 AC-6: the no-identity exclusion count from the MOST RECENT scan,
+/// plus the catalogue row count it was measured against. Reuses `agent_meta`
+/// (the same tiny key-value store `IDENTITY_V2_MIGRATED_KEY` already
+/// established) rather than a dedicated table — these are single scalars, not
+/// per-track facts.
+///
+/// **A gauge, not a counter (Story 4.11 code review).** These are *replaced* on
+/// every scan, never accumulated. `scan_library_adds` recomputes both from the
+/// whole catalogue each time, so the same unidentifiable rows are re-counted on
+/// every tick — summing them would read k×272 after k scans in a 930-track
+/// library, an unbounded number that answers no question anyone asks. The
+/// disclosure this feeds ("N tracks in your library have no artist tag") is a
+/// point-in-time statement about the library as it stands now.
+const EXCLUDED_NO_IDENTITY_TOTAL_KEY: &str = "excluded_no_identity_total";
+const CATALOGUE_ROWS_TOTAL_KEY: &str = "catalogue_rows_total";
+
+/// Records the latest scan's exclusion count and the catalogue size it was
+/// measured against, replacing any previous pair. Both are written together so
+/// a reader can never pair a fresh numerator with a stale denominator.
+pub fn set_scan_identity_coverage(
+    conn: &Connection,
+    excluded_no_identity: usize,
+    catalogue_rows: usize,
+) -> Result<(), StoreError> {
+    for (key, value) in [
+        (EXCLUDED_NO_IDENTITY_TOTAL_KEY, excluded_no_identity),
+        (CATALOGUE_ROWS_TOTAL_KEY, catalogue_rows),
+    ] {
+        conn.execute(
+            "INSERT INTO agent_meta (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            rusqlite::params![key, value.to_string()],
+        )?;
+    }
+    Ok(())
+}
+
+/// The latest scan's `(excluded_no_identity, catalogue_rows)` pair — `(0, 0)` on
+/// a store that has never recorded one.
+pub fn scan_identity_coverage(conn: &Connection) -> Result<(usize, usize), StoreError> {
+    let read = |key: &str| -> Result<usize, StoreError> {
+        let raw: Option<String> = conn
+            .query_row(
+                "SELECT value FROM agent_meta WHERE key = ?1",
+                [key],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(raw.and_then(|v| v.parse().ok()).unwrap_or(0))
+    };
+    Ok((
+        read(EXCLUDED_NO_IDENTITY_TOTAL_KEY)?,
+        read(CATALOGUE_ROWS_TOTAL_KEY)?,
+    ))
+}
+
+/// The widest set of library roots any scan has ever successfully read, stored
+/// newline-joined and sorted.
+///
+/// **Story 4.11 code review — the soft-delete safety gate.** `mark_absent_tracks`
+/// can only honestly conclude a track is gone if the scan actually looked
+/// everywhere it has looked before. `DateAddedIndex::all_tracks` omits tracks on
+/// unmounted volumes by design, so a boot-drive-only scan on a machine that
+/// normally sees a USB drive would otherwise mark that entire drive's library
+/// deleted — the exact failure `joiner::date_added`'s own doc comment forbids
+/// ("a library that shrinks because a drive was unplugged must never look like
+/// tracks were *removed*").
+const WIDEST_CATALOGUE_ROOTS_KEY: &str = "widest_catalogue_roots";
+
+/// Whether `current_roots` covers everything ever seen, and records any newly
+/// seen roots into the high-water mark.
+///
+/// Returns `false` when the current scan reached fewer roots than some earlier
+/// scan did — the caller must then skip absence-marking entirely. A first-ever
+/// scan (no stored set) is complete by definition: there is no earlier, wider
+/// view to be missing anything relative to.
+pub fn observe_catalogue_reach(
+    conn: &Connection,
+    current_roots: &[String],
+) -> Result<bool, StoreError> {
+    let stored: Option<String> = conn
+        .query_row(
+            "SELECT value FROM agent_meta WHERE key = ?1",
+            [WIDEST_CATALOGUE_ROOTS_KEY],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let known: std::collections::HashSet<String> = stored
+        .as_deref()
+        .unwrap_or("")
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(str::to_string)
+        .collect();
+    let current: std::collections::HashSet<String> = current_roots.iter().cloned().collect();
+
+    let complete = known.is_subset(&current);
+    // The high-water mark only ever grows. A root that stops appearing is
+    // exactly the ambiguous case this gate exists for — it may be an unplugged
+    // drive, so it is never forgotten on the strength of one absent scan.
+    let mut union: Vec<String> = known.union(&current).cloned().collect();
+    union.sort();
+    conn.execute(
+        "INSERT INTO agent_meta (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        rusqlite::params![WIDEST_CATALOGUE_ROOTS_KEY, union.join("\n")],
+    )?;
+    Ok(complete)
 }
 
 /// Everything that can go wrong opening or writing to the local store. Mirrors
@@ -331,7 +445,45 @@ pub fn open_at(path: &Path) -> Result<Connection, StoreError> {
         );
     }
     conn.execute_batch(SCHEMA_SQL)?;
+    migrate_library_tracks_columns(&conn)?;
     Ok(conn)
+}
+
+/// Adds Story 4.11's four new `library_tracks` columns (`title`, `artist`,
+/// `absent_at`, `roster_synced_at`) to a database created before this story,
+/// where `CREATE TABLE IF NOT EXISTS` above is a no-op against the
+/// already-existing table. This is the **first** column added to an
+/// already-shipped local table in this codebase (every prior addition —
+/// `parse_failures`, `agent_meta`, `library_tracks` itself — was a brand-new
+/// table, deliberately, per `open_at`'s own doc comment: "no external
+/// migration tooling ... since this is a single-owner local file"). Checks
+/// `PRAGMA table_info` rather than blindly running `ALTER TABLE ADD COLUMN`
+/// so re-running this against an already-migrated database (every normal
+/// startup, forever) is a safe no-op rather than a "duplicate column name"
+/// error.
+fn migrate_library_tracks_columns(conn: &Connection) -> Result<(), StoreError> {
+    let mut existing = std::collections::HashSet::new();
+    {
+        let mut stmt = conn.prepare("PRAGMA table_info(library_tracks)")?;
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            let name: String = row.get(1)?;
+            existing.insert(name);
+        }
+    }
+    for (column, ddl_type) in [
+        ("title", "TEXT"),
+        ("artist", "TEXT"),
+        ("absent_at", "INTEGER"),
+        ("roster_synced_at", "INTEGER"),
+    ] {
+        if !existing.contains(column) {
+            conn.execute_batch(&format!(
+                "ALTER TABLE library_tracks ADD COLUMN {column} {ddl_type}"
+            ))?;
+        }
+    }
+    Ok(())
 }
 
 /// Opens the local store at its real, per-machine location
@@ -906,37 +1058,134 @@ pub fn library_baseline_at(conn: &Connection) -> Result<Option<i64>, StoreError>
     )?)
 }
 
-/// Records library tracks the agent has now seen.
+/// One never-before-seen library track from a scan pass: identity + add-date
+/// (D-2) plus Story 4.11 Tier A's title/artist, as passed to
+/// [`record_library_tracks`] for tracks not already in [`known_track_ids`].
+pub type IdentifiedLibraryTrack = (String, Option<i64>, Option<String>, Option<String>);
+
+/// Records library tracks **not previously known** to this agent (D-1/D-2).
 ///
-/// `is_baseline` decides whether these are D-1 baseline rows (never synced) or
-/// genuine go-forward adds (queued for Task 4's drain). `ON CONFLICT DO
-/// NOTHING` on the `track_id` primary key is the whole re-emit guard: a track
-/// already on file — in either state — is never recorded, never re-queued, and
-/// never has its recorded `added_at` overwritten by a later scan that happened
-/// to resolve it differently.
+/// `is_baseline` decides whether these are D-1 baseline rows (never synced as
+/// an add-event) or genuine go-forward adds (queued for the add-event
+/// drain). `ON CONFLICT(track_id) DO NOTHING` is still the whole re-emit
+/// guard for genuinely-new identities — callers only ever pass track_ids
+/// already filtered against [`known_track_ids`] (see
+/// `capture::scan_library_adds`), so a conflict here would mean two rows in
+/// the same scan pass normalized to the same identity, not a real re-sighting
+/// (`capture::dedupe_by_identity` already collapses that case before this is
+/// called). A track **already** known that needs its title/artist refreshed
+/// (Story 4.11 AC-4, a re-tagged track) goes through
+/// [`refresh_library_track_tags`] instead — this function's job stays
+/// "insert new," not "insert-or-update," so `added_at`/`is_baseline` can
+/// never be silently rewritten by a function whose name doesn't warn you it
+/// might (the exact invariant AC-3 depends on).
 ///
 /// Returns how many rows were genuinely new.
 pub fn record_library_tracks(
     conn: &Connection,
-    tracks: &[(String, Option<i64>)],
+    tracks: &[IdentifiedLibraryTrack],
     is_baseline: bool,
     first_seen_locally_at: i64,
 ) -> Result<usize, StoreError> {
     let mut inserted = 0;
     let mut stmt = conn.prepare(
-        "INSERT INTO library_tracks (track_id, first_seen_locally_at, added_at, is_baseline, synced_at)
-         VALUES (?1, ?2, ?3, ?4, NULL)
+        "INSERT INTO library_tracks (track_id, first_seen_locally_at, added_at, is_baseline, synced_at, title, artist, absent_at, roster_synced_at)
+         VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6, NULL, NULL)
          ON CONFLICT(track_id) DO NOTHING",
     )?;
-    for (track_id, added_at) in tracks {
+    for (track_id, added_at, title, artist) in tracks {
         inserted += stmt.execute(rusqlite::params![
             track_id,
             first_seen_locally_at,
             added_at,
             i64::from(is_baseline),
+            title,
+            artist,
         ])?;
     }
     Ok(inserted)
+}
+
+/// Refreshes title/artist on library tracks **already known** to this agent —
+/// Story 4.11 AC-4's "the roster is current-state and mutable" rule, applied
+/// to the one Tier-A pair of fields this story carries (genre/key are Tier B,
+/// out of scope). Never touches `added_at`, `is_baseline`, or
+/// `first_seen_locally_at` (AC-3's invariant: a track's baseline/go-forward
+/// classification is fixed at first sighting, a re-scan must never move it).
+///
+/// `roster_synced_at` is reset to `NULL` **only** when the incoming
+/// title/artist actually differ from what's stored — an unconditional reset
+/// on every scan would re-queue every known track for cloud sync on every
+/// single scan pass, defeating AC-7's batching/degrade-gracefully
+/// requirement for no real reason (nothing changed). `synced_at` (the
+/// add-event watermark, a wholly separate cloud write) is never touched
+/// here. A track present in this scan is implicitly "not absent" — clears
+/// `absent_at` too, so a track that left and came back needs no second pass.
+///
+/// Returns how many rows had an actual title/artist change (i.e. genuinely
+/// needed a re-sync), not the count of tracks considered.
+pub fn refresh_library_track_tags(
+    conn: &Connection,
+    tracks: &[(String, Option<String>, Option<String>)],
+) -> Result<usize, StoreError> {
+    let mut changed = 0;
+    // The WHERE clause already guarantees at least one of title/artist/absence
+    // genuinely differs, so every row this statement touches has really changed
+    // and must re-sync — an unconditional `roster_synced_at = NULL` is correct.
+    // (It previously carried a CASE preserving the watermark on a no-change,
+    // whose condition was the exact negation of this WHERE and so could never
+    // fire — Story 4.11 code review.)
+    let mut stmt = conn.prepare(
+        "UPDATE library_tracks
+         SET roster_synced_at = NULL,
+             title = ?2,
+             artist = ?3,
+             absent_at = NULL
+         WHERE track_id = ?1
+           AND (title IS NOT ?2 OR artist IS NOT ?3 OR absent_at IS NOT NULL)",
+    )?;
+    for (track_id, title, artist) in tracks {
+        changed += stmt.execute(rusqlite::params![track_id, title, artist])?;
+    }
+    Ok(changed)
+}
+
+/// Marks every previously-known track **missing** from `current_track_ids`
+/// as absent (Story 4.11 AC-5) — a soft-delete, never a hard `DELETE`, so a
+/// track that later reappears keeps its identity and history rather than
+/// being re-baselined as new. Idempotent: a track already marked absent is
+/// left alone (its original `absent_at` is preserved, not bumped forward on
+/// every scan it stays missing). Resets `roster_synced_at` to `NULL` on a
+/// newly-absent track so the roster drain (Task 6) picks up the change —
+/// the same "only reset on an actual change" discipline
+/// [`refresh_library_track_tags`] uses for title/artist.
+///
+/// Reappearance is handled by [`refresh_library_track_tags`] instead of
+/// here — any track present in a scan (this function's `current_track_ids`)
+/// is by definition not being marked absent by this call, and
+/// `refresh_library_track_tags` already clears `absent_at` for every track
+/// it touches.
+///
+/// Callers must never call this with a `current_track_ids` derived from a
+/// re-baselining pass (first run, or the Story 4.3 identity-cutover
+/// migration) — those compare an old identity scheme against the new one and
+/// would otherwise mark every real, still-owned track absent purely because
+/// its `track_id` changed shape, not because it left the library.
+pub fn mark_absent_tracks(
+    conn: &Connection,
+    current_track_ids: &std::collections::HashSet<String>,
+    now: i64,
+) -> Result<usize, StoreError> {
+    let known = known_track_ids(conn)?;
+    let mut marked = 0;
+    let mut stmt = conn.prepare(
+        "UPDATE library_tracks SET absent_at = ?1, roster_synced_at = NULL
+         WHERE track_id = ?2 AND absent_at IS NULL",
+    )?;
+    for id in known.difference(current_track_ids) {
+        marked += stmt.execute(rusqlite::params![now, id])?;
+    }
+    Ok(marked)
 }
 
 /// Every add-event eligible for a sync attempt: a genuine go-forward add
@@ -972,6 +1221,109 @@ pub fn mark_library_add_events_synced(
     let mut stmt = conn.prepare("UPDATE library_tracks SET synced_at = ?1 WHERE track_id = ?2")?;
     for track_id in track_ids {
         stmt.execute(rusqlite::params![synced_at, track_id])?;
+    }
+    Ok(())
+}
+
+/* ---- Library roster (Story 4.11, AD-22) ------------------------------------ */
+//
+// INVARIANT (AC-3, the hazard this story most plausibly introduces): nothing
+// in this section may ever be read as a source for conversion-rate cohort
+// math. `library_tracks.added_at`/`.is_baseline` describe when/how a track
+// first entered the LOCAL roster; the cloud's cohort denominator is
+// `library_track_events` (AD-21), populated by a wholly separate local
+// queue (`library_add_events_pending_sync`, gated `is_baseline = 0`) and a
+// wholly separate cloud table. A baseline track's real pre-install
+// `added_at` reaching cohort math would retroactively populate old months
+// against a still-go-forward numerator and silently change numbers the DJ
+// has already seen. See `sync::roster_sync_and_add_event_sync_never_touch_each_others_watermark`
+// for the regression test enforcing the sync-layer half of this invariant.
+
+/// One library track pending a roster sync — mirrors [`PendingLibraryAddEvent`]'s
+/// shape but carries every Tier-A field the roster batch needs, including
+/// `is_baseline`/`absent_at`, since (unlike the add-event batch) baseline
+/// tracks and absence both DO reach this queue.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PendingLibraryRosterEntry {
+    pub track_id: String,
+    pub title: Option<String>,
+    pub artist: Option<String>,
+    pub added_at: Option<i64>,
+    pub is_baseline: bool,
+    pub absent_at: Option<i64>,
+}
+
+/// Every roster entry eligible for a sync attempt: `roster_synced_at IS NULL`
+/// — set on first insert, reset by [`refresh_library_track_tags`] or
+/// [`mark_absent_tracks`] whenever title/artist/absence actually changed.
+/// Unlike [`library_add_events_pending_sync`], baseline rows are NOT excluded
+/// here — carrying them to the roster is this story's whole point (AC-3).
+pub fn library_roster_pending_sync(
+    conn: &Connection,
+) -> Result<Vec<PendingLibraryRosterEntry>, StoreError> {
+    // A row with neither title nor artist has no name to carry, which is the
+    // roster's entire purpose (AD-22). These are pre-4.3 path-hash rows that
+    // Story 4.3's identity cutover left behind: the migration branch in
+    // `scan_library_adds` returns early without ever refreshing them, and this
+    // story's ALTER TABLE gave them a NULL `roster_synced_at`, so without this
+    // filter the first drain after upgrade would upload the whole retired
+    // identity scheme as unnameable rows the RPC's `coalesce` could never
+    // repair (Story 4.11 code review).
+    let mut stmt = conn.prepare(
+        "SELECT track_id, title, artist, added_at, is_baseline, absent_at FROM library_tracks
+         WHERE roster_synced_at IS NULL
+           AND (title IS NOT NULL OR artist IS NOT NULL)
+         ORDER BY first_seen_locally_at ASC, track_id ASC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(PendingLibraryRosterEntry {
+            track_id: row.get(0)?,
+            title: row.get(1)?,
+            artist: row.get(2)?,
+            added_at: row.get(3)?,
+            is_baseline: row.get::<_, i64>(4)? != 0,
+            absent_at: row.get(5)?,
+        })
+    })?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(StoreError::from)
+}
+
+/// Stamps `roster_synced_at` on a batch of roster entries after the cloud
+/// accepted them. Deliberately independent of `synced_at` (the add-event
+/// watermark) — see the `library_tracks` schema comment on `roster_synced_at`
+/// for why the two must never be conflated.
+///
+/// **Compare-and-set on the synced values, not a bare stamp (Story 4.11 code
+/// review).** `sync_loop` and `watch_loop` hold separate connections to the same
+/// WAL file, so a scan can call [`refresh_library_track_tags`] or
+/// [`mark_absent_tracks`] in the window between this drain reading its pending
+/// rows and stamping them. A bare `SET roster_synced_at = ?` would overwrite
+/// that fresh NULL and the edit would never reach the cloud — silently, and
+/// permanently until some unrelated later change re-queued the row. Matching on
+/// the exact title/artist/absent_at that were actually sent means a row that
+/// changed underneath simply does not match and stays pending. The add-event
+/// drain has the same shape but is immune: its rows are immutable once written.
+pub fn mark_library_roster_synced(
+    conn: &Connection,
+    entries: &[PendingLibraryRosterEntry],
+    synced_at: i64,
+) -> Result<(), StoreError> {
+    let mut stmt = conn.prepare(
+        "UPDATE library_tracks SET roster_synced_at = ?1
+         WHERE track_id = ?2
+           AND title IS ?3
+           AND artist IS ?4
+           AND absent_at IS ?5",
+    )?;
+    for entry in entries {
+        stmt.execute(rusqlite::params![
+            synced_at,
+            entry.track_id,
+            entry.title,
+            entry.artist,
+            entry.absent_at
+        ])?;
     }
     Ok(())
 }
@@ -1017,6 +1369,72 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_file(&self.0);
         }
+    }
+
+    /// Story 4.11 AC-6: the coverage pair starts at zero, REPLACES rather than
+    /// accumulates across scan ticks, and survives a reopen of the same store
+    /// file.
+    ///
+    /// The replace half is the point (Story 4.11 code review). Every scan
+    /// recounts the whole catalogue, so the same unidentifiable rows are seen
+    /// again on every tick — an accumulating total would read k×272 after k
+    /// scans in a 930-track library and could never be the "N tracks in your
+    /// library have no artist tag" gauge the disclosure needs.
+    #[test]
+    fn scan_identity_coverage_replaces_rather_than_accumulates_and_persists() {
+        let file = TempStoreFile::new("excluded-no-identity");
+        let conn = open_at(&file.0).expect("store opens");
+        assert_eq!(scan_identity_coverage(&conn).expect("read"), (0, 0));
+
+        set_scan_identity_coverage(&conn, 272, 910).expect("first scan");
+        assert_eq!(scan_identity_coverage(&conn).expect("read"), (272, 910));
+
+        // A second scan of the same unchanged library must report the SAME
+        // numbers, not double them.
+        set_scan_identity_coverage(&conn, 272, 910).expect("second scan");
+        assert_eq!(
+            scan_identity_coverage(&conn).expect("read"),
+            (272, 910),
+            "a re-scan of an unchanged library must not accumulate"
+        );
+
+        // And a genuinely changed library replaces both halves together.
+        set_scan_identity_coverage(&conn, 12, 940).expect("third scan");
+        assert_eq!(scan_identity_coverage(&conn).expect("read"), (12, 940));
+
+        drop(conn);
+        let reopened = open_at(&file.0).expect("reopen");
+        assert_eq!(
+            scan_identity_coverage(&reopened).expect("read"),
+            (12, 940),
+            "the coverage pair must survive a store reopen"
+        );
+    }
+
+    /// Story 4.11 code review: the soft-delete safety gate. A scan that reached
+    /// fewer library roots than an earlier scan did is NOT a complete view and
+    /// must not be allowed to conclude anything was removed.
+    #[test]
+    fn catalogue_reach_reports_incomplete_when_a_root_goes_missing() {
+        let file = TempStoreFile::new("catalogue-reach");
+        let conn = open_at(&file.0).expect("store opens");
+        let boot = "/Users/dj/Music".to_string();
+        let usb = "/Volumes/USB".to_string();
+
+        // First ever scan: nothing wider has been seen, so it is complete.
+        assert!(
+            observe_catalogue_reach(&conn, std::slice::from_ref(&boot)).expect("first"),
+            "a first scan has no wider earlier view to fall short of"
+        );
+        // USB appears — still complete, and the high-water mark grows.
+        assert!(observe_catalogue_reach(&conn, &[boot.clone(), usb.clone()]).expect("both"));
+        // USB unplugged: the scan is now narrower than what has been seen.
+        assert!(
+            !observe_catalogue_reach(&conn, std::slice::from_ref(&boot)).expect("unplugged"),
+            "a scan missing a previously-seen root must report incomplete"
+        );
+        // Replugged: complete again — the mark was never forgotten.
+        assert!(observe_catalogue_reach(&conn, &[boot, usb]).expect("replugged"));
     }
 
     fn sample_derived() -> CapturedDerived {

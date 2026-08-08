@@ -15,9 +15,39 @@ export function formatSetDate(iso: string | null): string {
   return `${weekday} · ${day} ${month} ${year}`;
 }
 
-/** Session-id header label, e.g. "SET 975". */
-export function formatSessionLabel(externalId: string): string {
-  return `SET ${externalId}`;
+/**
+ * Session-id header label, e.g. "SET 975".
+ *
+ * Takes `SetRecord.session_label` (raw `sessions.session_identity`) when the
+ * cloud read path supplied one, falling back to `external_id`. Story 4.6's code
+ * review found this was rendering a raw 36-char uuid: `external_id` is
+ * `sets.id` in the cloud path (the `sync_set` RPC has no `external_id`
+ * parameter, so the agent's Serato-facing id is never stored), and the header
+ * read `SET 872d5614-9894-5803-80f5-aa1dd4177944` where the fixture stage read
+ * `SET 975`.
+ *
+ * The two real `session_identity` shapes (`agent/src-tauri/src/capture.rs`):
+ * - `serato4:<n>` — `n` is Serato's own `history_session.id`, the exact number
+ *   the fixture carried, so modern captures render identically to before.
+ * - `legacy:<fnv1a_hex>` — pre-Serato-4 sets have no session table and so no
+ *   Serato-visible number; identity is a hash of the first play. Shortened
+ *   rather than shown whole: it is an opaque dedup key, not an id a DJ can look
+ *   up, and 16 hex chars in a mono header line is noise.
+ *
+ * Anything else passes through if it is short enough to be an id a human might
+ * recognise (the fixture's bare `"975"`), and is otherwise shortened — which is
+ * what a bare uuid now hits, so even a missing/unjoined `session_label`
+ * degrades to `SET 872D5614` rather than the full 36 characters.
+ */
+export function formatSessionLabel(identity: string): string {
+  const serato4 = /^serato4:(\d+)$/.exec(identity);
+  if (serato4) return `SET ${serato4[1]}`;
+
+  const legacy = /^legacy:([0-9a-f]+)$/i.exec(identity);
+  if (legacy) return `SET ${legacy[1].slice(0, 8).toUpperCase()}`;
+
+  if (identity.length <= 12) return `SET ${identity}`;
+  return `SET ${identity.slice(0, 8).toUpperCase()}`;
 }
 
 /** Human set length, e.g. "5h 56m", "56m", "0m". `null`/non-finite → "—". */

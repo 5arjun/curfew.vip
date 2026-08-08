@@ -58,13 +58,26 @@ pub type LibraryEntry = (String, Option<i64>, Option<String>, Option<String>);
 /// only on the rare tick that actually captures a session.
 /// [`fixed`](Self::fixed) takes an explicit path→epoch map and never touches
 /// the filesystem (tests, and the deliberate "no catalogues" case).
+/// The catalogues one lazy load actually produced, paired with the library
+/// roots they came from. `roots[i]` does not index `libraries[i]` — `roots` is
+/// sorted for a stable comparison, `libraries` keeps discovery order (boot
+/// drive first) because `all_tracks`/`date_added_for` rely on "earlier
+/// catalogues win".
+#[derive(Debug, Default)]
+struct LoadedCatalogues {
+    roots: Vec<String>,
+    libraries: Vec<LegacyLibrary>,
+}
+
 #[derive(Debug, Default)]
 pub struct DateAddedIndex {
     /// `Some(home)` in live mode — the discovery root for `~/Music`.
     home: Option<PathBuf>,
     /// Lazily-loaded catalogues, tried in order. Deterministic: boot-drive
-    /// library first, then mounted volumes sorted by name.
-    catalogues: OnceLock<Vec<LegacyLibrary>>,
+    /// library first, then mounted volumes sorted by name. Carries the roots
+    /// alongside the libraries so a caller can tell *which* catalogues this
+    /// scan actually reached — see [`loaded_roots`](Self::loaded_roots).
+    catalogues: OnceLock<LoadedCatalogues>,
     /// Test/fixed entries, keyed by the exact portable path string, to
     /// `(date_added, title, artist)`. `title`/`artist` (Story 4.3) are only
     /// populated by [`fixed_with_identity`](Self::fixed_with_identity); plain
@@ -116,6 +129,29 @@ impl DateAddedIndex {
         }
     }
 
+    /// Test-only: a fixed index that additionally *declares* which library
+    /// roots a scan reached, so the soft-delete completeness gate in
+    /// `capture::scan_library_adds` can be exercised without touching disk.
+    ///
+    /// Plain [`fixed_with_identity`](Self::fixed_with_identity) reports no roots
+    /// at all, which reads as "nothing has ever been reached" and makes the gate
+    /// trivially satisfied — precisely why the original unmounted-volume
+    /// regression test could not see the bug this story's review found.
+    #[cfg(test)]
+    pub fn fixed_with_identity_and_roots(
+        entries: HashMap<String, FixedEntry>,
+        roots: &[&str],
+    ) -> Self {
+        let index = Self::fixed_with_identity(entries);
+        let mut sorted: Vec<String> = roots.iter().map(|r| (*r).to_string()).collect();
+        sorted.sort();
+        let _ = index.catalogues.set(LoadedCatalogues {
+            roots: sorted,
+            ..Default::default()
+        });
+        index
+    }
+
     /// Whether the catalogues have actually been read yet this index's
     /// lifetime. Story 4.2 (D-3) uses this as its "the library was read on
     /// this tick" signal: the add-scan piggybacks on a load some capture
@@ -134,10 +170,29 @@ impl DateAddedIndex {
         let _ = self.loaded_catalogues();
     }
 
+    /// The library roots this index actually read, sorted — empty in fixed
+    /// mode or when nothing was reachable.
+    ///
+    /// Story 4.11 review: `capture::scan_library_adds`'s soft-delete pass needs
+    /// to distinguish "this track is gone" from "this track's drive isn't
+    /// plugged in". Comparing this against the widest set ever seen is that
+    /// signal — an unmounted volume simply drops out of this list, exactly as
+    /// its tracks drop out of [`all_tracks`](Self::all_tracks), so a shrunken
+    /// list means the scan saw less than the whole library and must not
+    /// conclude anything was *removed*. See this module's own invariant note
+    /// on `all_tracks`.
+    pub fn loaded_roots(&self) -> Vec<String> {
+        self.loaded().roots.clone()
+    }
+
     fn loaded_catalogues(&self) -> &[LegacyLibrary] {
+        &self.loaded().libraries
+    }
+
+    fn loaded(&self) -> &LoadedCatalogues {
         self.catalogues.get_or_init(|| {
             let Some(home) = &self.home else {
-                return Vec::new();
+                return LoadedCatalogues::default();
             };
             let mut roots: Vec<PathBuf> = vec![home.join("Music")];
             // Each mounted volume that carries its own Serato library. Sorted
@@ -154,10 +209,18 @@ impl DateAddedIndex {
             volumes.sort();
             roots.extend(volumes);
 
-            roots
-                .into_iter()
-                .filter_map(|root| LegacyLibrary::load(&root).ok())
-                .collect()
+            // Only roots that actually LOADED are recorded — a mounted volume
+            // whose catalogue is unreadable covers no tracks, so counting it as
+            // "reached" would let a partial scan pass for a complete one.
+            let mut loaded = LoadedCatalogues::default();
+            for root in roots {
+                if let Ok(library) = LegacyLibrary::load(&root) {
+                    loaded.roots.push(root.to_string_lossy().into_owned());
+                    loaded.libraries.push(library);
+                }
+            }
+            loaded.roots.sort();
+            loaded
         })
     }
 

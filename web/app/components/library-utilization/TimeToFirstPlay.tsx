@@ -28,8 +28,15 @@ const TIME_TO_FIRST_PLAY_INSUFFICIENT_COPY =
 
 /**
  * The time-to-first-play module (Story 4.5, AC-1/AC-2/AC-3/AC-4/AC-5) —
- * Library Utilization's second module, alongside the Story 4.3 conversion
- * meter.
+ * Library Utilization's module below the Story 4.7 conversion pair.
+ *
+ * **Rendered by `page.tsx` directly, NOT inside `LibraryUtilizationView`.**
+ * That view is a client component whose purpose is owning the one conversion
+ * window the meter and the trend share; this metric is measured over the
+ * lifetime population with no trailing window, so putting it under that
+ * dropdown would imply a control governs a figure it does not move. See
+ * `page.tsx`'s render block for the full reasoning — it is a deliberate
+ * composition decision, not arrival order.
  *
  * No shipped UX-DR wireframe covers this component's shape — this story's
  * Context & Authority section documents that as a dev-time design call, not
@@ -40,9 +47,12 @@ const TIME_TO_FIRST_PLAY_INSUFFICIENT_COPY =
  *
  * **Every branch renders inside the module shell.** The first shipped version
  * returned a bare `<InsufficientHistory>` in place of the whole section,
- * which dropped the "Time to first play" label and the `.lu-module` 440px
+ * which dropped the "Time to first play" label and the `.lu-module` width
  * cap — leaving the day-one state (every DJ, by D-1's design) as an
- * unattributed full-width block under a 440px meter (Story 4.5 review).
+ * unattributed full-width block under a much narrower meter (Story 4.5
+ * review). That cap now comes from `.lu > .lu-module`: Story 4.7 retired the
+ * blanket `.lu-module` rule once the meter moved into a 340px grid column,
+ * which left this module — the one still parented by `.lu` — uncapped.
  *
  * Two gates, not one (AC-4): {@link hasEnoughTimeToFirstPlayTracks} decides
  * whether there is a population worth a module at all, and

@@ -6,7 +6,6 @@ import {
   convertedWithinWindow,
   CONVERSION_WINDOWS,
   DEFAULT_CONVERSION_WINDOW,
-  DEFAULT_LIVE_WINDOW,
   firstPlayByTrack,
   hasEnoughCohorts,
   hasEnoughTimeToFirstPlayDebuts,
@@ -16,7 +15,6 @@ import {
   isLowConfidenceCohort,
   libraryConversionSummary,
   liveConversionRateSummary,
-  LIVE_CONVERSION_WINDOWS,
   LOW_CONFIDENCE_COHORT_SIZE,
   MIN_TIME_TO_FIRST_PLAY_DEBUTS,
   MIN_TIME_TO_FIRST_PLAY_TRACKS,
@@ -31,7 +29,7 @@ import {
   type LibraryConversionModel,
 } from "./libraryConversion";
 
-/** The default (90-day) series — what every test below reads unless it is
+/** The default (60-day) series — what every test below reads unless it is
  *  specifically about the D-13 window toggle. */
 const at = (m: LibraryConversionModel, w: ConversionWindow = DEFAULT_CONVERSION_WINDOW) =>
   m.windows[w];
@@ -145,13 +143,13 @@ describe("cohort bucketing", () => {
   });
 });
 
-describe("the 90-day conversion window (D-8)", () => {
+describe("the conversion window (D-8; scale unified with the live meter, Story 4.7 AC-3)", () => {
   const addedMs = new Date(2026, 0, 1).getTime();
 
-  it("counts a play on day 89 and on day 90, but not day 91", () => {
-    expect(convertedWithinWindow(addedMs, addedMs + 89 * DAY_MS)).toBe(true);
-    expect(convertedWithinWindow(addedMs, addedMs + 90 * DAY_MS)).toBe(true);
-    expect(convertedWithinWindow(addedMs, addedMs + 91 * DAY_MS)).toBe(false);
+  it("counts a play on day 59 and on day 60 (the default window), but not day 61", () => {
+    expect(convertedWithinWindow(addedMs, addedMs + 59 * DAY_MS)).toBe(true);
+    expect(convertedWithinWindow(addedMs, addedMs + 60 * DAY_MS)).toBe(true);
+    expect(convertedWithinWindow(addedMs, addedMs + 61 * DAY_MS)).toBe(false);
   });
 
   it("counts a play on the add day itself", () => {
@@ -218,14 +216,14 @@ describe("the 90-day conversion window (D-8)", () => {
 
 describe("cohort-recency honesty (D-9)", () => {
   it("measures completeness from the END of the month, not its start", () => {
-    // A track added March 31st has not had its 90 days until ~June 29th.
-    const marchEndPlus90 = new Date(2026, 2, 31, 23, 59, 59, 999).getTime() + 90 * DAY_MS;
-    expect(isCohortComplete("2026-03", marchEndPlus90 - 1, 90)).toBe(false);
-    expect(isCohortComplete("2026-03", marchEndPlus90, 90)).toBe(true);
-    // The naive "start of month + 90d" reading would have called it complete
+    // A track added March 31st has not had its 60 days until ~May 30th.
+    const marchEndPlus60 = new Date(2026, 2, 31, 23, 59, 59, 999).getTime() + 60 * DAY_MS;
+    expect(isCohortComplete("2026-03", marchEndPlus60 - 1, 60)).toBe(false);
+    expect(isCohortComplete("2026-03", marchEndPlus60, 60)).toBe(true);
+    // The naive "start of month + 60d" reading would have called it complete
     // here, scoring every late-March purchase a failure it never had time to
     // avoid.
-    expect(isCohortComplete("2026-03", new Date(2026, 2, 1).getTime() + 90 * DAY_MS, 90)).toBe(false);
+    expect(isCohortComplete("2026-03", new Date(2026, 2, 1).getTime() + 60 * DAY_MS, 60)).toBe(false);
   });
 
   it("omits a still-converting cohort entirely rather than plotting it low", () => {
@@ -250,7 +248,7 @@ describe("cohort-recency honesty (D-9)", () => {
     );
 
     expect(at(model).pendingCohortCount).toBe(2);
-    expect(disclosureFor(model)).toContain("still inside the 90-day window");
+    expect(disclosureFor(model)).toContain("still inside the 60-day window");
   });
 });
 
@@ -295,7 +293,7 @@ describe("unknown-add-date disclosure (D-10 / AC-7)", () => {
       now,
     );
     expect(disclosureFor(model)).toBe(
-      "1 track has no known add date, and 1 recent month is still inside the 90-day window — not counted here.",
+      "1 track has no known add date, and 1 recent month is still inside the 60-day window — not counted here.",
     );
   });
 });
@@ -378,7 +376,7 @@ describe("the chart summary (AC-2)", () => {
         ["2026-03", 10, 6],
       ]), DEFAULT_CONVERSION_WINDOW);
     expect(summary).toBe(
-      "6 of the 10 tracks added in March made it into a set within 90 days (60%) — up from 40% in January.",
+      "6 of the 10 tracks added in March made it into a set within 60 days (60%) — up from 40% in January.",
     );
   });
 
@@ -398,13 +396,13 @@ describe("the chart summary (AC-2)", () => {
           ["2026-03", 100, 52],
         ]), DEFAULT_CONVERSION_WINDOW),
     ).toBe(
-      "52 of the 100 tracks added in March made it into a set within 90 days (52%) — about the same as January.",
+      "52 of the 100 tracks added in March made it into a set within 60 days (52%) — about the same as January.",
     );
   });
 
   it("names the single cohort when only one has completed", () => {
     expect(libraryConversionSummary(modelFrom([["2026-01", 8, 2]]), DEFAULT_CONVERSION_WINDOW)).toBe(
-      "2 of the 8 tracks added in January made it into a set within 90 days (25%).",
+      "2 of the 8 tracks added in January made it into a set within 60 days (25%).",
     );
   });
 
@@ -425,32 +423,32 @@ describe("the chart summary (AC-2)", () => {
     const now = new Date(2026, 4, 15).getTime();
     expect(
       libraryConversionSummary(buildLibraryConversion([added("a", localIso(2026, 4, 1))], [], now), DEFAULT_CONVERSION_WINDOW),
-    ).toBe("No cohorts have finished their 90-day window yet.");
+    ).toBe("No cohorts have finished their 60-day window yet.");
   });
 });
 
-describe("the conversion-window toggle (D-13)", () => {
+describe("the conversion-window toggle (D-13; scale unified with the live meter, Story 4.7 AC-3)", () => {
   it("precomputes every selectable window in one pass", () => {
     const model = buildLibraryConversion([added("a", localIso(2026, 1, 1))], [], NOW);
-    expect(Object.keys(model.windows).map(Number).sort()).toEqual([30, 60, 90]);
+    expect(Object.keys(model.windows).map(Number).sort((a, b) => a - b)).toEqual([14, 30, 60]);
     for (const w of CONVERSION_WINDOWS) expect(model.windows[w].window).toBe(w);
   });
 
-  it("defaults to 90 — the length FR-11 locked, so 4.3's meter cannot disagree", () => {
-    expect(DEFAULT_CONVERSION_WINDOW).toBe(90);
-    expect(CONVERSION_WINDOWS[0]).toBe(90);
+  it("defaults to 60 — the shared scale the meter and the trend now agree on (Story 4.7 AC-3)", () => {
+    expect(DEFAULT_CONVERSION_WINDOW).toBe(60);
+    expect(CONVERSION_WINDOWS[0]).toBe(60);
   });
 
   it("scores a track differently per window, from the SAME play", () => {
     const addedIso = localIso(2026, 1, 1);
     const addMs = new Date(addedIso).getTime();
-    // Played on day 75: inside 90, outside 60 and 30.
-    const sets = [set([play({ track_id: "t", started_at: new Date(addMs + 75 * DAY_MS).toISOString() })])];
+    // Played on day 45: inside 60, outside 30 and 14.
+    const sets = [set([play({ track_id: "t", started_at: new Date(addMs + 45 * DAY_MS).toISOString() })])];
     const model = buildLibraryConversion([added("t", addedIso)], sets, NOW);
 
-    expect(model.windows[90].cohorts[0].converted).toBe(1);
-    expect(model.windows[60].cohorts[0].converted).toBe(0);
+    expect(model.windows[60].cohorts[0].converted).toBe(1);
     expect(model.windows[30].cohorts[0].converted).toBe(0);
+    expect(model.windows[14].cohorts[0].converted).toBe(0);
     // The denominator is the window-independent half — shortening the window
     // must never change how many tracks were ADDED.
     for (const w of CONVERSION_WINDOWS) expect(model.windows[w].cohorts[0].added).toBe(1);
@@ -462,8 +460,8 @@ describe("the conversion-window toggle (D-13)", () => {
     const sets = [
       set([
         play({ track_id: "fast", started_at: new Date(addMs + 5 * DAY_MS).toISOString() }),
-        play({ track_id: "mid", started_at: new Date(addMs + 45 * DAY_MS).toISOString() }),
-        play({ track_id: "slow", started_at: new Date(addMs + 80 * DAY_MS).toISOString() }),
+        play({ track_id: "mid", started_at: new Date(addMs + 20 * DAY_MS).toISOString() }),
+        play({ track_id: "slow", started_at: new Date(addMs + 45 * DAY_MS).toISOString() }),
       ]),
     ];
     const model = buildLibraryConversion(
@@ -472,15 +470,15 @@ describe("the conversion-window toggle (D-13)", () => {
       NOW,
     );
 
-    expect(model.windows[90].cohorts[0].rate).toBeCloseTo(1);
-    expect(model.windows[60].cohorts[0].rate).toBeCloseTo(2 / 3);
-    expect(model.windows[30].cohorts[0].rate).toBeCloseTo(1 / 3);
-    expect(model.windows[90].cohorts[0].rate).toBeGreaterThanOrEqual(model.windows[60].cohorts[0].rate);
+    expect(model.windows[60].cohorts[0].rate).toBeCloseTo(1);
+    expect(model.windows[30].cohorts[0].rate).toBeCloseTo(2 / 3);
+    expect(model.windows[14].cohorts[0].rate).toBeCloseTo(1 / 3);
     expect(model.windows[60].cohorts[0].rate).toBeGreaterThanOrEqual(model.windows[30].cohorts[0].rate);
+    expect(model.windows[30].cohorts[0].rate).toBeGreaterThanOrEqual(model.windows[14].cohorts[0].rate);
   });
 
   it("a shorter window completes MORE cohorts, so the line reaches closer to today", () => {
-    const now = new Date(2026, 4, 15).getTime(); // mid-May
+    const now = new Date(2026, 3, 20).getTime(); // April 20
     const model = buildLibraryConversion(
       [
         added("jan", localIso(2026, 1, 10)),
@@ -491,11 +489,12 @@ describe("the conversion-window toggle (D-13)", () => {
       now,
     );
 
-    // Jan closes 90 days after Jan 31 (~May 1); Feb and Mar have not.
-    expect(model.windows[90].cohorts.map((c) => c.bucket)).toEqual(["2026-01"]);
-    // At 30 days, Feb (closes ~Mar 30) and Mar (closes ~Apr 30) both qualify.
-    expect(model.windows[30].cohorts.map((c) => c.bucket)).toEqual(["2026-01", "2026-02", "2026-03"]);
-    expect(model.windows[30].pendingCohortCount).toBeLessThan(model.windows[90].pendingCohortCount);
+    // Jan closes 60 days after Jan 31 (~Apr 1); Feb (~Apr 29) and Mar
+    // (~May 30) have not.
+    expect(model.windows[60].cohorts.map((c) => c.bucket)).toEqual(["2026-01"]);
+    // At 14 days, Jan (~Feb 14), Feb (~Mar 14), and Mar (~Apr 14) have all closed.
+    expect(model.windows[14].cohorts.map((c) => c.bucket)).toEqual(["2026-01", "2026-02", "2026-03"]);
+    expect(model.windows[14].pendingCohortCount).toBeLessThan(model.windows[60].pendingCohortCount);
   });
 
   it("names the selected window in the caption, never leaving it implicit", () => {
@@ -508,29 +507,32 @@ describe("the conversion-window toggle (D-13)", () => {
       NOW,
     );
 
-    expect(libraryConversionSummary(model, 90)).toContain("within 90 days");
     expect(libraryConversionSummary(model, 60)).toContain("within 60 days");
     expect(libraryConversionSummary(model, 30)).toContain("within 30 days");
+    expect(libraryConversionSummary(model, 14)).toContain("within 14 days");
   });
 
   it("names the selected window in the pending-cohort disclosure too", () => {
-    const now = new Date(2026, 4, 15).getTime();
+    // May 5 — inside BOTH the 60-day and the 14-day window still measured
+    // from April's month-end (~Jun 29 and ~May 14 respectively), so the
+    // April cohort is genuinely pending under either selection.
+    const now = new Date(2026, 4, 5).getTime();
     const model = buildLibraryConversion([added("a", localIso(2026, 4, 1))], [], now);
-    expect(disclosureFor(model, 90)).toContain("90-day window");
-    expect(disclosureFor(model, 30)).toContain("30-day window");
+    expect(disclosureFor(model, 60)).toContain("60-day window");
+    expect(disclosureFor(model, 14)).toContain("14-day window");
   });
 
   it("gates insufficient-history per window, not globally", () => {
-    const now = new Date(2026, 4, 15).getTime();
+    const now = new Date(2026, 3, 20).getTime(); // April 20
     const model = buildLibraryConversion(
       [added("jan", localIso(2026, 1, 10)), added("feb", localIso(2026, 2, 10))],
       [],
       now,
     );
-    // Only Jan has closed at 90 — one cohort is not a trend.
-    expect(hasEnoughCohorts(model, 90)).toBe(false);
-    // Both have closed at 30.
-    expect(hasEnoughCohorts(model, 30)).toBe(true);
+    // Only Jan has closed at 60 — one cohort is not a trend.
+    expect(hasEnoughCohorts(model, 60)).toBe(false);
+    // Both have closed at 14.
+    expect(hasEnoughCohorts(model, 14)).toBe(true);
   });
 
   it("leaves the undated count window-independent — undated is undated at every window", () => {
@@ -547,7 +549,7 @@ describe("the conversion-window toggle (D-13)", () => {
 });
 
 describe("live conversion rate (Story 4.3, Decision E-1, AC-1/AC-3/AC-4)", () => {
-  it("counts a track added and played inside the window, defaulting to DEFAULT_LIVE_WINDOW", () => {
+  it("counts a track added and played inside the window, defaulting to DEFAULT_CONVERSION_WINDOW", () => {
     const addedIso = localIso(2026, 5, 1);
     const addMs = new Date(addedIso).getTime();
     const now = addMs + 10 * DAY_MS;
@@ -556,7 +558,7 @@ describe("live conversion rate (Story 4.3, Decision E-1, AC-1/AC-3/AC-4)", () =>
     const rate = buildLiveConversionRate([added("t", addedIso)], sets, now);
 
     expect(rate).toMatchObject({
-      window: DEFAULT_LIVE_WINDOW,
+      window: DEFAULT_CONVERSION_WINDOW,
       added: 1,
       played: 1,
       rate: 1,
@@ -687,7 +689,7 @@ describe("live conversion rate (Story 4.3, Decision E-1, AC-1/AC-3/AC-4)", () =>
     expect(undatedDisclosure({ noAddDateCount: 0, pendingCohortCount: 0 }, 60)).toBeNull();
   });
 
-  it.each(LIVE_CONVERSION_WINDOWS)("accepts every selectable live window (%i days)", (window) => {
+  it.each(CONVERSION_WINDOWS)("accepts every selectable live window (%i days)", (window) => {
     const addedIso = localIso(2026, 5, 1);
     const now = new Date(addedIso).getTime() + 1 * DAY_MS;
     const rate = buildLiveConversionRate([added("t", addedIso)], [], now, window);

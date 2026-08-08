@@ -15,7 +15,8 @@ const readSchema = (name: string) =>
  * Story 4.2 added the second entry: its `SyncLibraryAddEventBatch` is a new,
  * separate payload (AD-21's sanctioned second agent write), and it gets the
  * same CI regression protection from birth rather than inheriting none just
- * because it wasn't part of Story 1.10's original freeze.
+ * because it wasn't part of Story 1.10's original freeze. Story 4.11 adds the
+ * third, `SyncLibraryRosterBatch` (AD-22), for the same reason.
  */
 const SCHEMA_PAIRS = [
   {
@@ -27,6 +28,11 @@ const SCHEMA_PAIRS = [
     name: "sync-library-add-events.schema.json",
     baseline: readSchema("sync-library-add-events.schema.frozen-baseline.json"),
     current: readSchema("sync-library-add-events.schema.json"),
+  },
+  {
+    name: "sync-library-roster.schema.json",
+    baseline: readSchema("sync-library-roster.schema.frozen-baseline.json"),
+    current: readSchema("sync-library-roster.schema.json"),
   },
 ] as const;
 
