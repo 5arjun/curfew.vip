@@ -34,13 +34,23 @@ const PIP_COUNT = 10;
  * `libraryConversionSummary` already established, so the caption and its
  * accessible text-equivalent can never drift apart (Story 4.1's review
  * lesson).
+ *
+ * `unidentifiableDisclosure` (Story 4.11 AC-6) is a SEPARATE honesty debt
+ * from `undatedDisclosure`'s: that one covers tracks that ARE in the
+ * denominator but have no known add date; this one covers catalogue rows
+ * that never reached the denominator at all (no title/artist, no identity
+ * to record under). Both render, deliberately as two lines rather than one
+ * merged sentence — they describe different failure shapes and merging
+ * them would blur which gap a DJ is actually reading about.
  */
 export function ConversionRateMeter({
   rates,
   window,
+  unidentifiableDisclosure,
 }: {
   rates: Record<ConversionWindow, LiveConversionRate>;
   window: ConversionWindow;
+  unidentifiableDisclosure?: string | null;
 }) {
   const rate = rates[window];
   const summary = liveConversionRateSummary(rate);
@@ -83,6 +93,7 @@ export function ConversionRateMeter({
         </p>
       )}
       {disclosure && <p className="lu-disclosure">{disclosure}</p>}
+      {unidentifiableDisclosure && <p className="lu-disclosure">{unidentifiableDisclosure}</p>}
     </section>
   );
 }

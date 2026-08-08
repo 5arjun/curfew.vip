@@ -285,6 +285,82 @@ export interface SyncLibraryAddEventBatch {
   events: SyncLibraryAddEvent[];
 }
 
+/* ---- Library roster (Story 4.11, AD-22) -------------------------------------- */
+
+/**
+ * One current-state library roster entry — Tier A only (title/artist; BPM,
+ * key, and genre are Tier B, explicitly parked, see Story 4.11's Context &
+ * Authority section). Unlike every other wire artifact in this file, this
+ * one describes **mutable current state**, not an immutable as-recorded
+ * event: a re-tagged track's title/artist are expected to change across
+ * batches for the same `track_id`, and the cloud-side RPC upserts
+ * accordingly (current-state `DO UPDATE`, not `SyncLibraryAddEvent`'s
+ * first-write-wins `DO NOTHING`). `added_at`/`is_baseline` do NOT share that
+ * mutability — they describe how/when a track first entered the roster and
+ * must never move on a re-scan (Story 4.11 AC-3's invariant).
+ *
+ * **Why this is not a field on [`SyncLibraryAddEvent`].** That type is
+ * go-forward-only by construction (AD-21 — baseline tracks are structurally
+ * excluded from it). This story's whole point is that baseline tracks DO
+ * reach the roster (AC-3) while still never reaching cohort math — folding
+ * the two together would make that separation impossible to enforce on the
+ * wire. `library_track_events` (the cohort denominator, AD-21) and this
+ * roster stay two separate tables with two separate purposes on both sides
+ * of the contract.
+ */
+export interface SyncLibraryRosterEntry {
+  /** Opaque `fnv1a_hex` track identity (D-2) — same value as `SyncPlay.track_id`/`SyncLibraryAddEvent.track_id`. */
+  track_id: string;
+  /** Raw, un-normalized song title. `null` only in the pathological case where a fixed test catalogue never populated it — a track missing **either** a resolvable title or a resolvable artist has no `track_id` to report under at all — the identity hash requires both (AD-11, AC-6). */
+  title: string | null;
+  /** Raw, un-normalized artist. Same absence rule as `title`. */
+  artist: string | null;
+  /**
+   * Unix epoch **seconds** — when the library first saw this track, from
+   * `database V2`'s `tadd`/`uadd`. `null` when no reachable catalogue covers
+   * the track — never guessed (AD-11). Fixed at first sighting; never updated
+   * by a later current-state batch for the same `track_id` (AC-3).
+   *
+   * Epoch integers, not ISO 8601: the `sync_library_roster` RPC parses these
+   * with `to_timestamp(...::bigint)`, matching `sync_set` and
+   * `sync_library_add_events`. This is a **wire** type — the web read model
+   * (`web/lib/sets/libraryRoster.ts`) uses ISO strings, because PostgREST
+   * renders the stored `timestamptz` that way.
+   */
+  added_at: number | null;
+  /**
+   * `true` for D-1's silent first-run baseline snapshot. Fixed at first
+   * sighting, same as `added_at` — **must never be read for conversion-rate
+   * cohort math** (that denominator is `library_track_events`/AD-21, a
+   * wholly separate table); this field exists so the roster can name a
+   * baseline track, not so anything can compute a cohort from it.
+   */
+  is_baseline: boolean;
+  /**
+   * Unix epoch **seconds**, or `null` if the track is currently present in
+   * the DJ's library — set when a previously-known track is missing from a
+   * scan (Story 4.11 AC-5), cleared if it reappears. A soft-delete marker,
+   * never a hard removal: an absent row keeps its identity and history.
+   */
+  absent_at: number | null;
+}
+
+/**
+ * The batch envelope the agent `POST`s — same batching rationale as
+ * [`SyncLibraryAddEventBatch`] (a crate import adds hundreds of tracks at
+ * once; the cloud write is idempotent on `(dj_id, track_id)`), but unlike
+ * that batch's first-write-wins semantics, a redelivered roster batch is a
+ * **current-state upsert**, not strictly a no-op — redelivering the same
+ * batch twice is still safe (identical values in, identical values out).
+ */
+export interface SyncLibraryRosterBatch {
+  /** Contract version this batch was produced against. */
+  contract_version: ContractVersion;
+  /** Semver of the agent that produced the batch — same traceability role as `SyncPayload.agent_version`. */
+  agent_version: string;
+  entries: SyncLibraryRosterEntry[];
+}
+
 /**
  * Relative path (from this package root) to the JSON-schema artifact the Rust
  * agent consumes. Kept as a constant so both sides reference one source of truth.
@@ -298,3 +374,9 @@ export const SYNC_PAYLOAD_SCHEMA_PATH = "schema/sync-payload.schema.json" as con
  */
 export const SYNC_LIBRARY_ADD_EVENTS_SCHEMA_PATH =
   "schema/sync-library-add-events.schema.json" as const;
+
+/**
+ * Same role again, for the Story 4.11 roster batch — a third, independent
+ * artifact (AD-22), not an extension of either of the above.
+ */
+export const SYNC_LIBRARY_ROSTER_SCHEMA_PATH = "schema/sync-library-roster.schema.json" as const;

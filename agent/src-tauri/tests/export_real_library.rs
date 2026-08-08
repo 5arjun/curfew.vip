@@ -1,6 +1,7 @@
 //! One-off, env-gated exporter that dumps the DJ's **whole library catalogue** —
-//! every track `database V2` knows about, played or not — as the opaque
-//! `(track_id, added_at)` pairs Story 4.2's `library_track_events` stores.
+//! every track `database V2` knows about, played or not — as
+//! `{ track_id, added_at, title, artist }` records mirroring what Story 4.2's
+//! `library_track_events` and (as of Story 4.11) `library_roster` store.
 //!
 //! **Why this exists.** The committed set fixture (`export_real_fixtures.rs`)
 //! is derived from the play log, so every track in it is by definition a track
@@ -16,13 +17,18 @@
 //! sees a track, the agent would have too — which is the point of exporting
 //! through it rather than reimplementing the read.
 //!
-//! **It emits no paths.** Identity is [`capture::track_id_from_title_artist`]
-//! — `fnv1a_hex` of normalized title+artist (Story 4.3, Decision E-2; was the
-//! volume-root-relative path under D-2) — the same opaque value that crosses
-//! the wire. Neither the raw path nor the raw title/artist leave this process,
-//! so the output carries no local username, folder structure, or song
-//! metadata, and is safe to commit, exactly like the set fixture's derived
-//! stats are.
+//! **It emits no paths, but (as of Story 4.11) DOES emit title/artist.**
+//! Identity is [`capture::track_id_from_title_artist`] — `fnv1a_hex` of
+//! normalized title+artist (Story 4.3, Decision E-2; was the volume-root-
+//! relative path under D-2) — the same opaque value that crosses the wire.
+//! Prior to Story 4.11 this exporter emitted only that opaque id, matching
+//! `library_track_events`'s Tier-A-less shape; it now ALSO emits the raw
+//! title/artist Story 4.11's `library_roster` carries, so the roster fixture
+//! (`build-library-roster-fixture.mjs`) can show real, nameable tracks rather
+//! than opaque hashes. This is the same category of data `SyncPlay` already
+//! sends per play (Story 4.11 AC-8's ruling) — a change in volume, not in
+//! category. The raw file **path** still never leaves this process; only the
+//! path's derived hash does.
 //!
 //! This is NOT a CI test: skipped entirely unless `CURFEW_REAL_HOME` is set, so
 //! `cargo test` in CI (which has no real Serato data, and never commits any) is
@@ -58,6 +64,14 @@ struct ExportedLibraryTrack {
     /// catalogue holds no date for this track (the real ~6% gap). `web/`
     /// converts to ISO at fixture-build time, same as the set exporter.
     added_at: Option<i64>,
+    /// Story 4.11 Tier A: raw title/artist, additive fields on an
+    /// already-committed export shape (`build-library-fixture.mjs` only
+    /// reads `track_id`/`added_at` and ignores the rest, so this is safe for
+    /// that existing consumer). Never absent when `track_id` is present —
+    /// `track_id_from_title_artist` already required both to mint an
+    /// identity, so a row that made it into `by_id` at all has both.
+    title: String,
+    artist: String,
 }
 
 #[test]
@@ -84,7 +98,7 @@ fn export_real_library_catalogue() {
     // whole point of Decision E-2) and emit in a stable order, so re-running
     // against an unchanged library produces a byte-identical file and the
     // committed fixture diffs cleanly.
-    let mut by_id: BTreeMap<String, Option<i64>> = BTreeMap::new();
+    let mut by_id: BTreeMap<String, (Option<i64>, String, String)> = BTreeMap::new();
     let mut no_identity = 0usize;
     let total = tracks.len();
     for (_portable_path, added_at, title, artist) in tracks {
@@ -96,13 +110,27 @@ fn export_real_library_catalogue() {
             continue;
         };
         // First write wins, matching the cloud's own `on conflict do nothing`:
-        // a duplicate must never downgrade a resolved date to `None`.
-        by_id.entry(id).or_insert(added_at);
+        // a duplicate must never downgrade a resolved date to `None`. Both
+        // `title`/`artist` are `Some` here (required to have reached `id`
+        // at all), so the `unwrap_or_default` below never actually fires --
+        // it exists only to satisfy the type, not as a real fallback.
+        by_id.entry(id).or_insert((
+            added_at,
+            title.unwrap_or_default(),
+            artist.unwrap_or_default(),
+        ));
     }
 
     let exported: Vec<ExportedLibraryTrack> = by_id
         .into_iter()
-        .map(|(track_id, added_at)| ExportedLibraryTrack { track_id, added_at })
+        .map(
+            |(track_id, (added_at, title, artist))| ExportedLibraryTrack {
+                track_id,
+                added_at,
+                title,
+                artist,
+            },
+        )
         .collect();
 
     let dated = exported.iter().filter(|t| t.added_at.is_some()).count();

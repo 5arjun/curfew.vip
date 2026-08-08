@@ -1,8 +1,16 @@
 // Fixture builder (Story 3.6 Task 4): converts the agent's local-shape export
-// (epoch timestamps) into the frozen wire-shape `SyncPayload["set"]` the
-// dashboard reads, doing the epoch → ISO-8601 conversion the frozen contract
-// requires at "payload-build time" (shared/src/index.ts: `started_at` is ISO on
-// the wire; the agent stores/emits Unix epoch seconds and has no chrono).
+// (epoch timestamps) into the frozen wire-shape `SyncPayload["set"]`, doing
+// the epoch → ISO-8601 conversion the frozen contract requires at
+// "payload-build time" (shared/src/index.ts: `started_at` is ISO on the
+// wire; the agent stores/emits Unix epoch seconds and has no chrono).
+//
+// TEST-ONLY as of Story 4.6: `recent-sets.fixture.json` was the day-one
+// stand-in for `web/lib/sets/index.ts`'s production read path (Decision A);
+// that seam now reads Supabase directly and no longer imports this file. It
+// is kept committed only as realistic sample data for the pure unit tests
+// that import it directly (`dancefloor.test.ts`, `setDetail.test.ts`) —
+// regenerate it for test-fixture purposes only, not to update "the" data DJs
+// see, which no longer exists.
 //
 // The input is produced, read-only, from the DJ's real master.sqlite by:
 //   CURFEW_REAL_MASTER=".../master.sqlite" CURFEW_FIXTURE_OUT=/tmp/real_sets.json \

@@ -544,6 +544,147 @@ pub fn sync_pending_library_add_events(
     Ok(summary)
 }
 
+// ---- Story 4.11: library roster batch sync (AD-22) -------------------------
+
+/// How many roster entries go up in one RPC call. Reuses the exact same cap
+/// as [`ADD_EVENT_BATCH_SIZE`] — a roster entry carries two more string
+/// fields (title/artist) than an add-event, but neither is large enough
+/// (real DJ metadata, not free text) to justify a second tuned constant.
+const ROSTER_BATCH_SIZE: usize = ADD_EVENT_BATCH_SIZE;
+
+/// The wire body for `POST {SUPABASE_URL}/rest/v1/rpc/sync_library_roster`.
+/// Mirrors `SyncLibraryRosterEntry` in `@curfew/shared` and the migration's
+/// parameter list; `dj_id` is deliberately absent, same reasoning as
+/// [`SyncLibraryAddEventWire`].
+///
+/// `added_at`/`absent_at` are unix epoch seconds on the wire (this
+/// boundary's existing convention), cast server-side via `to_timestamp()`.
+#[derive(Debug, Serialize)]
+struct SyncLibraryRosterEntryWire {
+    track_id: String,
+    title: Option<String>,
+    artist: Option<String>,
+    added_at: Option<i64>,
+    is_baseline: bool,
+    absent_at: Option<i64>,
+}
+
+/// Wraps the `sync_library_roster` RPC — same trait-injection pattern as
+/// [`LibraryAddEventClient`] so tests never make a real network call.
+pub trait LibraryRosterClient {
+    fn sync_library_roster(
+        &self,
+        access_token: &str,
+        request_body: &serde_json::Value,
+    ) -> Result<(), SyncError>;
+}
+
+impl LibraryRosterClient for SupabaseSyncClient {
+    fn sync_library_roster(
+        &self,
+        access_token: &str,
+        request_body: &serde_json::Value,
+    ) -> Result<(), SyncError> {
+        let url = format!("{}/rest/v1/rpc/sync_library_roster", debug_sync_base_url());
+        let response = self
+            .http
+            .post(&url)
+            .header("apikey", crate::config::SUPABASE_PUBLISHABLE_KEY)
+            .header("Authorization", format!("Bearer {access_token}"))
+            .json(request_body)
+            .send()
+            .map_err(SyncError::Http)?;
+
+        if !response.status().is_success() {
+            return Err(SyncError::Rejected(response.status()));
+        }
+        Ok(())
+    }
+}
+
+/// Outcome of one [`sync_pending_library_roster`] pass. Mirrors
+/// [`AddEventSyncSummary`]'s shape and reasoning exactly.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct RosterSyncSummary {
+    pub attempted: usize,
+    pub synced: usize,
+}
+
+/// Drains the local roster queue (`library_tracks` rows with
+/// `roster_synced_at IS NULL`) in batches (Story 4.11, AD-22).
+///
+/// Reuses this module's existing token fetch and the same at-least-once
+/// discipline as [`sync_pending_library_add_events`]: rows are only stamped
+/// `roster_synced_at` after the cloud accepted them, so a batch lost
+/// mid-flight is simply re-sent — and because the cloud RPC's write is a
+/// current-state upsert (not first-write-wins), a redelivery is doubly safe:
+/// identical values in, identical values out.
+///
+/// Unlike the add-event drain, baseline rows are NOT excluded from this
+/// queue — carrying them to the roster is Story 4.11's whole point (AC-3).
+/// What IS structurally guaranteed is that this function never touches
+/// `library_track_events`: it reads/writes `library_tracks` and calls only
+/// [`LibraryRosterClient::sync_library_roster`], a wholly separate RPC from
+/// [`LibraryAddEventClient::sync_library_add_events`].
+pub fn sync_pending_library_roster(
+    conn: &rusqlite::Connection,
+    tokens: &Mutex<Option<TokenPair>>,
+    token_store: &dyn TokenStore,
+    auth_client: &dyn AuthClient,
+    client: &dyn LibraryRosterClient,
+) -> Result<RosterSyncSummary, SyncError> {
+    let pending = store::library_roster_pending_sync(conn).map_err(SyncError::Store)?;
+    // Cheapest possible early-out: an agent with nothing to send must not pay
+    // for a token fetch (and must not surface an auth failure) every pass.
+    if pending.is_empty() {
+        return Ok(RosterSyncSummary::default());
+    }
+
+    let access_token =
+        get_valid_access_token(tokens, token_store, auth_client).map_err(SyncError::Auth)?;
+
+    let mut summary = RosterSyncSummary {
+        attempted: pending.len(),
+        ..Default::default()
+    };
+
+    for batch in pending.chunks(ROSTER_BATCH_SIZE) {
+        let entries: Vec<SyncLibraryRosterEntryWire> = batch
+            .iter()
+            .map(|entry| SyncLibraryRosterEntryWire {
+                track_id: entry.track_id.clone(),
+                title: entry.title.clone(),
+                artist: entry.artist.clone(),
+                added_at: entry.added_at,
+                is_baseline: entry.is_baseline,
+                absent_at: entry.absent_at,
+            })
+            .collect();
+        let request_body = serde_json::json!({ "entries": serde_json::to_value(&entries).map_err(SyncError::Corrupt)? });
+
+        // Same posture as the add-event drain: a failed batch stops the pass
+        // rather than pressing on, and the rows keep `roster_synced_at NULL`
+        // for the next drain.
+        if let Err(e) = client.sync_library_roster(&access_token, &request_body) {
+            #[cfg(debug_assertions)]
+            eprintln!("curfew-agent: library roster batch sync failed: {e}");
+            return Err(e);
+        }
+
+        let synced_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        // The batch itself, not just its ids: the stamp is a compare-and-set
+        // against the values actually sent, so an edit that landed mid-drain
+        // stays pending instead of being silently marked synced.
+        store::mark_library_roster_synced(conn, batch, synced_at).map_err(SyncError::Store)?;
+        summary.synced += batch.len();
+    }
+
+    Ok(summary)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1152,8 +1293,13 @@ mod tests {
         store::record_library_tracks(
             &conn,
             &[
-                ("aaaaaaaaaaaaaaaa".to_string(), Some(1_772_323_200)),
-                ("bbbbbbbbbbbbbbbb".to_string(), None),
+                (
+                    "aaaaaaaaaaaaaaaa".to_string(),
+                    Some(1_772_323_200),
+                    None,
+                    None,
+                ),
+                ("bbbbbbbbbbbbbbbb".to_string(), None, None, None),
             ],
             false,
             1_700_000_000,
@@ -1196,8 +1342,18 @@ mod tests {
         store::record_library_tracks(
             &conn,
             &[
-                ("aaaaaaaaaaaaaaaa".to_string(), Some(1_600_000_000)),
-                ("bbbbbbbbbbbbbbbb".to_string(), Some(1_600_000_001)),
+                (
+                    "aaaaaaaaaaaaaaaa".to_string(),
+                    Some(1_600_000_000),
+                    None,
+                    None,
+                ),
+                (
+                    "bbbbbbbbbbbbbbbb".to_string(),
+                    Some(1_600_000_001),
+                    None,
+                    None,
+                ),
             ],
             true,
             1_700_000_000,
@@ -1224,7 +1380,7 @@ mod tests {
         let conn = open_at(&file.0).expect("store opens");
         store::record_library_tracks(
             &conn,
-            &[("aaaaaaaaaaaaaaaa".to_string(), None)],
+            &[("aaaaaaaaaaaaaaaa".to_string(), None, None, None)],
             false,
             1_700_000_000,
         )
@@ -1277,8 +1433,8 @@ mod tests {
     fn a_large_queue_is_split_into_bounded_batches() {
         let file = TempStoreFile::new("add-events-batching");
         let conn = open_at(&file.0).expect("store opens");
-        let tracks: Vec<(String, Option<i64>)> = (0..ADD_EVENT_BATCH_SIZE + 5)
-            .map(|i| (format!("{i:016x}"), None))
+        let tracks: Vec<store::IdentifiedLibraryTrack> = (0..ADD_EVENT_BATCH_SIZE + 5)
+            .map(|i| (format!("{i:016x}"), None, None, None))
             .collect();
         store::record_library_tracks(&conn, &tracks, false, 1_700_000_000).unwrap();
 
@@ -1301,5 +1457,432 @@ mod tests {
             ADD_EVENT_BATCH_SIZE
         );
         assert_eq!(bodies[1]["events"].as_array().unwrap().len(), 5);
+    }
+
+    // ---- Story 4.11: library roster batch drain (AD-22) -------------------
+
+    /// Same hand-rolled double convention as `FakeAddEventClient`.
+    #[derive(Default)]
+    struct FakeRosterClient {
+        bodies: Mutex<Vec<serde_json::Value>>,
+        fail_after: Option<usize>,
+    }
+
+    impl FakeRosterClient {
+        fn failing_after(calls: usize) -> Self {
+            Self {
+                fail_after: Some(calls),
+                ..Default::default()
+            }
+        }
+        fn bodies(&self) -> Vec<serde_json::Value> {
+            self.bodies.lock().unwrap().clone()
+        }
+    }
+
+    impl LibraryRosterClient for FakeRosterClient {
+        fn sync_library_roster(
+            &self,
+            _access_token: &str,
+            body: &serde_json::Value,
+        ) -> Result<(), SyncError> {
+            let mut bodies = self.bodies.lock().unwrap();
+            if let Some(limit) = self.fail_after {
+                if bodies.len() >= limit {
+                    return Err(SyncError::Http(
+                        reqwest::blocking::Client::new()
+                            .get("http://127.0.0.1:1")
+                            .send()
+                            .expect_err("a refused connect is the transient-failure fixture"),
+                    ));
+                }
+            }
+            bodies.push(body.clone());
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_successful_roster_drain_stamps_roster_synced_at_and_stops_returning_the_rows() {
+        let file = TempStoreFile::new("roster");
+        let conn = open_at(&file.0).expect("store opens");
+        store::record_library_tracks(
+            &conn,
+            &[(
+                "aaaaaaaaaaaaaaaa".to_string(),
+                Some(1_772_323_200),
+                Some("Track A".to_string()),
+                Some("Artist A".to_string()),
+            )],
+            false,
+            1_700_000_000,
+        )
+        .unwrap();
+
+        let (tokens, token_store, auth_client) = add_event_auth();
+        let client = FakeRosterClient::default();
+
+        let summary =
+            sync_pending_library_roster(&conn, &tokens, &token_store, &auth_client, &client)
+                .expect("drain succeeds");
+
+        assert_eq!(summary.attempted, 1);
+        assert_eq!(summary.synced, 1);
+        assert!(
+            store::library_roster_pending_sync(&conn)
+                .unwrap()
+                .is_empty(),
+            "a synced roster entry must no longer appear as pending"
+        );
+
+        let bodies = client.bodies();
+        let entries = bodies[0]["entries"].as_array().expect("entries array");
+        assert_eq!(entries[0]["track_id"], "aaaaaaaaaaaaaaaa");
+        assert_eq!(entries[0]["title"], "Track A");
+        assert_eq!(entries[0]["artist"], "Artist A");
+        assert_eq!(entries[0]["is_baseline"], false);
+    }
+
+    /// Story 4.11 AC-3's central invariant, checked at the sync boundary too:
+    /// a baseline row IS drained by the roster sync (unlike the add-event
+    /// drain, which structurally excludes it) — that is this story's whole
+    /// point.
+    #[test]
+    fn baseline_rows_are_drained_by_the_roster_sync_unlike_add_events() {
+        let file = TempStoreFile::new("roster-baseline");
+        let conn = open_at(&file.0).expect("store opens");
+        store::record_library_tracks(
+            &conn,
+            &[(
+                "aaaaaaaaaaaaaaaa".to_string(),
+                Some(1_600_000_000),
+                Some("Track A".to_string()),
+                Some("Artist A".to_string()),
+            )],
+            true,
+            1_700_000_000,
+        )
+        .unwrap();
+
+        let (tokens, token_store, auth_client) = add_event_auth();
+        let client = FakeRosterClient::default();
+
+        let summary =
+            sync_pending_library_roster(&conn, &tokens, &token_store, &auth_client, &client)
+                .expect("drain succeeds");
+
+        assert_eq!(
+            summary.synced, 1,
+            "a baseline row reaches the roster, unlike library_track_events"
+        );
+        let bodies = client.bodies();
+        assert_eq!(bodies[0]["entries"][0]["is_baseline"], true);
+    }
+
+    #[test]
+    fn a_failed_roster_batch_leaves_its_rows_pending_for_the_next_pass() {
+        let file = TempStoreFile::new("roster-fail");
+        let conn = open_at(&file.0).expect("store opens");
+        store::record_library_tracks(
+            &conn,
+            &[(
+                "aaaaaaaaaaaaaaaa".to_string(),
+                None,
+                Some("Track A".to_string()),
+                Some("Artist A".to_string()),
+            )],
+            false,
+            1_700_000_000,
+        )
+        .unwrap();
+
+        let (tokens, token_store, auth_client) = add_event_auth();
+        let client = FakeRosterClient::failing_after(0);
+
+        let result =
+            sync_pending_library_roster(&conn, &tokens, &token_store, &auth_client, &client);
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().retry_class(),
+            RetryClass::Transient,
+            "a refused connection is worth retrying, not a permanent skip"
+        );
+        assert_eq!(
+            store::library_roster_pending_sync(&conn).unwrap().len(),
+            1,
+            "a failed batch must stay queued -- at-least-once, never at-most-once"
+        );
+    }
+
+    #[test]
+    fn an_empty_roster_queue_costs_no_token_fetch_and_no_network_call() {
+        let file = TempStoreFile::new("roster-empty");
+        let conn = open_at(&file.0).expect("store opens");
+
+        let no_tokens = Mutex::new(None);
+        let client = FakeRosterClient::default();
+
+        let summary = sync_pending_library_roster(
+            &conn,
+            &no_tokens,
+            &FakeTokenStore::default(),
+            &FakeAuthClient,
+            &client,
+        )
+        .expect("an empty queue is not an error even with no token at all");
+
+        assert_eq!(summary, RosterSyncSummary::default());
+        assert!(client.bodies().is_empty());
+    }
+
+    /// Story 4.11 AC-4: a re-tag resets `roster_synced_at` so the drain picks
+    /// it up again, even though the row already synced once.
+    #[test]
+    fn a_retagged_track_is_re_drained_after_already_syncing_once() {
+        let file = TempStoreFile::new("roster-retag");
+        let conn = open_at(&file.0).expect("store opens");
+        store::record_library_tracks(
+            &conn,
+            &[(
+                "aaaaaaaaaaaaaaaa".to_string(),
+                Some(1_700_000_000),
+                Some("Track A".to_string()),
+                Some("Artist A".to_string()),
+            )],
+            false,
+            1_700_000_000,
+        )
+        .unwrap();
+
+        let (tokens, token_store, auth_client) = add_event_auth();
+        let client = FakeRosterClient::default();
+        sync_pending_library_roster(&conn, &tokens, &token_store, &auth_client, &client)
+            .expect("first drain");
+        assert!(store::library_roster_pending_sync(&conn)
+            .unwrap()
+            .is_empty());
+
+        store::refresh_library_track_tags(
+            &conn,
+            &[(
+                "aaaaaaaaaaaaaaaa".to_string(),
+                Some("Retagged".to_string()),
+                Some("Retagged Artist".to_string()),
+            )],
+        )
+        .unwrap();
+
+        let pending = store::library_roster_pending_sync(&conn).unwrap();
+        assert_eq!(
+            pending.len(),
+            1,
+            "a re-tag must re-enter the pending queue, not stay synced forever"
+        );
+
+        let summary =
+            sync_pending_library_roster(&conn, &tokens, &token_store, &auth_client, &client)
+                .expect("second drain");
+        assert_eq!(summary.synced, 1);
+        let bodies = client.bodies();
+        assert_eq!(bodies[1]["entries"][0]["title"], "Retagged");
+    }
+
+    #[test]
+    fn a_large_roster_queue_is_split_into_bounded_batches() {
+        let file = TempStoreFile::new("roster-batching");
+        let conn = open_at(&file.0).expect("store opens");
+        let tracks: Vec<store::IdentifiedLibraryTrack> = (0..ROSTER_BATCH_SIZE + 5)
+            .map(|i| {
+                (
+                    format!("{i:016x}"),
+                    None,
+                    Some(format!("Track {i}")),
+                    Some(format!("Artist {i}")),
+                )
+            })
+            .collect();
+        store::record_library_tracks(&conn, &tracks, false, 1_700_000_000).unwrap();
+
+        let (tokens, token_store, auth_client) = add_event_auth();
+        let client = FakeRosterClient::default();
+
+        let summary =
+            sync_pending_library_roster(&conn, &tokens, &token_store, &auth_client, &client)
+                .expect("drain succeeds");
+
+        assert_eq!(summary.synced, ROSTER_BATCH_SIZE + 5);
+        let bodies = client.bodies();
+        assert_eq!(
+            bodies.len(),
+            2,
+            "a crate import is batched, not one call per track"
+        );
+        assert_eq!(
+            bodies[0]["entries"].as_array().unwrap().len(),
+            ROSTER_BATCH_SIZE
+        );
+        assert_eq!(bodies[1]["entries"].as_array().unwrap().len(), 5);
+    }
+
+    // ---- Story 4.11 Task 7: baseline-never-reaches-cohort-math invariant --
+
+    /// The hazard this story's Context & Authority section names as the most
+    /// plausible one it introduces: `synced_at` (the add-event watermark,
+    /// feeding `library_track_events` -- the cohort denominator, AD-21) and
+    /// `roster_synced_at` (this story's watermark, feeding `library_roster`)
+    /// must stay two wholly independent signals on the same `library_tracks`
+    /// row. If a future edit ever conflated them -- e.g. made
+    /// `mark_library_roster_synced` touch `synced_at`, or vice versa -- a
+    /// roster-only sync could make a track look add-event-synced (or
+    /// vice versa) with no such thing having happened, corrupting whichever
+    /// cloud table's completeness the wrong column implies.
+    ///
+    /// Proven directly: running ONLY the roster drain must leave `synced_at`
+    /// untouched, and running ONLY the add-event drain must leave
+    /// `roster_synced_at` untouched, even though both drains process the
+    /// exact same row.
+    #[test]
+    fn roster_sync_and_add_event_sync_never_touch_each_others_watermark() {
+        let file = TempStoreFile::new("roster-watermark-isolation");
+        let conn = open_at(&file.0).expect("store opens");
+        store::record_library_tracks(
+            &conn,
+            &[(
+                "aaaaaaaaaaaaaaaa".to_string(),
+                Some(1_700_000_000),
+                Some("Track A".to_string()),
+                Some("Artist A".to_string()),
+            )],
+            false,
+            1_700_000_000,
+        )
+        .unwrap();
+
+        let synced_at_before = |conn: &rusqlite::Connection| -> Option<i64> {
+            conn.query_row(
+                "SELECT synced_at FROM library_tracks WHERE track_id = 'aaaaaaaaaaaaaaaa'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap()
+        };
+        let roster_synced_at = |conn: &rusqlite::Connection| -> Option<i64> {
+            conn.query_row(
+                "SELECT roster_synced_at FROM library_tracks WHERE track_id = 'aaaaaaaaaaaaaaaa'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap()
+        };
+
+        assert_eq!(synced_at_before(&conn), None);
+        assert_eq!(roster_synced_at(&conn), None);
+
+        // Roster-only drain: synced_at (the add-event watermark) must stay
+        // untouched even though the SAME row is being processed.
+        let (tokens, token_store, auth_client) = add_event_auth();
+        sync_pending_library_roster(
+            &conn,
+            &tokens,
+            &token_store,
+            &auth_client,
+            &FakeRosterClient::default(),
+        )
+        .expect("roster drain");
+
+        assert!(
+            roster_synced_at(&conn).is_some(),
+            "roster drain must stamp roster_synced_at"
+        );
+        assert_eq!(
+            synced_at_before(&conn),
+            None,
+            "roster drain must NEVER touch synced_at (the add-event watermark)"
+        );
+
+        // Add-event-only drain on the same row: roster_synced_at must stay
+        // exactly as the roster drain left it.
+        let roster_synced_at_after_roster_drain = roster_synced_at(&conn);
+        sync_pending_library_add_events(
+            &conn,
+            &tokens,
+            &token_store,
+            &auth_client,
+            &FakeAddEventClient::default(),
+        )
+        .expect("add-event drain");
+
+        assert!(
+            synced_at_before(&conn).is_some(),
+            "add-event drain must stamp synced_at"
+        );
+        assert_eq!(
+            roster_synced_at(&conn),
+            roster_synced_at_after_roster_drain,
+            "add-event drain must NEVER touch roster_synced_at"
+        );
+    }
+
+    /// The other half of the invariant, at the write-path layer rather than
+    /// the sync layer: the roster's local read/write functions only ever
+    /// touch `library_tracks` (never a second local table), and its cloud
+    /// RPC (`sync_library_roster`) is structurally a different endpoint from
+    /// the add-event RPC (`sync_library_add_events`) -- proven by asserting
+    /// the two FakeClient doubles never see each other's calls, i.e. a
+    /// roster drain with an add-event client wired in (impossible by type,
+    /// which IS the guarantee) can't happen; this test instead pins the
+    /// wire body's own key (`entries` vs `events`) as the structural tripwire
+    /// a reviewer or future refactor would trip if the two payloads were
+    /// ever accidentally merged into one.
+    #[test]
+    fn roster_and_add_event_wire_payloads_use_distinct_keys() {
+        let file = TempStoreFile::new("roster-wire-distinct");
+        let conn = open_at(&file.0).expect("store opens");
+        store::record_library_tracks(
+            &conn,
+            &[(
+                "aaaaaaaaaaaaaaaa".to_string(),
+                Some(1_700_000_000),
+                Some("Track A".to_string()),
+                Some("Artist A".to_string()),
+            )],
+            false,
+            1_700_000_000,
+        )
+        .unwrap();
+
+        let (tokens, token_store, auth_client) = add_event_auth();
+        let roster_client = FakeRosterClient::default();
+        sync_pending_library_roster(&conn, &tokens, &token_store, &auth_client, &roster_client)
+            .expect("roster drain");
+        let roster_body = &roster_client.bodies()[0];
+        assert!(roster_body.get("entries").is_some());
+        assert!(roster_body.get("events").is_none());
+
+        store::record_library_tracks(
+            &conn,
+            &[(
+                "bbbbbbbbbbbbbbbb".to_string(),
+                Some(1_700_000_001),
+                None,
+                None,
+            )],
+            false,
+            1_700_000_000,
+        )
+        .unwrap();
+        let add_event_client = FakeAddEventClient::default();
+        sync_pending_library_add_events(
+            &conn,
+            &tokens,
+            &token_store,
+            &auth_client,
+            &add_event_client,
+        )
+        .expect("add-event drain");
+        let add_event_body = &add_event_client.bodies()[0];
+        assert!(add_event_body.get("events").is_some());
+        assert!(add_event_body.get("entries").is_none());
     }
 }

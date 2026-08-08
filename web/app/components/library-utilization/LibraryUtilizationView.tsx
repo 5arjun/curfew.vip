@@ -24,9 +24,14 @@ import { LibraryConversionTrend } from "./LibraryConversionTrend";
 export function LibraryUtilizationView({
   rates,
   library,
+  unidentifiableDisclosure,
 }: {
   rates: Record<ConversionWindow, LiveConversionRate>;
   library: LibraryConversionModel;
+  /** Story 4.11 AC-6 — passed straight through to the meter, which owns the
+   *  denominator this disclosure is about. Threaded rather than read here so
+   *  the page stays the one place that touches the roster seam. */
+  unidentifiableDisclosure?: string | null;
 }) {
   const [window, setWindow] = useConversionWindowSelection();
 
@@ -37,7 +42,11 @@ export function LibraryUtilizationView({
         <ConversionWindowDropdown value={window} onChange={setWindow} />
       </div>
       <div className="lu-conversion-body">
-        <ConversionRateMeter rates={rates} window={window} />
+        <ConversionRateMeter
+          rates={rates}
+          window={window}
+          unidentifiableDisclosure={unidentifiableDisclosure}
+        />
         <LibraryConversionTrend library={library} window={window} />
       </div>
     </section>
