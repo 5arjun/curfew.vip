@@ -396,7 +396,7 @@ development_status:
   # see deferred-work.md's "[LAUNCH BLOCKER — unstoried]" entry, now closed
   # by this story's creation. Sequenced here (end of Epic 4, before Epic 5)
   # since it's cross-cutting infrastructure, not a Style Evolution feature.
-  4-6-web-read-path-supabase-swap: ready-for-dev
+  4-6-web-read-path-supabase-swap: done
   # [ADDED 2026-08-07, Arjun design session] Style Evolution reads as an empty
   # page because 4.1 shipped four metrics multiplexed behind MetricChipToggle
   # into ONE chart slot — 75% of Epic 4's built output is hidden at any moment.

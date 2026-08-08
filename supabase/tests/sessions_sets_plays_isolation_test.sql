@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(31);
+select plan(30);
 
 -- Seed two auth users; the AFTER INSERT trigger (handle_new_dj) creates the
 -- matching public.djs row for each, same as djs_isolation_test.sql.
@@ -206,6 +206,13 @@ reset request.jwt.claims;
 -- protected. Right now every column, content and overlay alike, is
 -- untouchable, which is the concrete evidence for AC-3's "overlay columns
 -- exist but are agent-untouchable."
+--
+-- Exception, added by Story 4.6: `sets` now HAS a DJ-owned DELETE grant/policy
+-- (AC-5, `20260807120000_add_sets_delete_policy.sql`), so the
+-- "authenticated cannot delete from sets" case that used to live here was
+-- removed -- see `sets_delete_policy_isolation_test.sql` for its coverage
+-- (own-set delete succeeds, cross-DJ delete is a no-op). `sessions`/`plays`
+-- are untouched by that story and stay fully write-denied below.
 set local role authenticated;
 set local request.jwt.claims to '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
 
@@ -242,13 +249,6 @@ select throws_ok(
   '42501'::char(5),
   NULL,
   'authenticated cannot update sets (no update grant), including the visibility overlay column'
-);
-
-select throws_ok(
-  $$ delete from public.sets where id = '11111111-bbbb-bbbb-bbbb-111111111111' $$,
-  '42501'::char(5),
-  NULL,
-  'authenticated cannot delete from sets (no delete grant)'
 );
 
 select throws_ok(

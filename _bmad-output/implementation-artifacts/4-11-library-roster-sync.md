@@ -268,3 +268,60 @@ All 12 patch findings plus the four decision outcomes were applied and re-gated.
 #### Dismissed
 
 - "Third vs fourth sanctioned agent write" numbering inconsistency — **false positive**. Two conventions coexist codebase-wide (spine headings count set-sync as #1: AD-20 "second", AD-21 "third", AD-22 "fourth"; migration and schema headers count amendments only: "SECOND"/"THIRD"). Story 4.11 matched its predecessor exactly in every location.
+
+### Merge Findings (main @ e8d86b2, Story 4.6) — 2026-08-07
+
+Merging `origin/main` (Story 4.6, PR #21) surfaced one textual conflict and one
+security defect. The defect was found by 4.6's new generic grant sweeps, not by
+re-reading the diff — the first time those sweeps have fired on a function
+nobody had listed, and the outcome they were added for.
+
+**Conflict — `web/lib/sets/index.ts`, two hunks, both mechanical.** 4.6 swapped
+this seam from fixtures to Supabase reads while 4.11 was adding a
+fixture-backed `getLibraryRoster` beside them. Resolved by taking 4.6's side
+wholesale and re-adding 4.11's `rosterFixture` import, its
+`LibraryRosterSnapshot` type import and the function itself. Two header claims
+4.6 wrote were true when written and false after the merge, and were corrected
+rather than left to mislead: "all four DJ-data functions … read/write Supabase
+directly" (now five, four of which do), and the fixtures being "no longer read
+by this module" (`library-roster.fixture.json` still is, deliberately — it is
+the next Decision-A swap, not a leftover). `deferred-work.md` and
+`sprint-status.yaml` auto-merged cleanly; both sides verified present.
+
+**Defect — `library_roster`/`sync_library_roster` never got 20260807140000's
+hardening**, because they were created on this branch and that migration was
+written on `main`. Two holes, both confirmed against a local `db reset` before
+fixing (`grant_matrix_test.sql` tests 43 and 45 failed):
+
+- **`anon` and `authenticated` held TRUNCATE on `public.library_roster`.** The
+  story's `grant select … to authenticated, anon` reads as narrow but is purely
+  additive over the wide default-privilege grant every new `public` table is
+  born with; measured, both roles held SELECT + REFERENCES + TRIGGER + TRUNCATE.
+  RLS does not filter TRUNCATE, so it was not DJ-scoped — any authenticated DJ,
+  or `anon`, could have emptied every DJ's roster in one statement, against a
+  table AD-22 says the client never writes at all.
+- **`anon` held EXECUTE on `sync_library_roster(jsonb)`**, a SECURITY DEFINER
+  function reachable at `/rest/v1/rpc/sync_library_roster` — the third
+  recurrence of 20260806090100's "functions are born with EXECUTE granted to
+  PUBLIC, so revoke it" rule, after `sync_set` et al. and `record_deleted_set()`.
+  The in-function `auth.uid()` guard makes such a call raise rather than write,
+  but per that migration's own reasoning that is a side effect of the body, not
+  an access control.
+
+Fixed in `20260807160000_harden_library_roster_grants.sql`, applying
+20260807140000's `revoke all` + re-grant pattern verbatim. `authenticated`
+keeps EXECUTE (the AD-22 write path) and both roles keep SELECT (the
+RLS-filtered-empty behaviour the UI is written against). `library_roster` was
+added to `grant_matrix_test.sql`'s four table sweeps and `sync_library_roster`
+to its per-function revoke/write-path assertions, so the new pair is pinned
+explicitly and not only by the generic sweeps — plan 45 → 51.
+
+Note that Case 11 of `library_roster_isolation_test.sql` passed both before and
+after: it asserts SQLSTATE 42501, which is what an anon caller got from the
+function body's guard beforehand and now gets from the EXECUTE grant instead.
+Its existing note already flagged that it does not distinguish the two.
+
+**Gates re-run on the merge commit:** agent `fmt`/`clippy` clean, 403 tests ·
+shared 39 tests, `tsc` clean · cloud 209 pgTAP across 9 files (was 203/45 in
+`grant_matrix_test.sql`) · web `tsc`/`eslint` clean, 333 tests, `next build`
+clean.

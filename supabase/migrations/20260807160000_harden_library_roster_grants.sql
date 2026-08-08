@@ -1,0 +1,52 @@
+-- Migration: harden_library_roster_grants
+-- Story 4.11 / Story 4.6 merge follow-up (2026-08-07).
+--
+-- `20260807140000` narrowed table and function grants for everything that
+-- existed on `main` when it was written. `library_roster` and
+-- `sync_library_roster(jsonb)` were created on the 4.11 branch in
+-- `20260807110000` and so could not be in its lists. Merging the two branches
+-- is the moment that gap becomes real, and this migration closes it by
+-- applying 20260807140000's rules verbatim to the pair it could not see.
+--
+-- Both holes were found by the GENERIC sweeps `grant_matrix_test.sql` added
+-- alongside that migration, not by anyone re-reading the diff — which is the
+-- whole reason those sweeps exist. Verified against a local `db reset` before
+-- the fix: tests 43 and 45 both failed.
+--
+-- ---------------------------------------------------------------- table ----
+--
+-- `20260807110000` wrote `grant select on public.library_roster to
+-- authenticated, anon`, which reads as narrow but is purely ADDITIVE on top of
+-- the wide default-privilege grant every new table in `public` is born with.
+-- Measured on a clean local reset, both client roles in fact held
+-- SELECT + REFERENCES + TRIGGER + TRUNCATE.
+--
+-- TRUNCATE is the one that matters: RLS does not filter it, so it was not
+-- scoped to the calling DJ. Any authenticated DJ — or `anon` — could have
+-- emptied every DJ's roster in one statement, and AD-22's whole point is that
+-- the client never writes this table at all. `revoke all` + re-grant per
+-- 20260807140000's note: idempotent, and converges local and hosted onto the
+-- same end state rather than assuming either starting point.
+revoke all on public.library_roster from anon, authenticated;
+
+-- SELECT for BOTH roles is intentional, same reasoning as 20260807140000's:
+-- without an `anon` SELECT grant a signed-out request gets "permission denied"
+-- instead of the RLS-filtered empty result the UI is written against. RLS
+-- still scopes reads to `auth.uid() = dj_id`, so `anon` reads nothing. No
+-- INSERT/UPDATE/DELETE for either role — AD-22 routes every write through the
+-- SECURITY DEFINER RPC below, which derives `dj_id` from `auth.uid()`.
+grant select on public.library_roster to authenticated, anon;
+
+-- ------------------------------------------------------------- function ----
+--
+-- The third recurrence of 20260806090100's "functions are born with EXECUTE
+-- granted to PUBLIC, so revoke it" rule, after `sync_set` et al. and
+-- `record_deleted_set()`. `20260807110000` granted EXECUTE to `authenticated`
+-- without revoking the PUBLIC default, leaving a SECURITY DEFINER function
+-- callable by `anon` at `/rest/v1/rpc/sync_library_roster`.
+--
+-- The in-function `auth.uid()` guard already makes such a call raise rather
+-- than write, but per 20260806090100's reasoning that is a side effect of the
+-- body, not an access control. `authenticated` keeps EXECUTE — that is the
+-- agent's write path (AD-22), and revoking from `public` does not disturb it.
+revoke execute on function public.sync_library_roster(jsonb) from public, anon;

@@ -78,7 +78,9 @@ export function SetHeader({
       <span className="dz-dots" aria-hidden="true" />
       <div className="sd-identity-top">
         <p className="sd-eyebrow">
-          {formatSetDate(set.started_at)} · {formatSessionLabel(set.external_id)}
+          {/* `session_label` (sessions.session_identity), not `external_id` — the
+              latter is a raw uuid in the cloud read path. Story 4.6 code review. */}
+          {formatSetDate(set.started_at)} · {formatSessionLabel(set.session_label ?? set.external_id)}
         </p>
 
         <div className="sd-overflow" ref={menuRef}>
