@@ -57,6 +57,43 @@
   border-radius: 22px;
 }
 
+/* Restores the `max-width: 440px` `.lu-module` carried until Story 4.7, for
+   the modules 4.7 did NOT take over. 4.7 dropped that cap correctly for its
+   own sake: the meter moved into `.lu-conversion-body`'s `minmax(0, 340px)`
+   column, which bounds it more tightly than 440px ever did, so the rule was
+   dead weight there. But `.lu-module` is not the meter's private class —
+   Story 4.5's time-to-first-play uses it too, and sits OUTSIDE that grid as a
+   direct child of `.lu` (see `page.tsx`: it is window-independent, so it is
+   deliberately not in the window-governed section). Losing the cap left a
+   single short stat line stretched across the full container width.
+
+   Scoped to direct children of `.lu` rather than restored globally, which
+   would re-cap the meter at 440px in the ≤900px one-column layout where 4.7
+   means it to fill the width. Below 440px viewports this is a no-op, so the
+   375px layout is unchanged either way. */
+.lu > .lu-module {
+  max-width: 440px;
+}
+
+/* The insufficient-history state is shared with Style Evolution, where it
+   fills a CHART slot and is sized for it (`.se-empty { min-height: 260px }`,
+   style-evolution.css). Dropped into a stat module it made the module 324px
+   tall next to a 96px conversion meter — the same one sentence, three times
+   the height of its sibling, reading as a layout bug rather than a state
+   (browser pass, 2026-08-07). Scoped down here rather than changing
+   `.se-empty` itself, which is correct at its own call site. */
+.lu-module .se-empty {
+  min-height: 0;
+  padding: 14px 4px 6px;
+  place-items: start;
+  text-align: left;
+}
+
+.lu-module .se-empty-copy {
+  max-width: none;
+  font-size: 14px;
+}
+
 .lu-stat-head {
   display: flex;
   align-items: center;

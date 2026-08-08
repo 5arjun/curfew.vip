@@ -1,7 +1,6 @@
 import {
   liveConversionRateSummary,
   liveWindowPhrase,
-  undatedDisclosure,
   type ConversionWindow,
   type LiveConversionRate,
 } from "@/lib/sets/libraryConversion";
@@ -39,9 +38,25 @@ const PIP_COUNT = 10;
  * from `undatedDisclosure`'s: that one covers tracks that ARE in the
  * denominator but have no known add date; this one covers catalogue rows
  * that never reached the denominator at all (no title/artist, no identity
- * to record under). Both render, deliberately as two lines rather than one
- * merged sentence — they describe different failure shapes and merging
- * them would blur which gap a DJ is actually reading about.
+ * to record under). They stay two separate sentences, never merged into one
+ * — they describe different failure shapes, and merging them would blur
+ * which gap a DJ is actually reading about.
+ *
+ * **This meter now renders only the second of the two** (Story 4.5 review;
+ * re-applied when 4.5 merged 4.7). It used to build its own
+ * `undatedDisclosure` here; that count is window-independent and identical
+ * across every module on this page, so three modules each rendering it
+ * produced the same sentence two or three times over — and after 4.7 sat
+ * this meter directly beside the trend, whose disclosure opens on that very
+ * clause, the repetition would have been side by side. `page.tsx` now states
+ * it once, beneath everything it covers.
+ *
+ * The two debts did not get the same treatment, and the rule is duplication
+ * rather than window-independence (both are window-independent): the undated
+ * count is shared by every module here and so belongs to the page, while
+ * this one has exactly one consumer — it describes the denominator THIS
+ * component owns, so it stays anchored to it, which is what 4.11 AC-6 asked
+ * for. Nothing to de-duplicate, nothing to hoist.
  */
 export function ConversionRateMeter({
   rates,
@@ -54,13 +69,6 @@ export function ConversionRateMeter({
 }) {
   const rate = rates[window];
   const summary = liveConversionRateSummary(rate);
-  // AC-4: the SAME undated-track disclosure 4.2's trend chart uses, with
-  // `pendingCohortCount: 0` — this meter has no cohorts, so that clause never
-  // fires (see `undatedDisclosure`'s own doc comment).
-  const disclosure = undatedDisclosure(
-    { noAddDateCount: rate.noAddDateCount, pendingCohortCount: 0 },
-    rate.window,
-  );
   // `floor`, not `round`: a 96% rate must show 9 lit pips, not a false-full
   // 10 — the percentage readout right next to it is the tie-breaker a DJ
   // would notice disagreeing (Story 4.3 review). True 100% is the only way
@@ -92,7 +100,6 @@ export function ConversionRateMeter({
           No tracks added in the last {liveWindowPhrase(rate.window)}.
         </p>
       )}
-      {disclosure && <p className="lu-disclosure">{disclosure}</p>}
       {unidentifiableDisclosure && <p className="lu-disclosure">{unidentifiableDisclosure}</p>}
     </section>
   );

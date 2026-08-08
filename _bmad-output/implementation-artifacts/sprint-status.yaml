@@ -42,6 +42,205 @@
 
 generated: 2026-07-21
 last_updated: 2026-08-07
+# 2026-08-07: story 4-5 -- MERGED origin/main (4.6 + 4.11 + 4.7) into the
+# branch. Merge, not rebase: PR #22 is open, matching how 4.11 and 4.7 landed.
+# 6 conflicts (page.tsx, ConversionRateMeter.tsx, libraryConversion.test.ts,
+# and 3 tracking docs); libraryConversion.ts auto-merged and was re-read end
+# to end rather than trusted. Nothing in agent/ or supabase/ conflicted.
+# Mechanical part: LIVE_CONVERSION_WINDOWS -> CONVERSION_WINDOWS (4.7 unified
+# the two window scales); the only surviving references to the deleted
+# symbols are past-tense narration inside comments, checked by grep.
+# THREE JUDGMENT CALLS, none resolved mechanically:
+# (a) PLACEMENT. TimeToFirstPlay stays a direct child of page.tsx, a sibling
+# BELOW <LibraryUtilizationView>, not inside it. That view is "use client"
+# purely to own the ONE conversion window the meter and trend share; this
+# metric is lifetime-scoped with no trailing window, so nesting it under that
+# dropdown would imply a control governs a figure it cannot move -- 4.7's
+# AC-3 failure inverted. Staying outside also keeps it a server component and
+# matches LibraryUtilizationView's own note that further modules grow below
+# the pair (which is 4-9's slot).
+# (b) DISCLOSURE DEDUP. Re-applied 4.5's review decision: ConversionRateMeter
+# no longer builds its own undatedDisclosure; the page states it once beneath
+# everything it covers. 4.7 strengthened this argument rather than weakening
+# it -- the meter now sits directly beside the trend, whose disclosure opens
+# on the same "N tracks have no known add date" clause, so the duplication
+# would have been side by side rather than a screen apart. The trend KEEPS
+# its own, deliberately: its line also names cohorts inside the selected
+# window, which is genuinely window-dependent and belongs in the
+# window-governed section. Verified undatedDisclosure(..., 0) is still safe
+# under 4.7's version -- `window` is read ONLY by the pendingCohortCount
+# clause, pinned to 0 here, so no "0-day window" string is reachable.
+# (c) 4.11's unidentifiableDisclosure kept threading page -> view -> meter,
+# and kept as a SEPARATE line from the undated one. Traced by hand end to end
+# (the prop is optional at every hop, so a green typecheck proves nothing).
+# ALSO FOUND -- a silent layout regression no gate catches: 4.7 dropped
+# `.lu-module { max-width: 440px }`, correctly for itself (the meter moved
+# into a 340px grid column), but .lu-module is not the meter's private class
+# and 4.5's module sits outside that grid, so it lost its cap and stretched
+# full-width. Restored as `.lu > .lu-module`, scoped to direct children so
+# 4.7's <=900px one-column layout is untouched. NOT re-walked in a browser
+# this session -- the composition changed, so that pass is owed before ship.
+# GATE after merge: see the story file. epic-4 unchanged (in-progress).
+# 4-5-time-to-first-play: review (unchanged).
+# 2026-08-07: story 4-5 -- BOTH remaining review items CLOSED. (1) CLEANUP
+# MIGRATION UNNECESSARY, measured not assumed: read-only supabase db query
+# against prod shows library_track_events 0 rows, plays 0, sets 0, djs 1 --
+# no agent has ever synced, so the stale path-hash stratum the decision was
+# about does not exist. Corroborated agent-side: the local store has only
+# captured_sessions (no library_tracks, no agent_meta), so the 4.2/4.3 agent
+# build has never run and no pre-cutover add-events are queued to drain under
+# the retired identity. The hole reasoned about is real but has zero blast
+# radius; the first agent run baselines under title+artist, clean by
+# construction. Residual note: mark_identity_migration_done only sets a flag,
+# it does NOT purge pending unsynced rows -- unreachable today, worth a guard
+# if an agent install ever precedes the cutover. (2) BROWSER PASS DONE
+# (Playwright, live dev server) at 1440x900 and 375x812 on the committed
+# fixture, plus BOTH gate states driven via temporarily swapped trimmed
+# fixtures (restored, git status verified clean). Zero console errors and
+# zero warnings in every state at both widths; no horizontal overflow;
+# shortened readout wraps to 2 lines and the disclosure to 1 at both widths.
+# THE PASS FOUND 3 DEFECTS THAT TESTS COULD NOT REACH, all fixed: (a) in the
+# insufficient-history branch the section's accessible name announced "3
+# tracks have been added but not played yet -- averaging 10 months on the
+# shelf" while the visible module said only "not enough yet" -- an accessible
+# name making a claim the UI had explicitly declined to make; the summary
+# generator is gate-blind by design, so the component now falls back to
+# naming the region and lets InsufficientHistory's own role=status carry the
+# copy. Same aria/visible drift class the code review caught in the POPULATED
+# branch, in a branch the review could not see. (b) .se-empty carries
+# min-height 260px because on Style Evolution it fills a CHART slot; in a
+# stat module that made it 324px tall beside a 96px meter -- scoped down in
+# library-utilization.css (the "no new CSS" claim's second amendment), now
+# 151px. (c) the below-debut-floor branch's visible text omitted the shelf
+# age its aria-label carried; now byte-identical. Gate: 327/327, clean
+# tsc/eslint/next build. epic-4 unchanged (in-progress).
+# 4-5-time-to-first-play: in-progress -> review.
+# 2026-08-07: story 4-5 post-review follow-up (Arjun, same session) -- MEAN
+# INSTEAD OF MEDIAN, plus a shorter readout. The review's corrected median
+# read 51 minutes, which Arjun judged implausible on sight; the mean reads 2
+# weeks. Inside AC-4's own "e.g. distribution/median" latitude, so not a
+# deviation. TRADE RECORDED rather than assumed, because it will look like an
+# oversight later: the distribution is heavily right-skewed (p50 0.036d, p90
+# 18d, max 349d), so 84% of debuts (196/233) are FASTER than the mean -- the
+# average describes almost no individual track where the median described the
+# typical one. The call was about trust, not statistics: a figure a DJ
+# refuses to believe is worse than one that is slightly unrepresentative.
+# Guarded by a dedicated skewed-fixture test, because the existing odd/even
+# cases use symmetric data where mean and median agree and would not catch a
+# silent revert. Readout shortened from "51 minutes median from add to first
+# spin, across the 233 tracks that have debuted" to "2 weeks average across
+# 233 debuts" -- "from add to first spin" dropped because the module label
+# directly above already says it, but the debut-count scoping KEPT in short
+# form, since dropping it would have reintroduced the very review finding it
+# was added to fix (a bare average tells a sighted user the number covers the
+# whole library while the accessible name correctly scopes it). Gate:
+# 327/327, clean tsc/eslint/next build, verified against a live dev server on
+# the committed fixture rather than only asserted in tests. Note for whoever
+# revisits: worth re-examining once Story 4.6's real read path changes the
+# tail's shape. epic-4 unchanged (in-progress). 4-5 stays in-progress.
+# 2026-08-07: story 4-5 CODE REVIEW (3 adversarial layers: Blind Hunter, Edge
+# Case Hunter, Acceptance Auditor, plus a population-boundary audit Arjun
+# asked for by name). 17 findings: 11 patched, 5 decisions ruled live, 1
+# deferred, 2 dismissed. Gate re-verified independently before triage
+# (315/315, clean tsc/eslint) and again after patching: 326/326, clean
+# tsc/eslint/next build. TWO REAL DEFECTS, both of which cleared a green gate
+# because the suite tested the code's stated intentions rather than its
+# output on real data: (1) firstPlayByTrack returns the GLOBALLY earliest
+# play, and the code tested that single value instead of "the earliest play
+# at or after added_at" -- Task 1's own wording -- so any track played both
+# before and after its add date was dropped from the median AND counted into
+# "haven't been played yet". Measured on the committed fixture: 18 of 523
+# tracks, with real elapsed values up to 78.5 days discarded. Fixed via a new
+# playsByTrack index. (2) formatElapsed floored everything under 24h to "same
+# day", which both destroyed the metric (86.5% of real debuts are sub-day;
+# true median ~40min) and produced an ungrammatical aria-label, since the
+# caller interpolates the value as a noun phrase -- the shipped string read
+# "took a median of same day to debut". NET EFFECT on the fixture: the module
+# moves from "Tracks you've played took a median of same day to debut -- 308
+# others haven't been played yet." to "233 tracks have debuted, a median of
+# 51 minutes after being added -- 286 others haven't been played yet."
+# POPULATION-BOUNDARY AUDIT (the ruling 4-5 was built on): the "by
+# construction" guarantee is real but NARROWER than the story claimed, in two
+# ways. (a) It covers DATED rows only -- the agent's baseline partition
+# emits any track with no resolvable tadd/uadd unconditionally, so an undated
+# row may predate observation; ruled AC-5 governs that subset (excluded from
+# math, disclosed as a count) and AC-2 rescoped in epics.md to tracks that
+# never enter the table at all. (b) Story 4.3's Decision E-2 identity cutover
+# left path-hash rows in cloud library_track_events, ruled "harmless, not
+# cleaned up" -- but that ruling was made against a WINDOWED metric. 4.5 is
+# the first lifetime-scope consumer, so every orphan becomes a permanent
+# never-played entry inflating the visible count and the population gate.
+# Ruled: cleanup migration before 4.6. THAT MIGRATION IS BLOCKED and was
+# deliberately not guessed -- both 4.2 and 4.3 shipped on 2026-08-07 so a
+# date-level created_at cutoff purges nothing, and no structural SQL
+# predicate separates a stale path-hash row from a legitimate never-played
+# title+artist row ("has no matching play" describes both, and using it would
+# delete the entire 286-track never-played population). Needs either the
+# production created_at boundary read empirically, or an agent-side re-emit.
+# Also ruled: a COMPOUND AC-4 gate (a population-size gate structurally
+# cannot stop a median being drawn from n=1, because never-played tracks pass
+# it and contribute nothing -- new MIN_TIME_TO_FIRST_PLAY_DEBUTS alongside
+# the existing population constant); sub-day tiers on formatElapsed; and
+# nowMs reintroduced for a clock-skew guard plus never-played age framing
+# (the Completion Note's eslint justification for dropping it was factually
+# wrong -- no-unused-vars is a warning with args:"after-used" here). Three
+# doc errors corrected in the story: the "26 new tests" total (its own
+# itemization says 22), the eslint claim, and an inverted argument about
+# djs.created_at narrowing the population (when created_at < baseline such a
+# filter is a no-op, not a narrowing -- the ruling stands, the reasoning did
+# not). Deferred to 4.6: buildTimeToFirstPlay is lifetime-scope but reads
+# plays through getRecentSets(), so if 4.6 bounds that query every older
+# debut silently becomes "never played". STILL OPEN: the blocked cleanup
+# migration, and a real-browser walkthrough -- the visible copy, both gates
+# and the insufficient-history branch all changed, so 4.5's original
+# Playwright pass no longer describes what ships. epic-4 unchanged
+# (in-progress). 4-5-time-to-first-play: review -> in-progress.
+# 2026-08-07: story 4-5 create-story session. Resolved a real gap the epics.md
+# re-spec's own wording ("tracks added on or after the DJ's subscription
+# start") left unimplementable as written: Epic 7 (billing) is entirely
+# backlog and no persisted subscription-start timestamp exists anywhere in
+# the schema (djs has only created_at; AD-19's four future billing columns
+# are current-state only, no start-date column). Asked Arjun; ruled to use
+# library_track_events membership itself as the population boundary -- by
+# construction (Story 4.2's D-1 baseline-then-diff), that table can only ever
+# contain go-forward adds, which is exactly what the re-spec's population
+# scoping wants, with no new column and no Epic 7 dependency. Flagged in the
+# story as a proxy to revisit once Epic 7 ships a real subscription-start
+# field. Story is web/-only (no agent/shared/cloud work) -- everything it
+# needs (library_track_events, plays.track_id, the title+artist identity fix)
+# already shipped in 4.2/4.3. No UX-DR wireframe exists for this metric's
+# display (a distribution/median, not a trend chart or pip meter); flagged as
+# a dev-time design call, same precedent as 4.3 Task 4. Not blocked by 4.4's
+# 4.11 roster-sync prerequisite -- needs no track metadata, only
+# identity+timestamps. epic-4 unchanged (in-progress).
+# 4-5-time-to-first-play: backlog -> ready-for-dev.
+# 2026-08-07: story 4-5 dev-story session -- all 3 tasks landed,
+# review-and-implementation-in-one-commit convention (matching 4.3). Task 1
+# (web): buildTimeToFirstPlay/timeToFirstPlaySummary added to
+# libraryConversion.ts -- per-track elapsed time (add -> first play) as a
+# discriminated union (played/never-played, never a fabricated zero),
+# MIN_TIME_TO_FIRST_PLAY_TRACKS=5 gates the median (a lifetime-population
+# threshold, deliberately NOT LOW_CONFIDENCE_COHORT_SIZE, which governs a
+# 90-day cohort's size instead). Deviated from the story's own Dev Note
+# suggesting a nowMs param -- the population is closed-form from
+# events/sets alone, no trailing window to inject a clock into, so a dead
+# parameter wasn't worth the lint noise. Task 2 (web): new formatElapsed in
+# format.ts (day/week/month/year phrasing) and TimeToFirstPlay.tsx, reusing
+# library-utilization.css's existing generic .lu-stat-* classes verbatim
+# rather than adding a second near-identical rule set; InsufficientHistory's
+# copy-override reused with a distinct string (not LIBRARY_INSUFFICIENT_COPY,
+# which describes a different wait condition, per 4.3 Task 4's ruling on the
+# identical question). Task 3 (web): wired into library-utilization/page.tsx
+# alongside ConversionRateMeter, reusing the page's existing sets/addEvents/
+# firstPlay -- no re-fetch, no second O(sets) pass. Task 4 (docs): this entry
+# + EXPERIENCE.md Components-table row (closes the row Story 4.3's own note
+# flagged as owed). GATE: web 315/315 vitest (26 new), tsc --noEmit/eslint/
+# next build clean. Real-browser walkthrough (Playwright) at 1440x900 and
+# 375x812 against a live next dev server with the committed fixture --
+# "Tracks you've played took a median of same day to debut -- 308 others
+# haven't been played yet." rendered correctly at both widths, zero console
+# errors/warnings. epic-4 unchanged (in-progress).
+# 4-5-time-to-first-play: ready-for-dev -> review.
 # 2026-08-07: story 4-11 create-story session: promoted from the epic-header
 # finding note to a full story file. Locked Tier-A-only scope (title+artist;
 # BPM/key/genre explicitly parked with the coverage-gap components). Ten
@@ -389,7 +588,7 @@ development_status:
   # (Playwright) at 1440px and 375x812, zero console errors.
   4-3-conversion-rate-led-pip-meter: done
   4-4-aging-shelf-with-prep-crate-action: backlog
-  4-5-time-to-first-play: backlog
+  4-5-time-to-first-play: review
   # [LAUNCH BLOCKER, previously unstoried] Ruled by Arjun 2026-08-07: web/'s
   # read path (getRecentSets/getSetById/deleteSet/getLibraryAddEvents) is
   # still fixture-backed while the write path has been live since Epic 3 —
