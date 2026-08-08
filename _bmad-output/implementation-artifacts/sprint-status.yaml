@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-21
-last_updated: 2026-08-07
+last_updated: 2026-08-08
 # 2026-08-07: story 4-5 -- MERGED origin/main (4.6 + 4.11 + 4.7) into the
 # branch. Merge, not rebase: PR #22 is open, matching how 4.11 and 4.7 landed.
 # 6 conflicts (page.tsx, ConversionRateMeter.tsx, libraryConversion.test.ts,
@@ -707,7 +707,7 @@ development_status:
   # story/4-7-sectioned-style-evolution-summary-tiles -> PR #20.
   # 4-7-sectioned-style-evolution-summary-tiles: review -> done.
   4-7-sectioned-style-evolution-summary-tiles: done
-  4-8-genre-share-stream-camelot-wheel: backlog
+  4-8-genre-share-stream-camelot-wheel: ready-for-dev
   # [ADDED 2026-08-07, same Arjun session] Library Utilization's turn. 4-9 is
   # the page composition + the utilization stats that need ZERO agent work
   # (repeat-track rate, set-similarity heatmap, workhorses by sets-appeared-in,
