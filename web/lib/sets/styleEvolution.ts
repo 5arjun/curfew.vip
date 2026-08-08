@@ -116,14 +116,44 @@ export interface MonthKeyDiversity {
   breakdown: CategoryTally[];
 }
 
-/** One bucket's (month or week) aggregation across all three metrics. Each
- *  field is `null` (a gap, never a fabricated zero — D-8) when no set in this
+/** Story 4.7 AC-4/AC-6: median on-air seconds per track this bucket, from
+ *  `SyncPlay.played_ms` (~98% populated per Story 3.7 §3d). */
+export interface MonthMixPace {
+  /** `null` when every play in the bucket is missing `played_ms` — a gap
+   *  (D-8), never a fabricated `0`. */
+  medianSeconds: number | null;
+  /** Plays in this bucket missing `played_ms` — never silently folded into
+   *  the median (mirrors `no_genre_count`'s "never omitted" contract). */
+  excludedCount: number;
+}
+
+/** Story 4.7 AC-4/AC-7: harmonic mix rate this bucket, from
+ *  `derived.camelot_mixing_stats` (three raw counts per set; summed here,
+ *  then divided — `shared/` never hands over a pre-divided rate). */
+export interface MonthHarmonicMix {
+  /** `compatible / (compatible + incompatible)` across the bucket's
+   *  surviving sets. `null` when there are zero scored transitions to divide
+   *  — never a fabricated `0%`. */
+  rate: number | null;
+  /** Transitions excluded for missing a key on either side, summed across
+   *  the bucket — disclosed the same way `no_genre_count` is. */
+  excludedNoKey: number;
+}
+
+/** One bucket's (month or week) aggregation across every metric. Each field
+ *  is `null` (a gap, never a fabricated zero — D-8) when no set in this
  *  partition (excluding/including) landed in this bucket, or carries no data
  *  for that particular metric. */
 export interface BucketPoint {
   bpmRange: MonthBpmRange | null;
   genreDiversity: MonthGenreDiversity | null;
   keyDiversity: MonthKeyDiversity | null;
+  /** Story 4.7 AC-4: median of each surviving set's own per-set median BPM
+   *  (`derived.bpm_distribution.median`) — aggregated at the SET level, the
+   *  same level `bpmRange` above merges at, not re-derived from raw plays. */
+  medianBpm: number | null;
+  mixPace: MonthMixPace | null;
+  harmonicMix: MonthHarmonicMix | null;
 }
 
 export interface BucketSeries {
@@ -136,6 +166,13 @@ export interface BucketSeries {
 }
 
 export interface StyleEvolutionModel {
+  /** Every synced set, dated or not (Story 4.7 AC-8, added at code review
+   *  2026-08-07). AC-8 scopes the summary tile row to "≥1 set" — and the view
+   *  is handed only this model, so without a count it had no way to tell a DJ
+   *  with NO history from one with a month of it, and rendered four "—" tiles
+   *  at a DJ who has never synced anything. The 0-set empty state is a
+   *  separate, unaffected case that AC-8 explicitly does not narrow. */
+  setCount: number;
   /** Distinct calendar months across ALL synced sets, pre-exclusion (D-5). Backs AC-3, independent of granularity. */
   monthsSpannedAll: number;
   /** Count of sets with `derived.confidence.value < 1.0` that actually land in
@@ -160,9 +197,25 @@ function isLowConfidence(set: SetRecord): boolean {
   return set.derived.confidence.value < 1.0;
 }
 
+/** Standard median — sorted middle value, or the average of the two middle
+ *  values for an even-length input. `null` for empty input (a gap, D-8). */
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
 function aggregateBucket(sets: SetRecord[]): BucketPoint {
   if (sets.length === 0) {
-    return { bpmRange: null, genreDiversity: null, keyDiversity: null };
+    return {
+      bpmRange: null,
+      genreDiversity: null,
+      keyDiversity: null,
+      medianBpm: null,
+      mixPace: null,
+      harmonicMix: null,
+    };
   }
 
   let min = Infinity;
@@ -223,7 +276,48 @@ function aggregateBucket(sets: SetRecord[]): BucketPoint {
       .sort((a, b) => b.count - a.count),
   };
 
-  return { bpmRange, genreDiversity, keyDiversity };
+  // Median BPM (Story 4.7 AC-4): median of each surviving set's own per-set
+  // median (not re-derived from raw plays) — the same set-level aggregation
+  // discipline `bpmRange` above already uses.
+  const setMedians: number[] = [];
+  for (const s of sets) {
+    if (s.derived.bpm_distribution.count > 0) setMedians.push(s.derived.bpm_distribution.median);
+  }
+  const medianBpm = median(setMedians);
+
+  // Mix pace (Story 4.7 AC-4/AC-6): median on-air seconds per track, from
+  // `played_ms`. A play missing it is excluded from the median and counted,
+  // never silently folded in — the same "never omitted" contract
+  // `no_genre_count` holds to.
+  const paceSeconds: number[] = [];
+  let mixPaceExcluded = 0;
+  for (const s of sets) {
+    for (const p of s.plays) {
+      if (p.played_ms != null) paceSeconds.push(p.played_ms / 1000);
+      else mixPaceExcluded++;
+    }
+  }
+  const mixPace: MonthMixPace = { medianSeconds: median(paceSeconds), excludedCount: mixPaceExcluded };
+
+  // Harmonic mix rate (Story 4.7 AC-4/AC-7): compatible / (compatible +
+  // incompatible) transitions, summed across the bucket's surviving sets'
+  // `camelot_mixing_stats` — three raw counts per set, `web/` divides.
+  let compatible = 0;
+  let incompatible = 0;
+  let excludedNoKey = 0;
+  for (const s of sets) {
+    const m = s.derived.camelot_mixing_stats;
+    compatible += m.compatible_transitions;
+    incompatible += m.incompatible_transitions;
+    excludedNoKey += m.excluded_no_key;
+  }
+  const harmonicDenom = compatible + incompatible;
+  const harmonicMix: MonthHarmonicMix = {
+    rate: harmonicDenom > 0 ? compatible / harmonicDenom : null,
+    excludedNoKey,
+  };
+
+  return { bpmRange, genreDiversity, keyDiversity, medianBpm, mixPace, harmonicMix };
 }
 
 /**
@@ -289,6 +383,7 @@ function buildSeries(
 export function buildStyleEvolution(sets: SetRecord[]): StyleEvolutionModel {
   const dated = sets.filter((s) => localMonthKey(s.started_at) !== "");
   return {
+    setCount: sets.length,
     monthsSpannedAll: monthsSpanned(sets),
     lowConfidenceCount: dated.filter(isLowConfidence).length,
     undatedCount: sets.length - dated.length,
@@ -333,6 +428,23 @@ function weekLabel(weekKey: string, withYear = false): string {
  *  shared noun-phrase both "since ___" and "in ___" compose with below. */
 function bucketPhrase(key: string, granularity: Granularity, withYear = false): string {
   return granularity === "month" ? monthLabel(key, withYear) : `the week of ${weekLabel(key, withYear)}`;
+}
+
+/**
+ * The summary tiles' bare noun-phrase for a bucket — "June", "week of Jun 22".
+ * Deliberately article-less, unlike {@link bucketPhrase}: the tiles compose it
+ * after "vs "/"from ", where "the week of" would read as a stray determiner.
+ *
+ * Exists because the tiles must NAME the bucket a delta is measured against
+ * rather than assert a fixed "previous month" (code review, 2026-08-07): the
+ * reading's comparison bucket is the nearest EARLIER bucket carrying a value,
+ * which D-8 gaps routinely make non-adjacent — on the committed fixture, three
+ * of the four tiles compare August against JUNE, and at week granularity the
+ * median-BPM tile spans five weeks. Saying "previous month" over that is the
+ * same fabricated-precision failure D-8 exists to prevent.
+ */
+export function tileBucketLabel(key: string, granularity: Granularity, withYear = false): string {
+  return granularity === "month" ? monthLabel(key, withYear) : `week of ${weekLabel(key, withYear)}`;
 }
 
 function presentPoints<T>(buckets: string[], values: Array<T | null>): Array<{ bucket: string; value: T }> {
@@ -518,4 +630,127 @@ export function keyDiversitySummary(
     "Key usage",
     "keys",
   );
+}
+
+/* ── Summary tiles (Story 4.7, AC-4/AC-5) ──────────────────────────────────
+   Four aggregate readings above the sections: median BPM, effective genre
+   count, harmonic mix rate, mix pace. Aggregate rather than time-series, so
+   they read honestly off a single bucket (AC-8) — no insufficient-history
+   gate applies to them. */
+
+export interface TileReading {
+  current: number;
+  /** Which bucket `current` was read from. A metric can go quiet while others
+   *  keep reporting, so this is per-metric and NOT necessarily the series'
+   *  last bucket — the tile row can legitimately show two different periods
+   *  at once. */
+  currentBucket: string;
+  /** Against the nearest EARLIER bucket carrying a present value for this
+   *  metric (skipping D-8 gaps) — `null` when none exists, never a
+   *  fabricated `0` (AC-5). */
+  delta: number | null;
+  /** The bucket `delta` was actually measured against — `null` exactly when
+   *  `delta` is. The tile NAMES this rather than asserting "previous month",
+   *  which gap-skipping makes false (see {@link tileBucketLabel}). */
+  deltaBucket: string | null;
+}
+
+/** Walks a value series back-to-front: the last present value is `current`,
+ *  the next present value further back is what `delta` is measured against.
+ *  `null` entirely when there is no current value at all. `buckets` is
+ *  parallel to `values` — both come from the same `BucketSeries`. */
+function latestWithDelta(
+  buckets: string[],
+  values: Array<number | null>,
+): (TileReading & { index: number }) | null {
+  let currentIndex = -1;
+  for (let i = values.length - 1; i >= 0; i--) {
+    if (values[i] != null) {
+      currentIndex = i;
+      break;
+    }
+  }
+  if (currentIndex === -1) return null;
+  const current = values[currentIndex] as number;
+
+  let delta: number | null = null;
+  let deltaBucket: string | null = null;
+  for (let i = currentIndex - 1; i >= 0; i--) {
+    if (values[i] != null) {
+      delta = current - (values[i] as number);
+      deltaBucket = buckets[i];
+      break;
+    }
+  }
+  return { current, currentBucket: buckets[currentIndex], delta, deltaBucket, index: currentIndex };
+}
+
+/**
+ * The most recent bucket's own count for a disclosure that has no reading to
+ * sit beside.
+ *
+ * `buildSummaryTiles` normally discloses the CURRENT bucket's excluded count.
+ * When a metric has no current bucket at all — every play in history missing
+ * `played_ms`, say — that path yields `0`, which silently drops the count in
+ * exactly the case where 100% of the data was excluded (code review,
+ * 2026-08-07). AC-6/AC-7 call these counts "never omitted", so the fallback
+ * reports the latest bucket that actually excluded something: the tile then
+ * reads "—" WITH the reason, instead of "—" with no explanation.
+ */
+function latestNonZero(counts: Array<number | null>): number {
+  for (let i = counts.length - 1; i >= 0; i--) {
+    const c = counts[i];
+    if (c != null && c > 0) return c;
+  }
+  return 0;
+}
+
+export interface SummaryTiles {
+  medianBpm: TileReading | null;
+  effectiveGenreCount: TileReading | null;
+  harmonicMixRate: TileReading | null;
+  mixPace: TileReading | null;
+  /** Disclosure counts for the CURRENT bucket (the reading being shown),
+   *  never summed across history — mirrors `no_genre_count`'s "never
+   *  omitted" contract at the tile's own scale. When a metric has no current
+   *  bucket at all, this falls back to the latest bucket that excluded
+   *  anything, so the count is never dropped precisely when everything was
+   *  excluded (see {@link latestNonZero}). */
+  mixPaceExcludedCount: number;
+  harmonicExcludedNoKey: number;
+}
+
+/** Builds the four summary tiles from one bucket series (the currently
+ *  selected granularity × reveal state — AC-2's page-level controls already
+ *  govern which `points` array this is called with). `buckets` is that same
+ *  series' key array, so each reading can NAME the period it was read from
+ *  and the period its delta is measured against. */
+export function buildSummaryTiles(buckets: string[], points: BucketPoint[]): SummaryTiles {
+  const bpmValues = points.map((p) => p.medianBpm);
+  const genreValues = points.map((p) =>
+    p.genreDiversity && p.genreDiversity.index != null ? effectiveDiversity(p.genreDiversity.index) : null,
+  );
+  const harmonicValues = points.map((p) => p.harmonicMix?.rate ?? null);
+  const paceValues = points.map((p) => p.mixPace?.medianSeconds ?? null);
+
+  const bpm = latestWithDelta(buckets, bpmValues);
+  const genre = latestWithDelta(buckets, genreValues);
+  const harmonic = latestWithDelta(buckets, harmonicValues);
+  const pace = latestWithDelta(buckets, paceValues);
+
+  const strip = (r: (TileReading & { index: number }) | null): TileReading | null =>
+    r && { current: r.current, currentBucket: r.currentBucket, delta: r.delta, deltaBucket: r.deltaBucket };
+
+  return {
+    medianBpm: strip(bpm),
+    effectiveGenreCount: strip(genre),
+    harmonicMixRate: strip(harmonic),
+    mixPace: strip(pace),
+    mixPaceExcludedCount: pace
+      ? (points[pace.index].mixPace?.excludedCount ?? 0)
+      : latestNonZero(points.map((p) => p.mixPace?.excludedCount ?? null)),
+    harmonicExcludedNoKey: harmonic
+      ? (points[harmonic.index].harmonicMix?.excludedNoKey ?? 0)
+      : latestNonZero(points.map((p) => p.harmonicMix?.excludedNoKey ?? null)),
+  };
 }

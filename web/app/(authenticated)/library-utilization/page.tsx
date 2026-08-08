@@ -1,28 +1,42 @@
 import { getLibraryAddEvents, getLibraryRoster, getRecentSets } from "@/lib/sets";
-import { buildLiveConversionRate, firstPlayByTrack, LIVE_CONVERSION_WINDOWS } from "@/lib/sets/libraryConversion";
+import {
+  buildLibraryConversion,
+  buildLiveConversionRate,
+  CONVERSION_WINDOWS,
+  firstPlayByTrack,
+} from "@/lib/sets/libraryConversion";
 import { unidentifiableTracksDisclosure } from "@/lib/sets/libraryRoster";
 import { SilkBackdrop } from "@/app/components/dashboard/SilkBackdrop";
-import { ConversionRateMeter } from "@/app/components/library-utilization/ConversionRateMeter";
+import { LibraryUtilizationView } from "@/app/components/library-utilization/LibraryUtilizationView";
 
-// Library Utilization (Story 4.3, AC-5) — supersedes the Story 3.5 throwaway
-// stub. Reads through the SAME data-access seam `style-evolution/page.tsx`
-// uses (`getRecentSets`, `getLibraryAddEvents`); this route's first real
-// content, so no per-page conventions to match beyond that data-seam pattern.
+// Library Utilization (Story 4.3, AC-5; Story 4.7, AC-3) — supersedes the
+// Story 3.5 throwaway stub. Reads through the SAME data-access seam
+// `style-evolution/page.tsx` uses (`getRecentSets`, `getLibraryAddEvents`),
+// plus `getLibraryRoster` (Story 4.11) for the disclosure below.
 //
-// Unlike Style Evolution's trend chart, the meter needs no page-level
-// insufficient-history gate: it is a live snapshot, not a multi-point trend,
-// so "zero tracks added in the window" is just one more state the meter
-// itself already renders honestly (`ConversionRateMeter`'s own empty branch)
-// rather than a condition sparse enough to misrepresent.
+// Story 4.7 AC-3 moved Style Evolution's library-conversion TREND here
+// (`buildLibraryConversion`), alongside Story 4.3's LIVE meter
+// (`buildLiveConversionRate`) — same underlying add-events/sets, two
+// deliberately different computations (see `libraryConversion.ts`'s own
+// doc comments on why the live meter is not a read of the cohort model).
+// Both share ONE conversion-window selection (`LibraryUtilizationView`).
+//
+// Unlike the trend's OWN insufficient-history state (rendered inside
+// `LibraryConversionTrend`), this page has no page-level gate: the meter is
+// a live snapshot that already renders "zero tracks added" honestly on its
+// own, and the trend's insufficient state is scoped to itself, not the page.
 export default async function LibraryUtilizationPage() {
   const [sets, addEvents, roster] = await Promise.all([
     getRecentSets(),
     getLibraryAddEvents(),
     getLibraryRoster(),
   ]);
-  // Story 4.11 AC-6: measured 29.2% (272/930) of Arjun's real catalogue rows
+  // Story 4.11 AC-6: measured 27.7% (252/910) of Arjun's real catalogue rows
   // excluded for having no resolvable title/artist at all — well above the
-  // ~5% materiality bar, so this renders, not silently omitted.
+  // ~5% materiality bar, so this renders, not silently omitted. (The 272/930
+  // this comment carried until now predates 4.11's own review, which dropped
+  // the 20 video files from both counts; the committed fixture has always
+  // said 252/910.)
   const unidentifiableDisclosure = unidentifiableTracksDisclosure(
     roster.excludedNoIdentityCount,
     roster.totalCatalogueRows,
@@ -33,17 +47,18 @@ export default async function LibraryUtilizationPage() {
   // review lesson; `react-hooks/purity` rejects `Date.now()` here besides).
   //
   // Every selectable window is precomputed here, up front — the dropdown
-  // (Arjun, 2026-08-07) just looks one up, matching D-13's "no work happens
-  // on click" discipline the trend chart's own window toggle established.
-  // `firstPlay` is built once and shared across all three windows (Story 4.3
-  // review) rather than each `buildLiveConversionRate` call re-diffing `sets`.
+  // just looks one up, matching D-13's "no work happens on click" discipline
+  // the trend's own window toggle established. `firstPlay` is built once and
+  // shared across all three windows (Story 4.3 review) rather than each
+  // `buildLiveConversionRate` call re-diffing `sets`.
   const firstPlay = firstPlayByTrack(sets);
   const rates = Object.fromEntries(
-    LIVE_CONVERSION_WINDOWS.map((window) => [
+    CONVERSION_WINDOWS.map((window) => [
       window,
       buildLiveConversionRate(addEvents.events, sets, addEvents.readAtMs, window, firstPlay),
     ]),
-  ) as Record<(typeof LIVE_CONVERSION_WINDOWS)[number], ReturnType<typeof buildLiveConversionRate>>;
+  ) as Record<(typeof CONVERSION_WINDOWS)[number], ReturnType<typeof buildLiveConversionRate>>;
+  const library = buildLibraryConversion(addEvents.events, sets, addEvents.readAtMs);
 
   return (
     <main className="lu">
@@ -53,7 +68,11 @@ export default async function LibraryUtilizationPage() {
         <p className="lu-subtitle">How much of your library actually makes it to the dancefloor.</p>
       </header>
 
-      <ConversionRateMeter rates={rates} unidentifiableDisclosure={unidentifiableDisclosure} />
+      <LibraryUtilizationView
+        rates={rates}
+        library={library}
+        unidentifiableDisclosure={unidentifiableDisclosure}
+      />
     </main>
   );
 }

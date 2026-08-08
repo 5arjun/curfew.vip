@@ -139,8 +139,19 @@ function xForIndex(i: number, count: number): number {
   return VIEW.padding + Y_AXIS_GUTTER + (usable * i) / (count - 1);
 }
 
-const pctX = (x: number) => `${(x / VIEW.width) * 100}%`;
-const pctY = (y: number) => `${(y / VIEW.height) * 100}%`;
+// Fixed to 4 decimal places (Story 4.7 fix — found while all three metrics
+// started SSR-ing by default for the first time): a bare template-literal
+// percentage emits the FULL float64 shortest-round-trip string (up to ~17
+// significant digits). `effectiveDiversity`'s `2 ** bits` can differ from
+// server (Node's V8) to client (the browser's V8 build) at the ULP level —
+// legal per spec, transcendental math is implementation-approximated, not
+// bit-exact across engines — which at 17 digits of precision reads as a
+// genuine SSR/hydration mismatch on every page load. Four decimal places is
+// already far finer than this chart can visually resolve (a 0.0001% error
+// is a fraction of a sub-pixel at any realistic viewport) and matches the
+// `.toFixed(2)` discipline this file already uses for its SVG path strings.
+const pctX = (x: number) => `${((x / VIEW.width) * 100).toFixed(4)}%`;
+const pctY = (y: number) => `${((y / VIEW.height) * 100).toFixed(4)}%`;
 
 interface YDomain {
   min: number;

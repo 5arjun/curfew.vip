@@ -63,49 +63,81 @@
   gap: 14px;
 }
 
-/* ─── Metric chip toggle (Task 4) — the SpotlightSearch/genre-chip hover-glow
-   idiom: a raised pill, quiet at rest, glowing on hover, lit solid when
-   active. Inter (not mono) — this is a label, not metadata (D-taste rule the
-   nav labels already follow). ────────────────────────────────────────────── */
-.se-chips {
+/* ─── Summary tile row (Story 4.7, AC-4/AC-5/AC-8) — four aggregate readings
+   above the sections, reusing the dashboard's `dz-shell`/`dz-dots` tile-shell
+   language (ConfidenceTile/OdometerCard) rather than a chip idiom: these are
+   readouts, not controls. Renders whenever there is ≥1 set, independent of
+   the trend sections' insufficient-history gate. ───────────────────────────── */
+.se-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.se-tile {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 16px 18px;
+  border-radius: 20px;
 }
 
-.se-chip {
-  padding: 9px 16px;
-  min-height: 36px;
-  border: none;
-  border-radius: var(--radius-full);
-  background: var(--color-abyss-raised);
+.se-tile-label {
+  margin: 0;
+  font-family: var(--font-geist-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   color: var(--color-abyss-text-45);
-  font-family: var(--font-inter);
-  font-size: 13px;
-  font-weight: 550;
-  cursor: pointer;
-  transition:
-    color var(--motion-duration-fast) var(--motion-ease-standard),
-    background-color var(--motion-duration-fast) var(--motion-ease-standard),
-    box-shadow var(--motion-duration-fast) var(--motion-ease-standard);
 }
 
-.se-chip:hover {
+.se-tile-value {
+  margin: 0;
+  font-size: clamp(22px, 2.2vw, 28px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
   color: var(--color-abyss-text);
-  box-shadow: 0 0 18px var(--color-abyss-accent-glow);
 }
 
-.se-chip[aria-pressed="true"] {
-  background: var(--color-abyss-raised);
-  color: var(--color-abyss-accent);
-  box-shadow: 0 0 18px var(--color-abyss-accent-glow);
+.se-tile-delta {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-abyss-text-72);
 }
 
-.se-chip:focus-visible {
-  outline: none;
-  box-shadow:
-    0 0 0 2px var(--color-abyss-accent),
-    0 0 0 6px var(--color-abyss-accent-glow);
+.se-tile-hint {
+  margin: 4px 0 0;
+  font-family: var(--font-geist-mono);
+  font-size: 10.5px;
+  color: var(--color-abyss-text-45);
+}
+
+@media (max-width: 900px) {
+  .se-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .se-tiles {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ─── Sections (Story 4.7, AC-1) — Tempo/Genre/Key, stacked and all visible
+   at once, replacing the retired metric-chip's single shared slot. */
+.se-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.se-section-title {
+  margin: 0;
+  padding: 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-abyss-text-72);
 }
 
 /* ─── Week/Month granularity toggle — a smaller, secondary sibling of the
@@ -628,6 +660,12 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  /* min-height, not padding, so the label's own line-height still centers
+     visually — WCAG 2.2 AA SC 2.5.8's 24×24 minimum (Story 4.7 AC-10: found
+     while measuring this section, now default-visible on every page load
+     instead of only after a manual chip click to Genre/Key). Same fix shape
+     Story 4.1's review already applied to `.se-chart-info-btn`'s `::after`. */
+  min-height: 24px;
   margin-left: auto;
   color: var(--color-abyss-text-72);
   cursor: pointer;

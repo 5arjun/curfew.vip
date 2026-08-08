@@ -17,61 +17,40 @@ import { localMonthKey } from "./styleEvolution";
 import type { SetRecord } from "./types";
 
 /**
- * Selectable conversion windows, in days (D-13, Arjun 2026-08-07).
+ * Selectable conversion windows, in days.
  *
- * **90 is the default and stays the default** — D-8 locked it to match the
- * window FR-11 already fixed for Story 4.3's conversion-rate meter
- * (`prd.md:239`, resolved 2026-07-21), so the trend line a DJ sees first and
- * the meter they see later can never disagree by quietly measuring different
- * things. 60 and 30 are an *exploration* affordance layered on top of that
- * default, not a redefinition of the metric.
+ * **RECONCILED (Story 4.7, AC-3, 2026-08-07).** This used to be two separate
+ * scales: the trend chart's `CONVERSION_WINDOWS` (90/60/30, D-13) and the
+ * pip meter's own `LIVE_CONVERSION_WINDOWS` (60/30/14) — a deliberate
+ * divergence Arjun approved the same day the meter shipped, on the reasoning
+ * that the two features were now independent. Story 4.7 moves the trend
+ * onto the same page as the meter (`/library-utilization`) and requires them
+ * to "visibly share one window selection" (AC-3) — two independently-typed
+ * toggles rendered side by side would be exactly the "disagree on screen"
+ * outcome that forbids. Unified onto the METER's scale (60/30/14, default
+ * 60): it is the more recently and deliberately designed of the two
+ * (Story 4.3's own follow-up chose 60 as the product default), and FR-11
+ * itself has already moved off 90 in the PRD (see Story 4.3 AC-1's
+ * supersession note) — 90 was not a value worth preserving.
  *
  * What shortening actually answers: not "did this track ever get played" but
  * "how FAST does new music reach a set". Two side effects, both intended and
  * both worth knowing when reading the chart:
- *   - Rates fall. A track first played on day 75 counts at 90 and not at 60.
+ *   - Rates fall. A track first played on day 45 counts at 60 and not at 30.
  *   - The line gets LONGER. A cohort needs only its own window to complete
- *     (D-9), so at 30 days two more recent months are already scoreable.
+ *     (D-9), so at 14 days more recent months are already scoreable.
  *
- * Ordered longest-first so the toggle reads 90 / 60 / 30 left to right — the
- * default sits leftmost, and the row reads as "loosen → tighten".
+ * Ordered longest-first so a toggle reads 60 / 30 / 14 left to right — the
+ * default sits leftmost, and the row reads as "loosen → tighten". 14 is
+ * "2 weeks" in user-facing copy ({@link liveWindowPhrase}), not "14 days" —
+ * matching how a DJ would actually say it.
  */
-export const CONVERSION_WINDOWS = [90, 60, 30] as const;
+export const CONVERSION_WINDOWS = [60, 30, 14] as const;
 export type ConversionWindow = (typeof CONVERSION_WINDOWS)[number];
 
-/**
- * D-8's locked window — the trend chart's first-visit default.
- *
- * **No longer the pip meter's default** (Arjun, 2026-08-07, post-launch of
- * this trend chart): the meter switched to a 60/30/14 scale of its own (see
- * {@link LIVE_CONVERSION_WINDOWS}), a deliberate divergence from the
- * "trend and meter never disagree" framing D-8 originally set — the two
- * features are allowed to measure different things now.
- */
-export const DEFAULT_CONVERSION_WINDOW: ConversionWindow = 90;
-
-/**
- * @deprecated Kept as the name D-8 and the migration comments refer to.
- * Prefer {@link DEFAULT_CONVERSION_WINDOW}.
- */
-export const CONVERSION_WINDOW_DAYS = DEFAULT_CONVERSION_WINDOW;
-
-/**
- * Selectable windows for the pip meter's LIVE current-window rate (Arjun,
- * 2026-08-07: "instead of 90 do 60 and add a drop down... 30 days or 2
- * weeks"). A separate scale from {@link CONVERSION_WINDOWS} on purpose — the
- * meter and the trend chart above are independent features as of this
- * change, each free to pick the window granularity that suits how it's
- * actually used (a live snapshot reads naturally at shorter, more recent
- * windows; a month-bucketed trend needs the longer ones to have enough
- * cohorts). 14 is "2 weeks" in the dropdown copy, not "14 days" — matching
- * how a DJ would actually say it.
- */
-export const LIVE_CONVERSION_WINDOWS = [60, 30, 14] as const;
-export type LiveWindow = (typeof LIVE_CONVERSION_WINDOWS)[number];
-
-/** The meter's first-visit default (Arjun, 2026-08-07 — was 90 via {@link DEFAULT_CONVERSION_WINDOW}). */
-export const DEFAULT_LIVE_WINDOW: LiveWindow = 60;
+/** The shared first-visit default for both the trend and the meter (Story
+ *  4.7 AC-3) — Story 4.3's own follow-up chose 60 as the product default. */
+export const DEFAULT_CONVERSION_WINDOW: ConversionWindow = 60;
 
 /**
  * How a DJ would actually say a live window ("2 weeks", not "14 days") —
@@ -227,10 +206,13 @@ export function convertedWithinWindow(
  * The whole model, from synced add-events plus play history (AC-1, AC-7).
  *
  * Cohorts are keyed by the local month a track was ADDED — deliberately a
- * different x-axis from Style Evolution's other three metrics, which bucket by
- * the month a set was PLAYED. Only one metric is ever on screen at a time
- * (`MetricChipToggle`), so the two never share a plot and cannot be misread as
- * the same axis.
+ * different x-axis from Style Evolution's three trend metrics, which bucket by
+ * the month a set was PLAYED. That used to be kept safe by `MetricChipToggle`
+ * putting only one metric on screen at a time; Story 4.7 deleted the chip and
+ * made all three Style Evolution sections visible at once, so the separation
+ * is now STRUCTURAL instead: this metric lives on `/library-utilization` and
+ * the other three on `/style-evolution`, two different pages that never share
+ * a plot or an axis.
  *
  * Every window in {@link CONVERSION_WINDOWS} is computed in one pass (D-13):
  * the expensive half — building the first-play index and bucketing the events —
@@ -356,8 +338,8 @@ export function isLowConfidenceCohort(added: number): boolean {
  * real evidence the DJ played a track after acquiring it.
  */
 export interface LiveConversionRate {
-  /** Which window this rate was computed for — see {@link LIVE_CONVERSION_WINDOWS}. */
-  window: LiveWindow;
+  /** Which window this rate was computed for — see {@link CONVERSION_WINDOWS}. */
+  window: ConversionWindow;
   /** Dated tracks added within the trailing window as of `nowMs`. The denominator. */
   added: number;
   /** How many of `added` have a play at or after their own `added_at`. */
@@ -383,7 +365,7 @@ export interface LiveConversionRate {
  * states for every function here.
  *
  * `sets` is diffed into a first-play index internally UNLESS the caller
- * already has one (e.g. the page precomputing every {@link LIVE_CONVERSION_WINDOWS}
+ * already has one (e.g. the page precomputing every {@link CONVERSION_WINDOWS}
  * entry up front, per D-13) — pass it as `precomputedFirstPlay` so the O(sets)
  * pass isn't repeated once per window (Story 4.3 review).
  */
@@ -391,7 +373,7 @@ export function buildLiveConversionRate(
   events: LibraryAddEvent[],
   sets: SetRecord[],
   nowMs: number,
-  window: LiveWindow = DEFAULT_LIVE_WINDOW,
+  window: ConversionWindow = DEFAULT_CONVERSION_WINDOW,
   precomputedFirstPlay?: Map<string, number>,
 ): LiveConversionRate {
   const firstPlay = precomputedFirstPlay ?? firstPlayByTrack(sets);
@@ -540,10 +522,10 @@ export function liveConversionRateSummary(rate: LiveConversionRate): string {
  * Task 2) rather than a second one: pass `pendingCohortCount: 0` and the
  * second clause simply never fires.
  *
- * `window` is a bare `number`, not {@link ConversionWindow}: the cohort model
- * and the live meter ({@link LiveWindow}) now select from two different
- * window scales, and this generator only ever interpolates the value into a
- * sentence — it has no reason to care which scale it came from.
+ * `window` is a bare `number`, not {@link ConversionWindow}: this generator
+ * only ever interpolates the value into a sentence, so it has no reason to
+ * care which type it came from — kept loose even after Story 4.7 unified the
+ * cohort model and the live meter onto one scale.
  */
 export function undatedDisclosure(
   counts: { noAddDateCount: number; pendingCohortCount: number },

@@ -4,11 +4,18 @@ import { useCallback, useSyncExternalStore } from "react";
 import type { Granularity } from "@/lib/sets/styleEvolution";
 
 // Week/Month granularity toggle (added post-launch-review, 2026-08-06,
-// Arjun: monthly-only bucketing read as too sparse for a real trend). Same
-// `useSyncExternalStore`-backed localStorage persistence as the metric chip
-// (MetricChipToggle.tsx) — read the doc comment there for why an effect+
-// setState isn't used. Defaults to Month: the AC-1/FR-9 "month-over-month"
-// framing stays the first-visit default, week is an opt-in denser view.
+// Arjun: monthly-only bucketing read as too sparse for a real trend).
+// `useSyncExternalStore`-backed localStorage persistence — NOT effect+
+// setState, which `react-hooks/set-state-in-effect` rejects and which Story
+// 4.1's review already had to fix once. `ConversionWindowDropdown.tsx` is the
+// other live instance of this exact shape; the pattern's original home
+// (`MetricChipToggle.tsx`) was deleted by Story 4.7's AC-1 chip retirement,
+// so the pointer moved here rather than dangling. Defaults to Month: the
+// AC-1/FR-9 "month-over-month" framing stays the first-visit default, week is
+// an opt-in denser view.
+//
+// Story 4.7 AC-2: now a PAGE-level control acting on all three trend sections
+// at once, not a per-section one.
 
 const STORAGE_KEY = "curfew:style-evolution:granularity";
 
@@ -18,9 +25,9 @@ function isGranularity(v: unknown): v is Granularity {
 
 const listeners = new Set<() => void>();
 
-// This visit's choice, in memory — see the same field in MetricChipToggle for
-// why: `getSnapshot` is React's only source of truth, so a `setItem` that
-// throws would otherwise leave the toggle permanently stuck on Month.
+// This visit's choice, in memory — `getSnapshot` is React's only source of
+// truth, so a `setItem` that throws (private browsing, storage disabled)
+// would otherwise leave the toggle permanently stuck on Month.
 let sessionGranularity: Granularity | null = null;
 
 function subscribe(listener: () => void): () => void {
