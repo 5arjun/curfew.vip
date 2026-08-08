@@ -126,9 +126,15 @@
   }
 }
 
+/* 2×2, not single-column (Story 4.8, closing 4.7's carried-forward R-8):
+   four stacked tiles pushed the first chart to y≈750 on a 720px phone
+   viewport, and this story added two more charts below the fold. Two-up
+   halves the tile rows' height so a chart edge stays in reach; the tile
+   values still fit at 320/2 − gap ≈ 142px wide (the widest reading,
+   "0:54 / track", measures ~90px at the clamp floor). */
 @media (max-width: 480px) {
   .se-tiles {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -906,6 +912,58 @@
   font-style: italic;
   color: var(--color-abyss-text-45);
   opacity: 0.8;
+}
+
+/* ─── Genre share stream (Story 4.8, AC-1..6) — the Genre section's hero.
+   Reuses the .se-chart card/plot/ticks/cats chrome wholesale; only the
+   band fills are new. ────────────────────────────────────────────────────── */
+/* Full opacity, unlike the grouped bars' 0.65: the bars sit UNDER a trend
+   line that must stay the hero; the stream has no line over it — it IS the
+   hero — and AC-4's validation only holds at full strength (re-running the
+   `dataviz` validator on the 0.85-alpha composites dropped the worst
+   adjacent CVD pair to ΔE 7.8 and the fold neutral to 2.75:1; at 1.0 the
+   rendered colors are exactly the validated tokens). */
+.se-stream-band {
+  /* The dataviz mark spec's surface gap between stacked fills, done as a
+     hairline stroke so it survives preserveAspectRatio="none" undistorted. */
+  stroke: var(--color-abyss-hairline);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+
+/* The stream's legend swatches read at the bands' own full weight. */
+.se-stream-swatch {
+  opacity: 1;
+}
+
+/* ─── Camelot wheel (Story 4.8, AC-7/8/11) — the Key section's hero. A
+   static radial graphic (G-6: non-interactive by ruling), so no hover, no
+   focus, no tap targets — the Chart Summary caption is the reading
+   surface. ──────────────────────────────────────────────────────────────── */
+.se-wheel-plot {
+  display: grid;
+  place-items: center;
+  padding: 8px 0 4px;
+}
+
+.se-wheel-svg {
+  width: min(100%, 340px);
+  height: auto;
+}
+
+/* Zero-count cells keep the hairline outline only — an EMPTY cell (D-8),
+   never a minimum-intensity one. */
+.se-wheel-cell {
+  stroke: var(--color-abyss-hairline);
+  stroke-width: 1px;
+}
+
+.se-wheel-number {
+  fill: var(--color-abyss-text-45);
+  font-family: var(--font-geist-mono);
+  font-size: 12px;
+  text-anchor: middle;
+  dominant-baseline: central;
 }
 
 @media (max-width: 640px) {

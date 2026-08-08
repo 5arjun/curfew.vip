@@ -707,7 +707,22 @@ development_status:
   # story/4-7-sectioned-style-evolution-summary-tiles -> PR #20.
   # 4-7-sectioned-style-evolution-summary-tiles: review -> done.
   4-7-sectioned-style-evolution-summary-tiles: done
-  4-8-genre-share-stream-camelot-wheel: ready-for-dev
+  # [2026-08-08] 4.8 implemented on story/4-8-genre-share-stream-camelot-wheel
+  # (main merged in first at ec15b20). Genre share stream + Camelot wheel
+  # heroes, harmonic trend as a TrendChart metric, shared name-keyed genre
+  # color map (new genreColor.ts) consumed by stream AND bars, tokens
+  # extended to 8 validated slots, gate pushed inside Genre/Key (heroes
+  # render off one set), 4.7's R-8 closed via 2x2 tiles at <=480px. All
+  # G-1..G-10 rulings recorded as numbered Completion Notes; nonobvious ones:
+  # wheel cells non-interactive (drops AC-11's keyboard + phone-fallback
+  # branches), Key Usage 2^H chart replaced by the harmonic trend per Task 7
+  # (flagged for review), stream bands full-opacity because the 0.85-alpha
+  # composite fails the CVD floor. Gate: 423/423 vitest (47 new), eslint/tsc/
+  # build clean; fixture-fed SSR walkthrough at 1440/375/320: 0 console
+  # errors, no hydration mismatch, live recolor test passed, landmarks stay 7.
+  # NOTE: Supabase dev project has ZERO sets — walkthrough used the committed
+  # fixture through a temporary (deleted) preview route.
+  4-8-genre-share-stream-camelot-wheel: review
   # [ADDED 2026-08-07, same Arjun session] Library Utilization's turn. 4-9 is
   # the page composition + the utilization stats that need ZERO agent work
   # (repeat-track rate, set-similarity heatmap, workhorses by sets-appeared-in,

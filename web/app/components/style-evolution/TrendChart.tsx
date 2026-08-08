@@ -5,13 +5,23 @@ import {
   bpmRangeSummary,
   effectiveDiversity,
   genreDiversitySummary,
+  harmonicMixSummary,
   keyDiversitySummary,
   type CategoryTally,
   type Granularity,
   type MonthBpmRange,
   type MonthGenreDiversity,
+  type MonthHarmonicMix,
   type MonthKeyDiversity,
 } from "@/lib/sets/styleEvolution";
+import {
+  CATCH_ALL_GENRE,
+  FOLD_COLOR,
+  GENRE_SLOT_COUNT,
+  buildGenreColorAssignment,
+  genreColorFor,
+  type GenreColorAssignment,
+} from "@/lib/sets/genreColor";
 import {
   DEFAULT_CONVERSION_WINDOW,
   isLowConfidenceCohort,
@@ -66,7 +76,7 @@ import { CursorChip, useCursorChipTarget } from "@/app/components/ui/CursorChip"
 // undistorted rounded cap plus its own hover target for free — which also
 // retires the hand-aligned hit-row the SVG version needed.
 
-export type TrendMetric = "bpm" | "genre" | "key" | "library";
+export type TrendMetric = "bpm" | "genre" | "key" | "library" | "harmonic";
 
 const VIEW = { width: 1000, height: 260, padding: 28 };
 const Y_AXIS_GUTTER = 58; // left margin reserved for the y-axis labels
@@ -78,14 +88,13 @@ const BAND_FILL_SAMPLES = 24; // per run — dense enough that the sampled ribbo
  *  "is it possible to make the bars wider? maybe we show 5 instead of 6") —
  *  fewer slots per month, so each bar gets a wider share of the group. */
 const MAX_CATEGORIES = 5;
-/** The app's genre taxonomy has its own literal catch-all genre named "Other"
- *  (genre.rs normalization). It is a real, playable category — but like the
- *  synthetic fold-the-rest bucket it says nothing about style, and on real
- *  data it is the tallest bar in almost every month, flattening everything
- *  worth looking at. Both are treated as "other" by the Show-other toggle;
- *  they keep SEPARATE names and colours, so the legend still tells the real
- *  genre apart from the fold (the distinction an earlier review protected). */
-const CATCH_ALL_GENRE = "Other";
+// The literal catch-all genre ("Other", genre.rs normalization) is a real,
+// playable category — but like the synthetic fold-the-rest bucket it says
+// nothing about style, and on real data it is the tallest bar in almost every
+// month. Both are treated as "other" by the Show-other toggle; they keep
+// SEPARATE names and colours (the distinction an earlier review protected).
+// The name constant itself now lives in genreColor.ts (Story 4.8), the shared
+// home of every genre-color rule, and is imported above.
 /** Tallest bar, as a fraction of the plot band — headroom so a peak bar never
  *  crowds the top axis label or swallows the line above it. */
 const BAR_MAX_FRACTION = 0.86;
@@ -222,7 +231,10 @@ function polygonPath(points: CurveXY[]): string {
 /* ── Error boundary (D-16 precedent from DetailArc): a render failure swaps
    in the Chart Summary caption block — the chart is a nicety, the caption is
    the guaranteed-accessible content underneath it either way. ─────────── */
-class TrendChartErrorBoundary extends Component<
+// Exported (Story 4.8): the genre share stream and the Camelot wheel wrap
+// themselves in this same boundary — their Chart Summary is likewise the
+// guaranteed-accessible content under a chart that is a nicety.
+export class TrendChartErrorBoundary extends Component<
   { caption: string; resetKey: string; children: ReactNode },
   { failed: boolean; resetKey: string }
 > {
@@ -269,6 +281,7 @@ const METRIC_TITLE: Record<TrendMetric, string> = {
   genre: "Genre Diversity",
   key: "Key Usage",
   library: "Library Conversion",
+  harmonic: "Harmonic Mixing",
 };
 
 // Story 4.2 (D-7): the library-conversion metric reuses this component's
@@ -291,11 +304,6 @@ const PCT_DOMAIN: YDomain = { min: 0, max: 100 };
 // instead of a raw entropy bit value (added post-launch-review, 2026-08-06,
 // Arjun: "more/less variety" wasn't quantitative enough).
 const UNIT_NOUN: Partial<Record<TrendMetric, string>> = { genre: "genres", key: "keys" };
-
-/** Genre bars: the 6-slot validated categorical palette (tokens.css). */
-function genreColor(slot: number): string {
-  return `var(--chart-cat-${slot + 1})`;
-}
 
 /** Key bars: the SAME Camelot-wheel hue every other key visualization in
  *  this app already uses (Tracklist/DetailArc) — an exact, pre-existing
@@ -320,6 +328,8 @@ export function TrendChart({
   bpmSeries,
   genreSeries,
   keySeries,
+  harmonicSeries,
+  genreColors,
   librarySeries,
   libraryModel,
   conversionWindow = DEFAULT_CONVERSION_WINDOW,
@@ -330,6 +340,17 @@ export function TrendChart({
   bpmSeries: Array<MonthBpmRange | null>;
   genreSeries: Array<MonthGenreDiversity | null>;
   keySeries: Array<MonthKeyDiversity | null>;
+  /** Story 4.8 (AC-9): per-bucket harmonic mix rate, parallel to `buckets`
+   *  when `metric === "harmonic"` — the same percentage plot the library
+   *  metric already draws, against the same fixed 0–100 domain. */
+  harmonicSeries?: Array<MonthHarmonicMix | null>;
+  /** Story 4.8 (AC-3, G-1): the page-level deterministic genre→color
+   *  assignment, shared with the genre share stream so the two charts in the
+   *  Genre section can never disagree. Callers rendering `metric === "genre"`
+   *  should always pass it — without it this component falls back to building
+   *  one from its own (view-dependent) series, which keeps names stable
+   *  within a view but lets the reveal toggle re-rank slots. */
+  genreColors?: GenreColorAssignment;
   /** Story 4.2: per-cohort conversion rates (0–1), parallel to `buckets` when
    *  `metric === "library"`. The caller passes the ADD-month buckets for that
    *  metric — see `PCT_DOMAIN`'s note above. */
@@ -351,9 +372,11 @@ export function TrendChart({
         ? genreDiversitySummary(buckets, genreSeries, granularity)
         : metric === "key"
           ? keyDiversitySummary(buckets, keySeries, granularity)
-          : libraryModel
-            ? libraryConversionSummary(libraryModel, conversionWindow)
-            : "No library additions tracked yet.";
+          : metric === "harmonic"
+            ? harmonicMixSummary(buckets, harmonicSeries ?? [], granularity)
+            : libraryModel
+              ? libraryConversionSummary(libraryModel, conversionWindow)
+              : "No library additions tracked yet.";
 
   return (
     <TrendChartErrorBoundary
@@ -370,6 +393,8 @@ export function TrendChart({
         bpmSeries={bpmSeries}
         genreSeries={genreSeries}
         keySeries={keySeries}
+        harmonicSeries={harmonicSeries}
+        genreColors={genreColors}
         librarySeries={librarySeries}
         libraryModel={libraryModel}
         conversionWindow={conversionWindow}
@@ -388,6 +413,8 @@ function TrendChartPlot({
   bpmSeries,
   genreSeries,
   keySeries,
+  harmonicSeries,
+  genreColors,
   librarySeries,
   libraryModel,
   conversionWindow = DEFAULT_CONVERSION_WINDOW,
@@ -399,6 +426,8 @@ function TrendChartPlot({
   bpmSeries: Array<MonthBpmRange | null>;
   genreSeries: Array<MonthGenreDiversity | null>;
   keySeries: Array<MonthKeyDiversity | null>;
+  harmonicSeries?: Array<MonthHarmonicMix | null>;
+  genreColors?: GenreColorAssignment;
   librarySeries?: Array<number | null>;
   libraryModel?: LibraryConversionModel;
   conversionWindow?: ConversionWindow;
@@ -419,8 +448,11 @@ function TrendChartPlot({
     // Story 4.2: rate 0–1 → percent, so the plotted quantity, the axis label,
     // the hover chip, and the caption all speak in the same unit.
     if (metric === "library") return (librarySeries ?? []).map((v) => (v == null ? null : v * 100));
+    // Story 4.8 (AC-9): same rate→percent discipline. `rate === null` (zero
+    // scored transitions) stays a gap in the line (D-8).
+    if (metric === "harmonic") return (harmonicSeries ?? []).map((v) => (v && v.rate != null ? v.rate * 100 : null));
     return [];
-  }, [metric, genreSeries, keySeries, librarySeries]);
+  }, [metric, genreSeries, keySeries, librarySeries, harmonicSeries]);
 
   // Story 4.2 low-confidence disclosure: `buckets[i]` is `libraryBuckets[i]`
   // is `libraryModel.windows[conversionWindow].cohorts[i].bucket` (all three
@@ -484,38 +516,71 @@ function TrendChartPlot({
   // an actual "Other" genre.
   const otherLabel = metric === "key" ? "Other keys" : "Other genres";
 
-  // Rank categories GLOBALLY (across every bucket in the current view) by
-  // total count — the stable ordering that keeps one category's color and its
-  // slot in the group fixed everywhere it appears, so "if the trend switches
-  // in April, the bars reflect that" reads correctly. Catch-alls are pinned to
-  // the LAST slots regardless of size, so ticking Show other only ever appends
-  // bars on the right — the five real categories never shift position.
+  // Genre color + slot selection (Story 4.8, G-1): the shared page-level
+  // assignment, so a genre's color follows its NAME — never its rank within
+  // the current view, which is what used to let the low-confidence reveal
+  // recolor every bar (the failure AC-3 names verbatim). Bars show up to
+  // MAX_CATEGORIES of the globally color-slotted genres present in this
+  // view, in global rank order; anything else folds. N=5 here vs the share
+  // stream's N=6 is deliberate (G-3) — different geometries, different
+  // legibility budgets — but both select from the same ranked list, so a
+  // color never means two genres.
+  //
+  // Keys keep their existing exact `--camelot-*` mapping and still rank by
+  // view-local totals — a key's color is keyed on its name by construction,
+  // so the reshuffle failure cannot occur there. Catch-alls stay pinned to
+  // the LAST slots regardless of size, so ticking Show other only ever
+  // appends bars on the right.
   const ranked = useMemo<RankedCategory[]>(() => {
+    const present = new Set<string>();
+    for (const bucket of breakdowns) {
+      if (!bucket) continue;
+      for (const c of bucket) if (c.count > 0) present.add(c.name);
+    }
+
+    if (metric === "genre") {
+      // Fallback assignment from this chart's own series — see the prop doc.
+      const assignment =
+        genreColors ?? buildGenreColorAssignment(breakdowns.map((b) => (b ? { breakdown: b } : null)));
+      const top = assignment.ranked
+        .slice(0, GENRE_SLOT_COUNT)
+        .filter((n) => present.has(n))
+        .slice(0, MAX_CATEGORIES);
+      const topSet = new Set(top);
+      const cats: RankedCategory[] = top.map((name) => ({
+        name,
+        color: genreColorFor(assignment, name),
+        catchAll: false,
+      }));
+      if (present.has(CATCH_ALL_GENRE)) {
+        cats.push({ name: CATCH_ALL_GENRE, color: genreColorFor(assignment, CATCH_ALL_GENRE), catchAll: true });
+      }
+      // Categories past the cap fold into a disclosed "Other" slot — never
+      // silently dropped, matching `no_genre_count`'s own "never omitted"
+      // contract elsewhere in this feature.
+      if (assignment.ranked.some((n) => present.has(n) && !topSet.has(n))) {
+        cats.push({ name: otherLabel, color: FOLD_COLOR, catchAll: true });
+      }
+      return cats;
+    }
+
     const totals = new Map<string, number>();
     for (const bucket of breakdowns) {
       if (!bucket) continue;
       for (const c of bucket) totals.set(c.name, (totals.get(c.name) ?? 0) + c.count);
     }
     const sorted = [...totals.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name);
-    const isGenreCatchAll = (name: string) => metric === "genre" && name === CATCH_ALL_GENRE;
-    const named = sorted.filter((n) => !isGenreCatchAll(n));
-    const top = named.slice(0, MAX_CATEGORIES);
-    const cats: RankedCategory[] = top.map((name, i) => ({
+    const top = sorted.slice(0, MAX_CATEGORIES);
+    const cats: RankedCategory[] = top.map((name) => ({
       name,
-      color: metric === "key" ? keyColor(name) : genreColor(i),
+      color: keyColor(name),
       catchAll: false,
     }));
-    if (sorted.some(isGenreCatchAll)) {
-      cats.push({ name: CATCH_ALL_GENRE, color: "var(--chart-cat-6)", catchAll: true });
-    }
-    // Categories past the cap fold into a disclosed "Other" slot — never
-    // silently dropped, matching `no_genre_count`'s own "never omitted"
-    // contract elsewhere in this feature.
-    if (named.length > MAX_CATEGORIES) {
-      cats.push({ name: otherLabel, color: "var(--chart-cat-other)", catchAll: true });
+    if (sorted.length > MAX_CATEGORIES) {
+      cats.push({ name: otherLabel, color: FOLD_COLOR, catchAll: true });
     }
     return cats;
-  }, [breakdowns, metric, otherLabel]);
+  }, [breakdowns, metric, otherLabel, genreColors]);
 
   const hasCatchAll = ranked.some((c) => c.catchAll);
 
@@ -607,7 +672,10 @@ function TrendChartPlot({
   // against the whole scale — an auto-fitted axis would make 38% vs 41% look
   // like a collapse.
   const lineDomain = useMemo<YDomain>(
-    () => (metric === "library" ? PCT_DOMAIN : { min: 1, max: lineMax <= 1 ? 2 : lineMax * 1.15 }),
+    () =>
+      metric === "library" || metric === "harmonic"
+        ? PCT_DOMAIN
+        : { min: 1, max: lineMax <= 1 ? 2 : lineMax * 1.15 },
     [metric, lineMax],
   );
 
@@ -728,6 +796,12 @@ function TrendChartPlot({
             <span className="se-legend-swatch se-legend-swatch--min" aria-hidden="true" />
             <span>Slowest track</span>
           </div>
+        ) : metric === "harmonic" ? (
+          // States WHAT is plotted, like the diversity subtitle below — the
+          // "am I getting better at mixing" line (Story 4.8 AC-9). No
+          // explainer button: "share of transitions that stay in key" is the
+          // whole definition.
+          <p className="se-chart-subtitle">Share of transitions that stay in key</p>
         ) : metric === "library" ? (
           // States WHAT is plotted; the explainer holds the two things a DJ
           // would otherwise have to guess — which month a point belongs to
@@ -826,9 +900,10 @@ function TrendChartPlot({
                 </span>
               )}
             </>
-          ) : metric === "library" ? (
+          ) : metric === "library" || metric === "harmonic" ? (
             // Fixed 0/50/100 ticks, matching the fixed domain above — the
-            // reference points that make a rate legible at a glance.
+            // reference points that make a rate legible at a glance
+            // (harmonic reuses the whole percentage path, Story 4.8 G-5).
             <>
               {[100, 50, 0].map((tick) => (
                 <span key={tick} className="se-chart-ylabel" style={{ top: pctY(mapY(tick, lineDomain)) }}>
@@ -1232,7 +1307,9 @@ function TrendChartPlot({
                         libraryAddedByIndex[hover.bucketIndex] ?? 0,
                         conversionWindow,
                       )
-                    : `${(lineValues[hover.bucketIndex] as number).toFixed(1)} effective ${UNIT_NOUN[metric]}`}
+                    : metric === "harmonic"
+                      ? `${Math.round(lineValues[hover.bucketIndex] as number)}% of transitions in key`
+                      : `${(lineValues[hover.bucketIndex] as number).toFixed(1)} effective ${UNIT_NOUN[metric]}`}
           </p>
         )}
       </CursorChip>

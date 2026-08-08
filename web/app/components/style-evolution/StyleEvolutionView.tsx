@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { buildSummaryTiles, type StyleEvolutionModel } from "@/lib/sets/styleEvolution";
+import {
+  buildCamelotWheel,
+  buildSummaryTiles,
+  type StyleEvolutionModel,
+} from "@/lib/sets/styleEvolution";
+import { buildGenreColorAssignment } from "@/lib/sets/genreColor";
+import { CamelotWheel } from "./CamelotWheel";
+import { GenreShareStream } from "./GenreShareStream";
 import { GranularityToggle, useGranularitySelection } from "./GranularityToggle";
 import { InsufficientHistory } from "./InsufficientHistory";
 import { LowConfidenceReveal } from "./LowConfidenceReveal";
@@ -19,10 +26,18 @@ import { TrendChart } from "./TrendChart";
 // AC-3 moved it to `/library-utilization`, so this component no longer
 // carries a `library` prop or an `isLibrary` branch at all.
 //
-// Granularity and the low-confidence reveal are now page-level controls
-// (AC-2), rendered once and shared by all three sections — the month/week ×
-// excluding/including matrix `styleEvolution.ts` precomputes up front is
-// exactly what makes that a lookup, not a recompute, per section.
+// Story 4.8 restructure: Genre and Key each gained an aggregate HERO (the
+// genre share stream, the Camelot wheel) above their trend chart, and the
+// insufficient-history gate moved INSIDE those two sections (G-9): the
+// heroes read honestly off a single set (AC-12), so only the secondary
+// trend charts — and Tempo, which has no aggregate hero — stay behind the
+// <2-months gate. The `setCount === 0` early return is a separate,
+// unaffected case (4.7's review caught exactly that conflation once).
+//
+// Granularity and the low-confidence reveal are page-level controls (4.7
+// AC-2), rendered once and shared — the month/week × excluding/including
+// matrix `styleEvolution.ts` precomputes up front is exactly what makes
+// that a lookup, not a recompute, per section.
 // Task 6 (AC-2): the retired chip toggle's persisted key is now dead state —
 // a returning DJ's browser would otherwise carry it forever. Cleaned up once
 // per mount, never thrown from (private browsing / storage disabled) — this
@@ -33,6 +48,12 @@ const RETIRED_METRIC_STORAGE_KEY = "curfew:style-evolution:metric";
  *  (`ConversionWindowToggle.tsx`, formerly this page's own 90/60/30 control,
  *  now unified with `/library-utilization`'s shared selection). */
 const RETIRED_CONVERSION_WINDOW_STORAGE_KEY = "curfew:style-evolution:conversion-window";
+
+/** The gated trend slots' insufficient copy — the page-level EXPERIENCE.md
+ *  line claims the whole page has nothing to show, which stopped being true
+ *  the moment the heroes started rendering off one set (AC-12). Same
+ *  console-voice promise register, scoped to the trends. */
+const TREND_GATE_COPY = "Sets from a second month and the trend lines draw themselves.";
 
 export function StyleEvolutionView({ model }: { model: StyleEvolutionModel }) {
   const [granularity, setGranularity] = useGranularitySelection();
@@ -52,6 +73,27 @@ export function StyleEvolutionView({ model }: { model: StyleEvolutionModel }) {
   const bpmSeries = useMemo(() => points.map((p) => p.bpmRange), [points]);
   const genreSeries = useMemo(() => points.map((p) => p.genreDiversity), [points]);
   const keySeries = useMemo(() => points.map((p) => p.keyDiversity), [points]);
+  const harmonicSeries = useMemo(() => points.map((p) => p.harmonicMix), [points]);
+
+  // Story 4.8 G-1 (AC-3): ONE deterministic genre→color assignment for the
+  // whole page, built from month × including — the superset partition, so
+  // neither the reveal (a subset) nor the granularity toggle (a re-partition
+  // of the identical dated population) can recolor a genre. Consumed by the
+  // share stream AND the breakdown bars.
+  const genreColors = useMemo(
+    () => buildGenreColorAssignment(model.month.including.map((p) => p.genreDiversity)),
+    [model],
+  );
+
+  // Story 4.8 AC-8: the wheel is an AGGREGATE over the reveal-selected
+  // partition. It reads the MONTH series regardless of the granularity
+  // toggle — month and week partition the same dated-set population, so the
+  // toggle would have nothing to act on; not wiring it is the recorded
+  // decision, not an omission.
+  const wheel = useMemo(
+    () => buildCamelotWheel((revealed ? model.month.including : model.month.excluding).map((p) => p.keyDiversity)),
+    [model, revealed],
+  );
 
   // AC-4/AC-5: aggregate, not time-series — reads honestly off a single
   // bucket, so it does not depend on the AC-8 gate below at all.
@@ -65,29 +107,44 @@ export function StyleEvolutionView({ model }: { model: StyleEvolutionModel }) {
     const total = genreSeries.reduce((sum, g) => sum + (g?.no_genre_count ?? 0), 0);
     return total > 0 ? `${total} ${total === 1 ? "play" : "plays"} untagged` : null;
   }, [genreSeries]);
+  // Story 4.8 AC-10 extends the same line with the wheel's unreadable-key
+  // count (keys `parseCamelot` rejects are never silently dropped into a
+  // cell) — appended to the ONE existing disclosure rather than growing a
+  // second, differently-worded no-key line (G-10).
   const keyDisclosure = useMemo(() => {
     const total = keySeries.reduce((sum, k) => sum + (k?.no_key_count ?? 0), 0);
-    return total > 0 ? `${total} ${total === 1 ? "play" : "plays"} without a key` : null;
-  }, [keySeries]);
+    const parts: string[] = [];
+    if (total > 0) parts.push(`${total} ${total === 1 ? "play" : "plays"} without a key`);
+    if (wheel.unreadableCount > 0) {
+      parts.push(`${wheel.unreadableCount} ${wheel.unreadableCount === 1 ? "key" : "keys"} unreadable`);
+    }
+    return parts.length > 0 ? parts.join(" · ") : null;
+  }, [keySeries, wheel.unreadableCount]);
+  // Story 4.8 AC-10 (Task 6): transitions the harmonic rate could not score,
+  // summed across the visible partition — the same wording the tile-level
+  // disclosure already uses, so the page never says one thing two ways.
+  const harmonicDisclosure = useMemo(() => {
+    const total = harmonicSeries.reduce((sum, h) => sum + (h?.excludedNoKey ?? 0), 0);
+    return total > 0 ? `${total} ${total === 1 ? "transition" : "transitions"} excluded — no key` : null;
+  }, [harmonicSeries]);
   // A set with no readable start time has no bucket to sit in, so it is
-  // absent from every metric here. Said out loud once, at the page level,
-  // rather than repeated identically under all three sections.
+  // absent from every metric here — including the wheel (G-4's caveat).
+  // Said out loud once, at the page level, rather than repeated under the
+  // sections.
   const undatedDisclosure =
     model.undatedCount > 0
       ? `${model.undatedCount} ${model.undatedCount === 1 ? "set has" : "sets have"} no date and can't be placed on the timeline`
       : null;
 
-  // AC-8: the trend SECTIONS gate on <2 months spanned (D-5, pre-exclusion);
-  // the tile row above never does — it is aggregate and reads honestly off
-  // one set, which is the whole reason it renders outside this gate.
+  // AC-8 (4.7) narrowed by G-9 (4.8): the gate now scopes to the TREND
+  // charts only — Tempo's whole section plus the two secondary charts inside
+  // Genre and Key. The heroes and the tile row render whenever there is ≥1
+  // set. Still <2 months spanned, D-5, pre-exclusion.
   const sectionsReady = model.monthsSpannedAll >= 2;
 
-  // AC-8 narrows the gate for a DJ with "≥1 set but <2 months" — it does NOT
-  // touch the 0-set case, which is a separate, unaffected state (the story's
-  // own Dev Notes say so explicitly). Without this branch the tile row still
-  // rendered for a DJ who has never synced anything: four "—" placeholders
-  // and a granularity toggle acting on nothing, above the empty state. Found
-  // at code review, 2026-08-07.
+  // The 0-set case stays a separate, unaffected state (4.7's review caught
+  // the conflation): a DJ who has never synced anything sees the one empty
+  // state, not tiles-plus-heroes acting on nothing.
   if (model.setCount === 0) return <InsufficientHistory />;
 
   return (
@@ -104,55 +161,74 @@ export function StyleEvolutionView({ model }: { model: StyleEvolutionModel }) {
         />
       </div>
 
-      {sectionsReady ? (
-        <>
-          <section className="se-section" aria-label="Tempo">
-            <h2 className="se-section-title">Tempo</h2>
-            <TrendChart
-              buckets={series.buckets}
-              granularity={granularity}
-              metric="bpm"
-              bpmSeries={bpmSeries}
-              genreSeries={[]}
-              keySeries={[]}
-            />
-          </section>
+      {/* Tempo stays wholly gated (G-9) — it has no aggregate hero. Its
+          section shell still renders, so the landmark structure is stable
+          across the gate (R-10: three sections, always). */}
+      <section className="se-section" aria-label="Tempo">
+        <h2 className="se-section-title">Tempo</h2>
+        {sectionsReady ? (
+          <TrendChart
+            buckets={series.buckets}
+            granularity={granularity}
+            metric="bpm"
+            bpmSeries={bpmSeries}
+            genreSeries={[]}
+            keySeries={[]}
+          />
+        ) : (
+          <InsufficientHistory copy={TREND_GATE_COPY} />
+        )}
+      </section>
 
-          <section className="se-section" aria-label="Genre">
-            <h2 className="se-section-title">Genre</h2>
-            <TrendChart
-              buckets={series.buckets}
-              granularity={granularity}
-              metric="genre"
-              bpmSeries={[]}
-              genreSeries={genreSeries}
-              keySeries={[]}
-            />
-            {genreDisclosure && <p className="se-disclosure">{genreDisclosure}</p>}
-          </section>
+      {/* Genre: stream (hero, ungated) → 2^H trend (secondary, gated) →
+          untagged disclosure. Sub-charts are plain children of the ONE
+          section landmark — no nested <section aria-label> (R-10). */}
+      <section className="se-section" aria-label="Genre">
+        <h2 className="se-section-title">Genre</h2>
+        <GenreShareStream
+          buckets={series.buckets}
+          granularity={granularity}
+          genreSeries={genreSeries}
+          genreColors={genreColors}
+        />
+        {sectionsReady && (
+          <TrendChart
+            buckets={series.buckets}
+            granularity={granularity}
+            metric="genre"
+            bpmSeries={[]}
+            genreSeries={genreSeries}
+            keySeries={[]}
+            genreColors={genreColors}
+          />
+        )}
+        {genreDisclosure && <p className="se-disclosure">{genreDisclosure}</p>}
+      </section>
 
-          <section className="se-section" aria-label="Key">
-            <h2 className="se-section-title">Key</h2>
-            <TrendChart
-              buckets={series.buckets}
-              granularity={granularity}
-              metric="key"
-              bpmSeries={[]}
-              genreSeries={[]}
-              keySeries={keySeries}
-            />
-            {keyDisclosure && <p className="se-disclosure">{keyDisclosure}</p>}
-          </section>
-        </>
-      ) : (
-        <InsufficientHistory />
-      )}
+      {/* Key: wheel (hero, ungated) → harmonic trend (secondary, gated) →
+          no-key + unscored-transition disclosures. */}
+      <section className="se-section" aria-label="Key">
+        <h2 className="se-section-title">Key</h2>
+        <CamelotWheel wheel={wheel} />
+        {sectionsReady && (
+          <TrendChart
+            buckets={series.buckets}
+            granularity={granularity}
+            metric="harmonic"
+            bpmSeries={[]}
+            genreSeries={[]}
+            keySeries={[]}
+            harmonicSeries={harmonicSeries}
+          />
+        )}
+        {keyDisclosure && <p className="se-disclosure">{keyDisclosure}</p>}
+        {harmonicDisclosure && <p className="se-disclosure">{harmonicDisclosure}</p>}
+      </section>
 
       {/* Outside the gate on purpose (code review, 2026-08-07): a DJ whose
           sets are ALL undated has `monthsSpannedAll === 0`, so this line —
-          the one thing that explains why every reading above is empty — was
-          the only branch that could say so, and it sat inside the branch that
-          never renders in that case. */}
+          the one thing that explains why every reading above is empty — must
+          render regardless of the trend gate. */}
       {undatedDisclosure && <p className="se-disclosure">{undatedDisclosure}</p>}
     </>
   );

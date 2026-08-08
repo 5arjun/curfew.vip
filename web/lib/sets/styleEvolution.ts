@@ -16,6 +16,7 @@
 // granularity is currently shown — it is about whether there is enough
 // history at all, not about the current view.
 import type { SetRecord } from "./types";
+import { parseCamelot } from "./setDetail";
 
 export type Granularity = "month" | "week";
 
@@ -753,4 +754,261 @@ export function buildSummaryTiles(buckets: string[], points: BucketPoint[]): Sum
       ? (points[harmonic.index].harmonicMix?.excludedNoKey ?? 0)
       : latestNonZero(points.map((p) => p.harmonicMix?.excludedNoKey ?? null)),
   };
+}
+
+/* ── Genre share stream + Camelot wheel (Story 4.8) ────────────────────────
+   Both hero models derive from per-bucket aggregates this file ALREADY
+   computes — `genreDiversity.breakdown` and `keyDiversity.breakdown` — with
+   no second walk over `plays` (AC-1/G-4 say so literally). */
+
+/** The taxonomy's literal catch-all genre — kept in sync with
+ *  `genreColor.ts`'s `CATCH_ALL_GENRE` (not imported: this module is
+ *  `genreColor.ts`'s own upstream, and a value import back would be a
+ *  cycle). */
+const TAXONOMY_CATCH_ALL = "Other";
+
+export interface GenreShareBand {
+  name: string;
+  /** `named` = one of the top-6 genres; `catchAll` = the taxonomy's own
+   *  literal "Other" genre (a real category); `fold` = this chart's
+   *  fold-the-rest aggregate ("Other genres" — never mistakable for a
+   *  genre, AC-2). */
+  kind: "named" | "catchAll" | "fold";
+}
+
+export interface GenreShareModel {
+  /** Stack order, bottom → top: named genres in the shared global rank
+   *  order, then the literal catch-all, then the fold band. */
+  bands: GenreShareBand[];
+  /** Parallel to the bucket axis. `null` = a bucket with no categorized
+   *  play — a D-8 gap in the stream, never a fabricated all-Other column.
+   *  `counts` is parallel to `bands`; `total` is the bucket's categorized
+   *  play count, so `counts[i] / total` is an integer-over-integer share
+   *  (bit-identical cross-engine — G-8's safe case). */
+  columns: Array<{ counts: number[]; total: number } | null>;
+}
+
+/** Named genres given their own band in the stream — ruled N=6 (AC-2,
+ *  2026-08-07 party mode). Deliberately NOT equal to the breakdown bars'
+ *  MAX_CATEGORIES = 5: different geometries, different legibility budgets
+ *  (G-3 — an asymmetry to keep, not a bug to unify). */
+export const GENRE_STREAM_MAX = 6;
+
+/** The stream's fold-band label — the `otherLabel` idiom `TrendChart`
+ *  already uses, kept distinct from the literal "Other" genre. */
+export const GENRE_FOLD_LABEL = "Other genres";
+
+/**
+ * Per-bucket 100%-stacked genre shares (AC-1/AC-2). `rankedNames` is the
+ * shared view-independent ranking from `buildGenreColorAssignment` — the
+ * stream selects its top 6 from the SAME list the bars select their top 5
+ * from, so the two charts in the Genre section can never disagree about
+ * which genre a color names (G-1).
+ */
+export function buildGenreShare(
+  values: Array<MonthGenreDiversity | null>,
+  rankedNames: string[],
+): GenreShareModel {
+  // Present = appears with a nonzero count somewhere in THIS view. A genre
+  // absent from the view gets no band (a zero-height band everywhere is
+  // legend noise), but its color is still reserved globally, so its absence
+  // here never recolors anything (AC-3).
+  const present = new Set<string>();
+  for (const v of values) {
+    for (const t of v?.breakdown ?? []) if (t.count > 0) present.add(t.name);
+  }
+
+  // A band is "named" only if the genre holds one of the 6 reserved color
+  // slots (the global top-6, whether or not all six are present in THIS
+  // view). A genre present here but outside the global slots folds — giving
+  // it a band of its own would render it in the fold neutral (its only
+  // color), indistinguishable from the fold band beside it.
+  const top = rankedNames.slice(0, GENRE_STREAM_MAX).filter((n) => present.has(n));
+  const topSet = new Set(top);
+  const hasFold = rankedNames.some((n) => present.has(n) && !topSet.has(n));
+
+  const bands: GenreShareBand[] = top.map((name) => ({ name, kind: "named" as const }));
+  if (present.has(TAXONOMY_CATCH_ALL)) bands.push({ name: TAXONOMY_CATCH_ALL, kind: "catchAll" });
+  if (hasFold) bands.push({ name: GENRE_FOLD_LABEL, kind: "fold" });
+
+  const slot = new Map(bands.map((b, i) => [b.name, i]));
+  const foldSlot = hasFold ? bands.length - 1 : -1;
+
+  const columns = values.map((v) => {
+    const breakdown = v?.breakdown ?? [];
+    const counts = bands.map(() => 0);
+    let total = 0;
+    for (const t of breakdown) {
+      if (t.count <= 0) continue;
+      total += t.count;
+      const i = slot.get(t.name) ?? foldSlot;
+      if (i >= 0) counts[i] += t.count;
+    }
+    // No categorized play at all → a gap (D-8), even when the bucket exists
+    // and carries a `no_genre_count` for the disclosure line.
+    return total === 0 ? null : { counts, total };
+  });
+
+  return { bands, columns };
+}
+
+/** One Camelot cell's aggregate play count. `number`/`letter` come from the
+ *  existing `parseCamelot` — never a second parser (Task 1). */
+export interface CamelotCell {
+  number: number;
+  letter: "A" | "B";
+  count: number;
+}
+
+export interface CamelotWheelModel {
+  /** All 24 cells, 1A..12A then 1B..12B, zero-count cells included — a zero
+   *  cell renders EMPTY (D-8), never at minimum intensity. */
+  cells: CamelotCell[];
+  /** Sum of all parseable-key play counts. */
+  totalKeyed: number;
+  /** The busiest cell's count — the intensity scale's ceiling. */
+  maxCount: number;
+  /** Plays whose key string failed `parseCamelot` — never silently dropped
+   *  into a cell; routed to the AC-10 disclosure beside `no_key_count`. */
+  unreadableCount: number;
+}
+
+/**
+ * The wheel's aggregate: `keyDiversity.breakdown` summed across EVERY bucket
+ * of one partition (G-4 — no second walk over `plays`). Feed it the month
+ * series of the reveal-selected partition: month and week partition the
+ * identical dated-set population, so the totals are provably equal and the
+ * granularity toggle has nothing to act on (AC-8's asymmetry, by
+ * construction rather than by wiring).
+ */
+export function buildCamelotWheel(values: Array<MonthKeyDiversity | null>): CamelotWheelModel {
+  const counts = new Map<string, number>();
+  let unreadableCount = 0;
+  for (const v of values) {
+    for (const t of v?.breakdown ?? []) {
+      if (t.count <= 0) continue;
+      const parsed = parseCamelot(t.name);
+      if (!parsed) {
+        unreadableCount += t.count;
+        continue;
+      }
+      const key = `${parsed.number}${parsed.letter}`;
+      counts.set(key, (counts.get(key) ?? 0) + t.count);
+    }
+  }
+
+  const cells: CamelotCell[] = [];
+  for (const letter of ["A", "B"] as const) {
+    for (let number = 1; number <= 12; number++) {
+      cells.push({ number, letter, count: counts.get(`${number}${letter}`) ?? 0 });
+    }
+  }
+  const totalKeyed = cells.reduce((sum, c) => sum + c.count, 0);
+  const maxCount = cells.reduce((max, c) => (c.count > max ? c.count : max), 0);
+
+  return { cells, totalKeyed, maxCount, unreadableCount };
+}
+
+/** Integer share → whole-percent label. Integer-over-integer input, so the
+ *  value itself is bit-identical cross-engine (G-8); rounding is for prose. */
+function pctLabel(count: number, total: number): string {
+  return `${Math.round((count / total) * 100)}%`;
+}
+
+/**
+ * Genre-share stream caption (Story 4.8 hero #1) — the same "one generator,
+ * three duties" contract as every generator above. Names the leading genre
+ * and its share, from → to when the lead's story spans buckets.
+ */
+export function genreShareSummary(
+  buckets: string[],
+  values: Array<MonthGenreDiversity | null>,
+  granularity: Granularity,
+): string {
+  const present = presentPoints(
+    buckets,
+    values.map((v) => (v && v.breakdown.some((t) => t.count > 0) ? v : null)),
+  );
+  if (present.length === 0) return "No genre data yet.";
+  const withYear = spansMultipleYears(buckets);
+
+  const lead = (v: MonthGenreDiversity) => {
+    // breakdown is sorted descending by count; ties break by first-seen,
+    // which is stable for a given dataset.
+    const top = v.breakdown[0];
+    const total = v.breakdown.reduce((sum, t) => sum + t.count, 0);
+    return { name: top.name, share: pctLabel(top.count, total) };
+  };
+
+  const last = present[present.length - 1];
+  const lastLead = lead(last.value);
+  if (present.length === 1) {
+    return `${lastLead.name} led your mix at ${lastLead.share} in ${bucketPhrase(last.bucket, granularity, withYear)}.`;
+  }
+
+  const first = present[0];
+  const firstLead = lead(first.value);
+  const since = bucketPhrase(first.bucket, granularity, withYear);
+  if (firstLead.name === lastLead.name) {
+    return `${lastLead.name} has led your mix since ${since}, at ${lastLead.share} in ${bucketPhrase(last.bucket, granularity, withYear)}.`;
+  }
+  return `${firstLead.name} led at ${firstLead.share} in ${since}; ${lastLead.name} leads at ${lastLead.share} in ${bucketPhrase(last.bucket, granularity, withYear)}.`;
+}
+
+/**
+ * Camelot wheel text-equivalent (AC-11's literal wording: "top keys and
+ * their share") — caption, aria text, and render fallback in one string.
+ * Aggregate, so no bucket phrase and no granularity parameter.
+ */
+export function camelotWheelSummary(wheel: CamelotWheelModel): string {
+  if (wheel.totalKeyed === 0) return "No key data yet.";
+  const top = [...wheel.cells]
+    .filter((c) => c.count > 0)
+    .sort((a, b) => b.count - a.count || a.number - b.number || (a.letter < b.letter ? -1 : 1))
+    .slice(0, 3);
+  if (top.length === 1) {
+    return `Every keyed play sits in ${top[0].number}${top[0].letter}.`;
+  }
+  const parts = top.map((c) => `${c.number}${c.letter} (${pctLabel(c.count, wheel.totalKeyed)})`);
+  const list = parts.length === 2 ? parts.join(" and ") : `${parts[0]}, ${parts[1]}, and ${parts[2]}`;
+  return `Your keys center on ${list}.`;
+}
+
+/** |Δ| in percentage points under this reads as "held steady" — the same
+ *  role DIVERSITY_STEADY_THRESHOLD plays on the effective-count scale. */
+const HARMONIC_STEADY_THRESHOLD = 3;
+
+/**
+ * Harmonic-compatibility trend caption (AC-9) — `harmonicMix.rate` has been
+ * synced on every set since Story 1.7 and displayed nowhere; this is its
+ * first sentence. Same register as `bpmRangeSummary`/`diversityTrendSummary`:
+ * gaps skipped when picking first/last (D-8), year labels once the axis
+ * spans one.
+ */
+export function harmonicMixSummary(
+  buckets: string[],
+  values: Array<MonthHarmonicMix | null>,
+  granularity: Granularity,
+): string {
+  const present = presentPoints(
+    buckets,
+    values.map((v) => (v && v.rate != null ? v.rate : null)),
+  );
+  if (present.length === 0) return "No harmonic mixing data yet.";
+  const withYear = spansMultipleYears(buckets);
+  const pct = (rate: number) => `${Math.round(rate * 100)}%`;
+
+  if (present.length === 1) {
+    return `Harmonic mixing sits at ${pct(present[0].value)} in ${bucketPhrase(present[0].bucket, granularity, withYear)}.`;
+  }
+
+  const first = present[0];
+  const last = present[present.length - 1];
+  const since = bucketPhrase(first.bucket, granularity, withYear);
+  const deltaPoints = (last.value - first.value) * 100;
+  if (Math.abs(deltaPoints) < HARMONIC_STEADY_THRESHOLD) {
+    return `Harmonic mixing has held steady around ${pct(last.value)} since ${since}.`;
+  }
+  const direction = deltaPoints > 0 ? "climbed" : "slipped";
+  return `Harmonic mixing ${direction} from ${pct(first.value)} to ${pct(last.value)} since ${since}.`;
 }

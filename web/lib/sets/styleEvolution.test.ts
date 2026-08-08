@@ -10,6 +10,12 @@ import {
   localWeekKey,
   monthsSpanned,
   shannonEntropy,
+  GENRE_FOLD_LABEL,
+  buildCamelotWheel,
+  buildGenreShare,
+  camelotWheelSummary,
+  genreShareSummary,
+  harmonicMixSummary,
 } from "./styleEvolution";
 import type { SetRecord, SyncPlay } from "./types";
 
@@ -953,5 +959,239 @@ describe("summary-tile code-review 2026-08-07 regressions", () => {
     ).toBe(1);
     // Undated sets count too — they exist, they just cannot be bucketed.
     expect(buildStyleEvolution([set({ external_id: "a", started_at: null })]).setCount).toBe(1);
+  });
+});
+
+/* ── Story 4.8: genre share stream + Camelot wheel + harmonic trend ──────── */
+
+describe("buildGenreShare (Story 4.8 AC-1/AC-2/AC-12)", () => {
+  const g = (breakdown: Array<[string, number]>) => ({
+    index: 1,
+    no_genre_count: 0,
+    breakdown: breakdown.map(([name, count]) => ({ name, count })),
+  });
+
+  it("derives shares from the existing breakdowns — a single bucket renders as one full column, not an error (AC-12)", () => {
+    const model = buildStyleEvolution([
+      set({
+        external_id: "solo",
+        started_at: "2026-06-05T20:00:00.000Z",
+        genreBuckets: [
+          { genre: "techno", play_count: 6 },
+          { genre: "house", play_count: 2 },
+        ],
+      }),
+    ]);
+    const share = buildGenreShare(
+      model.month.excluding.map((p) => p.genreDiversity),
+      ["techno", "house"],
+    );
+    expect(share.bands.map((b) => b.name)).toEqual(["techno", "house"]);
+    expect(share.columns).toEqual([{ counts: [6, 2], total: 8 }]);
+  });
+
+  it("keeps an all-untagged bucket a gap, never a fabricated all-Other column (D-8)", () => {
+    const share = buildGenreShare([g([["techno", 4]]), { index: null, no_genre_count: 7, breakdown: [] }, null], [
+      "techno",
+    ]);
+    expect(share.columns[0]).toEqual({ counts: [4], total: 4 });
+    expect(share.columns[1]).toBeNull();
+    expect(share.columns[2]).toBeNull();
+  });
+
+  it("folds a bucket whose genres are all past the cap into the fold band, still totalled honestly", () => {
+    const ranked = ["g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8"];
+    const share = buildGenreShare([g([["g1", 5]]), g([["g7", 2], ["g8", 3]])], ranked);
+    const fold = share.bands[share.bands.length - 1];
+    expect(fold.kind).toBe("fold");
+    expect(fold.name).toBe(GENRE_FOLD_LABEL);
+    const col = share.columns[1]!;
+    expect(col.total).toBe(5);
+    expect(col.counts[share.bands.length - 1]).toBe(5);
+  });
+
+  it("shows no fold band at exactly 6 named genres and one at 7 (AC-2 boundary)", () => {
+    const six = Array.from({ length: 6 }, (_, i) => [`g${i}`, 6 - i] as [string, number]);
+    const ranked6 = six.map(([n]) => n);
+    const at6 = buildGenreShare([g(six)], ranked6);
+    expect(at6.bands).toHaveLength(6);
+    expect(at6.bands.every((b) => b.kind === "named")).toBe(true);
+
+    const seven = Array.from({ length: 7 }, (_, i) => [`g${i}`, 7 - i] as [string, number]);
+    const at7 = buildGenreShare([g(seven)], seven.map(([n]) => n));
+    expect(at7.bands).toHaveLength(7);
+    expect(at7.bands[6]).toEqual({ name: GENRE_FOLD_LABEL, kind: "fold" });
+    expect(at7.columns[0]!.counts[6]).toBe(1); // g6's single play, folded
+  });
+
+  it("keeps the literal Other genre its own band, distinct from the fold band (G-2's protected distinction)", () => {
+    const share = buildGenreShare(
+      [g([["techno", 3], ["Other", 9]])],
+      ["techno"],
+    );
+    expect(share.bands).toEqual([
+      { name: "techno", kind: "named" },
+      { name: "Other", kind: "catchAll" },
+    ]);
+    expect(share.columns[0]).toEqual({ counts: [3, 9], total: 12 });
+  });
+});
+
+describe("buildCamelotWheel (Story 4.8 AC-7/AC-8/AC-10/AC-12)", () => {
+  const k = (breakdown: Array<[string, number]>) => ({
+    index: 1,
+    no_key_count: 0,
+    breakdown: breakdown.map(([name, count]) => ({ name, count })),
+  });
+
+  it("sums breakdowns across every bucket into 24 cells, zero cells present but empty (D-8)", () => {
+    const wheel = buildCamelotWheel([k([["8A", 3], ["8B", 1]]), k([["8A", 2]]), null]);
+    expect(wheel.cells).toHaveLength(24);
+    expect(wheel.cells.find((c) => c.number === 8 && c.letter === "A")?.count).toBe(5);
+    expect(wheel.cells.find((c) => c.number === 8 && c.letter === "B")?.count).toBe(1);
+    expect(wheel.cells.find((c) => c.number === 3 && c.letter === "A")?.count).toBe(0);
+    expect(wheel.totalKeyed).toBe(6);
+    expect(wheel.maxCount).toBe(5);
+    expect(wheel.unreadableCount).toBe(0);
+  });
+
+  it("routes unparseable Camelot strings to the disclosure count, never into a cell (AC-10)", () => {
+    const wheel = buildCamelotWheel([k([["13A", 4], ["Amin", 2], ["7A", 1]])]);
+    expect(wheel.unreadableCount).toBe(6);
+    expect(wheel.totalKeyed).toBe(1);
+    expect(wheel.cells.every((c) => c.count === 0 || (c.number === 7 && c.letter === "A"))).toBe(true);
+  });
+
+  it("normalizes case/whitespace through the one existing parser, not a second one", () => {
+    const wheel = buildCamelotWheel([k([["8a", 2], [" 8A ", 3]])]);
+    expect(wheel.cells.find((c) => c.number === 8 && c.letter === "A")?.count).toBe(5);
+  });
+
+  it("reads honestly off a single set through the real builder (AC-12) and identically at month vs week (AC-8)", () => {
+    const sets = [
+      set({
+        external_id: "solo",
+        started_at: "2026-06-05T20:00:00.000Z",
+        plays: [
+          play({ position: 1, camelot_key: "8A" }),
+          play({ position: 2, camelot_key: "8A" }),
+          play({ position: 3, camelot_key: "9A" }),
+        ],
+      }),
+    ];
+    const model = buildStyleEvolution(sets);
+    const fromMonth = buildCamelotWheel(model.month.excluding.map((p) => p.keyDiversity));
+    const fromWeek = buildCamelotWheel(model.week.excluding.map((p) => p.keyDiversity));
+    expect(fromMonth).toEqual(fromWeek);
+    expect(fromMonth.totalKeyed).toBe(3);
+    expect(fromMonth.maxCount).toBe(2);
+  });
+
+  it("returns an all-empty wheel for zero keyed plays", () => {
+    const wheel = buildCamelotWheel([k([]), null]);
+    expect(wheel.totalKeyed).toBe(0);
+    expect(wheel.maxCount).toBe(0);
+    expect(camelotWheelSummary(wheel)).toBe("No key data yet.");
+  });
+});
+
+describe("camelotWheelSummary (Story 4.8 AC-11)", () => {
+  const wheelOf = (entries: Array<[string, number]>) =>
+    buildCamelotWheel([{ index: 1, no_key_count: 0, breakdown: entries.map(([name, count]) => ({ name, count })) }]);
+
+  it("names the top keys and their share — AC-11's literal wording", () => {
+    const s = camelotWheelSummary(wheelOf([["8A", 5], ["7A", 3], ["9B", 2]]));
+    expect(s).toBe("Your keys center on 8A (50%), 7A (30%), and 9B (20%).");
+  });
+
+  it("reads honestly at one key and at two", () => {
+    expect(camelotWheelSummary(wheelOf([["8A", 4]]))).toBe("Every keyed play sits in 8A.");
+    expect(camelotWheelSummary(wheelOf([["8A", 3], ["8B", 1]]))).toBe("Your keys center on 8A (75%) and 8B (25%).");
+  });
+
+  it("breaks count ties deterministically by wheel position", () => {
+    expect(camelotWheelSummary(wheelOf([["9B", 2], ["2A", 2], ["2B", 2], ["1A", 1]]))).toBe(
+      "Your keys center on 2A (29%), 2B (29%), and 9B (29%).",
+    );
+  });
+});
+
+describe("genreShareSummary (Story 4.8 — one generator, three duties)", () => {
+  const g = (breakdown: Array<[string, number]>) => ({
+    index: 1,
+    no_genre_count: 0,
+    breakdown: breakdown.map(([name, count]) => ({ name, count })),
+  });
+
+  it("handles no data, one bucket, a steady lead, and a lead change", () => {
+    expect(genreShareSummary(["2026-06"], [null], "month")).toBe("No genre data yet.");
+    expect(genreShareSummary(["2026-06"], [g([["techno", 3], ["house", 1]])], "month")).toBe(
+      "techno led your mix at 75% in June.",
+    );
+    expect(
+      genreShareSummary(
+        ["2026-03", "2026-04"],
+        [g([["techno", 3], ["house", 1]]), g([["techno", 9], ["house", 3]])],
+        "month",
+      ),
+    ).toBe("techno has led your mix since March, at 75% in April.");
+    expect(
+      genreShareSummary(
+        ["2026-03", "2026-04"],
+        [g([["house", 2], ["techno", 1]]), g([["techno", 5], ["house", 1]])],
+        "month",
+      ),
+    ).toBe("house led at 67% in March; techno leads at 83% in April.");
+  });
+
+  it("skips D-8 gaps when picking first/last and carries years across a boundary", () => {
+    const s = genreShareSummary(
+      ["2025-12", "2026-01", "2026-02"],
+      [g([["techno", 2]]), null, g([["techno", 4]])],
+      "month",
+    );
+    expect(s).toBe("techno has led your mix since December 2025, at 100% in February 2026.");
+  });
+});
+
+describe("harmonicMixSummary (Story 4.8 AC-9)", () => {
+  const h = (rate: number | null, excludedNoKey = 0) => ({ rate, excludedNoKey });
+
+  it("handles no data, one bucket, steady, and a direction", () => {
+    expect(harmonicMixSummary(["2026-06"], [h(null)], "month")).toBe("No harmonic mixing data yet.");
+    expect(harmonicMixSummary(["2026-06"], [h(0.72)], "month")).toBe("Harmonic mixing sits at 72% in June.");
+    expect(harmonicMixSummary(["2026-03", "2026-04"], [h(0.7), h(0.71)], "month")).toBe(
+      "Harmonic mixing has held steady around 71% since March.",
+    );
+    expect(harmonicMixSummary(["2026-03", "2026-04"], [h(0.58), h(0.72)], "month")).toBe(
+      "Harmonic mixing climbed from 58% to 72% since March.",
+    );
+    expect(harmonicMixSummary(["2026-03", "2026-04"], [h(0.72), h(0.58)], "month")).toBe(
+      "Harmonic mixing slipped from 72% to 58% since March.",
+    );
+  });
+
+  it("skips zero-transition gaps (rate === null) when picking first/last (D-8)", () => {
+    expect(
+      harmonicMixSummary(["2026-03", "2026-04", "2026-05"], [h(null), h(0.5), h(0.8)], "month"),
+    ).toBe("Harmonic mixing climbed from 50% to 80% since April.");
+  });
+
+  it("carries years once the axis spans a boundary", () => {
+    expect(
+      harmonicMixSummary(["2025-11", "2026-02"], [h(0.4), h(0.9)], "month"),
+    ).toBe("Harmonic mixing climbed from 40% to 90% since November 2025.");
+  });
+
+  it("computes through the real builder off a single set (AC-12)", () => {
+    const model = buildStyleEvolution([
+      set({
+        external_id: "one",
+        started_at: "2026-06-05T20:00:00.000Z",
+        mixingStats: { compatible_transitions: 3, incompatible_transitions: 1, excluded_no_key: 2 },
+      }),
+    ]);
+    const values = model.month.excluding.map((p) => p.harmonicMix);
+    expect(harmonicMixSummary(model.month.buckets, values, "month")).toBe("Harmonic mixing sits at 75% in June.");
   });
 });
