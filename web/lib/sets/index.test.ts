@@ -10,7 +10,8 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 import { createClient } from "@/lib/supabase/server";
-import { deleteSet, getLibraryAddEvents, getRecentSets, getSetById } from "./index";
+import { deleteSet, getLibraryAddEvents, getLibraryRoster, getRecentSets, getSetById } from "./index";
+import { unidentifiableTracksDisclosure } from "./libraryRoster";
 
 type Result = { data: unknown; error: unknown };
 
@@ -548,5 +549,45 @@ describe("getLibraryAddEvents", () => {
     const snapshot = await getLibraryAddEvents();
     expect(snapshot.events).toEqual([]);
     expect(consoleErrorSpy).toHaveBeenCalledOnce();
+  });
+});
+
+// Post-merge integration review. This seam served `library-roster.fixture.json`
+// — built from ONE developer's real Serato library — and its two scan-level
+// scalars have a live consumer (Story 4.3's meter, via
+// `unidentifiableTracksDisclosure`), so every DJ was told "252 of your tracks
+// are missing a title or artist tag" as a fact about their own library. Story
+// 4.11 justified the fixture as "pending Story 4.6's Supabase read-path swap"
+// but merged one commit AFTER that swap landed. Nothing tested this function.
+describe("getLibraryRoster (Story 4.11 / Story 4.6 AC-3)", () => {
+  it("returns the empty shape, never fixture data", async () => {
+    expect(await getLibraryRoster()).toEqual({
+      entries: [],
+      excludedNoIdentityCount: 0,
+      totalCatalogueRows: 0,
+    });
+  });
+
+  // The regression this file exists to prevent: the guard is not "the numbers
+  // are small", it is "the numbers are not one person's library".
+  it("does not report another DJ's measured catalogue counts", async () => {
+    const roster = await getLibraryRoster();
+    expect(roster.excludedNoIdentityCount).not.toBe(252);
+    expect(roster.totalCatalogueRows).not.toBe(910);
+  });
+
+  // The whole point of returning zeros rather than plausible-looking numbers:
+  // AC-6's sentence must not render at all when we cannot measure it.
+  it("yields no disclosure, so AC-6's line does not render on unknown data", async () => {
+    const roster = await getLibraryRoster();
+    expect(
+      unidentifiableTracksDisclosure(roster.excludedNoIdentityCount, roster.totalCatalogueRows),
+    ).toBeNull();
+  });
+
+  it("needs no Supabase client, so it cannot throw on a brand-new account", async () => {
+    vi.mocked(createClient).mockReset();
+    await expect(getLibraryRoster()).resolves.toBeDefined();
+    expect(createClient).not.toHaveBeenCalled();
   });
 });

@@ -6,7 +6,7 @@ import {
   convertedWithinWindow,
   CONVERSION_WINDOWS,
   DEFAULT_CONVERSION_WINDOW,
-  firstPlayByTrack,
+  firstPlayAtOrAfter,
   hasEnoughCohorts,
   hasEnoughTimeToFirstPlayDebuts,
   hasEnoughTimeToFirstPlayTracks,
@@ -196,7 +196,7 @@ describe("the conversion window (D-8; scale unified with the live meter, Story 4
       set([play({ track_id: "t", started_at: new Date(addMs + 400 * DAY_MS).toISOString() })]),
     ];
 
-    expect(firstPlayByTrack(sets).get("t")).toBe(addMs + 300 * DAY_MS);
+    expect(firstPlayAtOrAfter(playsByTrack(sets).get("t"), addMs)).toBe(addMs + 300 * DAY_MS);
     expect(at(buildLibraryConversion([added("t", addedIso)], sets, NOW)).cohorts[0].converted).toBe(0);
   });
 
@@ -207,7 +207,7 @@ describe("the conversion window (D-8; scale unified with the live meter, Story 4
         play({ track_id: "t", started_at: null }),
       ]),
     ];
-    expect(firstPlayByTrack(sets).size).toBe(0);
+    expect(playsByTrack(sets).size).toBe(0);
     expect(at(buildLibraryConversion([added("t", localIso(2026, 1, 1))], sets, NOW)).cohorts[0].converted).toBe(
       0,
     );
@@ -1024,6 +1024,67 @@ describe("playsByTrack", () => {
 
     expect(index.get("a")).toEqual([t1, t0]);
     expect(index.size).toBe(1);
+  });
+});
+
+describe("firstPlayAtOrAfter", () => {
+  it("finds the first play at or after the boundary, and reports none when all precede it", () => {
+    const times = [10, 20, 30, 40];
+
+    expect(firstPlayAtOrAfter(times, 25)).toBe(30);
+    expect(firstPlayAtOrAfter(times, 30)).toBe(30); // inclusive
+    expect(firstPlayAtOrAfter(times, 5)).toBe(10);
+    expect(firstPlayAtOrAfter(times, 41)).toBeUndefined();
+    expect(firstPlayAtOrAfter([], 1)).toBeUndefined();
+    expect(firstPlayAtOrAfter(undefined, 1)).toBeUndefined();
+  });
+});
+
+// Post-merge integration review. Story 4.5 established that reading a track's
+// GLOBAL earliest play answers the wrong question, and rewired its own metric
+// to `playsByTrack` — but the two conversion metrics kept reading the global
+// minimum, so a track played once before its add and again after was counted
+// as never converted. On the committed fixture that put the 2025-07 cohort at
+// 36% instead of 51% and 2025-11 at 50% instead of 100%, and made this page
+// contradict itself: `buildTimeToFirstPlay` reported the debut while the meter
+// beside it called the same track unconverted.
+describe("a play BEFORE the add plus a real debut after it (integration review)", () => {
+  const NOW = new Date(localIso(2026, 6, 1)).getTime();
+  const addedIso = localIso(2026, 1, 10);
+  const addMs = new Date(addedIso).getTime();
+
+  /** One track played 5 days BEFORE it was added, then genuinely debuted 3 days after. */
+  const sets = [
+    set([play({ track_id: "t", started_at: new Date(addMs - 5 * DAY_MS).toISOString() })]),
+    set([play({ track_id: "t", started_at: new Date(addMs + 3 * DAY_MS).toISOString() })]),
+  ];
+  const events = [added("t", addedIso)];
+
+  it("counts as converted in the cohort trend", () => {
+    const cohort = at(buildLibraryConversion(events, sets, NOW)).cohorts[0];
+    expect(cohort).toMatchObject({ added: 1, converted: 1 });
+  });
+
+  it("counts as played in the live rate", () => {
+    const live = buildLiveConversionRate(events, sets, addMs + 10 * DAY_MS, 60);
+    expect(live).toMatchObject({ added: 1, played: 1, rate: 1 });
+  });
+
+  it("agrees with the time-to-first-play module about the same track", () => {
+    const ttfp = buildTimeToFirstPlay(events, sets, NOW);
+    const live = buildLiveConversionRate(events, sets, addMs + 10 * DAY_MS, 60);
+
+    // The debut Story 4.5 measures and the conversion the meter counts are the
+    // same event; neither may see it without the other.
+    expect(ttfp.entries[0]).toMatchObject({ status: "played", elapsedMs: 3 * DAY_MS });
+    expect(live.played).toBe(1);
+  });
+
+  it("still refuses a track played ONLY before it was added", () => {
+    const onlyBefore = [set([play({ track_id: "t", started_at: new Date(addMs - 5 * DAY_MS).toISOString() })])];
+
+    expect(at(buildLibraryConversion(events, onlyBefore, NOW)).cohorts[0].converted).toBe(0);
+    expect(buildLiveConversionRate(events, onlyBefore, addMs + 10 * DAY_MS, 60).played).toBe(0);
   });
 });
 

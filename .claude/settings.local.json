@@ -62,7 +62,8 @@
       "mcp__playwright__browser_evaluate",
       "mcp__playwright__browser_click",
       "mcp__playwright__*",
-      "Skill(impeccable)"
+      "Skill(impeccable)",
+      "mcp__supabase__apply_migration"
     ],
     "additionalDirectories": [
       "/Users/arjun/Documents/name-pending/_bmad-output/planning-artifacts/architecture"

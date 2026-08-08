@@ -4,7 +4,6 @@ import {
   buildLiveConversionRate,
   buildTimeToFirstPlay,
   CONVERSION_WINDOWS,
-  firstPlayByTrack,
   playsByTrack,
   undatedDisclosure,
   unreconciledDateCount,
@@ -63,17 +62,23 @@ export default async function LibraryUtilizationPage() {
   //
   // Every selectable window is precomputed here, up front — the dropdown
   // just looks one up, matching D-13's "no work happens on click" discipline
-  // the trend's own window toggle established. `firstPlay` is built once and
-  // shared across all three windows (Story 4.3 review) rather than each
-  // `buildLiveConversionRate` call re-diffing `sets`.
-  const firstPlay = firstPlayByTrack(sets);
+  // the trend's own window toggle established.
+  //
+  // ONE play index, built once and shared by all three modules on this page
+  // (post-merge integration review). It used to be two — a global-earliest
+  // index for the two conversion metrics and this one for Story 4.5 — which
+  // was both a wasted pass over every play and the vehicle for a real bug:
+  // the conversion metrics asked their question of the global minimum, so a
+  // track played once before its add and again after counted as unconverted
+  // while Story 4.5's module, 200px away, reported its debut.
+  const playIndex = playsByTrack(sets);
   const rates = Object.fromEntries(
     CONVERSION_WINDOWS.map((window) => [
       window,
-      buildLiveConversionRate(addEvents.events, sets, addEvents.readAtMs, window, firstPlay),
+      buildLiveConversionRate(addEvents.events, sets, addEvents.readAtMs, window, playIndex),
     ]),
   ) as Record<(typeof CONVERSION_WINDOWS)[number], ReturnType<typeof buildLiveConversionRate>>;
-  const library = buildLibraryConversion(addEvents.events, sets, addEvents.readAtMs);
+  const library = buildLibraryConversion(addEvents.events, sets, addEvents.readAtMs, playIndex);
 
   // Story 4.5, AC-1/AC-2: the population boundary ("tracks added on or after
   // the DJ's subscription start") needs no extra filter here — see the
@@ -87,12 +92,10 @@ export default async function LibraryUtilizationPage() {
   // observation — which is why they are excluded from the math and disclosed
   // as a count rather than being trusted into the population.
   //
-  // Needs its OWN play index, not the `firstPlay` map above: this metric asks
-  // for the first play at-or-after each track's add date, a question a global
-  // earliest-play value answers wrongly for any track played both before and
-  // after its add (see `playsByTrack`). The clock comes from the data seam
+  // Shares `playIndex` with the two conversion metrics above — this metric
+  // asks the same at-or-after question they do, which is exactly why there is
+  // one index now instead of two. The clock comes from the data seam
   // (`readAtMs`), never read in render.
-  const playIndex = playsByTrack(sets);
   const timeToFirstPlay = buildTimeToFirstPlay(addEvents.events, sets, addEvents.readAtMs, playIndex);
 
   // Rendered ONCE for the page, not once per module (Story 4.5 review). The
