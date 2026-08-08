@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useId, useMemo, useRef, useState } from "react";
 import { camelotWheelSummary, type CamelotWheelModel } from "@/lib/sets/styleEvolution";
+import { CursorChip, useCursorChipTarget } from "@/app/components/ui/CursorChip";
 import { TrendChartErrorBoundary } from "./TrendChart";
 
 // Camelot wheel (Story 4.8, AC-7/8/10/11/12) — the Key section's hero: 12
@@ -22,12 +23,21 @@ import { TrendChartErrorBoundary } from "./TrendChart";
 // (hairline outline only), never at minimum intensity — D-8's gap rule in
 // radial form.
 //
-// G-6 ruling (recorded in the story's Completion Notes): cells are
-// NON-INTERACTIVE. SC 2.5.8 governs pointer targets and a static graphic
-// has none, so no keyboard path and no non-radial phone fallback is owed;
-// the AC-11 text-equivalent (`camelotWheelSummary`, naming the top keys and
-// their share) is the one reading surface, serving as visible caption, aria
-// label, and render fallback alike.
+// Intensity direction (Arjun, 2026-08-08 walkthrough: "darker shades should
+// indicate more usage"): on this DARK surface the ink-density metaphor
+// inverts — a literally-darker cell recedes into the background and reads as
+// LESS. So the ramp runs washed-out→vivid: barely-there for a key touched
+// once, full-strength color for the busiest key. The exponent spreads the
+// low end apart, because real key usage is near-uniform and a linear ramp
+// made every cell look the same (the walkthrough complaint). The explainer
+// tooltip and the hover chip state the reading in words.
+//
+// Hover (same walkthrough): each cell is a mouse hover target that reads
+// "8A · 34 plays · 11% of keyed plays" via the house CursorChip — mouse-only
+// enrichment following the grouped bars' aria-hidden precedent. The Chart
+// Summary caption remains the accessible text-equivalent (AC-11), nothing
+// is operable, so no keyboard path is owed and the G-6 non-interactive
+// ruling stands for target-size purposes (nothing to activate).
 //
 // G-8, non-negotiable: every polar→cartesian coordinate below goes through
 // `Math.cos`/`Math.sin` — transcendental, implementation-approximated math
@@ -50,10 +60,13 @@ const INNER_R = { outer: 115, inner: 67 };
 const LABEL_R = 178;
 /** Angular air between neighbouring cells, degrees. */
 const CELL_GAP_DEG = 2.5;
-/** A cell with at least one play never drops below this opacity — the
- *  floor keeps a 1-play cell visible next to a 50-play one; zero-count
+/** A cell with at least one play never drops below this opacity — visible
+ *  as "touched", far from the busiest cell's full strength; zero-count
  *  cells skip the fill entirely (D-8), so the floor never fabricates. */
-const MIN_LIVE_OPACITY = 0.28;
+const MIN_LIVE_OPACITY = 0.12;
+/** Ramp exponent — spreads the low end of a near-uniform distribution so
+ *  "second-favourite" and "favourite" stop looking identical. */
+const RAMP_EXPONENT = 1.4;
 
 /** Camelot clock position → SVG angle (radians). 12 sits at the top, and
  *  numbers increase clockwise — the layout every hardware/software wheel
@@ -94,17 +107,18 @@ function CamelotWheelPlot({ wheel, caption }: { wheel: CamelotWheelModel; captio
     () =>
       wheel.cells.map((cell) => {
         const radii = cell.letter === "A" ? INNER_R : OUTER_R;
+        const t = wheel.maxCount > 0 ? cell.count / wheel.maxCount : 0;
         return {
           key: `${cell.number}${cell.letter}`,
+          count: cell.count,
           d: cellPath(cell.number, radii),
           fill: `var(--camelot-${cell.number}${cell.letter.toLowerCase()})`,
           // Zero-count cells render EMPTY (outline only) — D-8. Live cells
-          // scale from the floor to full by count. Integer/integer ratio,
-          // rounded anyway for the fixed-decimal discipline.
+          // ramp washed-out → vivid (see the intensity-direction note above).
           opacity:
-            cell.count === 0 || wheel.maxCount === 0
+            cell.count === 0
               ? null
-              : (MIN_LIVE_OPACITY + (1 - MIN_LIVE_OPACITY) * (cell.count / wheel.maxCount)).toFixed(4),
+              : (MIN_LIVE_OPACITY + (1 - MIN_LIVE_OPACITY) * Math.pow(t, RAMP_EXPONENT)).toFixed(4),
         };
       }),
     [wheel],
@@ -124,6 +138,30 @@ function CamelotWheelPlot({ wheel, caption }: { wheel: CamelotWheelModel; captio
     [],
   );
 
+  const tipId = useId();
+  const [tipOpen, setTipOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const chipTargetRef = useCursorChipTarget();
+  const [hoverKey, setHoverKey] = useState<string | null>(null);
+
+  const onCellMove = useCallback(
+    (key: string, e: React.MouseEvent) => {
+      chipTargetRef.current = { x: e.clientX, y: e.clientY };
+      setHoverKey(key);
+    },
+    [chipTargetRef],
+  );
+  const clearHover = useCallback(() => setHoverKey(null), []);
+
+  const hoverDetail = useMemo(() => {
+    if (hoverKey == null) return null;
+    const cell = cells.find((c) => c.key === hoverKey);
+    if (!cell) return null;
+    if (cell.count === 0) return `${cell.key} · never played`;
+    const pct = Math.round((cell.count / wheel.totalKeyed) * 100);
+    return `${cell.key} · ${cell.count} ${cell.count === 1 ? "play" : "plays"} · ${pct}% of keyed plays`;
+  }, [hoverKey, cells, wheel.totalKeyed]);
+
   if (wheel.totalKeyed === 0) {
     return (
       <div className="se-chart se-chart-fallback dz-shell" role="img" aria-label={caption}>
@@ -134,12 +172,37 @@ function CamelotWheelPlot({ wheel, caption }: { wheel: CamelotWheelModel; captio
   }
 
   return (
-    <div className="se-chart se-chart-full dz-shell">
+    <div ref={rootRef} className="se-chart se-chart-full dz-shell">
       <span className="dz-dots" aria-hidden="true" />
 
       <div className="se-chart-head">
         <p className="se-chart-title">Camelot Wheel</p>
-        <p className="se-chart-subtitle">Plays by key across your sets · inner ring A, outer ring B</p>
+        <p className="se-chart-subtitle">
+          Where your keys live
+          <span className="se-chart-info">
+            <button
+              type="button"
+              className="se-chart-info-btn"
+              aria-label="How to read the Camelot wheel"
+              aria-describedby={tipId}
+              aria-expanded={tipOpen}
+              onClick={() => setTipOpen((open) => !open)}
+              onBlur={() => setTipOpen(false)}
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                <circle className="se-chart-info-ring" cx="8" cy="8" r="7" />
+                <circle className="se-chart-info-dot" cx="8" cy="4.6" r="0.95" />
+                <path className="se-chart-info-stem" d="M8 7.1v4.6" />
+              </svg>
+            </button>
+            <span role="tooltip" id={tipId} className="se-chart-info-tip">
+              Every track&rsquo;s key maps to one wedge: 1&ndash;12 around the clock, minor keys (A) on the inner
+              ring, major (B) on the outer. The more you play a key, the more vivid its wedge — an empty outline
+              means you&rsquo;ve never played it. Neighbouring wedges, and the same number across rings, mix in key:
+              a bright cluster is your harmonic home turf.
+            </span>
+          </span>
+        </p>
       </div>
 
       <div className="se-wheel-plot" role="img" aria-label={caption}>
@@ -149,8 +212,12 @@ function CamelotWheelPlot({ wheel, caption }: { wheel: CamelotWheelModel; captio
               key={cell.key}
               d={cell.d}
               className="se-wheel-cell"
+              data-hot={hoverKey === cell.key ? true : undefined}
               fill={cell.opacity == null ? "none" : cell.fill}
               fillOpacity={cell.opacity ?? undefined}
+              onMouseEnter={(e) => onCellMove(cell.key, e)}
+              onMouseMove={(e) => onCellMove(cell.key, e)}
+              onMouseLeave={clearHover}
             />
           ))}
           {numberLabels.map((label) => (
@@ -162,6 +229,17 @@ function CamelotWheelPlot({ wheel, caption }: { wheel: CamelotWheelModel; captio
       </div>
 
       <p className="se-chart-caption">{caption}</p>
+
+      <CursorChip
+        target={chipTargetRef}
+        boundsRef={rootRef}
+        visible={hoverDetail != null}
+        contentKey={hoverKey}
+        offsetY={-44}
+        compact
+      >
+        {hoverDetail != null && <p className="cursor-chip-mono">{hoverDetail}</p>}
+      </CursorChip>
     </div>
   );
 }

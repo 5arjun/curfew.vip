@@ -330,6 +330,7 @@ export function TrendChart({
   keySeries,
   harmonicSeries,
   genreColors,
+  showCaption = true,
   librarySeries,
   libraryModel,
   conversionWindow = DEFAULT_CONVERSION_WINDOW,
@@ -351,6 +352,11 @@ export function TrendChart({
    *  one from its own (view-dependent) series, which keeps names stable
    *  within a view but lets the reveal toggle re-rank slots. */
   genreColors?: GenreColorAssignment;
+  /** Hide the visible caption paragraph (Arjun, 2026-08-08 — the Genre
+   *  section's charts drop it). The Chart Summary string keeps its other
+   *  two duties either way: the plot's aria text-equivalent and the error
+   *  fallback. */
+  showCaption?: boolean;
   /** Story 4.2: per-cohort conversion rates (0–1), parallel to `buckets` when
    *  `metric === "library"`. The caller passes the ADD-month buckets for that
    *  metric — see `PCT_DOMAIN`'s note above. */
@@ -395,6 +401,7 @@ export function TrendChart({
         keySeries={keySeries}
         harmonicSeries={harmonicSeries}
         genreColors={genreColors}
+        showCaption={showCaption}
         librarySeries={librarySeries}
         libraryModel={libraryModel}
         conversionWindow={conversionWindow}
@@ -415,6 +422,7 @@ function TrendChartPlot({
   keySeries,
   harmonicSeries,
   genreColors,
+  showCaption = true,
   librarySeries,
   libraryModel,
   conversionWindow = DEFAULT_CONVERSION_WINDOW,
@@ -428,6 +436,7 @@ function TrendChartPlot({
   keySeries: Array<MonthKeyDiversity | null>;
   harmonicSeries?: Array<MonthHarmonicMix | null>;
   genreColors?: GenreColorAssignment;
+  showCaption?: boolean;
   librarySeries?: Array<number | null>;
   libraryModel?: LibraryConversionModel;
   conversionWindow?: ConversionWindow;
@@ -508,13 +517,15 @@ function TrendChartPlot({
     return [];
   }, [metric, genreSeries, keySeries]);
 
-  // "Other genres"/"Other keys" — NOT the bare "Other" this app's own genre
-  // taxonomy already uses as a real catch-all category name (genre.rs
+  // "Everything else"/"Other keys" — NOT the bare "Other" this app's own
+  // genre taxonomy already uses as a real catch-all category name (genre.rs
   // normalization). A collision there would silently merge a real, playable
   // genre with this component's own fold-the-rest-in bucket in the legend —
   // caught in review (2026-08-06) against the real fixture, which does have
-  // an actual "Other" genre.
-  const otherLabel = metric === "key" ? "Other keys" : "Other genres";
+  // an actual "Other" genre. "Everything else" rather than "Other genres"
+  // (Arjun, 2026-08-08): two "Other…" entries side by side read as a
+  // mystery, not a distinction. Matches the stream's GENRE_FOLD_LABEL.
+  const otherLabel = metric === "key" ? "Other keys" : "Everything else";
 
   // Genre color + slot selection (Story 4.8, G-1): the shared page-level
   // assignment, so a genre's color follows its NAME — never its rank within
@@ -1279,7 +1290,7 @@ function TrendChartPlot({
         </div>
       )}
 
-      <p className="se-chart-caption">{caption}</p>
+      {showCaption && <p className="se-chart-caption">{caption}</p>}
 
       <CursorChip
         target={chipTargetRef}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   buildGenreShare,
   genreShareSummary,
@@ -10,6 +10,7 @@ import {
 } from "@/lib/sets/styleEvolution";
 import { genreColorFor, type GenreColorAssignment } from "@/lib/sets/genreColor";
 import { createMonotoneYAt, type CurveXY } from "@/lib/sets/energyArc";
+import { CursorChip, useCursorChipTarget } from "@/app/components/ui/CursorChip";
 import { TrendChartErrorBoundary } from "./TrendChart";
 
 // Genre share stream (Story 4.8, AC-1..6/AC-12) — the Genre section's hero:
@@ -24,6 +25,13 @@ import { TrendChartErrorBoundary } from "./TrendChart";
 // viewBox, same padding, same 5.8% y-axis gutter) so the stream's columns
 // sit vertically aligned with the 2^H trend chart directly below it in the
 // same section.
+//
+// Hover (Arjun, 2026-08-08 walkthrough: "hovering doesn't provide
+// information about the share"): each band path is a mouse hover target that
+// snaps the house CursorChip to the nearest bucket and reads
+// "March · House · 32% (12 plays)". Mouse-only enrichment following the
+// grouped bars' aria-hidden precedent — the Chart Summary caption remains
+// the accessible text-equivalent, so no keyboard path is owed.
 //
 // D-8 shapes the drawing: a bucket with no categorized plays is a HOLE in
 // the stream (the runs/gap discipline TrendChart established), never an
@@ -84,6 +92,15 @@ function bucketTick(key: string, withYear: boolean): string {
   return `${short} '${`${y}`.slice(2)}`;
 }
 
+/** Hover-chip bucket label — precise like TrendChart's `bucketDetail`: the
+ *  exact Monday-start date for week granularity, the month name for month. */
+function bucketDetail(key: string, granularity: Granularity): string {
+  const [y, m] = key.split("-").map(Number);
+  if (granularity === "month") return new Date(y, m - 1, 1).toLocaleDateString([], { month: "long" });
+  const d = Number(key.split("-")[2]);
+  return new Date(y, m - 1, d).toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
 export function GenreShareStream({
   buckets,
   granularity,
@@ -113,6 +130,8 @@ export function GenreShareStream({
     </TrendChartErrorBoundary>
   );
 }
+
+type StreamHover = { bandIndex: number; bucketIndex: number };
 
 function GenreShareStreamPlot({
   buckets,
@@ -213,6 +232,56 @@ function GenreShareStreamPlot({
 
   const hasAnyColumn = model.columns.some((c) => c != null);
 
+  /* ── Hover: band identity comes from the path under the cursor; the
+     bucket is the nearest non-gap column to the cursor's x. Mouse-only
+     enrichment (the bars' precedent) — the caption stays the accessible
+     reading. ─────────────────────────────────────────────────────────── */
+  const plotRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const chipTargetRef = useCursorChipTarget();
+  const [hover, setHover] = useState<StreamHover | null>(null);
+
+  const bucketAtClientX = useCallback(
+    (clientX: number): number | null => {
+      const rect = plotRef.current?.getBoundingClientRect();
+      if (!rect || rect.width === 0) return null;
+      const u = ((clientX - rect.left) / rect.width) * VIEW.width;
+      let best: number | null = null;
+      let bestDist = Infinity;
+      for (let i = 0; i < xs.length; i++) {
+        if (model.columns[i] == null) continue;
+        const d = Math.abs(xs[i] - u);
+        if (d < bestDist) {
+          bestDist = d;
+          best = i;
+        }
+      }
+      return best;
+    },
+    [xs, model],
+  );
+
+  const onBandMove = useCallback(
+    (bandIndex: number, e: React.MouseEvent) => {
+      chipTargetRef.current = { x: e.clientX, y: e.clientY };
+      const bucketIndex = bucketAtClientX(e.clientX);
+      setHover(bucketIndex == null ? null : { bandIndex, bucketIndex });
+    },
+    [chipTargetRef, bucketAtClientX],
+  );
+  const clearHover = useCallback(() => setHover(null), []);
+
+  const hoverDetail = useMemo(() => {
+    if (hover == null) return null;
+    const col = model.columns[hover.bucketIndex];
+    const band = model.bands[hover.bandIndex];
+    const bucket = buckets[hover.bucketIndex];
+    if (!col || !band || !bucket) return null;
+    const count = col.counts[hover.bandIndex];
+    const pct = Math.round((count / col.total) * 100);
+    return `${bucketDetail(bucket, granularity)} · ${band.name} · ${pct}% (${count} ${count === 1 ? "play" : "plays"})`;
+  }, [hover, model, buckets, granularity]);
+
   if (!hasAnyColumn) {
     return (
       <div className="se-chart se-chart-fallback dz-shell" role="img" aria-label={caption}>
@@ -229,7 +298,7 @@ function GenreShareStreamPlot({
   const showLastTick = lastIndex - Math.floor(lastIndex / tickStep) * tickStep >= Math.ceil(tickStep / 2);
 
   return (
-    <div className="se-chart se-chart-full dz-shell">
+    <div ref={rootRef} className="se-chart se-chart-full dz-shell">
       <span className="dz-dots" aria-hidden="true" />
 
       <div className="se-chart-head">
@@ -239,7 +308,7 @@ function GenreShareStreamPlot({
         </p>
       </div>
 
-      <div className="se-chart-plot se-stream-plot" role="img" aria-label={caption}>
+      <div ref={plotRef} className="se-chart-plot se-stream-plot" role="img" aria-label={caption}>
         <div className="se-chart-yaxis" aria-hidden="true">
           <span className="se-chart-ylabel" style={{ top: pctY(shareY(1)) }}>
             100%
@@ -256,7 +325,16 @@ function GenreShareStreamPlot({
           aria-hidden="true"
         >
           {regions.map((r) => (
-            <path key={r.key} d={r.d} className="se-stream-band" fill={bandColor(r.bandIndex)} />
+            <path
+              key={r.key}
+              d={r.d}
+              className="se-stream-band"
+              data-hot={hover?.bandIndex === r.bandIndex ? true : undefined}
+              fill={bandColor(r.bandIndex)}
+              onMouseEnter={(e) => onBandMove(r.bandIndex, e)}
+              onMouseMove={(e) => onBandMove(r.bandIndex, e)}
+              onMouseLeave={clearHover}
+            />
           ))}
         </svg>
       </div>
@@ -272,8 +350,12 @@ function GenreShareStreamPlot({
       </div>
 
       {/* Legend — identity never rides on color alone. "Other" (the
-          taxonomy's own genre) and "Other genres" (this chart's fold) keep
-          separate names AND separate swatches, the protected distinction. */}
+          taxonomy's own genre) and "Everything else" (this chart's fold)
+          keep separate names AND separate swatches, the protected
+          distinction — reworded 2026-08-08 because two "Other…" entries
+          side by side read as a mystery. No visible caption on this card
+          (Arjun, same session): `caption` still serves as the aria
+          text-equivalent above and the error-boundary fallback. */}
       <div className="se-chart-cats">
         {model.bands.map((band, bi) => (
           <span key={band.name} className="se-chart-cat">
@@ -282,11 +364,20 @@ function GenreShareStreamPlot({
           </span>
         ))}
         {model.bands.some((b) => b.kind === "fold") && (
-          <span className="se-chart-cats-note">*everything past the top 6, folded</span>
+          <span className="se-chart-cats-note">*genres outside the top 6, folded together</span>
         )}
       </div>
 
-      <p className="se-chart-caption">{caption}</p>
+      <CursorChip
+        target={chipTargetRef}
+        boundsRef={rootRef}
+        visible={hoverDetail != null}
+        contentKey={hover != null ? `${hover.bucketIndex}-${hover.bandIndex}` : null}
+        offsetY={-44}
+        compact
+      >
+        {hoverDetail != null && <p className="cursor-chip-mono">{hoverDetail}</p>}
+      </CursorChip>
     </div>
   );
 }

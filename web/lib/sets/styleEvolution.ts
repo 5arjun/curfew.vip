@@ -794,9 +794,11 @@ export interface GenreShareModel {
  *  (G-3 — an asymmetry to keep, not a bug to unify). */
 export const GENRE_STREAM_MAX = 6;
 
-/** The stream's fold-band label — the `otherLabel` idiom `TrendChart`
- *  already uses, kept distinct from the literal "Other" genre. */
-export const GENRE_FOLD_LABEL = "Other genres";
+/** The stream's fold-band label. "Everything else", not "Other genres"
+ *  (Arjun, 2026-08-08): the taxonomy's own literal "Other" genre already
+ *  sits in the same legend, and two near-identical "Other…" entries read as
+ *  a mystery, not a distinction. */
+export const GENRE_FOLD_LABEL = "Everything else";
 
 /**
  * Per-bucket 100%-stacked genre shares (AC-1/AC-2). `rankedNames` is the

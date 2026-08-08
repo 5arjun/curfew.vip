@@ -917,23 +917,56 @@
 /* ─── Genre share stream (Story 4.8, AC-1..6) — the Genre section's hero.
    Reuses the .se-chart card/plot/ticks/cats chrome wholesale; only the
    band fills are new. ────────────────────────────────────────────────────── */
-/* Full opacity, unlike the grouped bars' 0.65: the bars sit UNDER a trend
-   line that must stay the hero; the stream has no line over it — it IS the
-   hero — and AC-4's validation only holds at full strength (re-running the
-   `dataviz` validator on the 0.85-alpha composites dropped the worst
-   adjacent CVD pair to ΔE 7.8 and the fold neutral to 2.75:1; at 1.0 the
-   rendered colors are exactly the validated tokens). */
+/* 0.7, revalidated (Arjun, 2026-08-08, second pass: "a bit more
+   translucent"). At 0.7-alpha over the real chart surface the composited
+   palette passes the normal-vision floor exactly (worst adjacent ΔE 15.0)
+   and sits in the CVD floor band (worst 7.2, 6–8) — legal WITH secondary
+   encoding, which this chart carries: the hairline gaps, the named legend,
+   and the per-band hover chip. This is the floor of the floor: 0.65 FAILS
+   the normal-vision check outright (ΔE 14.1), so any further softening
+   needs a different palette, not a smaller alpha. */
 .se-stream-band {
   /* The dataviz mark spec's surface gap between stacked fills, done as a
      hairline stroke so it survives preserveAspectRatio="none" undistorted. */
   stroke: var(--color-abyss-hairline);
   stroke-width: 1px;
   vector-effect: non-scaling-stroke;
+  fill-opacity: 0.7;
+  pointer-events: auto; /* parent .se-chart-svg is pointer-events: none */
+  transition: fill-opacity var(--motion-duration-fast) var(--motion-ease-standard);
 }
 
-/* The stream's legend swatches read at the bands' own full weight. */
+.se-stream-band[data-hot] {
+  fill-opacity: 1;
+}
+
+/* The stream's legend swatches read at the bands' own resting weight. */
 .se-stream-swatch {
-  opacity: 1;
+  opacity: 0.7;
+}
+
+/* ─── Key row (Arjun, 2026-08-08): the wheel is square and doesn't earn a
+   full row — on desktop it sits beside the harmonic trend; below 900px the
+   pair stacks like every other chart. The 1fr second track collapses
+   gracefully when the harmonic chart is gated away. ─────────────────────── */
+@media (min-width: 900.02px) {
+  .se-key-row {
+    display: grid;
+    grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+    gap: 12px;
+    align-items: stretch;
+  }
+  .se-key-row > :only-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 900px) {
+  .se-key-row {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
 }
 
 /* ─── Camelot wheel (Story 4.8, AC-7/8/11) — the Key section's hero. A
@@ -946,8 +979,12 @@
   padding: 8px 0 4px;
 }
 
+/* 280px, down from 340 (Arjun, 2026-08-08): sized for the side-by-side Key
+   row, still comfortably legible — the cells are hover targets for the
+   chip, not tap targets (G-6's non-interactive ruling stands: nothing is
+   operable). */
 .se-wheel-svg {
-  width: min(100%, 340px);
+  width: min(100%, 280px);
   height: auto;
 }
 
@@ -956,6 +993,12 @@
 .se-wheel-cell {
   stroke: var(--color-abyss-hairline);
   stroke-width: 1px;
+  pointer-events: visiblePainted;
+  transition: stroke var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.se-wheel-cell[data-hot] {
+  stroke: var(--color-abyss-accent);
 }
 
 .se-wheel-number {

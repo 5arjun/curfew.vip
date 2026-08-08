@@ -200,27 +200,32 @@ export function StyleEvolutionView({ model }: { model: StyleEvolutionModel }) {
             genreSeries={genreSeries}
             keySeries={[]}
             genreColors={genreColors}
+            showCaption={false}
           />
         )}
         {genreDisclosure && <p className="se-disclosure">{genreDisclosure}</p>}
       </section>
 
-      {/* Key: wheel (hero, ungated) → harmonic trend (secondary, gated) →
-          no-key + unscored-transition disclosures. */}
+      {/* Key: wheel (hero, ungated) beside the harmonic trend (secondary,
+          gated) on desktop — the wheel is square and doesn't earn a full
+          row (Arjun, 2026-08-08 walkthrough) — stacked again below 900px.
+          Disclosures follow. */}
       <section className="se-section" aria-label="Key">
         <h2 className="se-section-title">Key</h2>
-        <CamelotWheel wheel={wheel} />
-        {sectionsReady && (
-          <TrendChart
-            buckets={series.buckets}
-            granularity={granularity}
-            metric="harmonic"
-            bpmSeries={[]}
-            genreSeries={[]}
-            keySeries={[]}
-            harmonicSeries={harmonicSeries}
-          />
-        )}
+        <div className="se-key-row">
+          <CamelotWheel wheel={wheel} />
+          {sectionsReady && (
+            <TrendChart
+              buckets={series.buckets}
+              granularity={granularity}
+              metric="harmonic"
+              bpmSeries={[]}
+              genreSeries={[]}
+              keySeries={[]}
+              harmonicSeries={harmonicSeries}
+            />
+          )}
+        </div>
         {keyDisclosure && <p className="se-disclosure">{keyDisclosure}</p>}
         {harmonicDisclosure && <p className="se-disclosure">{harmonicDisclosure}</p>}
       </section>
