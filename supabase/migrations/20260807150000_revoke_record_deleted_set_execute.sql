@@ -1,0 +1,22 @@
+-- Migration: revoke_record_deleted_set_execute
+-- Story 4.6 code review follow-up (2026-08-07).
+--
+-- `20260807140000` applied 20260806090100's "functions are born with EXECUTE
+-- granted to PUBLIC, so revoke it" rule to `sync_set`,
+-- `sync_library_add_events` and `handle_new_dj` — and missed
+-- `record_deleted_set()`, which `20260807130000` had just created two
+-- migrations earlier. Supabase's security advisor caught it immediately after
+-- deploy, reporting the new function as anon- AND authenticated-executable via
+-- `/rest/v1/rpc/record_deleted_set`. Fixing the rule while creating a new
+-- violation of it is exactly why the generic assertion added to
+-- `grant_matrix_test.sql` alongside this migration matters more than the
+-- per-function ones: it fails for ANY SECURITY DEFINER function in `public`
+-- that `anon` can execute, so the next one cannot slip through the same way.
+--
+-- `record_deleted_set` is a trigger function, invoked by
+-- `trg_sets_record_delete` as the table owner — no client role has any business
+-- calling it. Calling it over RPC would fail anyway (plpgsql has no `old` record
+-- outside a trigger context), but per 20260806090100's own reasoning that is a
+-- side effect, not an access control: it is SECURITY DEFINER and it writes to
+-- the tombstone table that makes deletes permanent, so its ACL should say no.
+revoke execute on function public.record_deleted_set() from public, anon, authenticated;

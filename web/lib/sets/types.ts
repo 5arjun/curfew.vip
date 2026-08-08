@@ -6,10 +6,25 @@
 import type { SyncPayload, SyncPlay, SyncSetDerived } from "@curfew/shared";
 
 /**
- * One set as the dashboard consumes it — exactly `SyncPayload["set"]`
- * (`external_id`, ISO `started_at`/`ended_at`, `plays`, `derived`). Named for the
- * data-access seam so a component never imports the wire envelope directly.
+ * One set as the dashboard consumes it — `SyncPayload["set"]`
+ * (`external_id`, ISO `started_at`/`ended_at`, `plays`, `derived`), plus the
+ * one display-only field below. Named for the data-access seam so a component
+ * never imports the wire envelope directly.
+ *
+ * `session_label` is an **optional additive augmentation, not a wire field** —
+ * `@curfew/shared`'s frozen contract is deliberately left alone. Story 4.6's
+ * code review found that `external_id` is `sets.id` (a uuid) in the cloud read
+ * path, because `sync_set` never accepts the agent's `external_id` at all, so
+ * the header that used to read `SET 975` from the fixture rendered
+ * `SET 872d5614-9894-5803-80f5-aa1dd4177944`. `external_id` stays the uuid —
+ * it is the correct routing and delete key, and the contract calls it an
+ * "idempotency key", never a display value — and the human label now comes
+ * from `sessions.session_identity` through this field instead. Optional so the
+ * fixture-shaped test inputs still satisfy the type.
  */
-export type SetRecord = SyncPayload["set"];
+export type SetRecord = SyncPayload["set"] & {
+  /** Raw `sessions.session_identity` (e.g. `serato4:975`), for display only. `null`/absent when unknown — render from `external_id` then. See `formatSessionLabel`. */
+  session_label?: string | null;
+};
 
 export type { SyncPlay, SyncSetDerived };

@@ -30,6 +30,21 @@ describe("formatSessionLabel", () => {
   it("prefixes the external id", () => {
     expect(formatSessionLabel("975")).toBe("SET 975");
   });
+
+  // Story 4.6 code review: the cloud read path passes a raw
+  // `sessions.session_identity`, not the fixture's bare Serato id.
+  it("unwraps a serato4 session identity to the Serato session number", () => {
+    expect(formatSessionLabel("serato4:975")).toBe("SET 975");
+    expect(formatSessionLabel("serato4:17577")).toBe("SET 17577");
+  });
+
+  it("shortens a legacy hash identity rather than printing the whole opaque key", () => {
+    expect(formatSessionLabel("legacy:a3f2c1d9e8b74650")).toBe("SET A3F2C1D9");
+  });
+
+  it("shortens a bare uuid, so a missing session_label never renders 36 chars", () => {
+    expect(formatSessionLabel("872d5614-9894-5803-80f5-aa1dd4177944")).toBe("SET 872D5614");
+  });
 });
 
 describe("formatSetDate", () => {
