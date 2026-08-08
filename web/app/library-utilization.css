@@ -89,9 +89,23 @@
    `.se-empty` itself, which is correct at its own call site. */
 .lu-module .se-empty {
   min-height: 0;
-  padding: 14px 4px 6px;
+  padding: 13px 16px;
   place-items: start;
   text-align: left;
+  /* MEASURED and fixed in Story 4.4's browser pass, closing the open
+     `deferred-work.md` finding that named this exact rule as "the first thing
+     to measure" and unverified. `.dz-shell`'s 50px radius is sized for Style
+     Evolution's 260px chart slot; `min-height: 0` above collapses this box to
+     66px, so the radius exceeded HALF THE HEIGHT and the state rendered as a
+     pill with its copy 6px inside a 50px corner arc. Scaled to the module's
+     own 22px language instead, and the horizontal padding raised from 4px so
+     the first character clears the curve rather than sitting on it.
+
+     Deliberately fixes `TimeToFirstPlay`'s insufficient-history state too —
+     it is the same component at the same call site on the same page, and the
+     finding was logged against it. Story 4.4 has two gated states that render
+     through here, which is what made it measurable at last. */
+  border-radius: 16px;
 }
 
 .lu-module .se-empty-copy {
@@ -179,6 +193,131 @@
   box-shadow:
     0 0 0 2px var(--color-abyss-accent),
     0 0 0 6px var(--color-abyss-accent-glow);
+}
+
+/* ─── Aging shelf (Story 4.4, FR-12 / UX-DR12) — the first `.lu-module`
+   content that is a LIST rather than a single stat readout, which is what
+   makes the two post-merge repair rules above worth re-checking here:
+
+   `.lu > .lu-module { max-width: 440px }` HOLDS. A row is title — artist —
+   days, all short-form text; 440px leaves the track column ~330px, which is
+   comfortably wider than the Set Detail track rows this borrows its shape
+   from. The cap is not the problem a list creates — HEIGHT is, see
+   `.lu-shelf-list` below.
+
+   `.lu-module .se-empty { min-height: 0 }` is exercised by all three of this
+   module's gated states, two of which (`not-yet-possible`, `nothing-synced`)
+   render through `InsufficientHistory` exactly as `TimeToFirstPlay`'s does. */
+
+.lu-shelf-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  /* The cap is 100 rows (SHELF_ROW_CAP). At ~38px each that is a ~3,800px
+     column of one module on a page with three others above it — the list
+     scrolls inside its own bounds instead, so the shelf stays a module rather
+     than becoming the page. Roughly nine rows visible, which reads as a list
+     that continues rather than one that ended. */
+  max-height: 340px;
+  overflow-y: auto;
+  /* Scrolling the shelf must not chain into the page once it bottoms out —
+     on a trackpad that reads as the page lurching for no reason. Hidden
+     scrollbar + `overscroll-behavior: contain` is the same pairing
+     `.dz-list-scroll` and `.dz-sheet-tracklist ol` already use. */
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.lu-shelf-list::-webkit-scrollbar {
+  display: none;
+}
+
+.lu-shelf-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 2px;
+  border-bottom: 1px solid var(--color-abyss-row-line);
+  /* DELIBERATELY no hover, no pointer, no focus ring: these rows are
+     read-only by ruling (AC-3, Arjun 2026-08-08 — the prep-crate action is out
+     of MVP and no substitute affordance replaces it). A hover highlight would
+     be a false affordance, promising an interaction that does not exist. */
+}
+
+.lu-shelf-row:last-child {
+  border-bottom: none;
+}
+
+.lu-shelf-track {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  /* Without `min-width: 0` a long title refuses to shrink inside the flex row
+     and pushes the day count off the 320px layout entirely. */
+  min-width: 0;
+}
+
+.lu-shelf-title,
+.lu-shelf-artist {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-wrap: nowrap;
+}
+
+.lu-shelf-title {
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--color-abyss-text);
+}
+
+.lu-shelf-artist {
+  font-family: var(--font-inter);
+  font-size: 11.5px;
+  color: var(--color-abyss-text-45);
+}
+
+/* Tabular figures so the day counts form a clean right-aligned column — the
+   sort key is the one value on the row a DJ scans down, and proportional
+   digits make a sorted column look ragged enough to read as unsorted. */
+.lu-shelf-days {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-abyss-text-72);
+  text-wrap: nowrap;
+}
+
+.lu-shelf-days-unit {
+  font-family: var(--font-inter);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--color-abyss-text-45);
+}
+
+/* At 320px the sort control ("Longest unplayed") is ~139px of a 228px module
+   — wider than the conversion dropdown's "60 days" ever is — which wrapped the
+   AGING SHELF label onto two lines (measured, browser pass). The label keeps
+   its line and the control drops below it instead; above ~360px both still sit
+   on one row, so nothing changes at 375 or 1440. */
+.lu-shelf-head {
+  flex-wrap: wrap;
+}
+
+.lu-shelf-head .lu-stat-label {
+  text-wrap: nowrap;
+}
+
+/* WCAG 2.2 AA SC 2.5.8 (AC-12): the sort control is this module's only
+   interactive target, and `.lu-window-select`'s own 4px padding + 12px text
+   lands within a pixel or two of the 24px minimum depending on the platform's
+   default select metrics. Pinned rather than left to chance — 4.1 and 4.7 both
+   shipped sub-24px targets that survived visual review. */
+.lu-shelf-head .lu-window-select {
+  min-height: 24px;
 }
 
 .lu-stat-readout {

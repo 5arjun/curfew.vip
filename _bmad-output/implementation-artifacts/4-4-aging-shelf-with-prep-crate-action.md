@@ -4,7 +4,7 @@ baseline_commit: ec15b20f81631f310e5a95f598995f43c0a265a8
 
 # Story 4.4: Aging shelf
 
-Status: ready-for-dev
+Status: review
 
 <!-- Filename/story key keep the historical `-with-prep-crate-action` suffix for tracking continuity. The action itself is OUT — ruled by Arjun 2026-08-08, see Context & Authority §1. -->
 
@@ -92,58 +92,58 @@ Three distinct terminal states, never collapsed into two:
 
 > Layer order matches 4.2/4.3/4.11: seam → pure model → component → page wiring → browser pass → docs. Tasks 1 and 2 are independently testable before any UI exists.
 
-- [ ] **Task 1 — Seam: make `getLibraryRoster` real, and add the observation-start read** (AC: 8, 10, 11)
-  - [ ] `web/lib/sets/index.ts`: replace `getLibraryRoster`'s hardcoded `{ entries: [], excludedNoIdentityCount: 0, totalCatalogueRows: 0 }` with a **paged** select from `library_roster` — copy `getLibraryAddEvents`'s loop exactly (`MAX_ROWS_PER_PAGE` 1000, `MAX_PAGES` 50, `.order("track_id", { ascending: true })`, return `{ entries: [] , … }` on error rather than the partial pages already collected). PostgREST silently caps an unbounded select at `max_rows` with HTTP 200 and `error: null`; a truncated roster renders a confidently short shelf.
-  - [ ] Select `track_id, title, artist, added_at, is_baseline, absent_at`. Filter `absent_at is null` **server-side** (`.is("absent_at", null)`) — the `library_roster_dj_id_absent_at_idx` index exists for exactly this predicate, and filtering server-side is what makes the paging cap count present tracks rather than burning pages on deleted ones (AC-8).
-  - [ ] **Do not touch `excludedNoIdentityCount`/`totalCatalogueRows`.** Leave them `0`. They are scan-level scalars with **no cloud carrier at all** — `library_roster` is per-track (wrong shape) and AD-20's heartbeat carries no derived Serato data. `store::scan_identity_coverage` computes them agent-side with no caller. Making them live needs a named decision (an additive AD-22 RPC argument, or `agent_status` columns) and is tracked in `deferred-work.md`. Do not invent a carrier here.
-  - [ ] Add `getObservationStart(): Promise<number | null>` — reads `djs.created_at` (`.select("created_at").maybeSingle()`), returns epoch ms, or `null` on any failure/missing row. Same shape as the other reads: lazy `@/lib/supabase/server` import, try/catch, dev-only `console.error`, calm fallback. Its doc comment must state the fail-closed contract (AC-11) and the signup-vs-install imprecision (Context §3) so the next reader doesn't "fix" it into a raw-`added_at` fallback.
-  - [ ] Export `getObservationStart` from the seam's public surface alongside the existing five functions.
-  - [ ] Extend `index.test.ts` with the new read's empty-account, paging and failure paths, matching how `getLibraryAddEvents` is covered there.
+- [x] **Task 1 — Seam: make `getLibraryRoster` real, and add the observation-start read** (AC: 8, 10, 11)
+  - [x] `web/lib/sets/index.ts`: replace `getLibraryRoster`'s hardcoded `{ entries: [], excludedNoIdentityCount: 0, totalCatalogueRows: 0 }` with a **paged** select from `library_roster` — copy `getLibraryAddEvents`'s loop exactly (`MAX_ROWS_PER_PAGE` 1000, `MAX_PAGES` 50, `.order("track_id", { ascending: true })`, return `{ entries: [] , … }` on error rather than the partial pages already collected). PostgREST silently caps an unbounded select at `max_rows` with HTTP 200 and `error: null`; a truncated roster renders a confidently short shelf.
+  - [x] Select `track_id, title, artist, added_at, is_baseline, absent_at`. Filter `absent_at is null` **server-side** (`.is("absent_at", null)`) — the `library_roster_dj_id_absent_at_idx` index exists for exactly this predicate, and filtering server-side is what makes the paging cap count present tracks rather than burning pages on deleted ones (AC-8).
+  - [x] **Do not touch `excludedNoIdentityCount`/`totalCatalogueRows`.** Leave them `0`. They are scan-level scalars with **no cloud carrier at all** — `library_roster` is per-track (wrong shape) and AD-20's heartbeat carries no derived Serato data. `store::scan_identity_coverage` computes them agent-side with no caller. Making them live needs a named decision (an additive AD-22 RPC argument, or `agent_status` columns) and is tracked in `deferred-work.md`. Do not invent a carrier here.
+  - [x] Add `getObservationStart(): Promise<number | null>` — reads `djs.created_at` (`.select("created_at").maybeSingle()`), returns epoch ms, or `null` on any failure/missing row. Same shape as the other reads: lazy `@/lib/supabase/server` import, try/catch, dev-only `console.error`, calm fallback. Its doc comment must state the fail-closed contract (AC-11) and the signup-vs-install imprecision (Context §3) so the next reader doesn't "fix" it into a raw-`added_at` fallback.
+  - [x] Export `getObservationStart` from the seam's public surface alongside the existing five functions.
+  - [x] Extend `index.test.ts` with the new read's empty-account, paging and failure paths, matching how `getLibraryAddEvents` is covered there.
 
-- [ ] **Task 2 — Model: `web/lib/sets/agingShelf.ts`** (AC: 1, 2, 6, 7, 8, 9, 11)
-  - [ ] New pure module, same convention as `libraryConversion.ts`/`libraryRoster.ts`: deterministic over already-fetched records, clock injected as `nowMs`, **never** `Date.now()` inside.
-  - [ ] `buildAgingShelf(entries: LibraryRosterEntry[], observationStartMs: number | null, nowMs: number, plays: Map<string, number[]>): AgingShelfModel`. Take the **shared page-level play index** (`playsByTrack`) as a parameter — the page already builds exactly one and shares it across three modules; building a fourth would be both a wasted pass and the shape that produced the earlier global-earliest-play bug.
-  - [ ] Per entry, in this order: skip if `absent_at != null` (AC-8) → if `added_at == null` **and** no plays, classify `unknown-add-date` (AC-7) → if plays exist, `daysUnplayed` from `max(plays)` unclamped → else if `observationStartMs == null`, **drop** (AC-11) → else `daysUnplayed` from `max(addedMs, observationStartMs)`.
-  - [ ] `AGING_THRESHOLD_DAYS = 90`. **90 days, not "3 calendar months"** — every other window in Epic 4 is a day count (`CONVERSION_WINDOWS` 60/30/14), and a calendar-month definition drifts by up to 3 days depending on the start month. State the choice in the constant's doc comment so it is not re-litigated.
-  - [ ] `RECENT_DOWNLOAD_DAYS = 30` (AC-6), computed off **raw `added_at`** with no clamp, over entries with no observed play. Mark it `[ASSUMPTION]` inline, pointing at the PRD-sync owed below.
-  - [ ] Guard a future-dated `added_at` (`addedMs > nowMs`). **Follow the disposition ruled for the page's other three modules, not a fourth new one** — `deferred-work.md`'s "three-way future-dated disposition" entry is open and explicitly asks for ONE ruling applied consistently. If it is still unruled when you start, count it into the unknown/unreconciled disclosure rather than dropping it silently, and say so in Completion Notes.
-  - [ ] Model returns at minimum: `rows` (sorted, capped), `qualifyingCount` (uncapped), `unknownAddDateCount`, `recentlyDownloadedCount`, and enough for the component to pick between AC-4/AC-5/day-one states without re-deriving anything.
-  - [ ] `SHELF_ROW_CAP = 100` (AC-9). A 5,000-track library with a cold catalogue puts thousands of rows on this page; render the longest-unplayed 100 and expose `qualifyingCount` so the component can state the cap. Sorting happens **before** the cap, in both directions, so the ascending sort surfaces the *shortest*-aging 100 rather than reversing the same 100 — a reversed slice would be a different, silently wrong list.
-  - [ ] `agingShelf.test.ts`: the clamp on both branches; `is_baseline` true and false producing identical behaviour at the same dates (proving §2's no-branch rule); `observationStartMs == null` suppressing the fallback but keeping observed rows (AC-11); the `absent_at` exclusion (**this is the first web-side coverage the soft-delete has ever had** — `deferred-work.md` flags it as the half of 4.11 most likely to be wrong, inherited by this story); unknown-add-date classification; the 90-day boundary exactly at 89/90/91 days; the cap applying after the sort in both directions.
+- [x] **Task 2 — Model: `web/lib/sets/agingShelf.ts`** (AC: 1, 2, 6, 7, 8, 9, 11)
+  - [x] New pure module, same convention as `libraryConversion.ts`/`libraryRoster.ts`: deterministic over already-fetched records, clock injected as `nowMs`, **never** `Date.now()` inside.
+  - [x] `buildAgingShelf(entries: LibraryRosterEntry[], observationStartMs: number | null, nowMs: number, plays: Map<string, number[]>): AgingShelfModel`. Take the **shared page-level play index** (`playsByTrack`) as a parameter — the page already builds exactly one and shares it across three modules; building a fourth would be both a wasted pass and the shape that produced the earlier global-earliest-play bug.
+  - [x] Per entry, in this order: skip if `absent_at != null` (AC-8) → if `added_at == null` **and** no plays, classify `unknown-add-date` (AC-7) → if plays exist, `daysUnplayed` from `max(plays)` unclamped → else if `observationStartMs == null`, **drop** (AC-11) → else `daysUnplayed` from `max(addedMs, observationStartMs)`.
+  - [x] `AGING_THRESHOLD_DAYS = 90`. **90 days, not "3 calendar months"** — every other window in Epic 4 is a day count (`CONVERSION_WINDOWS` 60/30/14), and a calendar-month definition drifts by up to 3 days depending on the start month. State the choice in the constant's doc comment so it is not re-litigated.
+  - [x] `RECENT_DOWNLOAD_DAYS = 30` (AC-6), computed off **raw `added_at`** with no clamp, over entries with no observed play. Mark it `[ASSUMPTION]` inline, pointing at the PRD-sync owed below.
+  - [x] Guard a future-dated `added_at` (`addedMs > nowMs`). **Follow the disposition ruled for the page's other three modules, not a fourth new one** — `deferred-work.md`'s "three-way future-dated disposition" entry is open and explicitly asks for ONE ruling applied consistently. If it is still unruled when you start, count it into the unknown/unreconciled disclosure rather than dropping it silently, and say so in Completion Notes.
+  - [x] Model returns at minimum: `rows` (sorted, capped), `qualifyingCount` (uncapped), `unknownAddDateCount`, `recentlyDownloadedCount`, and enough for the component to pick between AC-4/AC-5/day-one states without re-deriving anything.
+  - [x] `SHELF_ROW_CAP = 100` (AC-9). A 5,000-track library with a cold catalogue puts thousands of rows on this page; render the longest-unplayed 100 and expose `qualifyingCount` so the component can state the cap. Sorting happens **before** the cap, in both directions, so the ascending sort surfaces the *shortest*-aging 100 rather than reversing the same 100 — a reversed slice would be a different, silently wrong list.
+  - [x] `agingShelf.test.ts`: the clamp on both branches; `is_baseline` true and false producing identical behaviour at the same dates (proving §2's no-branch rule); `observationStartMs == null` suppressing the fallback but keeping observed rows (AC-11); the `absent_at` exclusion (**this is the first web-side coverage the soft-delete has ever had** — `deferred-work.md` flags it as the half of 4.11 most likely to be wrong, inherited by this story); unknown-add-date classification; the 90-day boundary exactly at 89/90/91 days; the cap applying after the sort in both directions.
 
-- [ ] **Task 3 — Component: `web/app/components/library-utilization/AgingShelf.tsx`** (AC: 2, 3, 4, 5, 6, 7, 9, 13)
-  - [ ] Match `TimeToFirstPlay.tsx`'s shell exactly: `<section className="lu-module dz-shell" aria-label={summary}>`, `<span className="dz-dots" aria-hidden />`, `<div className="lu-stat-head"><p className="lu-stat-label">…`. Do **not** invent a second module chrome.
-  - [ ] Rows are **non-interactive** (AC-3). The sort control is the module's only interactive element.
-  - [ ] Sort control: minimal two-state toggle (longest-unplayed ⇄ shortest-unplayed). **Do not add title/artist sort columns** — FR-12 says "sortable by days-unplayed" and nothing more; extra sorts are unrequested scope.
-  - [ ] Sort state makes this a client component. **Follow the house convention** the two existing window controls use (`useSyncExternalStore` + `localStorage`) if the selection should persist — and note that `deferred-work.md` already ruled the shared boilerplate **not** worth extracting at two copies; a third copy is the point at which that ruling should be re-checked, not silently ignored. If you decide not to persist, say why in Dev Notes.
-  - [ ] Three terminal states per Context §4, using `InsufficientHistory` for the "not yet possible" wait state (the component the page's other modules already use). **Pass a `copy` prop** — its default is Style Evolution's "Two more sets and Style Evolution has something to show you," which is the wrong page and the wrong wait. Write the copy in the register `libraryInsufficientCopy` established: name the clock, because "not enough data" with no reason reads as a bug while naming the wait reads as a promise. **Do not** state the wait as elapsed subscription time — Decision B's copy rule is binding ("since you joined" is a self-installed churn button). For the genuinely-clear state use `EXPERIENCE.md`'s existing copy **verbatim**.
-  - [ ] Unknown-add-date group (AC-7) renders as its own labelled block below the list, never interleaved into the sorted rows.
-  - [ ] Cap disclosure (AC-9) and the recently-downloaded count (AC-6) render as `lu-disclosure` lines, matching the page's existing disclosure register.
-  - [ ] a11y (AC-13): `aria-label` states what the list is and its size, in `TimeToFirstPlay`'s register. **Check the accessible name against the visible state** — 4.5's review found a section announcing a figure the UI had explicitly declined to state. If the module is in a gated state, the label must not claim a number.
-  - [ ] **Read `deferred-work.md`'s open UI finding before adding markup:** `/library-utilization` has **no `<h2>` at all** and already nests three landmark regions. Do not add a fourth bare `<section aria-label>`. Prefer a real `<h2 className="lu-stat-label">` here; if you use `<section>`, note it against that open finding rather than deepening it silently.
+- [x] **Task 3 — Component: `web/app/components/library-utilization/AgingShelf.tsx`** (AC: 2, 3, 4, 5, 6, 7, 9, 13)
+  - [x] Match `TimeToFirstPlay.tsx`'s shell exactly: `<section className="lu-module dz-shell" aria-label={summary}>`, `<span className="dz-dots" aria-hidden />`, `<div className="lu-stat-head"><p className="lu-stat-label">…`. Do **not** invent a second module chrome.
+  - [x] Rows are **non-interactive** (AC-3). The sort control is the module's only interactive element.
+  - [x] Sort control: minimal two-state toggle (longest-unplayed ⇄ shortest-unplayed). **Do not add title/artist sort columns** — FR-12 says "sortable by days-unplayed" and nothing more; extra sorts are unrequested scope.
+  - [x] Sort state makes this a client component. **Follow the house convention** the two existing window controls use (`useSyncExternalStore` + `localStorage`) if the selection should persist — and note that `deferred-work.md` already ruled the shared boilerplate **not** worth extracting at two copies; a third copy is the point at which that ruling should be re-checked, not silently ignored. If you decide not to persist, say why in Dev Notes.
+  - [x] Three terminal states per Context §4, using `InsufficientHistory` for the "not yet possible" wait state (the component the page's other modules already use). **Pass a `copy` prop** — its default is Style Evolution's "Two more sets and Style Evolution has something to show you," which is the wrong page and the wrong wait. Write the copy in the register `libraryInsufficientCopy` established: name the clock, because "not enough data" with no reason reads as a bug while naming the wait reads as a promise. **Do not** state the wait as elapsed subscription time — Decision B's copy rule is binding ("since you joined" is a self-installed churn button). For the genuinely-clear state use `EXPERIENCE.md`'s existing copy **verbatim**.
+  - [x] Unknown-add-date group (AC-7) renders as its own labelled block below the list, never interleaved into the sorted rows.
+  - [x] Cap disclosure (AC-9) and the recently-downloaded count (AC-6) render as `lu-disclosure` lines, matching the page's existing disclosure register.
+  - [x] a11y (AC-13): `aria-label` states what the list is and its size, in `TimeToFirstPlay`'s register. **Check the accessible name against the visible state** — 4.5's review found a section announcing a figure the UI had explicitly declined to state. If the module is in a gated state, the label must not claim a number.
+  - [x] **Read `deferred-work.md`'s open UI finding before adding markup:** `/library-utilization` has **no `<h2>` at all** and already nests three landmark regions. Do not add a fourth bare `<section aria-label>`. Prefer a real `<h2 className="lu-stat-label">` here; if you use `<section>`, note it against that open finding rather than deepening it silently.
 
-- [ ] **Task 4 — Page wiring: `web/app/(authenticated)/library-utilization/page.tsx`** (AC: 1, 10, 11)
-  - [ ] Add `getObservationStart()` to the existing `Promise.all` alongside `getRecentSets`/`getLibraryAddEvents`/`getLibraryRoster`.
-  - [ ] Build the model with the **existing** `playIndex` and the **existing** `addEvents.readAtMs` clock. Do **not** call `Date.now()` in the page — the clock comes from the data seam (Story 4.1's review lesson; `react-hooks/purity` rejects it besides).
-  - [ ] Place `<AgingShelf>` as a **sibling below `<TimeToFirstPlay>`**, outside `LibraryUtilizationView`. The shelf has no trailing window, so nesting it under the shared conversion dropdown would put a window-independent figure under a control that visibly does not move it — the inverse of the failure 4.7 AC-3 exists to prevent. `LibraryUtilizationView`'s own doc comment says further modules grow below it. Keeping it outside also keeps the page a server component boundary-wise.
-  - [ ] Leave the trailing `{undatedNote && …}` disclosure **last** on the page — it speaks for the modules above it.
-  - [ ] **Do not wire `library_roster.added_at` or `is_baseline` into any conversion computation.** `library_track_events` remains the only cohort denominator (AD-22, Story 4.11 AC-3). A baseline track's real pre-install add-date reaching cohort math retroactively populates old months against a still-go-forward numerator and silently changes numbers the DJ has already seen.
+- [x] **Task 4 — Page wiring: `web/app/(authenticated)/library-utilization/page.tsx`** (AC: 1, 10, 11)
+  - [x] Add `getObservationStart()` to the existing `Promise.all` alongside `getRecentSets`/`getLibraryAddEvents`/`getLibraryRoster`.
+  - [x] Build the model with the **existing** `playIndex` and the **existing** `addEvents.readAtMs` clock. Do **not** call `Date.now()` in the page — the clock comes from the data seam (Story 4.1's review lesson; `react-hooks/purity` rejects it besides).
+  - [x] Place `<AgingShelf>` as a **sibling below `<TimeToFirstPlay>`**, outside `LibraryUtilizationView`. The shelf has no trailing window, so nesting it under the shared conversion dropdown would put a window-independent figure under a control that visibly does not move it — the inverse of the failure 4.7 AC-3 exists to prevent. `LibraryUtilizationView`'s own doc comment says further modules grow below it. Keeping it outside also keeps the page a server component boundary-wise.
+  - [x] Leave the trailing `{undatedNote && …}` disclosure **last** on the page — it speaks for the modules above it.
+  - [x] **Do not wire `library_roster.added_at` or `is_baseline` into any conversion computation.** `library_track_events` remains the only cohort denominator (AD-22, Story 4.11 AC-3). A baseline track's real pre-install add-date reaching cohort math retroactively populates old months against a still-go-forward numerator and silently changes numbers the DJ has already seen.
 
-- [ ] **Task 5 — Styles: `web/app/library-utilization.css`** (AC: 12)
-  - [ ] `lu-`-prefixed additions only, Obsidian tokens only — `no-hardcoded-colors.test.ts` is a live gate.
-  - [ ] Note the existing `.lu > .lu-module { max-width: 440px }` repair rule and `.lu-module .se-empty { min-height: 0 }` — both are in `deferred-work.md` as **unverified in a browser**. A row list is the first `.lu-module` content that is not a single stat readout; check both against it rather than assuming they hold.
+- [x] **Task 5 — Styles: `web/app/library-utilization.css`** (AC: 12)
+  - [x] `lu-`-prefixed additions only, Obsidian tokens only — `no-hardcoded-colors.test.ts` is a live gate.
+  - [x] Note the existing `.lu > .lu-module { max-width: 440px }` repair rule and `.lu-module .se-empty { min-height: 0 }` — both are in `deferred-work.md` as **unverified in a browser**. A row list is the first `.lu-module` content that is not a single stat readout; check both against it rather than assuming they hold.
 
-- [ ] **Task 6 — Browser pass** (AC: 4, 5, 12)
-  - [ ] Real browser against a live dev server at **1440 / 375 / 320px**. Measure the sort control's tap target **against the DOM** (`getBoundingClientRect`), not from a screenshot — 4.1 and 4.7 both shipped sub-24px targets that survived visual review.
-  - [ ] Zero console errors/warnings. If you see a hydration warning, root-cause it before dismissing it: 4.7 found a genuine SSR/browser float mismatch, and 4.3 found a browser-extension false positive. Both were real diagnoses, not assumptions.
-  - [ ] **Exercise the gated states deliberately.** The roster is empty in production today and `noAddDateCount` has been 0 in every fixture, so AC-4/AC-5/AC-7 will render nothing on real data — drive them from `library-roster.fixture.json` (already committed, 653 entries) or a local stub. `deferred-work.md` records that the undated-disclosure state "has never rendered anywhere"; do not repeat that with this story's three.
-  - [ ] This is also the first browser pass on the **merged four-module composition** of `/library-utilization` — `deferred-work.md` records that even the current three have never been seen together. Note what you find.
+- [x] **Task 6 — Browser pass** (AC: 4, 5, 12)
+  - [x] Real browser against a live dev server at **1440 / 375 / 320px**. Measure the sort control's tap target **against the DOM** (`getBoundingClientRect`), not from a screenshot — 4.1 and 4.7 both shipped sub-24px targets that survived visual review.
+  - [x] Zero console errors/warnings. If you see a hydration warning, root-cause it before dismissing it: 4.7 found a genuine SSR/browser float mismatch, and 4.3 found a browser-extension false positive. Both were real diagnoses, not assumptions.
+  - [x] **Exercise the gated states deliberately.** The roster is empty in production today and `noAddDateCount` has been 0 in every fixture, so AC-4/AC-5/AC-7 will render nothing on real data — drive them from `library-roster.fixture.json` (already committed, 653 entries) or a local stub. `deferred-work.md` records that the undated-disclosure state "has never rendered anywhere"; do not repeat that with this story's three.
+  - [x] This is also the first browser pass on the **merged four-module composition** of `/library-utilization` — `deferred-work.md` records that even the current three have never been seen together. Note what you find.
 
-- [ ] **Task 7 — Docs and spec sync**
-  - [ ] `epics.md` Story 4.4: AC-2's prep-crate action is already annotated with the 2026-08-08 ruling — confirm it still matches what shipped and extend if you diverged.
-  - [ ] **PRD-sync owed, do not let it accrete (the ai-2/ai-6 failure shape):** FR-12 reads "unplayed for 3+ months (from add date or last play)" with no clamp and no `[ASSUMPTION]` on the 30-day nudge, and its UJ-6 path (§`prd.md:89`) still describes pulling tracks into a prep crate. `EXPERIENCE.md`'s Components row and UJ-6 step 4 say the same. Sync all four to what actually ships.
-  - [ ] `deferred-work.md`: close the "AC-5's soft-delete has no web-side or end-to-end coverage" entry with what Task 2 now covers; add the prep-crate action as a named post-MVP item with the cloud→agent-channel finding attached so the cost is not re-measured.
-  - [ ] `sprint-status.yaml` note in the established style.
+- [x] **Task 7 — Docs and spec sync**
+  - [x] `epics.md` Story 4.4: AC-2's prep-crate action is already annotated with the 2026-08-08 ruling — confirm it still matches what shipped and extend if you diverged.
+  - [x] **PRD-sync owed, do not let it accrete (the ai-2/ai-6 failure shape):** FR-12 reads "unplayed for 3+ months (from add date or last play)" with no clamp and no `[ASSUMPTION]` on the 30-day nudge, and its UJ-6 path (§`prd.md:89`) still describes pulling tracks into a prep crate. `EXPERIENCE.md`'s Components row and UJ-6 step 4 say the same. Sync all four to what actually ships.
+  - [x] `deferred-work.md`: close the "AC-5's soft-delete has no web-side or end-to-end coverage" entry with what Task 2 now covers; add the prep-crate action as a named post-MVP item with the cloud→agent-channel finding attached so the cost is not re-measured.
+  - [x] `sprint-status.yaml` note in the established style.
 
 ## Dev Notes
 
@@ -210,14 +210,65 @@ Aligns with the established layout with no variances: pure models in `web/lib/se
 
 ### Agent Model Used
 
+claude-opus-5 (Claude Code, `bmad-dev-story`)
+
 ### Debug Log References
+
+Browser pass driven through a temporary harness route (`web/app/dev-aging-shelf/page.tsx`, deleted before commit) because the roster is empty in production and the committed fixture has zero undated and zero absent rows by design — AC-4/AC-5/AC-7/AC-9 render nothing on real data. The harness rendered six models (fixture rows + injected long/undated/recent entries, the three gated states, and the fail-closed state) as direct children of `.lu` so `.lu > .lu-module`'s 440px cap was actually exercised rather than skipped by a wrapper.
 
 ### Completion Notes List
 
+**Scope held.** Pure `web/`: no migration, no `shared/` change, no agent change. Nothing was added to the roster table, the sync payload, or the UI beyond Tier A.
+
+**The two halves of `getLibraryRoster` were kept apart** (Task 1's central instruction). `entries` is now a real paged read; `excludedNoIdentityCount`/`totalCatalogueRows` stay `0` on every return path because they have no cloud carrier. The pre-existing "does not report another DJ's measured catalogue counts" tests were deliberately kept and one was extended to assert the disclosure still returns `null` *while entries are real* — the point being to stop a future "make it consistent" pass deriving those scalars from the rows, which would be a different number wearing the same name.
+
+**`.is()` not `.eq()`** for the `absent_at` filter, with a test asserting it: `eq` renders `absent_at=eq.null`, a literal string comparison that matches nothing, so the wrong one would have silently returned an empty roster forever.
+
+**Mutation-tested the three binding rules** rather than trusting a green suite. Degrading the fail-closed branch to raw `added_at` fails 2 tests; capping before sorting fails 2; branching on `is_baseline` fails 1. The suite genuinely bites on all three.
+
+**`formatElapsed` was NOT reused for the row value**, per Dev Notes — writing it here so nobody "fixes" it back. It coarsens above 60 days to months and above a year to years, so a list sorted *by* days unplayed would render "1 year / 1 year / 1 year / 11 months" and read as unsorted, precisely because the sort key is the value being flattened. `formatElapsed` remains correct wherever a coarse phrase is wanted; this is a call-site judgment, not a defect in the helper.
+
+**The sort is NOT persisted, and that is a deliberate departure** from the two `useSyncExternalStore` + `localStorage` window controls (Task 3 asked for the reasoning either way). A window is a parameter of the analysis — it changes what the numbers mean, so it should stick. A sort direction is a transient view of one fixed list and changes nothing about what is true; persisting it means a DJ who once flipped to shortest-unplayed returns weeks later to a shelf whose top row is the *least* neglected track, an inverted default with nothing on screen explaining it. This also avoids becoming the third copy of that boilerplate, which `deferred-work.md` names as the point at which its "not worth extracting at two copies" ruling should be re-checked rather than silently deepened.
+
+**Future-dated rows follow `buildTimeToFirstPlay`'s disposition, not a fourth new one.** The three-way ruling in `deferred-work.md` is still open, so this story adopted the one existing disposition that surfaces the row rather than mislabelling it (counted and disclosed as "dates Curfew can't reconcile"). The guard covers *every* clock source that can sit in the future, not just `added_at` — a future-dated play would otherwise render a negative day count. The tally is now 3 modules on that side, 1 each on the other two; the entry has been updated and `buildAgingShelf` names it at the guard so one ruling lands in one place.
+
+**Low-confidence sets (FR-27) are not excluded here, deliberately** — noting it so the inconsistency stays visible rather than looking settled. All four modules on this page read `getRecentSets()` unfiltered, so a soundcheck play already counts as a play page-wide. Making the shelf the one module that filters would put two modules 200px apart disagreeing about whether a track has been played. Story 4.9 AC-10 owns the page-wide pass.
+
+**Two real defects the test suite did not catch, found in the browser pass:**
+1. **The accessible name disagreed with the visible list after a sort flip.** Flipping to shortest-unplayed left the section announcing "the longest-unplayed 100 are listed" while the visible disclosure said "shortest". The two capped lists share *no rows at the extremes*, so this was a wrong answer to a screen-reader user, not stale wording — the same failure shape 4.5's review found. `agingShelfSummary` now takes the sort, and there is a regression test plus one asserting no sorted-end clause leaks when the list is not truncated.
+2. **`.lu-module .se-empty` rendered as a pill with its copy on a curved edge.** `deferred-work.md` named this rule as "the first thing to measure" and unverified; measured here at 66px tall against a 50px radius (radius > half height) with the copy 6px inside a 50px corner arc. Fixed to `border-radius: 16px` with real horizontal padding. This also fixes `TimeToFirstPlay`'s identical state — same component, same call site, same page, and the finding was logged against it.
+
+**Structural findings checked, not assumed** (Task 5): `.lu > .lu-module { max-width: 440px }` **holds** against list content — a title—artist—days row leaves the track column ~330px and truncates with ellipsis rather than pushing the day count out of the row, verified at 320px. The height is what a list strains, not the width, so the list scrolls inside its own bounds (100 rows would otherwise be a ~3,800px column).
+
+**a11y:** the module contributes the page's first real `<h2>`, partly addressing `deferred-work.md`'s open finding that `/library-utilization` has no `<h2>` at all and heading-nav skips every module. Not extended to the other three: R-10 (whether these module `<section>`s should become `<div role="group">`) is still unruled, and changing four components under an unruled finding is separate work. Net 4 sections / 1 h2, from 3 / 0 — noted rather than deepened silently. The accessible name states **no figure** in any gated state, checked against the rendered state in the browser.
+
+**Two things flagged for a ruling rather than silently resolved** (both in `deferred-work.md`):
+- The all-clear copy ("Everything you've bought is getting played.", AC-5, verbatim by requirement) and the 30-day nudge (AC-6, unconditional) can sit adjacent and conflict. The nudge is self-scoping ("in the last 30 days"), so it reads as *these are just new*, but the tension is real and grows with the count. Resolving it either way violates an AC as written.
+- **The clamp makes every pre-observation track report the identical day count.** On the fixture: 616 qualifying tracks whose longest-unplayed page is a wall of "730 days", because everything added before `djs.created_at` clamps to exactly the observation length. This is the clamp working correctly, and the `track_id` tie-break keeps the order deterministic — but "sortable by days unplayed" does less for a veteran DJ than FR-12 implies, since only observed-play rows have genuinely varied ages. Deliberately not "fixed": any secondary sort key would have to come from the data the clamp exists to distrust.
+
+**Inherited risk 1 remains live and unaddressed here** (agent-side, out of scope): `observe_catalogue_reach`'s one-way ratchet means a retired drive can permanently disable `mark_absent_tracks`, and the visible symptom is *this shelf* rendering tracks deleted years ago as owned-but-never-played. If impossible rows show up in review, that is the first place to look, not Task 2.
+
+**Gate:** 473 JS/TS tests (25 files) green, `tsc --noEmit` clean, `eslint` clean, `next build` clean, `no-hardcoded-colors` and `tokens` gates green. No Supabase or agent gate applies — this story touches neither.
+
 ### File List
+
+- `web/lib/sets/index.ts` — MODIFIED (real paged `getLibraryRoster`; new `getObservationStart`; module header updated)
+- `web/lib/sets/index.test.ts` — MODIFIED (mock gained `is`/table tracking; roster read + observation-start coverage)
+- `web/lib/sets/agingShelf.ts` — NEW (pure model, state selector, summary generator)
+- `web/lib/sets/agingShelf.test.ts` — NEW (60 tests)
+- `web/app/components/library-utilization/AgingShelf.tsx` — NEW
+- `web/app/(authenticated)/library-utilization/page.tsx` — MODIFIED (fourth `Promise.all` read, model build, sibling placement)
+- `web/app/library-utilization.css` — MODIFIED (shelf list/row/day styles, `.lu-shelf-head`, tap-target floor, `.se-empty` radius fix)
+- `_bmad-output/planning-artifacts/prds/prd-name-pending-2026-07-19/prd.md` — MODIFIED (FR-12 body + consequences, UJ-6 path/climax, glossary, UJ-1 nudge note)
+- `_bmad-output/planning-artifacts/ux-designs/ux-name-pending-2026-07-19/EXPERIENCE.md` — MODIFIED (Components row, aging-shelf-empty row, nudge row, UJ-6 step 4)
+- `_bmad-output/planning-artifacts/epics.md` — MODIFIED (AC-1/AC-4/AC-5 annotated, AC-6/AC-7 added)
+- `_bmad-output/implementation-artifacts/deferred-work.md` — MODIFIED (Story 4.4 section; soft-delete entry partly closed; future-dated and browser-pass entries updated)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — MODIFIED
+- `_bmad-output/implementation-artifacts/4-4-aging-shelf-with-prep-crate-action.md` — MODIFIED (this file)
 
 ## Change Log
 
 | Date | Change |
 | --- | --- |
 | 2026-08-08 | Story created. Prep-crate action ruled out of MVP by Arjun; clock clamp, observation-start anchor, cold-start state and row cap specified. |
+| 2026-08-08 | Implemented Tasks 1–7. Seam read made real + fail-closed observation anchor; pure `agingShelf` model; read-only shelf component with three terminal states; page wired as a window-independent sibling; browser pass at 1440/375/320 fixed an accessible-name/visible-state disagreement and the long-open `.se-empty` pill defect; PRD/EXPERIENCE/epics/deferred-work synced. Status → review. |
