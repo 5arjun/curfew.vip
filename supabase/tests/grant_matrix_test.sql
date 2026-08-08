@@ -2,10 +2,10 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
--- 45 = four set-wide blocks of 6 tables (24) + 6 intended-write assertions
--- + 4 on deleted_sets + 5 function-revoke + 3 agent-write-path
+-- 51 = four set-wide blocks of 7 tables (28) + 6 intended-write assertions
+-- + 4 on deleted_sets + 6 function-revoke + 4 agent-write-path
 -- + 3 generic SECURITY DEFINER / trigger-function sweeps.
-select plan(45);
+select plan(51);
 
 -- Story 4.6 code review (2026-08-07): pins the ACL matrix the migration history
 -- has always described in prose but never asserted.
@@ -28,16 +28,16 @@ select plan(45);
 -- RLS on the read-only tables. TRUNCATE is called out individually because it
 -- is the one privilege no policy can restrain.
 select ok(not has_table_privilege('anon', 'public.' || t, 'INSERT'), 'anon cannot INSERT into ' || t)
-from unnest(array['sessions','sets','plays','library_track_events','agent_status','djs']) t;
+from unnest(array['sessions','sets','plays','library_track_events','library_roster','agent_status','djs']) t;
 
 select ok(not has_table_privilege('anon', 'public.' || t, 'TRUNCATE'), 'anon cannot TRUNCATE ' || t)
-from unnest(array['sessions','sets','plays','library_track_events','agent_status','djs']) t;
+from unnest(array['sessions','sets','plays','library_track_events','library_roster','agent_status','djs']) t;
 
 select ok(not has_table_privilege('authenticated', 'public.' || t, 'TRUNCATE'), 'authenticated cannot TRUNCATE ' || t)
-from unnest(array['sessions','sets','plays','library_track_events','agent_status','djs']) t;
+from unnest(array['sessions','sets','plays','library_track_events','library_roster','agent_status','djs']) t;
 
 select ok(not has_table_privilege('anon', 'public.' || t, 'DELETE'), 'anon cannot DELETE from ' || t)
-from unnest(array['sessions','sets','plays','library_track_events','agent_status','djs']) t;
+from unnest(array['sessions','sets','plays','library_track_events','library_roster','agent_status','djs']) t;
 
 -- SELECT for both roles IS intended (20260726012050's note: an `anon` SELECT
 -- grant is what makes a signed-out read an RLS-filtered empty result rather
@@ -66,6 +66,7 @@ select ok(not has_table_privilege('authenticated', 'public.deleted_sets', 'INSER
 select ok(not has_function_privilege('anon', 'public.sync_set(text, bigint, bigint, jsonb, jsonb)', 'EXECUTE'), 'anon cannot execute sync_set');
 select ok(not has_function_privilege('anon', 'public.sync_library_add_events(jsonb)', 'EXECUTE'), 'anon cannot execute sync_library_add_events');
 select ok(not has_function_privilege('anon', 'public.set_agent_status(text, text)', 'EXECUTE'), 'anon cannot execute set_agent_status');
+select ok(not has_function_privilege('anon', 'public.sync_library_roster(jsonb)', 'EXECUTE'), 'anon cannot execute sync_library_roster');
 select ok(not has_function_privilege('anon', 'public.handle_new_dj()', 'EXECUTE'), 'anon cannot execute handle_new_dj');
 select ok(not has_function_privilege('authenticated', 'public.handle_new_dj()', 'EXECUTE'), 'authenticated cannot execute handle_new_dj either -- it is a trigger function');
 
@@ -74,6 +75,7 @@ select ok(not has_function_privilege('authenticated', 'public.handle_new_dj()', 
 select ok(has_function_privilege('authenticated', 'public.sync_set(text, bigint, bigint, jsonb, jsonb)', 'EXECUTE'), 'authenticated CAN execute sync_set');
 select ok(has_function_privilege('authenticated', 'public.sync_library_add_events(jsonb)', 'EXECUTE'), 'authenticated CAN execute sync_library_add_events');
 select ok(has_function_privilege('authenticated', 'public.set_agent_status(text, text)', 'EXECUTE'), 'authenticated CAN execute set_agent_status');
+select ok(has_function_privilege('authenticated', 'public.sync_library_roster(jsonb)', 'EXECUTE'), 'authenticated CAN execute sync_library_roster (AD-22 write path)');
 
 -- GENERIC SWEEPS. The per-function assertions above only catch functions
 -- somebody remembered to list — which is precisely how `record_deleted_set()`

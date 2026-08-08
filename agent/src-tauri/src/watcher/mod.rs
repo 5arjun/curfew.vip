@@ -578,9 +578,23 @@ fn watch_loop(app: AppHandle) {
         // and nothing here may take down the watch loop.
         if dates.is_loaded() {
             if let Some(conn) = &store_conn {
+                // Story 4.11 AC-6: `excluded_no_identity` no longer dies here
+                // silently — recorded durably so a web-facing disclosure has
+                // something real to read. Stored as a GAUGE (this scan's
+                // numbers replace the last scan's), never a running total:
+                // every scan recounts the whole catalogue, so summing would
+                // grow without bound and describe nothing (Story 4.11 review).
                 log_store_err(
                     "scan_library_adds",
-                    crate::capture::scan_library_adds(conn, &dates, now_unix()).map(|_| ()),
+                    crate::capture::scan_library_adds(conn, &dates, now_unix()).and_then(
+                        |outcome| {
+                            crate::store::set_scan_identity_coverage(
+                                conn,
+                                outcome.excluded_no_identity,
+                                outcome.catalogue_rows,
+                            )
+                        },
+                    ),
                 );
             }
         }

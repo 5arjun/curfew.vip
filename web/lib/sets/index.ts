@@ -1,8 +1,9 @@
 // Data-access seam for sets (Story 3.6 Task 4, AC-13 / SM-1).
 //
 // The dashboard and Set Detail import ONLY from here — never a fixture file, a
-// Supabase client, or the wire envelope directly. All four DJ-data functions
-// below (`getRecentSets`, `getSetById`, `deleteSet`, `getLibraryAddEvents`)
+// Supabase client, or the wire envelope directly. Four of the five DJ-data
+// functions below (`getRecentSets`, `getSetById`, `deleteSet`,
+// `getLibraryAddEvents` — but not `getLibraryRoster`, see below)
 // read/write Supabase directly (Story 4.6 — the cloud read path landed):
 // `sets` + its `plays` and `sessions` embeds, and `library_track_events`, all
 // owner-`SELECT`-only via RLS (AD-7) — no `dj_id` filter needed or wanted,
@@ -31,10 +32,18 @@
 // unit tests (`dancefloor.test.ts`, `setDetail.test.ts`) that import them
 // directly and never touch this seam.
 //
-// All four are `async` — the signature already matched the eventual awaited
-// Supabase reads even at the fixture stage, so no component changes here.
+// `library-roster.fixture.json` is the ONE fixture this module still reads,
+// and deliberately so: `getLibraryRoster` (Story 4.11) is at the same day-one
+// stage those two just graduated from — the agent writes `library_roster` but
+// nothing selects from it yet. It is the next Decision-A swap, not a leftover.
+//
+// All five are `async` — the signature already matched the eventual awaited
+// Supabase reads even at the fixture stage, so no component changes here, and
+// so the roster swap will need none either.
+import rosterFixture from "./library-roster.fixture.json";
 import type { AgentStatusRow, AgentStatusSnapshot } from "./agentStatus";
 import type { LibraryAddEvent } from "./libraryConversion";
+import type { LibraryRosterSnapshot } from "./libraryRoster";
 import type { SetRecord, SyncPlay, SyncSetDerived } from "./types";
 
 /** Row shape of a single `plays` select, as the `sets` nested-select below returns it. */
@@ -321,6 +330,25 @@ export async function getLibraryAddEvents(): Promise<LibraryAddEventSnapshot> {
 }
 
 /**
+ * The current DJ's library roster (Story 4.11, AD-22) — Tier A only
+ * (title/artist; BPM/key/genre are Tier B, parked). Same seam discipline as
+ * `getLibraryAddEvents` above: fixture-backed today
+ * (`build-library-roster-fixture.mjs`, derived from the DJ's own catalogue
+ * export), swapped for a `library_roster` select when the cloud read path
+ * lands. RLS is owner-SELECT-only, so that query will need no `dj_id`
+ * filter either — `auth.uid()` is the filter.
+ *
+ * No page reads `entries` yet (Story 4.4/4.10 are still `backlog`) — this
+ * exists so those stories inherit a working read seam rather than needing
+ * their own agent/shared/cloud work. `excludedNoIdentityCount`/
+ * `totalCatalogueRows` DO have a consumer today (Story 4.3's meter, via
+ * `unidentifiableTracksDisclosure`).
+ */
+export async function getLibraryRoster(): Promise<LibraryRosterSnapshot> {
+  return rosterFixture as LibraryRosterSnapshot;
+}
+
+/**
  * One set by its `external_id` (== `sets.id`, see `SET_WITH_PLAYS_SELECT`'s
  * doc comment), or `null` if it does not exist, was deleted, or is not this
  * DJ's — RLS makes "not found" and "not mine" indistinguishable by design,
@@ -452,3 +480,4 @@ export async function getAgentStatus(): Promise<AgentStatusSnapshot> {
 export type { SetRecord } from "./types";
 export type { AgentStatusRow, AgentStatusSnapshot } from "./agentStatus";
 export type { LibraryAddEvent } from "./libraryConversion";
+export type { LibraryRosterEntry, LibraryRosterSnapshot } from "./libraryRoster";

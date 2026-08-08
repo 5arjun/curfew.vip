@@ -235,13 +235,41 @@ pub struct LibraryScanOutcome {
     pub baselined: usize,
     /// Genuine go-forward adds queued as `SyncLibraryAddEvent`s (Task 4).
     pub added: usize,
-    /// Catalogued rows this scan saw but could not identify at all (no
-    /// resolvable title or artist, AD-11) and therefore silently excluded —
-    /// same category of gap AC-4 disclosed for missing `tadd`/`uadd`, applied
-    /// at the whole-track level (Story 4.3 review). Agent-local for now: no
-    /// synced field exists yet to carry this into the web disclosure, so this
-    /// is currently visible via agent logs/tests only, not the dashboard.
+    /// Catalogued rows this scan saw but could not identify at all — no
+    /// resolvable title *or* no resolvable artist, since the identity hash
+    /// requires **both** (AD-11) — and therefore excluded. Same category of gap
+    /// AC-4 disclosed for missing `tadd`/`uadd`, applied at the whole-track
+    /// level (Story 4.3 review). As of Story 4.11 AC-6 this is no longer
+    /// silently dropped: `watcher::mod`'s scan tick records it via
+    /// `store::set_scan_identity_coverage`, readable through
+    /// `store::scan_identity_coverage`, and the conversion-rate meter renders
+    /// it. No synced/cloud field exists yet — the web value is fixture-sourced
+    /// pending a designed carrier (see this story's Completion Notes).
     pub excluded_no_identity: usize,
+    /// Audio rows this scan considered, i.e. the denominator
+    /// `excluded_no_identity` is a subset of. Non-audio rows (video files) are
+    /// excluded from both — see [`is_audio_path`].
+    pub catalogue_rows: usize,
+}
+
+/// Whether a catalogued row is a track at all, rather than a video file Serato
+/// happens to index alongside them.
+///
+/// Story 4.11 code review: measured against Arjun's real `database V2`, 20 of
+/// 930 rows are `.mp4`/`.mov` (video loops — e.g. `LOOP LAD (1).mov`), and all
+/// 20 carry no artist tag. Counting them inflated both the unidentifiable-track
+/// disclosure and the conversion-rate denominator with things that are not
+/// tracks and could never convert. Extension-based because the catalogue offers
+/// nothing better, and deliberately a small deny-list rather than an audio
+/// allow-list: an unrecognised audio extension must keep counting as a track
+/// (AD-11's never-silently-drop discipline), so only formats known to be video
+/// are removed.
+fn is_audio_path(path: &str) -> bool {
+    const VIDEO_EXTENSIONS: [&str; 6] = ["mp4", "mov", "avi", "m4v", "mkv", "webm"];
+    match path.rsplit_once('.') {
+        Some((_, ext)) => !VIDEO_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str()),
+        None => true,
+    }
 }
 
 /// Diffs the DJ's current library against everything this agent has already
@@ -274,9 +302,14 @@ pub struct LibraryScanOutcome {
 /// **Story 4.3 (Decision E-2):** identity is now [`track_id_from_title_artist`],
 /// not the catalogue path. A catalogued track missing a resolvable title or
 /// artist has no identity to record under (`library_tracks.track_id` is a
-/// `NOT NULL` primary key) and is silently excluded from this scan entirely —
-/// the same "absent, never guessed" discipline as every other gap in this
-/// pipeline, just applied at the whole-track level instead of one field.
+/// `NOT NULL` primary key) and is excluded from this scan — the same "absent,
+/// never guessed" discipline as every other gap in this pipeline, just applied
+/// at the whole-track level instead of one field. **No longer silent as of
+/// Story 4.11 AC-6:** the count reaches `LibraryScanOutcome.excluded_no_identity`,
+/// is persisted by the watcher via `store::set_scan_identity_coverage`, and is
+/// disclosed on the conversion-rate meter. Identity needs BOTH a title and an
+/// artist, so missing *either* excludes — measured at 271 of 930 rows on a real
+/// library, almost all of them missing only the artist.
 ///
 /// **Cross-drive collision (Story 4.3 review):** the same track catalogued on
 /// two drives (exactly what Decision E-2 exists to unify) now yields two
@@ -306,20 +339,36 @@ pub fn scan_library_adds(
         return Ok(LibraryScanOutcome::default());
     }
 
+    // Video rows are dropped before anything counts them, so they land in
+    // neither the roster nor either disclosure denominator (Story 4.11 review).
+    let audio: Vec<_> = catalogued
+        .into_iter()
+        .filter(|(portable_path, ..)| is_audio_path(portable_path))
+        .collect();
+    let catalogue_rows = audio.len();
+
     let mut excluded_no_identity = 0usize;
-    let identified: Vec<(String, Option<i64>)> =
-        dedupe_by_identity(catalogued.into_iter().filter_map(
+    let identified: Vec<crate::store::IdentifiedLibraryTrack> =
+        dedupe_by_identity(audio.into_iter().filter_map(
             |(_portable_path, added_at, title, artist)| match track_id_from_title_artist(
                 title.as_deref(),
                 artist.as_deref(),
             ) {
-                Some(id) => Some((id, added_at)),
+                Some(id) => Some((id, added_at, title, artist)),
                 None => {
                     excluded_no_identity += 1;
                     None
                 }
             },
         ));
+
+    // Recorded BEFORE the two re-baselining early-returns below, not at the
+    // absence site: those returns are the very scans most likely to see the
+    // whole library (a first run, an identity cutover), and if their reach went
+    // unrecorded the high-water mark would start from whatever narrower view
+    // happened to come next — and a later partial scan would then read as
+    // complete. The returned flag is only *consumed* further down.
+    let complete_reach = crate::store::observe_catalogue_reach(conn, &dates.loaded_roots())?;
 
     if crate::store::library_track_count(conn)? == 0 {
         let baselined = crate::store::record_library_tracks(conn, &identified, true, now)?;
@@ -328,6 +377,7 @@ pub fn scan_library_adds(
             baselined,
             added: 0,
             excluded_no_identity,
+            catalogue_rows,
         });
     }
 
@@ -338,18 +388,64 @@ pub fn scan_library_adds(
             baselined,
             added: 0,
             excluded_no_identity,
+            catalogue_rows,
         });
     }
 
     let known = crate::store::known_track_ids(conn)?;
     let baseline_at = crate::store::library_baseline_at(conn)?;
-    let (pre_baseline, fresh): (Vec<_>, Vec<_>) = identified
+
+    // Story 4.11 AC-5: any previously-known track missing from THIS scan's
+    // identified set is soft-deleted. Computed from `identified` (post-dedup,
+    // pre-partition) so a track's own presence is judged once, from the same
+    // set the rest of this function reads from.
+    //
+    // TWO GATES, both added by this story's code review, because "missing from
+    // the scan" is NOT the same claim as "removed from the library":
+    //
+    //   1. `complete_reach` — `DateAddedIndex::all_tracks` omits tracks on
+    //      unmounted volumes by design, so a boot-drive-only scan on a machine
+    //      that normally sees a USB drive would mark that whole drive deleted.
+    //      `date_added`'s own doc comment forbids exactly that ("a library that
+    //      shrinks because a drive was unplugged must never look like tracks
+    //      were *removed*"). Absence is only concluded when this scan reached
+    //      every root any earlier scan reached.
+    //   2. `identified.is_empty()` — the guard at the top of this function
+    //      catches an empty *catalogue*, but a catalogue that parses yet
+    //      resolves no identities at all (a tagging regression, a format
+    //      change) would otherwise mark 100% of the library absent in one pass.
+    //
+    // Neither gate helps a track whose tags were individually *cleared*: its
+    // identity is a hash of title+artist, so an untagged file cannot be matched
+    // back to the row it used to occupy and does read as removed. Known and
+    // accepted limitation — see this story's Review Findings.
+    if complete_reach && !identified.is_empty() {
+        let current_ids: std::collections::HashSet<String> =
+            identified.iter().map(|(id, ..)| id.clone()).collect();
+        crate::store::mark_absent_tracks(conn, &current_ids, now)?;
+    }
+
+    let (unseen, seen): (Vec<_>, Vec<_>) = identified
         .into_iter()
-        .filter(|(id, _)| !known.contains(id))
-        .partition(|(_, added_at)| match (added_at, baseline_at) {
-            (Some(added), Some(baseline)) => *added < baseline,
-            _ => false,
-        });
+        .partition(|(id, ..)| !known.contains(id));
+
+    // Story 4.11 AC-4: a track already known gets its title/artist refreshed
+    // in place (current-state, mutable) rather than being skipped outright —
+    // `seen` here is exactly the set `scan_library_adds` discarded entirely
+    // before this story.
+    let refresh: Vec<(String, Option<String>, Option<String>)> = seen
+        .into_iter()
+        .map(|(id, _added_at, title, artist)| (id, title, artist))
+        .collect();
+    crate::store::refresh_library_track_tags(conn, &refresh)?;
+
+    let (pre_baseline, fresh): (Vec<_>, Vec<_>) =
+        unseen
+            .into_iter()
+            .partition(|(_, added_at, ..)| match (added_at, baseline_at) {
+                (Some(added), Some(baseline)) => *added < baseline,
+                _ => false,
+            });
 
     let baselined = crate::store::record_library_tracks(conn, &pre_baseline, true, now)?;
     let added = crate::store::record_library_tracks(conn, &fresh, false, now)?;
@@ -357,6 +453,7 @@ pub fn scan_library_adds(
         baselined,
         added,
         excluded_no_identity,
+        catalogue_rows,
     })
 }
 
@@ -366,27 +463,36 @@ pub fn scan_library_adds(
 /// deterministically: the earliest known `added_at` wins (a `None` never
 /// displaces a real date, and only displaces another `None` to keep the
 /// choice total). Order-independent, so re-scans agree with themselves
-/// regardless of `HashMap` iteration order upstream.
+/// regardless of `HashMap` iteration order upstream. Title/artist (Story
+/// 4.11) travel with whichever `added_at` wins — normalization guarantees
+/// any two entries sharing a `track_id` fold to the same identity text, so
+/// only cosmetic raw-casing/whitespace differences are possible between
+/// them, never a substantively different title/artist.
 fn dedupe_by_identity(
-    entries: impl Iterator<Item = (String, Option<i64>)>,
-) -> Vec<(String, Option<i64>)> {
-    let mut by_id: std::collections::HashMap<String, Option<i64>> =
+    entries: impl Iterator<Item = crate::store::IdentifiedLibraryTrack>,
+) -> Vec<crate::store::IdentifiedLibraryTrack> {
+    type PartialEntry = (Option<i64>, Option<String>, Option<String>);
+    let mut by_id: std::collections::HashMap<String, PartialEntry> =
         std::collections::HashMap::new();
-    for (id, added_at) in entries {
+    for (id, added_at, title, artist) in entries {
         by_id
             .entry(id)
             .and_modify(|existing| {
-                if let (Some(new), Some(current)) = (added_at, *existing) {
-                    if new < current {
-                        *existing = Some(new);
-                    }
-                } else if existing.is_none() && added_at.is_some() {
-                    *existing = added_at;
+                let should_replace = match (added_at, existing.0) {
+                    (Some(new), Some(current)) => new < current,
+                    (Some(_), None) => true,
+                    _ => false,
+                };
+                if should_replace {
+                    *existing = (added_at, title.clone(), artist.clone());
                 }
             })
-            .or_insert(added_at);
+            .or_insert((added_at, title, artist));
     }
-    by_id.into_iter().collect()
+    by_id
+        .into_iter()
+        .map(|(id, (added_at, title, artist))| (id, added_at, title, artist))
+        .collect()
 }
 
 /// Legacy's local dedup key: no `history_session`-equivalent table exists for
@@ -1069,7 +1175,10 @@ mod tests {
             let outcome = scan_library_adds(&conn, &dates, BASELINE_NOW + tick).expect("rescan");
             assert_eq!(
                 outcome,
-                LibraryScanOutcome::default(),
+                LibraryScanOutcome {
+                    catalogue_rows: 2,
+                    ..Default::default()
+                },
                 "rescan {tick} is a no-op"
             );
         }
@@ -1112,6 +1221,245 @@ mod tests {
         );
     }
 
+    /// Test-only accessor: title/artist/added_at/is_baseline for one row —
+    /// used by Story 4.11's tag-mutability tests to assert directly against
+    /// the persisted columns rather than only the derived event counts.
+    fn library_track_row(
+        conn: &Connection,
+        track_id: &str,
+    ) -> (Option<String>, Option<String>, Option<i64>, bool) {
+        conn.query_row(
+            "SELECT title, artist, added_at, is_baseline FROM library_tracks WHERE track_id = ?1",
+            [track_id],
+            |row| {
+                Ok((
+                    row.get::<_, Option<String>>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<i64>>(2)?,
+                    row.get::<_, i64>(3)? != 0,
+                ))
+            },
+        )
+        .expect("row exists")
+    }
+
+    /// Story 4.11 AC-1: title/artist reach `library_tracks` on a genuine
+    /// go-forward add, not just the identity hash.
+    #[test]
+    fn a_fresh_add_persists_title_and_artist() {
+        let (_file, conn) = TempStore::open("fresh-add-tags");
+        let baseline = library(&[(
+            "Users/arjun/Music/a.mp3",
+            1_600_000_000,
+            "Track A",
+            "Artist A",
+        )]);
+        scan_library_adds(&conn, &baseline, BASELINE_NOW).expect("real baseline");
+
+        let grown = library(&[
+            (
+                "Users/arjun/Music/a.mp3",
+                1_600_000_000,
+                "Track A",
+                "Artist A",
+            ),
+            (
+                "Users/arjun/Music/new.mp3",
+                BASELINE_NOW + 10,
+                "New Track",
+                "New Artist",
+            ),
+        ]);
+        let outcome = scan_library_adds(&conn, &grown, BASELINE_NOW + 20).expect("scan");
+        assert_eq!(outcome.added, 1);
+
+        let id = id_for("New Track", "New Artist");
+        let (title, artist, added_at, is_baseline) = library_track_row(&conn, &id);
+        assert_eq!(title.as_deref(), Some("New Track"));
+        assert_eq!(artist.as_deref(), Some("New Artist"));
+        assert_eq!(added_at, Some(BASELINE_NOW + 10));
+        assert!(!is_baseline);
+    }
+
+    /// Story 4.11 AC-3: a baseline track (D-1's silent first-run snapshot)
+    /// gets its title/artist recorded too — the roster's whole point is that
+    /// baseline tracks DO reach it, unlike `library_track_events`.
+    #[test]
+    fn a_baseline_track_persists_title_and_artist() {
+        let (_file, conn) = TempStore::open("baseline-tags");
+        let dates = library(&[(
+            "Users/arjun/Music/a.mp3",
+            1_600_000_000,
+            "Track A",
+            "Artist A",
+        )]);
+        let outcome = scan_library_adds(&conn, &dates, BASELINE_NOW).expect("baseline scan");
+        assert_eq!(outcome.baselined, 1);
+
+        let id = id_for("Track A", "Artist A");
+        let (title, artist, _, is_baseline) = library_track_row(&conn, &id);
+        assert_eq!(title.as_deref(), Some("Track A"));
+        assert_eq!(artist.as_deref(), Some("Artist A"));
+        assert!(is_baseline);
+    }
+
+    /// Story 4.11 AC-4: a re-tagged track (raw title/artist string changed in
+    /// Serato, same normalized identity is impossible here since identity
+    /// itself derives from title+artist — so this simulates the DJ fixing
+    /// capitalization/whitespace, a real-world "same song, cleaned-up tag"
+    /// edit that folds to the same `track_id` but a different raw string)
+    /// updates in place on a later scan, without moving `added_at` or
+    /// `is_baseline`.
+    #[test]
+    fn a_retagged_track_updates_title_artist_without_touching_added_at_or_baseline_flag() {
+        let (_file, conn) = TempStore::open("retag");
+        let dates = library(&[(
+            "Users/arjun/Music/a.mp3",
+            1_600_000_000,
+            "track a",
+            "artist a",
+        )]);
+        scan_library_adds(&conn, &dates, BASELINE_NOW).expect("baseline scan");
+
+        let id = id_for("track a", "artist a");
+        let (title_before, ..) = library_track_row(&conn, &id);
+        assert_eq!(title_before.as_deref(), Some("track a"));
+
+        // Same identity (normalized fold is unchanged), cleaned-up raw tag.
+        let retagged = library(&[(
+            "Users/arjun/Music/a.mp3",
+            1_600_000_000,
+            "Track A",
+            "Artist A",
+        )]);
+        let outcome = scan_library_adds(&conn, &retagged, BASELINE_NOW + 100).expect("retag scan");
+        assert_eq!(
+            outcome,
+            LibraryScanOutcome {
+                catalogue_rows: 1,
+                ..Default::default()
+            },
+            "a retag is not an add/baseline event"
+        );
+
+        let (title_after, artist_after, added_at_after, is_baseline_after) =
+            library_track_row(&conn, &id);
+        assert_eq!(title_after.as_deref(), Some("Track A"), "tag refreshed");
+        assert_eq!(artist_after.as_deref(), Some("Artist A"), "tag refreshed");
+        assert_eq!(
+            added_at_after,
+            Some(1_600_000_000),
+            "added_at must not move on a re-tag"
+        );
+        assert!(is_baseline_after, "is_baseline must not move on a re-tag");
+    }
+
+    /// Test-only accessor: `absent_at` for one row.
+    fn library_track_absent_at(conn: &Connection, track_id: &str) -> Option<i64> {
+        conn.query_row(
+            "SELECT absent_at FROM library_tracks WHERE track_id = ?1",
+            [track_id],
+            |row| row.get::<_, Option<i64>>(0),
+        )
+        .expect("row exists")
+    }
+
+    /// Story 4.11 AC-5: a track present in one scan and missing from the next
+    /// is marked absent, not hard-deleted — the row (and its history) stays.
+    #[test]
+    fn a_track_missing_from_a_later_scan_is_marked_absent_not_deleted() {
+        let (_file, conn) = TempStore::open("absence");
+        let dates = library(&[
+            (
+                "Users/arjun/Music/a.mp3",
+                1_600_000_000,
+                "Track A",
+                "Artist A",
+            ),
+            (
+                "Users/arjun/Music/b.mp3",
+                1_600_000_001,
+                "Track B",
+                "Artist B",
+            ),
+        ]);
+        scan_library_adds(&conn, &dates, BASELINE_NOW).expect("baseline scan");
+
+        let id_a = id_for("Track A", "Artist A");
+        let id_b = id_for("Track B", "Artist B");
+        assert_eq!(library_track_absent_at(&conn, &id_a), None);
+
+        // Track B deleted from the library on the next scan.
+        let shrunk = library(&[(
+            "Users/arjun/Music/a.mp3",
+            1_600_000_000,
+            "Track A",
+            "Artist A",
+        )]);
+        scan_library_adds(&conn, &shrunk, BASELINE_NOW + 100).expect("shrunk scan");
+
+        assert_eq!(
+            library_track_absent_at(&conn, &id_a),
+            None,
+            "still-present track stays not-absent"
+        );
+        assert_eq!(
+            library_track_absent_at(&conn, &id_b),
+            Some(BASELINE_NOW + 100),
+            "removed track is marked absent, timestamped"
+        );
+        assert_eq!(
+            crate::store::known_track_ids(&conn)
+                .expect("known ids")
+                .len(),
+            2,
+            "the absent track's row must still exist -- never a hard delete"
+        );
+    }
+
+    /// Story 4.11 AC-5: a track that reappears after being marked absent has
+    /// `absent_at` cleared, keeping its original identity/history rather than
+    /// being re-baselined as a brand-new track.
+    #[test]
+    fn a_reappearing_track_clears_absent_at() {
+        let (_file, conn) = TempStore::open("reappear");
+        // A second, unrelated track keeps every scan's catalogue non-empty —
+        // an EMPTY catalogue is "unreachable" and a no-op (see
+        // `an_unreachable_library_is_a_no_op_not_an_empty_baseline`), not the
+        // same thing as "the library now genuinely has zero tracks."
+        let anchor = (
+            "Users/arjun/Music/anchor.mp3",
+            1_600_000_002,
+            "Anchor Track",
+            "Anchor Artist",
+        );
+        let full = library(&[
+            (
+                "Users/arjun/Music/a.mp3",
+                1_600_000_000,
+                "Track A",
+                "Artist A",
+            ),
+            anchor,
+        ]);
+        scan_library_adds(&conn, &full, BASELINE_NOW).expect("baseline scan");
+        let without_a = library(&[anchor]);
+        scan_library_adds(&conn, &without_a, BASELINE_NOW + 100).expect("removed scan");
+
+        let id = id_for("Track A", "Artist A");
+        assert_eq!(
+            library_track_absent_at(&conn, &id),
+            Some(BASELINE_NOW + 100)
+        );
+
+        scan_library_adds(&conn, &full, BASELINE_NOW + 200).expect("reappear scan");
+        assert_eq!(
+            library_track_absent_at(&conn, &id),
+            None,
+            "a reappeared track is no longer absent"
+        );
+    }
+
     /// D-4/AC-5: an unreachable `tadd`/`uadd` is carried as absent, never
     /// guessed — and absence must not suppress the event itself, because D-10
     /// exists precisely to disclose how many such tracks there are.
@@ -1131,7 +1479,7 @@ mod tests {
         let undated = id_for("Undated Track", "Undated Artist");
         crate::store::record_library_tracks(
             &conn,
-            &[(undated.clone(), None)],
+            &[(undated.clone(), None, None, None)],
             false,
             BASELINE_NOW + 10,
         )
@@ -1192,7 +1540,12 @@ mod tests {
         // scheme, with no `identity_migration_done` flag set.
         crate::store::record_library_tracks(
             &conn,
-            &[("old-path-hash-deadbeef".to_string(), Some(1_500_000_000))],
+            &[(
+                "old-path-hash-deadbeef".to_string(),
+                Some(1_500_000_000),
+                None,
+                None,
+            )],
             false,
             1_500_000_000,
         )
@@ -1291,34 +1644,167 @@ mod tests {
 
     /// An unplugged drive shrinks the library. That is not a deletion, and
     /// re-plugging it is not a thousand new adds.
+    ///
+    /// **This test now inspects `absent_at`, which it did not before (Story
+    /// 4.11 code review).** It previously asserted only on `LibraryScanOutcome`,
+    /// so when this story added soft-delete marking it kept passing while the
+    /// invariant it is named for — `joiner::date_added`'s "a library that
+    /// shrinks because a drive was unplugged must never look like tracks were
+    /// *removed*" — was actually broken. Declaring roots is what makes the
+    /// completeness gate observable at all.
     #[test]
     fn an_unmounted_volume_neither_deletes_nor_re_adds_on_return() {
         let (_file, conn) = TempStore::open("unmount");
-        let both = library(&[
-            (
-                "Users/arjun/Music/a.mp3",
-                1_600_000_000,
-                "Track A",
-                "Artist A",
-            ),
-            ("A Indian/usb.mp3", 1_600_000_001, "USB Track", "USB Artist"),
-        ]);
+        let entries = |with_usb: bool| {
+            let mut m = std::collections::HashMap::from([(
+                "Users/arjun/Music/a.mp3".to_string(),
+                (
+                    1_600_000_000,
+                    Some("Track A".to_string()),
+                    Some("Artist A".to_string()),
+                ),
+            )]);
+            if with_usb {
+                m.insert(
+                    "A Indian/usb.mp3".to_string(),
+                    (
+                        1_600_000_001,
+                        Some("USB Track".to_string()),
+                        Some("USB Artist".to_string()),
+                    ),
+                );
+            }
+            m
+        };
+        let both = DateAddedIndex::fixed_with_identity_and_roots(
+            entries(true),
+            &["/Users/arjun/Music", "/Volumes/A Indian"],
+        );
         scan_library_adds(&conn, &both, BASELINE_NOW).expect("baseline");
+        let usb_id = id_for("USB Track", "USB Artist");
 
-        let boot_only = library(&[(
-            "Users/arjun/Music/a.mp3",
-            1_600_000_000,
-            "Track A",
-            "Artist A",
-        )]);
+        // The USB drive is unplugged: its catalogue root is no longer reached.
+        let boot_only =
+            DateAddedIndex::fixed_with_identity_and_roots(entries(false), &["/Users/arjun/Music"]);
         assert_eq!(
             scan_library_adds(&conn, &boot_only, BASELINE_NOW + 10).expect("unplugged"),
-            LibraryScanOutcome::default()
+            LibraryScanOutcome {
+                catalogue_rows: 1,
+                ..Default::default()
+            }
         );
         assert_eq!(
+            library_track_absent_at(&conn, &usb_id),
+            None,
+            "an unplugged drive's tracks must NEVER be marked absent — they are \
+             unreachable, not removed"
+        );
+
+        assert_eq!(
             scan_library_adds(&conn, &both, BASELINE_NOW + 20).expect("replugged"),
-            LibraryScanOutcome::default(),
+            LibraryScanOutcome {
+                catalogue_rows: 2,
+                ..Default::default()
+            },
             "a returning volume's tracks are already on file"
+        );
+        assert_eq!(
+            library_track_absent_at(&conn, &usb_id),
+            None,
+            "and are still not absent after the drive returns"
+        );
+    }
+
+    /// The other half of the same gate: a scan that reaches everything it has
+    /// ever reached IS allowed to conclude a track was genuinely removed.
+    #[test]
+    fn a_complete_scan_still_marks_a_genuinely_removed_track_absent() {
+        let (_file, conn) = TempStore::open("complete-scan-absence");
+        let roots = ["/Users/arjun/Music"];
+        let mut with_both = std::collections::HashMap::from([
+            (
+                "Users/arjun/Music/a.mp3".to_string(),
+                (
+                    1_600_000_000,
+                    Some("Track A".to_string()),
+                    Some("Artist A".to_string()),
+                ),
+            ),
+            (
+                "Users/arjun/Music/b.mp3".to_string(),
+                (
+                    1_600_000_001,
+                    Some("Track B".to_string()),
+                    Some("Artist B".to_string()),
+                ),
+            ),
+        ]);
+        scan_library_adds(
+            &conn,
+            &DateAddedIndex::fixed_with_identity_and_roots(with_both.clone(), &roots),
+            BASELINE_NOW,
+        )
+        .expect("baseline");
+
+        // Same root still reached, but one track really is gone from it.
+        with_both.remove("Users/arjun/Music/b.mp3");
+        scan_library_adds(
+            &conn,
+            &DateAddedIndex::fixed_with_identity_and_roots(with_both, &roots),
+            BASELINE_NOW + 10,
+        )
+        .expect("removal scan");
+
+        assert_eq!(
+            library_track_absent_at(&conn, &id_for("Track B", "Artist B")),
+            Some(BASELINE_NOW + 10),
+            "a track missing from a COMPLETE scan is a real removal"
+        );
+        assert_eq!(
+            library_track_absent_at(&conn, &id_for("Track A", "Artist A")),
+            None,
+            "the track that is still there stays present"
+        );
+    }
+
+    /// A scan that resolves no identities at all must never conclude the whole
+    /// library was deleted (Story 4.11 code review).
+    #[test]
+    fn a_scan_that_identifies_nothing_marks_no_track_absent() {
+        let (_file, conn) = TempStore::open("identifies-nothing");
+        let roots = ["/Users/arjun/Music"];
+        let tagged = std::collections::HashMap::from([(
+            "Users/arjun/Music/a.mp3".to_string(),
+            (
+                1_600_000_000,
+                Some("Track A".to_string()),
+                Some("Artist A".to_string()),
+            ),
+        )]);
+        scan_library_adds(
+            &conn,
+            &DateAddedIndex::fixed_with_identity_and_roots(tagged, &roots),
+            BASELINE_NOW,
+        )
+        .expect("baseline");
+
+        // Catalogue still parses and still has rows, but nothing resolves an
+        // identity any more — a tagging regression, not a mass deletion.
+        let untagged = std::collections::HashMap::from([(
+            "Users/arjun/Music/a.mp3".to_string(),
+            (1_600_000_000, None, None),
+        )]);
+        let outcome = scan_library_adds(
+            &conn,
+            &DateAddedIndex::fixed_with_identity_and_roots(untagged, &roots),
+            BASELINE_NOW + 10,
+        )
+        .expect("untagged scan");
+        assert_eq!(outcome.excluded_no_identity, 1);
+        assert_eq!(
+            library_track_absent_at(&conn, &id_for("Track A", "Artist A")),
+            None,
+            "a scan that identifies nothing must not mark the library absent"
         );
     }
 
@@ -2154,6 +2640,77 @@ mod tests {
         assert_eq!(
             library_root_from_serato_dir(serato_dir),
             PathBuf::from("/Users/dj/Music")
+        );
+    }
+
+    /// Story 4.11 Task 9 (NFR-1): this story adds real write volume to every
+    /// scan — title/artist persistence (Task 1), absence marking (Task 2),
+    /// and the exclusion counter (Task 3) all ride `scan_library_adds`, which
+    /// previously wrote nothing but two scalars per row. Mirrors `stats::mod`'s
+    /// own `per_set_stat_computation_stays_within_regression_guard_bound`
+    /// pattern: synthetic data at NFR-1's own stated scale (~5,000 tracks),
+    /// a real on-disk SQLite store (not an in-memory shortcut — the actual
+    /// write path this story changed), a generous bound with real margin
+    /// under NFR-1's 10s full-library budget (which also has to cover the
+    /// actual Serato parse this test doesn't exercise at all).
+    #[test]
+    fn full_library_scan_with_tag_persistence_stays_within_regression_guard_bound() {
+        use std::time::Instant;
+
+        let (_file, conn) = TempStore::open("nfr1-perf");
+        let synthetic: Vec<(String, i64, String, String)> = (0..5_000)
+            .map(|i| {
+                (
+                    format!("Users/arjun/Music/track_{i}.mp3"),
+                    1_600_000_000 + i as i64,
+                    format!("Track {i}"),
+                    format!("Artist {}", i % 200),
+                )
+            })
+            .collect();
+        let dates = library(
+            &synthetic
+                .iter()
+                .map(|(p, e, t, a)| (p.as_str(), *e, t.as_str(), a.as_str()))
+                .collect::<Vec<_>>(),
+        );
+
+        // First scan: the baseline write (record_library_tracks, 5,000 inserts).
+        let start = Instant::now();
+        let baseline_outcome = scan_library_adds(&conn, &dates, BASELINE_NOW).expect("baseline");
+        let baseline_elapsed = start.elapsed();
+        assert_eq!(baseline_outcome.baselined, 5_000);
+
+        // Second scan, identical library: every row is now "known" and goes
+        // through refresh_library_track_tags (Task 1's update path) instead
+        // of being skipped — this is the actual new write volume, since a
+        // pre-4.11 rescan of an unchanged library touched the DB zero times.
+        let start = Instant::now();
+        let rescan_outcome = scan_library_adds(&conn, &dates, BASELINE_NOW + 100).expect("rescan");
+        let rescan_elapsed = start.elapsed();
+        assert_eq!(
+            rescan_outcome,
+            LibraryScanOutcome {
+                catalogue_rows: 5_000,
+                ..Default::default()
+            }
+        );
+
+        assert!(
+            baseline_elapsed.as_millis() < 2_000,
+            "baseline scan of 5,000 tracks took {baseline_elapsed:?}, expected well under \
+             NFR-1's 10s full-library budget. The bound tracks the observed cost (~775ms \
+             for this phase under full parallel test load, ~2.5x headroom) rather than \
+             sitting just inside the 10s budget: at the old 5s bound a 6x regression would \
+             still have passed silently, which is not a guard (Story 4.11 code review). \
+             Margin for the real Serato parse this synthetic test doesn't exercise lives \
+             in the 10s budget, not in this assertion."
+        );
+        assert!(
+            rescan_elapsed.as_millis() < 2_000,
+            "unchanged-library rescan of 5,000 tracks took {rescan_elapsed:?} -- this is the \
+             write volume Story 4.11 actually added (refresh_library_track_tags now runs on \
+             every known row instead of being skipped), expected well under NFR-1's budget"
         );
     }
 }

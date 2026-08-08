@@ -1,5 +1,6 @@
-import { getLibraryAddEvents, getRecentSets } from "@/lib/sets";
+import { getLibraryAddEvents, getLibraryRoster, getRecentSets } from "@/lib/sets";
 import { buildLiveConversionRate, firstPlayByTrack, LIVE_CONVERSION_WINDOWS } from "@/lib/sets/libraryConversion";
+import { unidentifiableTracksDisclosure } from "@/lib/sets/libraryRoster";
 import { SilkBackdrop } from "@/app/components/dashboard/SilkBackdrop";
 import { ConversionRateMeter } from "@/app/components/library-utilization/ConversionRateMeter";
 
@@ -14,7 +15,18 @@ import { ConversionRateMeter } from "@/app/components/library-utilization/Conver
 // itself already renders honestly (`ConversionRateMeter`'s own empty branch)
 // rather than a condition sparse enough to misrepresent.
 export default async function LibraryUtilizationPage() {
-  const [sets, addEvents] = await Promise.all([getRecentSets(), getLibraryAddEvents()]);
+  const [sets, addEvents, roster] = await Promise.all([
+    getRecentSets(),
+    getLibraryAddEvents(),
+    getLibraryRoster(),
+  ]);
+  // Story 4.11 AC-6: measured 29.2% (272/930) of Arjun's real catalogue rows
+  // excluded for having no resolvable title/artist at all — well above the
+  // ~5% materiality bar, so this renders, not silently omitted.
+  const unidentifiableDisclosure = unidentifiableTracksDisclosure(
+    roster.excludedNoIdentityCount,
+    roster.totalCatalogueRows,
+  );
   // Decision E-1: the LIVE current-window rate, not a read of the Story 4.2
   // cohort model — see `buildLiveConversionRate`'s own doc comment. The clock
   // comes from the data seam (`readAtMs`), never read in render (Story 4.1's
@@ -41,7 +53,7 @@ export default async function LibraryUtilizationPage() {
         <p className="lu-subtitle">How much of your library actually makes it to the dancefloor.</p>
       </header>
 
-      <ConversionRateMeter rates={rates} />
+      <ConversionRateMeter rates={rates} unidentifiableDisclosure={unidentifiableDisclosure} />
     </main>
   );
 }
