@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowDownWideNarrow, ArrowUpNarrowWide } from "lucide-react";
 import { useState } from "react";
 import {
   AGING_THRESHOLD_DAYS,
@@ -49,12 +50,12 @@ const NOTHING_SYNCED_COPY =
  */
 const EVERYTHING_PLAYED_COPY = "Everything you've bought is getting played.";
 
+/** How the active sort direction is said out loud — in the sort chips' own
+ *  "Date · newest first" register, so the two controls read as one family. */
 const SORT_LABEL: Record<AgingShelfSort, string> = {
-  longest: "Longest unplayed",
-  shortest: "Shortest unplayed",
+  longest: "longest first",
+  shortest: "shortest first",
 };
-
-const SORT_OPTIONS: AgingShelfSort[] = ["longest", "shortest"];
 
 /** "1 track" / "N tracks" — the shelf says this in four places. */
 function trackCount(n: number): string {
@@ -116,7 +117,10 @@ export function AgingShelf({ model }: { model: AgingShelfModel }) {
   return (
     <section className="lu-module dz-shell" aria-label={summary}>
       <span className="dz-dots" aria-hidden="true" />
-      <div className="lu-stat-head lu-shelf-head">
+      {/* No shelf-specific head class any more: the 34px chip leaves the
+          320px header plenty of room, where the 139px `<select>` it replaced
+          wrapped the label onto two lines and needed a wrap rule. */}
+      <div className="lu-stat-head">
         {/* A real `<h2>`, not the `<p className="lu-stat-label">` the three
             modules above use. `deferred-work.md`'s open UI finding is that
             `/library-utilization` has NO `<h2>` at all, so heading-nav skips
@@ -128,18 +132,35 @@ export function AgingShelf({ model }: { model: AgingShelfModel }) {
             rather than deepened silently. */}
         <h2 className="lu-stat-label">Aging shelf</h2>
         {state === "rows" && (
-          <select
-            className="lu-window-select"
-            aria-label="Sort the aging shelf"
-            value={sort}
-            onChange={(e) => setSort(e.target.value as AgingShelfSort)}
+          /* A click-to-toggle icon chip in the Spotlight search's language
+             (`SpotlightSearch`'s sort chips), NOT a dropdown — Arjun,
+             2026-08-08. Same mechanics as those chips: one button carrying its
+             own direction, `aria-label` naming the CURRENT state rather than
+             the action, icon `aria-hidden`, and the state living in a plain
+             `useState`.
+
+             Deliberately NO `aria-pressed`, which those chips do carry: there
+             they mark which of two sort KEYS is active, so "pressed" has a
+             referent. This module has one key and two directions, so
+             `aria-pressed` would have to mean "is ascending", which no screen
+             reader would announce usefully — the label states the direction in
+             words instead. `title` is added for the same reason a dropdown did
+             not need one: an icon-only control has to be hoverable to be
+             discoverable, and there is no search field here for the label to
+             roll into the way the dashboard's does. */
+          <button
+            type="button"
+            className="lu-shelf-sort"
+            aria-label={`Days unplayed · ${SORT_LABEL[sort]}`}
+            title={`Days unplayed · ${SORT_LABEL[sort]}`}
+            onClick={() => setSort(sort === "longest" ? "shortest" : "longest")}
           >
-            {SORT_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {SORT_LABEL[option]}
-              </option>
-            ))}
-          </select>
+            {sort === "longest" ? (
+              <ArrowDownWideNarrow aria-hidden="true" />
+            ) : (
+              <ArrowUpNarrowWide aria-hidden="true" />
+            )}
+          </button>
         )}
       </div>
 

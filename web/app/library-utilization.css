@@ -298,26 +298,70 @@
   color: var(--color-abyss-text-45);
 }
 
-/* At 320px the sort control ("Longest unplayed") is ~139px of a 228px module
-   — wider than the conversion dropdown's "60 days" ever is — which wrapped the
-   AGING SHELF label onto two lines (measured, browser pass). The label keeps
-   its line and the control drops below it instead; above ~360px both still sit
-   on one row, so nothing changes at 375 or 1440. */
-.lu-shelf-head {
-  flex-wrap: wrap;
+/* The sort toggle (Arjun, 2026-08-08) — a click-to-toggle icon chip borrowing
+   the Spotlight search's sort-chip treatment (`.spot-chip button`,
+   dashboard.css) rather than the conversion dropdown's `<select>`: raised
+   round fill, resting at 45% opacity, coming to full strength with the accent
+   glow on hover, same focus-visible ring. Scaled 48px → 34px, because those
+   chips sit beside a 52px search pill while this sits beside a 15.8px module
+   label — 48px here would outweigh the heading it belongs to.
+
+   34px clears WCAG 2.2 AA SC 2.5.8's 24×24 minimum (AC-12) with real margin,
+   which the previous `<select>` only just did on default platform metrics.
+   4.1 and 4.7 both shipped sub-24px targets that survived visual review, so
+   this is measured in the browser rather than trusted. */
+.lu-shelf-sort {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--color-abyss-raised);
+  color: var(--color-abyss-text);
+  /* 0.7 at rest, NOT the Spotlight chips' 0.45 — copying that number would be
+     copying the value rather than the intent. Those chips only exist while the
+     search pill is hovered, so they are already inside an active hover context
+     and 0.45 reads as "secondary within a thing you are touching". This one is
+     always on screen and is the module's ONLY affordance: at 0.45 it is the
+     single cue telling a DJ the list is sortable, dimmed to near-invisible.
+     Hover still lifts to full strength, so the interaction reads the same. */
+  opacity: 0.7;
+  cursor: pointer;
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-standard),
+    box-shadow var(--motion-duration-fast) var(--motion-ease-standard);
 }
 
-.lu-shelf-head .lu-stat-label {
-  text-wrap: nowrap;
+.lu-shelf-sort:hover {
+  opacity: 1;
+  box-shadow: 0 0 18px var(--color-abyss-accent-glow);
 }
 
-/* WCAG 2.2 AA SC 2.5.8 (AC-12): the sort control is this module's only
-   interactive target, and `.lu-window-select`'s own 4px padding + 12px text
-   lands within a pixel or two of the 24px minimum depending on the platform's
-   default select metrics. Pinned rather than left to chance — 4.1 and 4.7 both
-   shipped sub-24px targets that survived visual review. */
-.lu-shelf-head .lu-window-select {
-  min-height: 24px;
+.lu-shelf-sort:focus-visible {
+  outline: none;
+  opacity: 1;
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 6px var(--color-abyss-accent-glow);
+}
+
+.lu-shelf-sort svg {
+  width: 17px;
+  height: 17px;
+  stroke-width: 1.5;
+}
+
+/* Matches the Spotlight chips' own forced-colors treatment (dashboard.css):
+   the glow-and-opacity focus cue does not survive a forced-colors palette, so
+   the ring becomes a real outline there. */
+@media (forced-colors: active) {
+  .lu-shelf-sort:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
 }
 
 .lu-stat-readout {
