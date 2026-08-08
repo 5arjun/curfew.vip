@@ -158,45 +158,22 @@ function msOf(iso: string | null | undefined): number | null {
 }
 
 /**
- * Earliest play time per track identity, across every set.
+ * Every play time per track identity, ascending.
  *
- * Earliest rather than any-play because the question is "did this track make
- * it into a set *while it was still new*" — a track first played two years
- * after being added does not become a conversion because it was also played
- * again last week.
+ * This is the ONLY play index in this file, deliberately. There used to be a
+ * second one, `firstPlayByTrack`, returning each track's global earliest play
+ * — and every question this file actually asks is "what is the first play *at
+ * or after* this track's add date?", which a global minimum answers WRONGLY
+ * for any track played both before and after its add. Story 4.5 discovered
+ * that (it discarded 18 real debuts on the committed fixture) and added this
+ * index, but only rewired its own metric; the post-merge integration review
+ * found the two conversion metrics still reading the global minimum. Keeping
+ * both indexes is what let the wrong one be picked twice, so the global one is
+ * gone. Use {@link firstPlayAtOrAfter} to ask the question.
  *
- * Plays with no `track_id` (every pre-4.2 row) and no `started_at` simply
+ * Plays with no `track_id` (every pre-4.2 row) or no parseable `started_at`
  * cannot participate; they are skipped, never counted as a non-conversion of
  * some other track.
- */
-export function firstPlayByTrack(sets: SetRecord[]): Map<string, number> {
-  const first = new Map<string, number>();
-  for (const set of sets) {
-    for (const play of set.plays) {
-      const trackId = play.track_id;
-      if (!trackId) continue;
-      const playedMs = msOf(play.started_at);
-      if (playedMs === null) continue;
-      const existing = first.get(trackId);
-      if (existing === undefined || playedMs < existing) first.set(trackId, playedMs);
-    }
-  }
-  return first;
-}
-
-/**
- * Every play time per track identity, ascending — the sibling index to
- * {@link firstPlayByTrack}, for the one question a single earliest-play value
- * cannot answer: "what is the first play *at or after* some per-track date?"
- *
- * {@link buildLiveConversionRate} only ever needs the global minimum, so it
- * keeps using `firstPlayByTrack`. Story 4.5's time-to-first-play needs this
- * one: a track with a pre-add play AND a genuine post-add debut has a global
- * minimum that answers the wrong question, and reading it discarded 18 real
- * debuts on the committed fixture (Story 4.5 review).
- *
- * Same skip rules as `firstPlayByTrack` — plays with no `track_id` (every
- * pre-4.2 row) or no parseable `started_at` cannot participate.
  */
 export function playsByTrack(sets: SetRecord[]): Map<string, number[]> {
   const byTrack = new Map<string, number[]>();
@@ -213,6 +190,36 @@ export function playsByTrack(sets: SetRecord[]): Map<string, number[]> {
   }
   for (const times of byTrack.values()) times.sort((a, b) => a - b);
   return byTrack;
+}
+
+/**
+ * The first play at or after `addedMs`, or `undefined` if the track has no
+ * such play. THE question every metric in this file asks about a track.
+ *
+ * `times` must be ascending — {@link playsByTrack} sorts, so pass its values
+ * straight in. Binary search rather than a scan because a heavily-rotated
+ * track can carry hundreds of plays and this is called once per add-event per
+ * window.
+ *
+ * A track played only BEFORE its add date returns `undefined`, not that
+ * earlier play: it did not convert, and reading the earlier play would count a
+ * clock/catalogue inconsistency (the same track resolved from a different
+ * drive, say) as a conversion — inflating the rate with data that says the
+ * opposite of what the metric claims.
+ */
+export function firstPlayAtOrAfter(
+  times: number[] | undefined,
+  addedMs: number,
+): number | undefined {
+  if (times === undefined || times.length === 0) return undefined;
+  let lo = 0;
+  let hi = times.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (times[mid] < addedMs) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo < times.length ? times[lo] : undefined;
 }
 
 /**
@@ -247,16 +254,22 @@ export function convertedWithinWindow(
  * a plot or an axis.
  *
  * Every window in {@link CONVERSION_WINDOWS} is computed in one pass (D-13):
- * the expensive half — building the first-play index and bucketing the events —
- * is shared, and only the two comparisons per event differ per window. That is
+ * the expensive half — building the play index and bucketing the events — is
+ * shared, and only the two comparisons per event differ per window. That is
  * what lets the toggle be a lookup rather than a recompute.
+ *
+ * `precomputedPlays` mirrors {@link buildLiveConversionRate}'s own parameter,
+ * so a page building the index once can hand it to both instead of each
+ * re-diffing `sets` (the page did exactly that, and this function's lack of
+ * the parameter was the reason the index was built twice per render).
  */
 export function buildLibraryConversion(
   events: LibraryAddEvent[],
   sets: SetRecord[],
   nowMs: number,
+  precomputedPlays?: Map<string, number[]>,
 ): LibraryConversionModel {
-  const firstPlay = firstPlayByTrack(sets);
+  const plays = precomputedPlays ?? playsByTrack(sets);
 
   let noAddDateCount = 0;
   // bucket -> { added, converted-per-window }
@@ -291,7 +304,7 @@ export function buildLibraryConversion(
     }
     entry.added++;
 
-    const played = firstPlay.get(event.track_id);
+    const played = firstPlayAtOrAfter(plays.get(event.track_id), addedMs);
     for (const window of CONVERSION_WINDOWS) {
       if (convertedWithinWindow(addedMs, played, window)) {
         entry.converted.set(window, (entry.converted.get(window) ?? 0) + 1);
@@ -396,19 +409,19 @@ export interface LiveConversionRate {
  * injected, never read from the clock — the same hard rule this file's header
  * states for every function here.
  *
- * `sets` is diffed into a first-play index internally UNLESS the caller
- * already has one (e.g. the page precomputing every {@link CONVERSION_WINDOWS}
- * entry up front, per D-13) — pass it as `precomputedFirstPlay` so the O(sets)
- * pass isn't repeated once per window (Story 4.3 review).
+ * `sets` is diffed into a play index internally UNLESS the caller already has
+ * one (e.g. the page precomputing every {@link CONVERSION_WINDOWS} entry up
+ * front, per D-13) — pass it as `precomputedPlays` so the O(sets) pass isn't
+ * repeated once per window (Story 4.3 review).
  */
 export function buildLiveConversionRate(
   events: LibraryAddEvent[],
   sets: SetRecord[],
   nowMs: number,
   window: ConversionWindow = DEFAULT_CONVERSION_WINDOW,
-  precomputedFirstPlay?: Map<string, number>,
+  precomputedPlays?: Map<string, number[]>,
 ): LiveConversionRate {
-  const firstPlay = precomputedFirstPlay ?? firstPlayByTrack(sets);
+  const plays = precomputedPlays ?? playsByTrack(sets);
   const windowStartMs = nowMs - window * DAY_MS;
 
   // One event per track is the DB's own guarantee (unique (dj_id, track_id)),
@@ -434,8 +447,10 @@ export function buildLiveConversionRate(
     if (addedMs < windowStartMs || addedMs > nowMs) continue;
 
     added++;
-    const firstPlayMs = firstPlay.get(event.track_id);
-    if (firstPlayMs !== undefined && firstPlayMs >= addedMs) {
+    // At-or-after, not the global earliest play: a track played once before it
+    // was added and again after it DID convert, and reading the global minimum
+    // discarded the whole conversion rather than just the pre-add play.
+    if (firstPlayAtOrAfter(plays.get(event.track_id), addedMs) !== undefined) {
       played++;
     }
   }
@@ -859,7 +874,7 @@ export function buildTimeToFirstPlay(
     // "haven't been played yet" instead. Task 1's own wording is the correct
     // predicate: "if a play exists at or after `added_at`".
     const trackPlays = plays.get(event.track_id);
-    const debutMs = trackPlays?.find((playedMs) => playedMs >= addedMs);
+    const debutMs = firstPlayAtOrAfter(trackPlays, addedMs);
 
     if (debutMs !== undefined) {
       entries.push({ trackId: event.track_id, addedMs, status: "played", elapsedMs: debutMs - addedMs });
