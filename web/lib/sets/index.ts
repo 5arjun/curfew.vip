@@ -18,8 +18,10 @@
 // file.
 import fixture from "./recent-sets.fixture.json";
 import addEventFixture from "./library-add-events.fixture.json";
+import rosterFixture from "./library-roster.fixture.json";
 import type { AgentStatusRow, AgentStatusSnapshot } from "./agentStatus";
 import type { LibraryAddEvent } from "./libraryConversion";
+import type { LibraryRosterSnapshot } from "./libraryRoster";
 import type { SetRecord } from "./types";
 
 // A mutable working copy of the fixture so the delete seam (AC-12) has somewhere
@@ -72,6 +74,25 @@ export interface LibraryAddEventSnapshot {
  */
 export async function getLibraryAddEvents(): Promise<LibraryAddEventSnapshot> {
   return { events: addEventFixture as LibraryAddEvent[], readAtMs: Date.now() };
+}
+
+/**
+ * The current DJ's library roster (Story 4.11, AD-22) — Tier A only
+ * (title/artist; BPM/key/genre are Tier B, parked). Same seam discipline as
+ * `getLibraryAddEvents` above: fixture-backed today
+ * (`build-library-roster-fixture.mjs`, derived from the DJ's own catalogue
+ * export), swapped for a `library_roster` select when the cloud read path
+ * lands. RLS is owner-SELECT-only, so that query will need no `dj_id`
+ * filter either — `auth.uid()` is the filter.
+ *
+ * No page reads `entries` yet (Story 4.4/4.10 are still `backlog`) — this
+ * exists so those stories inherit a working read seam rather than needing
+ * their own agent/shared/cloud work. `excludedNoIdentityCount`/
+ * `totalCatalogueRows` DO have a consumer today (Story 4.3's meter, via
+ * `unidentifiableTracksDisclosure`).
+ */
+export async function getLibraryRoster(): Promise<LibraryRosterSnapshot> {
+  return rosterFixture as LibraryRosterSnapshot;
 }
 
 /** One set by its `external_id`, or `null` if it does not exist (or was deleted). */
@@ -140,3 +161,4 @@ export async function getAgentStatus(): Promise<AgentStatusSnapshot> {
 export type { SetRecord } from "./types";
 export type { AgentStatusRow, AgentStatusSnapshot } from "./agentStatus";
 export type { LibraryAddEvent } from "./libraryConversion";
+export type { LibraryRosterEntry, LibraryRosterSnapshot } from "./libraryRoster";

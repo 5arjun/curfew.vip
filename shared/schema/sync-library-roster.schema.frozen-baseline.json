@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://curfew.app/schema/sync-library-roster.json",
+  "title": "Curfew Library Roster Batch",
+  "description": "Additive-only forever from Story 4.11 onward, same AD-15 discipline as sync-payload.schema.json and sync-library-add-events.schema.json. The THIRD sanctioned agent write (AD-22, after AD-20's status heartbeat and AD-21's library add-event batch) -- a current-state, mutable record of the tracks the DJ owns (Tier A: title/artist only; BPM/key/genre are Tier B, out of scope). Deliberately separate from SyncLibraryAddEventBatch: that batch is go-forward-only and first-write-wins (baseline tracks never appear in it), while this roster is current-state (title/artist refresh on a re-tag) and DOES carry baseline tracks -- the two tables this batch and that one write to serve different purposes and must never be conflated. Language-neutral mirror of SyncLibraryRosterBatch in @curfew/shared.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["entries"],
+  "properties": {
+    "contract_version": {
+      "description": "Contract version this batch was produced against.",
+      "type": "integer",
+      "const": 1
+    },
+    "agent_version": {
+      "description": "Semver of the producing agent -- same traceability role as SyncPayload.agent_version.",
+      "type": "string"
+    },
+    "entries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/library_roster_entry" }
+    }
+  },
+  "$defs": {
+    "library_roster_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["track_id", "title", "artist", "added_at", "is_baseline", "absent_at"],
+      "properties": {
+        "track_id": {
+          "description": "Opaque fnv1a_hex track identity (Story 4.3, Decision E-2) -- the same value SyncPlay.track_id/SyncLibraryAddEvent.track_id carry.",
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "description": "Raw, un-normalized song title. null only in the pathological case where a fixed test catalogue never populated it -- a track missing EITHER a resolvable title or a resolvable artist has no track_id to report under at all -- the identity hash requires both (AD-11).",
+          "type": ["string", "null"]
+        },
+        "artist": {
+          "description": "Raw, un-normalized artist. Same absence rule as title.",
+          "type": ["string", "null"]
+        },
+        "added_at": {
+          "description": "Unix epoch SECONDS -- when the library first saw this track, from database V2's tadd/uadd. null when no reachable catalogue covers the track -- never guessed (AD-11). Fixed at first sighting; never updated by a later batch for the same track_id. Epoch integers, not ISO 8601: the RPC parses these with to_timestamp(...::bigint), matching sync_set/sync_library_add_events. See ARCHITECTURE-SPINE.md's Dates/times convention row.",
+          "type": ["integer", "null"]
+        },
+        "is_baseline": {
+          "description": "true for D-1's silent first-run baseline snapshot. Fixed at first sighting -- must never be read for conversion-rate cohort math (that denominator is library_track_events/AD-21, a wholly separate table).",
+          "type": "boolean"
+        },
+        "absent_at": {
+          "description": "Unix epoch SECONDS, or null if the track is currently present in the DJ's library. Set when a previously-known track goes missing from a scan (Story 4.11 AC-5), cleared if it reappears. A soft-delete marker, never a hard removal.",
+          "type": ["integer", "null"]
+        }
+      }
+    }
+  }
+}
