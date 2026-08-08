@@ -32,15 +32,21 @@
 // unit tests (`dancefloor.test.ts`, `setDetail.test.ts`) that import them
 // directly and never touch this seam.
 //
-// `library-roster.fixture.json` is the ONE fixture this module still reads,
-// and deliberately so: `getLibraryRoster` (Story 4.11) is at the same day-one
-// stage those two just graduated from — the agent writes `library_roster` but
-// nothing selects from it yet. It is the next Decision-A swap, not a leftover.
+// `library-roster.fixture.json` is likewise no longer read here. It WAS, until
+// the post-merge integration review: Story 4.11 branched pre-4.6 and justified
+// serving it as "pending Story 4.6's Supabase read-path swap", then merged one
+// commit AFTER that swap landed, so the premise had expired. Because
+// `excludedNoIdentityCount`/`totalCatalogueRows` have a live consumer (Story
+// 4.3's meter, via `unidentifiableTracksDisclosure`), serving the fixture
+// stated ONE developer's library counts — 252 of 910 — to every DJ as a
+// first-person fact about their own library, including brand-new accounts with
+// nothing synced. An omission had become an affirmative false statement. It is
+// kept as sample data for `libraryRoster.test.ts`/future stories, same
+// disposition as the two above.
 //
 // All five are `async` — the signature already matched the eventual awaited
 // Supabase reads even at the fixture stage, so no component changes here, and
 // so the roster swap will need none either.
-import rosterFixture from "./library-roster.fixture.json";
 import type { AgentStatusRow, AgentStatusSnapshot } from "./agentStatus";
 import type { LibraryAddEvent } from "./libraryConversion";
 import type { LibraryRosterSnapshot } from "./libraryRoster";
@@ -331,21 +337,36 @@ export async function getLibraryAddEvents(): Promise<LibraryAddEventSnapshot> {
 
 /**
  * The current DJ's library roster (Story 4.11, AD-22) — Tier A only
- * (title/artist; BPM/key/genre are Tier B, parked). Same seam discipline as
- * `getLibraryAddEvents` above: fixture-backed today
- * (`build-library-roster-fixture.mjs`, derived from the DJ's own catalogue
- * export), swapped for a `library_roster` select when the cloud read path
- * lands. RLS is owner-SELECT-only, so that query will need no `dj_id`
- * filter either — `auth.uid()` is the filter.
+ * (title/artist; BPM/key/genre are Tier B, parked).
  *
- * No page reads `entries` yet (Story 4.4/4.10 are still `backlog`) — this
- * exists so those stories inherit a working read seam rather than needing
- * their own agent/shared/cloud work. `excludedNoIdentityCount`/
- * `totalCatalogueRows` DO have a consumer today (Story 4.3's meter, via
- * `unidentifiableTracksDisclosure`).
+ * Returns the day-one empty shape, which is the honest answer today. It used
+ * to return `library-roster.fixture.json`; see this module's header for why
+ * that shipped one developer's library counts to every DJ as their own, and
+ * why the "pending Story 4.6" justification for it had already expired by the
+ * time Story 4.11 merged.
+ *
+ * Empty is not a placeholder standing in for a number — it is what this seam
+ * genuinely knows, and it is the same contract the other four functions honor
+ * for a brand-new account (Story 4.6 AC-3): never throw, never invent.
+ * `unidentifiableTracksDisclosure` returns `null` at 0, so Story 4.11 AC-6's
+ * line simply does not render rather than rendering a false one.
+ *
+ * Two DIFFERENT pieces of work are needed to make this real, and they are not
+ * the same size — conflating them is what produced the bug:
+ *   - `entries` CAN be read now. `library_roster` exists with owner-SELECT RLS
+ *     and a `(dj_id, absent_at)` index; it needs a paged select like
+ *     `getLibraryAddEvents`. Deliberately left for Story 4.4/4.10, the first
+ *     stories with a consumer, rather than written speculatively here.
+ *   - `excludedNoIdentityCount`/`totalCatalogueRows` CANNOT. They are
+ *     scan-level scalars with no cloud carrier at all: `library_roster` is
+ *     per-track (wrong shape) and AD-20's heartbeat carries no derived Serato
+ *     data. The agent computes them (`store::scan_identity_coverage`) and
+ *     persists them locally, but nothing ships them — that function has no
+ *     caller outside its own unit test. Needs a named decision (an extra
+ *     AD-22 RPC argument, or two `agent_status` columns), not a default.
  */
 export async function getLibraryRoster(): Promise<LibraryRosterSnapshot> {
-  return rosterFixture as LibraryRosterSnapshot;
+  return { entries: [], excludedNoIdentityCount: 0, totalCatalogueRows: 0 };
 }
 
 /**

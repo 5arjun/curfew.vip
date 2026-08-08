@@ -16,7 +16,12 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
-  padding: var(--space-lg) var(--space-gutter) calc(var(--space-xxl) + env(safe-area-inset-bottom));
+  /* Same rule and same reason as `.dashboard-inner` — clear the floating nav's
+     bottom dock (~44px) plus the device safe-area. This page also shipped
+     without the dashboard's `--space-lg` term; matched here so all three
+     scrolling pages agree rather than each guessing. */
+  padding: var(--space-lg) var(--space-gutter)
+    calc(var(--space-xxl) + var(--space-lg) + env(safe-area-inset-bottom));
   font-family: var(--font-hanken-grotesk);
   color: var(--color-abyss-text);
 }
