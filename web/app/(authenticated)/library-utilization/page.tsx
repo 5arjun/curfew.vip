@@ -5,6 +5,7 @@ import {
   firstPlayByTrack,
   playsByTrack,
   undatedDisclosure,
+  unreconciledDateCount,
   LIVE_CONVERSION_WINDOWS,
 } from "@/lib/sets/libraryConversion";
 import { SilkBackdrop } from "@/app/components/dashboard/SilkBackdrop";
@@ -66,8 +67,20 @@ export default async function LibraryUtilizationPage() {
   // window-independent, so leaving each to render its own produced the
   // identical sentence twice, 200px apart, reading as a bug. Invisible on the
   // committed fixture (the count is 0) and live once Story 4.6 lands.
+  //
+  // Carries the unreconciled-date count too (Story 4.5 review, findings 1+3):
+  // tracks whose plays all predate their add date, and tracks with a
+  // future-dated add. Both were excluded from every figure the module states
+  // and named nowhere — the first also passed the population gate, so a DJ
+  // with 20 tracks, 6 debuts and 14 of these saw a module reporting on 6 and
+  // mentioning nothing. Deliberately NOT folded into `noAddDateCount`: those
+  // tracks have a date, it just can't be reconciled.
   const undatedNote = undatedDisclosure(
-    { noAddDateCount: timeToFirstPlay.noAddDateCount, pendingCohortCount: 0 },
+    {
+      noAddDateCount: timeToFirstPlay.noAddDateCount,
+      unreconciledDateCount: unreconciledDateCount(timeToFirstPlay),
+      pendingCohortCount: 0,
+    },
     0,
   );
 

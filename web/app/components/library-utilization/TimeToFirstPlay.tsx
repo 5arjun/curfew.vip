@@ -1,6 +1,7 @@
 import {
   hasEnoughTimeToFirstPlayDebuts,
   hasEnoughTimeToFirstPlayTracks,
+  isEarlyReadAverage,
   playedCountOf,
   timeToFirstPlaySummary,
   type TimeToFirstPlayModel,
@@ -99,6 +100,19 @@ export function TimeToFirstPlay({ model }: { model: TimeToFirstPlayModel }) {
                 `, averaging ${formatElapsed(model.neverPlayedAverageAgeMs)} on the shelf`}
             </p>
           )}
+          {/* The mean is typically off by a factor of two at the debut gate of
+              5, and still ~40% out at 30 — measured, see
+              TIME_TO_FIRST_PLAY_EARLY_READ_DEBUTS. Rather than raise the gate
+              (which would hide the module from every DJ for months), the
+              average carries the SAME "early read" hedge the conversion meter
+              200px above already uses below its own confidence floor. Same
+              class, same copy shape, same voice. aria-hidden because `summary`
+              carries the identical sentence. */}
+          {isEarlyReadAverage(model) && (
+            <p className="lu-disclosure" aria-hidden="true">
+              Only {playedCount} {playedCount === 1 ? "debut" : "debuts"} so far — early read
+            </p>
+          )}
         </>
       ) : (
         <p className="lu-stat-empty" aria-hidden="true">
@@ -110,7 +124,9 @@ export function TimeToFirstPlay({ model }: { model: TimeToFirstPlayModel }) {
                   ? ` — averaging ${formatElapsed(model.neverPlayedAverageAgeMs)} on the shelf`
                   : ""
               }.`
-            : "No tracks have debuted yet."}
+            : // Never "No tracks have debuted yet" when the population is made
+              // of tracks the DJ demonstrably played — mirrors the generator.
+              timeToFirstPlaySummary(model)}
         </p>
       )}
     </section>

@@ -578,14 +578,26 @@ export function liveConversionRateSummary(rate: LiveConversionRate): string {
  * sentence — it has no reason to care which scale it came from.
  */
 export function undatedDisclosure(
-  counts: { noAddDateCount: number; pendingCohortCount: number },
+  counts: { noAddDateCount: number; pendingCohortCount: number; unreconciledDateCount?: number },
   window: number,
 ): string | null {
-  const { noAddDateCount, pendingCohortCount } = counts;
+  const { noAddDateCount, pendingCohortCount, unreconciledDateCount = 0 } = counts;
   const parts: string[] = [];
   if (noAddDateCount > 0) {
     parts.push(
       `${noAddDateCount} ${noAddDateCount === 1 ? "track has" : "tracks have"} no known add date`,
+    );
+  }
+  // ONE clause for two exclusion classes (Story 4.5 review, findings 1 + 3):
+  // a track whose plays all predate its add date, and a track whose add date
+  // is in the future. Both are the same sentence to a DJ — the add date does
+  // not survive contact with the play history or the clock — and deliberately
+  // NOT folded into `noAddDateCount` above, which would be false: these tracks
+  // have a date, it just cannot be reconciled. Optional so Story 4.2's cohort
+  // model and 4.3's meter, which have no such concept, are unaffected.
+  if (unreconciledDateCount > 0) {
+    parts.push(
+      `${unreconciledDateCount} ${unreconciledDateCount === 1 ? "track has an add date" : "tracks have add dates"} Curfew can't reconcile`,
     );
   }
   if (pendingCohortCount > 0) {
@@ -633,8 +645,26 @@ export interface TimeToFirstPlayModel {
    * Excluded from the average AND from `neverPlayedCount`, because asserting
    * "hasn't been played yet" about a track the DJ demonstrably played is a
    * false statement, not a conservative one (Story 4.5 review).
+   *
+   * **Disclosed, not just excluded** — see {@link unreconciledDateCount}. The
+   * first shipped version counted these and then never read the count: they
+   * passed the population gate, contributed to neither the average nor
+   * `neverPlayedCount`, and were named nowhere in the UI. Twenty tracks with
+   * six debuts and fourteen of these reported on six and mentioned nothing
+   * (Story 4.5 review, finding 1).
    */
   playedBeforeAddCount: number;
+  /**
+   * Tracks whose `added_at` is in the future as of `nowMs` — clock skew, not a
+   * real add. Excluded from every count above, and (unlike the first shipped
+   * version, which `continue`d past them with no counter at all) surfaced here
+   * so the population reconciles (Story 4.5 review, finding 3).
+   *
+   * A separate field from {@link playedBeforeAddCount} because they are
+   * different facts, joined only at the prose layer — the same split this
+   * file's discriminated union already draws between its three entry states.
+   */
+  futureDatedCount: number;
   /** Tracks with no resolvable `tadd`/`uadd` (AC-5) — same window-independent gap
    *  {@link buildLibraryConversion}'s `noAddDateCount` reports, over the same `events`. */
   noAddDateCount: number;
@@ -693,6 +723,62 @@ export function playedCountOf(model: TimeToFirstPlayModel): number {
 }
 
 /**
+ * Every track excluded because its dates could not be reconciled — plays that
+ * predate the add, or an add date in the future. One number because it backs
+ * ONE disclosure clause ("N tracks have an add date Curfew can't reconcile"),
+ * which is true of both classes; the model keeps them apart as separate fields
+ * because they are separate facts.
+ */
+export function unreconciledDateCount(model: TimeToFirstPlayModel): number {
+  return model.playedBeforeAddCount + model.futureDatedCount;
+}
+
+/**
+ * Above this many debuts the average is stated plainly; at or below it, it
+ * carries the "early read" qualifier the conversion meter next door already
+ * uses below {@link LOW_CONFIDENCE_COHORT_SIZE} (`lu-disclosure`, same copy
+ * shape, same page).
+ *
+ * **30 is measured, not chosen.** Bootstrap over the committed fixture's 233
+ * real debuts (3000 resamples per size), relative error of the sample mean
+ * against the true mean:
+ *
+ * ```
+ *   n=5   typical 99%   p90 240%      n=30  typical 40%   p90  86%
+ *   n=10  typical 74%   p90 148%      n=50  typical 27%   p90  65%
+ *   n=20  typical 52%   p90 100%      n=80  typical 21%   p90  48%
+ * ```
+ *
+ * At {@link MIN_TIME_TO_FIRST_PLAY_DEBUTS} the average a DJ is shown is
+ * *typically wrong by a factor of two* — median case, not worst case. No
+ * threshold on that table makes a single point estimate trustworthy at a
+ * sample size a real DJ reaches soon, and switching back to the median does
+ * not rescue it either (the median is 51 minutes, so an hour of wobble is a
+ * 100% relative error). **So the fix is a permanent hedge, not a higher gate**
+ * (Story 4.5 review, finding 2; ruled 2026-08-07).
+ *
+ * Raising {@link MIN_TIME_TO_FIRST_PLAY_DEBUTS} to 30 instead was rejected
+ * deliberately: it would hide the module from every DJ for months to protect a
+ * statistic, when the mean was chosen in the first place so the feature would
+ * feel present and believable. 30 is where the error curve stops falling off a
+ * cliff and the claim "below this the average typically misses by 40% or more"
+ * is defensible in one sentence.
+ */
+export const TIME_TO_FIRST_PLAY_EARLY_READ_DEBUTS = 30;
+
+/**
+ * Whether the average is drawn from too thin a sample to state without a
+ * qualifier. Distinct from {@link hasEnoughTimeToFirstPlayDebuts}, which
+ * decides whether to state an average *at all*: this is the third rung on a
+ * ladder the story already built — population gates the module, debuts gate
+ * the average, sample size gates the confidence.
+ */
+export function isEarlyReadAverage(model: TimeToFirstPlayModel): boolean {
+  const played = playedCountOf(model);
+  return played > 0 && played <= TIME_TO_FIRST_PLAY_EARLY_READ_DEBUTS;
+}
+
+/**
  * Arithmetic mean. **Chosen over the median 2026-08-07 (Arjun), knowing the
  * trade — recorded so it is not re-litigated as an oversight.**
  *
@@ -724,9 +810,15 @@ function mean(values: number[]): number | null {
  * to this function is already inside the population by construction. A
  * second filter here would be redundant at best.
  *
- * Unlike {@link buildLiveConversionRate}, this function takes no `nowMs` —
- * the population is closed-form from `events`/`sets` alone, with no trailing
- * window to measure against "now".
+ * `nowMs` is load-bearing here despite this metric having no trailing window
+ * (the population IS closed-form from `events`/`sets`). It does two things a
+ * window-less metric still needs: it supplies the clock-skew guard that keeps
+ * a future-dated add from being reported as a never-played failure, and it is
+ * the reference point for {@link TimeToFirstPlayModel.neverPlayedAverageAgeMs}.
+ * Task 1's Dev Note originally argued the parameter was cosmetic; that was
+ * reversed 2026-08-07 (Arjun) for exactly these two reasons — this comment
+ * used to still claim the function took no `nowMs`, four lines above a
+ * signature that takes one (Story 4.5 review, finding 6).
  */
 export function buildTimeToFirstPlay(
   events: LibraryAddEvent[],
@@ -739,6 +831,7 @@ export function buildTimeToFirstPlay(
   let noAddDateCount = 0;
   let neverPlayedCount = 0;
   let playedBeforeAddCount = 0;
+  let futureDatedCount = 0;
   const entries: TimeToFirstPlayEntry[] = [];
   const neverPlayedAges: number[] = [];
 
@@ -752,7 +845,17 @@ export function buildTimeToFirstPlay(
     // precedent (`addedMs > nowMs` is dropped there too). Without it the same
     // future-dated event was excluded by one module on this page and reported
     // as a never-played failure by the other (Story 4.5 review).
-    if (addedMs > nowMs) continue;
+    //
+    // COUNTED, not just skipped: `buildLiveConversionRate` can drop such a row
+    // silently because its denominator is explicitly "added in the last N
+    // days", so an out-of-window row is legitimately out of scope. This
+    // population is lifetime-scoped — there is no scope for the row to be
+    // outside of, so dropping it uncounted made it reconcile to nothing at all
+    // (Story 4.5 review, finding 3).
+    if (addedMs > nowMs) {
+      futureDatedCount++;
+      continue;
+    }
 
     // The earliest play AT OR AFTER the add date — NOT the globally earliest
     // play. Testing the global minimum (the first shipped version) discarded
@@ -788,6 +891,7 @@ export function buildTimeToFirstPlay(
     neverPlayedCount,
     neverPlayedAverageAgeMs: mean(neverPlayedAges),
     playedBeforeAddCount,
+    futureDatedCount,
     noAddDateCount,
   };
 }
@@ -833,12 +937,23 @@ function dedupeAddEvents(events: LibraryAddEvent[]): LibraryAddEvent[] {
 export function timeToFirstPlaySummary(model: TimeToFirstPlayModel): string {
   const playedCount = playedCountOf(model);
   const unplayed = model.neverPlayedCount;
+  const unreconciled = unreconciledDateCount(model);
 
   // Below the debut floor there is no average worth stating, whatever the
   // population size — AC-4's "rather than a distribution drawn from a handful
   // of points" (Story 4.5 review). Report the waiting population instead.
   if (!hasEnoughTimeToFirstPlayDebuts(model)) {
-    if (unplayed === 0) return "No tracks have debuted yet.";
+    if (unplayed === 0) {
+      // "No tracks have debuted yet" is FALSE when the population is made of
+      // tracks whose plays predate their add date — the DJ demonstrably played
+      // them. The `played-before-add` state was invented to stop
+      // `neverPlayedCount` making exactly that claim, and this fallback then
+      // made it anyway, one branch over (Story 4.5 review, finding 1).
+      if (unreconciled > 0) {
+        return `${unreconciled} ${unreconciled === 1 ? "track has an add date" : "tracks have add dates"} Curfew can't reconcile, so there are no debut times to report yet.`;
+      }
+      return "No tracks have debuted yet.";
+    }
     const age = model.neverPlayedAverageAgeMs;
     const waiting = `${unplayed} ${unplayed === 1 ? "track has" : "tracks have"} been added but not played yet`;
     return age === null ? `${waiting}.` : `${waiting} — averaging ${formatElapsed(age)} on the shelf.`;
@@ -849,6 +964,18 @@ export function timeToFirstPlaySummary(model: TimeToFirstPlayModel): string {
   // the smallest possible value if the invariant ever broke.
   const elapsed = formatElapsed(model.averageElapsedMs as number);
   const debuts = `${playedCount === 1 ? "1 track has" : `${playedCount} tracks have`} debuted, an average of ${elapsed} after being added`;
-  if (unplayed === 0) return `${debuts}.`;
-  return `${debuts} — ${unplayed} ${unplayed === 1 ? "other hasn't" : "others haven't"} been played yet.`;
+  const base =
+    unplayed === 0
+      ? `${debuts}.`
+      : `${debuts} — ${unplayed} ${unplayed === 1 ? "other hasn't" : "others haven't"} been played yet.`;
+
+  // The early-read qualifier rides in the SAME generator as the figure it
+  // qualifies, not just in the component — this module has twice shipped an
+  // `aria-label` that disagreed with its visible text, and a hedge a sighted
+  // user sees while a screen-reader user does not would be the third time
+  // (Story 4.5 review, finding 2; Sally's condition on the ruling).
+  const earlyRead = isEarlyReadAverage(model)
+    ? ` Only ${playedCount} ${playedCount === 1 ? "debut" : "debuts"} so far — early read.`
+    : "";
+  return `${base}${earlyRead}`;
 }

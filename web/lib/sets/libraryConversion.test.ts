@@ -12,6 +12,7 @@ import {
   hasEnoughTimeToFirstPlayDebuts,
   hasEnoughTimeToFirstPlayTracks,
   isCohortComplete,
+  isEarlyReadAverage,
   isLowConfidenceCohort,
   libraryConversionSummary,
   liveConversionRateSummary,
@@ -22,7 +23,9 @@ import {
   playedCountOf,
   playsByTrack,
   timeToFirstPlaySummary,
+  TIME_TO_FIRST_PLAY_EARLY_READ_DEBUTS,
   undatedDisclosure,
+  unreconciledDateCount,
   type ConversionWindow,
   type LibraryAddEvent,
   type LibraryConversionModel,
@@ -669,6 +672,21 @@ describe("live conversion rate (Story 4.3, Decision E-1, AC-1/AC-3/AC-4)", () =>
     );
   });
 
+  it("adds an unreconciled-dates clause without touching the undated one", () => {
+    // Findings 1+3: two exclusion classes, ONE clause, and deliberately not
+    // folded into "no known add date" — these tracks HAVE a date.
+    expect(
+      undatedDisclosure({ noAddDateCount: 2, unreconciledDateCount: 3, pendingCohortCount: 0 }, 0),
+    ).toBe("2 tracks have no known add date, and 3 tracks have add dates Curfew can't reconcile — not counted here.");
+    expect(undatedDisclosure({ noAddDateCount: 0, unreconciledDateCount: 1, pendingCohortCount: 0 }, 0)).toBe(
+      "1 track has an add date Curfew can't reconcile — not counted here.",
+    );
+  });
+
+  it("stays null for callers that never pass an unreconciled count (4.2/4.3 unaffected)", () => {
+    expect(undatedDisclosure({ noAddDateCount: 0, pendingCohortCount: 0 }, 60)).toBeNull();
+  });
+
   it.each(LIVE_CONVERSION_WINDOWS)("accepts every selectable live window (%i days)", (window) => {
     const addedIso = localIso(2026, 5, 1);
     const now = new Date(addedIso).getTime() + 1 * DAY_MS;
@@ -873,8 +891,39 @@ describe("time-to-first-play (Story 4.5, AC-1/AC-2/AC-3/AC-5)", () => {
       neverPlayedCount: 0,
       neverPlayedAverageAgeMs: null,
       playedBeforeAddCount: 0,
+      futureDatedCount: 0,
       noAddDateCount: 0,
     });
+  });
+
+  it("COUNTS a future-dated add rather than dropping it uncounted (finding 3)", () => {
+    // The row must reconcile SOMEWHERE. Before this it was in no bucket at
+    // all: not entries, not noAddDateCount, not never-played, not
+    // played-before-add — it simply ceased to exist.
+    const future = new Date(NOW + 10 * DAY_MS).toISOString();
+    const model = buildTimeToFirstPlay([added("f", future)], [], NOW);
+
+    expect(model.entries).toEqual([]);
+    expect(model.futureDatedCount).toBe(1);
+    expect(model.noAddDateCount).toBe(0);
+    expect(model.neverPlayedCount).toBe(0);
+    expect(model.playedBeforeAddCount).toBe(0);
+    expect(unreconciledDateCount(model)).toBe(1);
+  });
+
+  it("folds played-before-add and future-dated into ONE unreconciled count", () => {
+    const pbaIso = localIso(2026, 1, 10);
+    const pbaMs = new Date(pbaIso).getTime();
+    const sets = [set([play({ track_id: "pba", started_at: new Date(pbaMs - 5 * DAY_MS).toISOString() })])];
+    const model = buildTimeToFirstPlay(
+      [added("pba", pbaIso), added("f", new Date(NOW + DAY_MS).toISOString())],
+      sets,
+      NOW,
+    );
+
+    expect(model.playedBeforeAddCount).toBe(1);
+    expect(model.futureDatedCount).toBe(1);
+    expect(unreconciledDateCount(model)).toBe(2);
   });
 
   it("de-dupes a redelivered add-event rather than double-counting", () => {
@@ -999,20 +1048,20 @@ describe("time-to-first-play summary (AC-2, AC-3, AC-4)", () => {
 
   it("states the debut count, the average and the never-played count together", () => {
     expect(timeToFirstPlaySummary(modelWith(5, 3, 1))).toBe(
-      "5 tracks have debuted, an average of 3 days after being added — 1 other hasn't been played yet.",
+      "5 tracks have debuted, an average of 3 days after being added — 1 other hasn't been played yet. Only 5 debuts so far — early read.",
     );
   });
 
   it("omits the never-played clause when every qualifying track has debuted", () => {
     expect(timeToFirstPlaySummary(modelWith(5, 3))).toBe(
-      "5 tracks have debuted, an average of 3 days after being added.",
+      "5 tracks have debuted, an average of 3 days after being added. Only 5 debuts so far — early read.",
     );
   });
 
   it("never interpolates a bare adverbial phrase — a sub-day average reads as a noun phrase", () => {
     // The regression this test exists for: "a median of same day to debut".
     const summary = timeToFirstPlaySummary(modelWith(5, 0));
-    expect(summary).toBe("5 tracks have debuted, an average of under a minute after being added.");
+    expect(summary).toBe("5 tracks have debuted, an average of under a minute after being added. Only 5 debuts so far — early read.");
     expect(summary).not.toContain("same day");
   });
 
@@ -1026,5 +1075,50 @@ describe("time-to-first-play summary (AC-2, AC-3, AC-4)", () => {
 
   it("says nothing has debuted yet when nothing has played at all", () => {
     expect(timeToFirstPlaySummary(buildTimeToFirstPlay([], [], NOW))).toBe("No tracks have debuted yet.");
+  });
+
+  it("never claims nothing debuted when the population is tracks the DJ PLAYED (finding 1)", () => {
+    // Five tracks whose only plays predate their add date. The population gate
+    // passes, so the module renders; the old fallback then asserted "No tracks
+    // have debuted yet" about five tracks the DJ demonstrably played.
+    const events = Array.from({ length: 5 }, (_, i) => added(`t${i}`, addedIso));
+    const sets = [
+      set(
+        Array.from({ length: 5 }, (_, i) =>
+          play({ track_id: `t${i}`, started_at: new Date(addMs - 30 * DAY_MS).toISOString() }),
+        ),
+      ),
+    ];
+    const model = buildTimeToFirstPlay(events, sets, NOW);
+
+    expect(hasEnoughTimeToFirstPlayTracks(model)).toBe(true);
+    expect(model.neverPlayedCount).toBe(0);
+    expect(timeToFirstPlaySummary(model)).toBe(
+      "5 tracks have add dates Curfew can't reconcile, so there are no debut times to report yet.",
+    );
+  });
+
+  it("hedges the average as an early read at or below the measured stability floor", () => {
+    const model = modelWith(TIME_TO_FIRST_PLAY_EARLY_READ_DEBUTS, 3);
+    expect(isEarlyReadAverage(model)).toBe(true);
+    expect(timeToFirstPlaySummary(model)).toContain(
+      `Only ${TIME_TO_FIRST_PLAY_EARLY_READ_DEBUTS} debuts so far — early read`,
+    );
+  });
+
+  it("drops the hedge once the sample clears the floor", () => {
+    const model = modelWith(TIME_TO_FIRST_PLAY_EARLY_READ_DEBUTS + 1, 3);
+    expect(isEarlyReadAverage(model)).toBe(false);
+    expect(timeToFirstPlaySummary(model)).toBe(
+      `${TIME_TO_FIRST_PLAY_EARLY_READ_DEBUTS + 1} tracks have debuted, an average of 3 days after being added.`,
+    );
+  });
+
+  it("keeps the hedge in the SAME string the aria-label reads, not only the component", () => {
+    // The one-generator rule: a hedge a sighted user sees and a screen-reader
+    // user does not would be this module's third aria/visible drift.
+    const summary = timeToFirstPlaySummary(modelWith(5, 3));
+    expect(summary).toContain("an average of 3 days");
+    expect(summary).toContain("early read");
   });
 });
