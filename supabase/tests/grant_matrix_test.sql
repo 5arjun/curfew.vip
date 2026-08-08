@@ -2,9 +2,10 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
--- 42 = four set-wide blocks of 6 tables (24) + 6 intended-write assertions
--- + 4 on deleted_sets + 5 function-revoke + 3 agent-write-path.
-select plan(42);
+-- 45 = four set-wide blocks of 6 tables (24) + 6 intended-write assertions
+-- + 4 on deleted_sets + 5 function-revoke + 3 agent-write-path
+-- + 3 generic SECURITY DEFINER / trigger-function sweeps.
+select plan(45);
 
 -- Story 4.6 code review (2026-08-07): pins the ACL matrix the migration history
 -- has always described in prose but never asserted.
@@ -73,6 +74,44 @@ select ok(not has_function_privilege('authenticated', 'public.handle_new_dj()', 
 select ok(has_function_privilege('authenticated', 'public.sync_set(text, bigint, bigint, jsonb, jsonb)', 'EXECUTE'), 'authenticated CAN execute sync_set');
 select ok(has_function_privilege('authenticated', 'public.sync_library_add_events(jsonb)', 'EXECUTE'), 'authenticated CAN execute sync_library_add_events');
 select ok(has_function_privilege('authenticated', 'public.set_agent_status(text, text)', 'EXECUTE'), 'authenticated CAN execute set_agent_status');
+
+-- GENERIC SWEEPS. The per-function assertions above only catch functions
+-- somebody remembered to list — which is precisely how `record_deleted_set()`
+-- shipped anon-executable in 20260807130000 while 20260807140000 was busy
+-- revoking EXECUTE on the other three (Supabase's advisor caught it, this
+-- suite did not). These three fail for ANY future offender instead.
+select is(
+  (select count(*)::int from pg_proc p
+   join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.prosecdef
+     and has_function_privilege('anon', p.oid, 'EXECUTE')),
+  0,
+  'NO SECURITY DEFINER function in public is executable by anon'
+);
+
+-- Trigger functions are invoked by their trigger as the table owner. No client
+-- role should ever hold EXECUTE on one, whatever it does internally.
+select is(
+  (select count(*)::int from pg_proc p
+   join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.prorettype = 'pg_catalog.trigger'::regtype
+     and (has_function_privilege('anon', p.oid, 'EXECUTE')
+       or has_function_privilege('authenticated', p.oid, 'EXECUTE'))),
+  0,
+  'NO trigger function in public is executable by anon or authenticated'
+);
+
+-- Nothing client-facing may hold TRUNCATE on any table in `public`: RLS does not
+-- filter TRUNCATE, so it is the one privilege a policy cannot walk back. Written
+-- table-agnostically so a table added by a future migration is covered without
+-- anyone remembering to extend the list above.
+select is(
+  (select count(*)::int from information_schema.role_table_grants
+   where table_schema = 'public' and privilege_type = 'TRUNCATE'
+     and grantee in ('anon', 'authenticated')),
+  0,
+  'NO table in public grants TRUNCATE to anon or authenticated (RLS cannot filter it)'
+);
 
 select * from finish();
 
