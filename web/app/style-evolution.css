@@ -15,8 +15,16 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
+  /* Bottom padding matches `.dashboard-inner`'s rule and exists for the same
+     reason its comment states: clear the floating nav's bottom dock (~44px)
+     plus the device safe-area, so the last card is never trapped behind
+     either. This page shipped without the `--space-lg` term the dashboard
+     adds, leaving it 24px short — and it is the tallest page in the app, so
+     it is where that shortfall is felt: the Key Usage caption and its
+     "N plays without a key" note read as unreachable at the bottom of a
+     short window. */
   padding: var(--space-lg) var(--space-gutter)
-    calc(var(--space-xxl) + env(safe-area-inset-bottom));
+    calc(var(--space-xxl) + var(--space-lg) + env(safe-area-inset-bottom));
   font-family: var(--font-hanken-grotesk);
   color: var(--color-abyss-text);
 }
