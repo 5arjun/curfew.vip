@@ -57,11 +57,6 @@ const SORT_LABEL: Record<AgingShelfSort, string> = {
   shortest: "shortest first",
 };
 
-/** "1 track" / "N tracks" — the shelf says this in four places. */
-function trackCount(n: number): string {
-  return `${n} ${n === 1 ? "track" : "tracks"}`;
-}
-
 /**
  * The aging shelf (Story 4.4, FR-12, UX-DR12) — Library Utilization's module
  * below Story 4.5's time-to-first-play.
@@ -198,11 +193,14 @@ export function AgingShelf({ model }: { model: AgingShelfModel }) {
           </ol>
 
           {/* AC-9 — the cap stated out loud. SM-C1's no-silent-caps contract:
-              a truncated list that reads as the whole answer is the failure. */}
+              a truncated list that reads as the whole answer is the failure.
+              The WORDS are the minimum that discharges it: the sort control
+              directly above already shows which end is listed, so naming it
+              again here was a word the DJ did not need. The `aria-label` keeps
+              naming it, because a screen-reader user cannot see the icon. */}
           {model.capped && (
             <p className="lu-disclosure">
-              Showing the {sort === "longest" ? "longest" : "shortest"}-unplayed {SHELF_ROW_CAP} of{" "}
-              {trackCount(model.qualifyingCount)}.
+              Showing {SHELF_ROW_CAP} of {model.qualifyingCount}
             </p>
           )}
         </>
@@ -218,59 +216,62 @@ export function AgingShelf({ model }: { model: AgingShelfModel }) {
         </p>
       )}
 
-      {/* AC-7 — its own labelled block BELOW the list, never interleaved into
-          the sorted rows and never counted into the aging total. These tracks
-          have no add date and no observed play, so there is no clock to start:
-          sorting them anywhere would be inventing a position, and omitting
-          them would be the silent exclusion Architecture Spine OQ#2 forbids.
-          Rendered as a count rather than a list — the DJ can act on "6% of my
-          library has no add date", and listing them would put a second,
-          differently-ordered track list under the first. */}
-      {model.unknownAddDateCount > 0 && (
-        <p className="lu-disclosure">
-          {trackCount(model.unknownAddDateCount)} have no add date and no play on record, so there is
-          no clock to run — not counted above.
-        </p>
-      )}
+      {/* The four footnotes below are all AC-required and none may be dropped —
+          but "must be disclosed" is not "must be explained" (Arjun, 2026-08-08:
+          the first version stacked four full sentences of reasoning under the
+          list and nobody would read them). Each is now a FACT, not an argument;
+          the reasoning that used to be on screen lives in these comments and in
+          the story's Dev Notes, where the next developer needs it and the DJ
+          does not. They share one tight row rather than four stacked lines. */}
+      {(model.unknownAddDateCount > 0 ||
+        model.recentlyDownloadedCount > 0 ||
+        model.unreconciledDateCount > 0 ||
+        (model.observationSuppressed && model.suppressedNoPlayCount > 0)) && (
+        <p className="lu-shelf-notes">
+          {/* AC-7 — never silently omitted, never sorted into a position it
+              cannot have, never counted into the aging total. A count rather
+              than a list: a second, differently-ordered track list under the
+              first would be worse than the omission. */}
+          {model.unknownAddDateCount > 0 && (
+            <span className="lu-shelf-note">{model.unknownAddDateCount} with no add date</span>
+          )}
 
-      {/* AC-6 — from RAW `added_at`, not the clamped clock: a real fact about
-          the library rather than an inference about observation, which is why
-          it renders even in the gated states above. `EXPERIENCE.md:97` places
-          this nudge on the Dashboard as a banner; ruled here as a count line
-          on this module (story Open Question #2) — a dashboard banner is a
-          different page and unrequested scope, and a count line reverts
-          cleanly if the banner is wanted instead. */}
-      {model.recentlyDownloadedCount > 0 && (
-        <p className="lu-disclosure">
-          {trackCount(model.recentlyDownloadedCount)} added in the last {RECENT_DOWNLOAD_DAYS} days
-          {model.recentlyDownloadedCount === 1 ? " hasn't" : " haven't"} been played yet.
-        </p>
-      )}
+          {/* AC-6 — from RAW `added_at` with no clamp, which is why it survives
+              the gated states: a fact about the library, not an inference about
+              observation. `EXPERIENCE.md:97` puts this nudge on the Dashboard
+              as a banner; ruled here as a count on this module (story Open
+              Question #2), and it reverts cleanly if the banner is wanted. */}
+          {model.recentlyDownloadedCount > 0 && (
+            /* The 30 days stays visible even though it costs four words: "new"
+               with no boundary is a claim the DJ cannot check, and this is the
+               one note here that is information rather than a caveat. */
+            <span className="lu-shelf-note">
+              {model.recentlyDownloadedCount} unplayed from the last {RECENT_DOWNLOAD_DAYS} days
+            </span>
+          )}
 
-      {/* The fail-closed disclosure (AC-11). Without it the suppression is
-          invisible: the shelf would simply be short, with nothing saying why,
-          which is the "silently wrong list" shape this story exists to avoid.
-          Reachable only when `getObservationStart` returned null — an RLS
-          failure, a missing `djs` row, or a network fault. */}
-      {model.observationSuppressed && model.suppressedNoPlayCount > 0 && (
-        <p className="lu-disclosure">
-          Curfew can&apos;t tell how long it has been watching your library right now, so{" "}
-          {trackCount(model.suppressedNoPlayCount)} with no play on record are held back rather than
-          aged from a date that might be wrong.
-        </p>
-      )}
+          {/* Dates that don't survive contact with the clock — a future-dated
+              add, or a play stamped in the future. Deliberately the same
+              verdict `buildTimeToFirstPlay` reaches 200px above, not a fourth
+              one; see `deferred-work.md`'s open three-way ruling. */}
+          {model.unreconciledDateCount > 0 && (
+            <span className="lu-shelf-note">{model.unreconciledDateCount} unusable dates</span>
+          )}
 
-      {/* Dates that don't survive contact with the clock — a future-dated add,
-          or a play stamped in the future. Same clause and same register as the
-          page's own `undatedDisclosure` line, deliberately: it is the identical
-          fact about the identical rows, and this module reaching a different
-          verdict from the one 200px above it is the disagreement
-          `deferred-work.md`'s open three-way ruling is about. */}
-      {model.unreconciledDateCount > 0 && (
-        <p className="lu-disclosure">
-          {trackCount(model.unreconciledDateCount)}{" "}
-          {model.unreconciledDateCount === 1 ? "has a date" : "have dates"} Curfew can&apos;t
-          reconcile — not counted here.
+          {/* AC-11's fail-closed disclosure. Without it the suppression is
+              invisible and the shelf is just short with nothing saying why —
+              the silently-wrong-list shape this whole story exists to avoid.
+              Only reachable on an RLS failure, a missing `djs` row, or a
+              network fault, so it is rare enough to afford its extra clause. */}
+          {model.observationSuppressed && model.suppressedNoPlayCount > 0 && (
+            /* One interpolated string rather than JSX text around an
+               expression: wrapped across lines, JSX dropped the space after
+               the count and rendered "40held back" (caught in the browser, not
+               by any gate — nothing type-checks rendered prose). */
+            <span className="lu-shelf-note">
+              {`${model.suppressedNoPlayCount} held back — Curfew can't tell how long it has been watching`}
+            </span>
+          )}
         </p>
       )}
     </section>

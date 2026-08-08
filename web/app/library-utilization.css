@@ -279,6 +279,33 @@
   color: var(--color-abyss-text-45);
 }
 
+/* The footnote row (Arjun, 2026-08-08). The first version stacked up to four
+   full sentences of `lu-disclosure` under the list, each explaining its own
+   reasoning — a wall nobody reads, which makes an AC-required disclosure
+   worthless in practice even though it is technically present. Same facts,
+   now clauses on one wrapping row, separated by a middot the way a caption
+   strip reads rather than a paragraph. Smaller and dimmer than
+   `lu-disclosure`: these are footnotes to the list, not statements about it. */
+.lu-shelf-notes {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--color-abyss-text-45);
+}
+
+/* Inline flow, NOT a flex row, and the separator TRAILS its phrase rather than
+   leading the next one. Both choices are the same fix: as a wrapping flex row
+   with a leading `::before`, a note pushed onto its own line at 320px carried
+   the middot with it and the line opened with an orphaned separator (measured,
+   not predicted). Trailing means the middot stays at the end of the line it
+   belongs to, which is what a wrapped caption should look like.
+
+   A pseudo-element rather than a character in the markup, so it is never read
+   aloud by a screen reader or picked up when the text is copied. */
+.lu-shelf-note:not(:last-child)::after {
+  content: " · ";
+  color: var(--color-abyss-text-22);
+}
+
 /* Tabular figures so the day counts form a clean right-aligned column — the
    sort key is the one value on the row a DJ scans down, and proportional
    digits make a sorted column look ragged enough to read as unsorted. */
