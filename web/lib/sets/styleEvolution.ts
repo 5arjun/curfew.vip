@@ -801,33 +801,55 @@ export const GENRE_STREAM_MAX = 6;
 export const GENRE_FOLD_LABEL = "Everything else";
 
 /**
- * Per-bucket 100%-stacked genre shares (AC-1/AC-2). `rankedNames` is the
- * shared view-independent ranking from `buildGenreColorAssignment` — the
- * stream selects its top 6 from the SAME list the bars select their top 5
- * from, so the two charts in the Genre section can never disagree about
- * which genre a color names (G-1).
+ * Per-bucket 100%-stacked genre shares (AC-1/AC-2). `rosterNames` is the
+ * view-independent color roster from `buildGenreColorAssignment` — pass
+ * `assignment.ranked.slice(0, GENRE_SLOT_COUNT)`, the genres that hold a
+ * reserved hue, in global rank order. The stream draws 6 of them and the
+ * bars draw 5 of the same list, so the two charts in the Genre section can
+ * never disagree about which genre a color names (G-1).
  */
 export function buildGenreShare(
   values: Array<MonthGenreDiversity | null>,
-  rankedNames: string[],
+  rosterNames: string[],
 ): GenreShareModel {
-  // Present = appears with a nonzero count somewhere in THIS view. A genre
-  // absent from the view gets no band (a zero-height band everywhere is
-  // legend noise), but its color is still reserved globally, so its absence
-  // here never recolors anything (AC-3).
-  const present = new Set<string>();
+  // Per-genre totals within THIS view. A genre absent here gets no band (a
+  // zero-height band everywhere is legend noise), but its color stays
+  // reserved globally, so its absence never recolors anything (AC-3).
+  const viewTotals = new Map<string, number>();
   for (const v of values) {
-    for (const t of v?.breakdown ?? []) if (t.count > 0) present.add(t.name);
+    for (const t of v?.breakdown ?? []) {
+      if (t.count > 0) viewTotals.set(t.name, (viewTotals.get(t.name) ?? 0) + t.count);
+    }
   }
+  const present = new Set(viewTotals.keys());
 
-  // A band is "named" only if the genre holds one of the 6 reserved color
-  // slots (the global top-6, whether or not all six are present in THIS
-  // view). A genre present here but outside the global slots folds — giving
-  // it a band of its own would render it in the fold neutral (its only
-  // color), indistinguishable from the fold band beside it.
-  const top = rankedNames.slice(0, GENRE_STREAM_MAX).filter((n) => present.has(n));
+  // A band is "named" only if the genre holds one of the reserved color
+  // slots — giving an unrostered genre a band of its own would render it in
+  // the fold neutral (its only color), indistinguishable from the fold band
+  // beside it.
+  //
+  // Choose by count IN THIS VIEW, then order by GLOBAL rank (D-3, code
+  // review 2026-08-08). The roster is one wider than this cap, so a rostered
+  // genre with no plays here no longer costs the DJ a band — the vacancy is
+  // backfilled by a genre that also owns a permanent color, and nothing
+  // changes hue to make room (AC-3 governs color, not inclusion). Selection
+  // may vary with the view; hue and stack order may not.
+  //
+  // This is the same rule as `genreColor.ts`'s `selectGenreBands`, which the
+  // breakdown bars use — kept in sync rather than imported, for the same
+  // upstream reason as TAXONOMY_CATCH_ALL above. `styleEvolution.test.ts`
+  // pins the two against each other; change both or neither.
+  const rank = new Map(rosterNames.map((n, i) => [n, i]));
+  const top = rosterNames
+    .filter((n) => (viewTotals.get(n) ?? 0) > 0)
+    .sort((a, b) => (viewTotals.get(b) ?? 0) - (viewTotals.get(a) ?? 0) || rank.get(a)! - rank.get(b)!)
+    .slice(0, GENRE_STREAM_MAX)
+    .sort((a, b) => rank.get(a)! - rank.get(b)!);
   const topSet = new Set(top);
-  const hasFold = rankedNames.some((n) => present.has(n) && !topSet.has(n));
+  // Anything present that did not get a band folds — including genres past
+  // the roster entirely, which is why this reads `present` and not the
+  // roster.
+  const hasFold = [...present].some((n) => n !== TAXONOMY_CATCH_ALL && !topSet.has(n));
 
   const bands: GenreShareBand[] = top.map((name) => ({ name, kind: "named" as const }));
   if (present.has(TAXONOMY_CATCH_ALL)) bands.push({ name: TAXONOMY_CATCH_ALL, kind: "catchAll" });
@@ -913,8 +935,15 @@ export function buildCamelotWheel(values: Array<MonthKeyDiversity | null>): Came
 
 /** Integer share → whole-percent label. Integer-over-integer input, so the
  *  value itself is bit-identical cross-engine (G-8); rounding is for prose. */
-function pctLabel(count: number, total: number): string {
-  return `${Math.round((count / total) * 100)}%`;
+/** A share as a whole percent, with a floor so a real reading never prints
+ *  as nothing (P-8, code review 2026-08-08): one play in three hundred is
+ *  "<1%", not the self-contradicting "1 play · 0% of keyed plays". Exported
+ *  because the two hover chips need the identical rule. */
+export function pctLabel(count: number, total: number): string {
+  if (total <= 0) return "0%";
+  const pct = (count / total) * 100;
+  if (count > 0 && pct < 0.5) return "<1%";
+  return `${Math.round(pct)}%`;
 }
 
 /**
@@ -926,6 +955,7 @@ export function genreShareSummary(
   buckets: string[],
   values: Array<MonthGenreDiversity | null>,
   granularity: Granularity,
+  model?: GenreShareModel,
 ): string {
   const present = presentPoints(
     buckets,
@@ -934,7 +964,22 @@ export function genreShareSummary(
   if (present.length === 0) return "No genre data yet.";
   const withYear = spansMultipleYears(buckets);
 
-  const lead = (v: MonthGenreDiversity) => {
+  // Index the drawn columns by bucket key so the caption can read the SAME
+  // numbers the bands do (P-5, code review 2026-08-08). Reading the raw
+  // breakdown instead let the caption lead with a genre that has no band —
+  // it had been folded into "Everything else" — and since the visible
+  // caption was removed this string is the chart's ONLY accessible reading,
+  // so it has to describe what is actually on screen. Optional so the
+  // generator still stands alone as a pure summary of the tallies.
+  const drawn = model ? new Map(buckets.map((b, i) => [b, model.columns[i]])) : null;
+
+  const lead = (v: MonthGenreDiversity, bucket: string) => {
+    const col = drawn?.get(bucket);
+    if (col && model) {
+      let best = 0;
+      for (let i = 1; i < col.counts.length; i++) if (col.counts[i] > col.counts[best]) best = i;
+      return { name: model.bands[best].name, share: pctLabel(col.counts[best], col.total) };
+    }
     // breakdown is sorted descending by count; ties break by first-seen,
     // which is stable for a given dataset.
     const top = v.breakdown[0];
@@ -943,13 +988,13 @@ export function genreShareSummary(
   };
 
   const last = present[present.length - 1];
-  const lastLead = lead(last.value);
+  const lastLead = lead(last.value, last.bucket);
   if (present.length === 1) {
     return `${lastLead.name} led your mix at ${lastLead.share} in ${bucketPhrase(last.bucket, granularity, withYear)}.`;
   }
 
   const first = present[0];
-  const firstLead = lead(first.value);
+  const firstLead = lead(first.value, first.bucket);
   const since = bucketPhrase(first.bucket, granularity, withYear);
   if (firstLead.name === lastLead.name) {
     return `${lastLead.name} has led your mix since ${since}, at ${lastLead.share} in ${bucketPhrase(last.bucket, granularity, withYear)}.`;

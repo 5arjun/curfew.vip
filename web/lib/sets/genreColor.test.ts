@@ -6,6 +6,7 @@ import {
   GENRE_SLOT_COUNT,
   buildGenreColorAssignment,
   genreColorFor,
+  selectGenreBands,
 } from "./genreColor";
 import { buildStyleEvolution } from "./styleEvolution";
 import type { SetRecord } from "./types";
@@ -108,5 +109,43 @@ describe("buildGenreColorAssignment (Story 4.8 AC-3/AC-4 — G-1)", () => {
     ]);
     expect(a.ranked).toEqual(["alpha", "zeta"]);
     expect(a).toEqual(b);
+  });
+});
+
+describe("selectGenreBands (D-3, code review 2026-08-08)", () => {
+  const assignment = {
+    ranked: Array.from({ length: GENRE_SLOT_COUNT + 2 }, (_, i) => `g${i}`),
+    colors: {},
+  };
+  const totals = (entries: Array<[string, number]>) => new Map(entries);
+
+  it("does not spend a band on a rostered genre with no plays in this view", () => {
+    // g0 outranks everything globally but is absent here; before D-3 its
+    // slot was sliced first and then filtered away, so the cap silently
+    // dropped to 2 and g3 lost its band to the fold.
+    const picked = selectGenreBands(assignment, totals([["g1", 5], ["g2", 4], ["g3", 3]]), 3);
+    expect(picked).toEqual(["g1", "g2", "g3"]);
+  });
+
+  it("chooses by view-local count but returns them in global rank order", () => {
+    const picked = selectGenreBands(assignment, totals([["g0", 1], ["g1", 9], ["g2", 8]]), 2);
+    expect(picked).toEqual(["g1", "g2"]); // g0 loses on view count, not rank
+  });
+
+  it("never selects a genre outside the color roster — it has no hue to draw in", () => {
+    const outside = `g${GENRE_SLOT_COUNT}`;
+    const picked = selectGenreBands(assignment, totals([[outside, 999], ["g0", 1]]), 6);
+    expect(picked).toEqual(["g0"]);
+    expect(genreColorFor(assignment, outside)).toBe(FOLD_COLOR);
+  });
+
+  it("is stable under a view that only shrinks — the reveal cannot reorder what stays", () => {
+    const wide = selectGenreBands(assignment, totals([["g0", 9], ["g1", 7], ["g2", 5]]), 6);
+    const narrow = selectGenreBands(assignment, totals([["g0", 4], ["g1", 3]]), 6);
+    expect(wide).toEqual(["g0", "g1", "g2"]);
+    expect(narrow).toEqual(["g0", "g1"]);
+    // Order of the survivors is identical — selection may change, sequence
+    // and (via genreColorFor) hue may not.
+    expect(wide.filter((n) => narrow.includes(n))).toEqual(narrow);
   });
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useId, useMemo, useRef, useState } from "react";
-import { camelotWheelSummary, type CamelotWheelModel } from "@/lib/sets/styleEvolution";
+import { camelotWheelSummary, pctLabel, type CamelotWheelModel } from "@/lib/sets/styleEvolution";
 import { CursorChip, useCursorChipTarget } from "@/app/components/ui/CursorChip";
 import { TrendChartErrorBoundary } from "./TrendChart";
 
@@ -158,8 +158,7 @@ function CamelotWheelPlot({ wheel, caption }: { wheel: CamelotWheelModel; captio
     const cell = cells.find((c) => c.key === hoverKey);
     if (!cell) return null;
     if (cell.count === 0) return `${cell.key} · never played`;
-    const pct = Math.round((cell.count / wheel.totalKeyed) * 100);
-    return `${cell.key} · ${cell.count} ${cell.count === 1 ? "play" : "plays"} · ${pct}% of keyed plays`;
+    return `${cell.key} · ${cell.count} ${cell.count === 1 ? "play" : "plays"} · ${pctLabel(cell.count, wheel.totalKeyed)} of keyed plays`;
   }, [hoverKey, cells, wheel.totalKeyed]);
 
   if (wheel.totalKeyed === 0) {

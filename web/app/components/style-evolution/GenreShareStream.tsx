@@ -4,11 +4,12 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import {
   buildGenreShare,
   genreShareSummary,
+  pctLabel,
   type GenreShareModel,
   type Granularity,
   type MonthGenreDiversity,
 } from "@/lib/sets/styleEvolution";
-import { genreColorFor, type GenreColorAssignment } from "@/lib/sets/genreColor";
+import { genreColorFor, GENRE_SLOT_COUNT, type GenreColorAssignment } from "@/lib/sets/genreColor";
 import { createMonotoneYAt, type CurveXY } from "@/lib/sets/energyArc";
 import { CursorChip, useCursorChipTarget } from "@/app/components/ui/CursorChip";
 import { TrendChartErrorBoundary } from "./TrendChart";
@@ -114,16 +115,42 @@ export function GenreShareStream({
    *  bars consume, so the two charts in this section always agree. */
   genreColors: GenreColorAssignment;
 }) {
-  // THE one Chart Summary string (visible caption + aria text-equivalent +
-  // render-failure fallback).
-  const caption = genreShareSummary(buckets, genreSeries, granularity);
+  // The COLOR ROSTER, not the full ranking: only genres holding a reserved
+  // hue can get a band, and the roster is one wider than the band cap so a
+  // rostered genre absent from this view no longer costs a band (D-3).
+  // Built out here rather than in the plot so the caption can describe the
+  // bands that actually render (P-5).
+  const model = useMemo(
+    () => buildGenreShare(genreSeries, genreColors.ranked.slice(0, GENRE_SLOT_COUNT)),
+    [genreSeries, genreColors],
+  );
+
+  // THE one Chart Summary string (aria text-equivalent + render-failure
+  // fallback; the visible caption was dropped from this chart 2026-08-08).
+  const caption = genreShareSummary(buckets, genreSeries, granularity, model);
+
+  // Reset the boundary when the DRAWN DATA changes, which `buckets.length`
+  // cannot detect: `BucketSeries.buckets` is the union across ALL sets
+  // (pre-exclusion), so it is byte-identical for the `excluding` and
+  // `including` partitions and the reveal toggle never cleared a tripped
+  // boundary — the exact failure the boundary's own comment says the key
+  // exists to prevent (P-3, code review 2026-08-08). The categorized-play
+  // total moves with the reveal; when it does not, the two partitions draw
+  // the same chart and not resetting is the correct outcome.
+  const playTotal = useMemo(
+    () => genreSeries.reduce((sum, g) => sum + (g?.breakdown ?? []).reduce((n, t) => n + t.count, 0), 0),
+    [genreSeries],
+  );
 
   return (
-    <TrendChartErrorBoundary caption={caption} resetKey={`genre-share:${granularity}:${buckets.length}`}>
+    <TrendChartErrorBoundary
+      caption={caption}
+      resetKey={`genre-share:${granularity}:${buckets.length}:${playTotal}`}
+    >
       <GenreShareStreamPlot
         buckets={buckets}
         granularity={granularity}
-        genreSeries={genreSeries}
+        model={model}
         genreColors={genreColors}
         caption={caption}
       />
@@ -131,22 +158,22 @@ export function GenreShareStream({
   );
 }
 
-type StreamHover = { bandIndex: number; bucketIndex: number };
+/** Identity, never indices — see `hoverDetail` (P-4). */
+type StreamHover = { bandName: string; bucketKey: string };
 
 function GenreShareStreamPlot({
   buckets,
   granularity,
-  genreSeries,
+  model,
   genreColors,
   caption,
 }: {
   buckets: string[];
   granularity: Granularity;
-  genreSeries: Array<MonthGenreDiversity | null>;
+  model: GenreShareModel;
   genreColors: GenreColorAssignment;
   caption: string;
 }) {
-  const model = useMemo(() => buildGenreShare(genreSeries, genreColors.ranked), [genreSeries, genreColors]);
   const xs = useMemo(() => buckets.map((_, i) => xForIndex(i, buckets.length)), [buckets]);
   const runs = useMemo(() => columnRuns(model.columns), [model]);
 
@@ -233,23 +260,31 @@ function GenreShareStreamPlot({
   const hasAnyColumn = model.columns.some((c) => c != null);
 
   /* ── Hover: band identity comes from the path under the cursor; the
-     bucket is the nearest non-gap column to the cursor's x. Mouse-only
-     enrichment (the bars' precedent) — the caption stays the accessible
-     reading. ─────────────────────────────────────────────────────────── */
+     bucket is the nearest column to the cursor's x THAT THIS BAND ACTUALLY
+     OCCUPIES. Mouse-only enrichment (the bars' precedent) — the caption
+     stays the accessible reading.
+
+     The band qualifier is P-4 (code review 2026-08-08). A band tapers to
+     zero height between a bucket it holds and one it does not, so plain
+     nearest-column attribution reported "July · Techno · 0% (0 plays)" while
+     the cursor sat on visibly painted Techno. Identity from the path and
+     bucket from proximity have to be reconciled, and the band is the one the
+     DJ is demonstrably pointing at. ──────────────────────────────────────── */
   const plotRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const chipTargetRef = useCursorChipTarget();
   const [hover, setHover] = useState<StreamHover | null>(null);
 
   const bucketAtClientX = useCallback(
-    (clientX: number): number | null => {
+    (clientX: number, bandIndex: number): number | null => {
       const rect = plotRef.current?.getBoundingClientRect();
       if (!rect || rect.width === 0) return null;
       const u = ((clientX - rect.left) / rect.width) * VIEW.width;
       let best: number | null = null;
       let bestDist = Infinity;
       for (let i = 0; i < xs.length; i++) {
-        if (model.columns[i] == null) continue;
+        const col = model.columns[i];
+        if (col == null || (col.counts[bandIndex] ?? 0) === 0) continue;
         const d = Math.abs(xs[i] - u);
         if (d < bestDist) {
           bestDist = d;
@@ -264,22 +299,30 @@ function GenreShareStreamPlot({
   const onBandMove = useCallback(
     (bandIndex: number, e: React.MouseEvent) => {
       chipTargetRef.current = { x: e.clientX, y: e.clientY };
-      const bucketIndex = bucketAtClientX(e.clientX);
-      setHover(bucketIndex == null ? null : { bandIndex, bucketIndex });
+      const bucketIndex = bucketAtClientX(e.clientX, bandIndex);
+      const bandName = model.bands[bandIndex]?.name;
+      const bucketKey = bucketIndex == null ? undefined : buckets[bucketIndex];
+      setHover(bandName == null || bucketKey == null ? null : { bandName, bucketKey });
     },
-    [chipTargetRef, bucketAtClientX],
+    [chipTargetRef, bucketAtClientX, model, buckets],
   );
   const clearHover = useCallback(() => setHover(null), []);
 
+  // Resolved by IDENTITY, not by the indices the pointer saw. Hover only
+  // clears on mouseleave, so a page-level toggle driven from the keyboard
+  // while the cursor rests on a band rebuilds `bands`/`columns` underneath
+  // it — an in-range index then silently points at a different genre and a
+  // different date, which the old range check could not catch (P-4). A name
+  // and a bucket key either still exist in the new model or they do not.
   const hoverDetail = useMemo(() => {
     if (hover == null) return null;
-    const col = model.columns[hover.bucketIndex];
-    const band = model.bands[hover.bandIndex];
-    const bucket = buckets[hover.bucketIndex];
-    if (!col || !band || !bucket) return null;
-    const count = col.counts[hover.bandIndex];
-    const pct = Math.round((count / col.total) * 100);
-    return `${bucketDetail(bucket, granularity)} · ${band.name} · ${pct}% (${count} ${count === 1 ? "play" : "plays"})`;
+    const bandIndex = model.bands.findIndex((b) => b.name === hover.bandName);
+    const bucketIndex = buckets.indexOf(hover.bucketKey);
+    if (bandIndex < 0 || bucketIndex < 0) return null;
+    const col = model.columns[bucketIndex];
+    if (!col) return null;
+    const count = col.counts[bandIndex];
+    return `${bucketDetail(buckets[bucketIndex], granularity)} · ${hover.bandName} · ${pctLabel(count, col.total)} (${count} ${count === 1 ? "play" : "plays"})`;
   }, [hover, model, buckets, granularity]);
 
   if (!hasAnyColumn) {
@@ -308,7 +351,7 @@ function GenreShareStreamPlot({
         </p>
       </div>
 
-      <div ref={plotRef} className="se-chart-plot se-stream-plot" role="img" aria-label={caption}>
+      <div ref={plotRef} className="se-chart-plot" role="img" aria-label={caption}>
         <div className="se-chart-yaxis" aria-hidden="true">
           <span className="se-chart-ylabel" style={{ top: pctY(shareY(1)) }}>
             100%
@@ -329,7 +372,7 @@ function GenreShareStreamPlot({
               key={r.key}
               d={r.d}
               className="se-stream-band"
-              data-hot={hover?.bandIndex === r.bandIndex ? true : undefined}
+              data-hot={hover?.bandName === model.bands[r.bandIndex]?.name ? true : undefined}
               fill={bandColor(r.bandIndex)}
               onMouseEnter={(e) => onBandMove(r.bandIndex, e)}
               onMouseMove={(e) => onBandMove(r.bandIndex, e)}
@@ -359,7 +402,7 @@ function GenreShareStreamPlot({
       <div className="se-chart-cats">
         {model.bands.map((band, bi) => (
           <span key={band.name} className="se-chart-cat">
-            <span className="se-chart-cat-swatch se-stream-swatch" style={{ background: bandColor(bi) }} aria-hidden="true" />
+            <span className="se-chart-cat-swatch" style={{ background: bandColor(bi) }} aria-hidden="true" />
             {band.kind === "fold" ? `${band.name}*` : band.name}
           </span>
         ))}
@@ -372,7 +415,7 @@ function GenreShareStreamPlot({
         target={chipTargetRef}
         boundsRef={rootRef}
         visible={hoverDetail != null}
-        contentKey={hover != null ? `${hover.bucketIndex}-${hover.bandIndex}` : null}
+        contentKey={hover != null ? `${hover.bucketKey}-${hover.bandName}` : null}
         offsetY={-44}
         compact
       >

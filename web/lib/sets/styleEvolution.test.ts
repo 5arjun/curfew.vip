@@ -11,12 +11,14 @@ import {
   monthsSpanned,
   shannonEntropy,
   GENRE_FOLD_LABEL,
+  GENRE_STREAM_MAX,
   buildCamelotWheel,
   buildGenreShare,
   camelotWheelSummary,
   genreShareSummary,
   harmonicMixSummary,
 } from "./styleEvolution";
+import { selectGenreBands } from "./genreColor";
 import type { SetRecord, SyncPlay } from "./types";
 
 function play(overrides: Partial<SyncPlay> & { position: number }): SyncPlay {
@@ -999,15 +1001,67 @@ describe("buildGenreShare (Story 4.8 AC-1/AC-2/AC-12)", () => {
     expect(share.columns[2]).toBeNull();
   });
 
-  it("folds a bucket whose genres are all past the cap into the fold band, still totalled honestly", () => {
-    const ranked = ["g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8"];
-    const share = buildGenreShare([g([["g1", 5]]), g([["g7", 2], ["g8", 3]])], ranked);
+  it("folds genres outside the color roster entirely, still totalled honestly", () => {
+    // The second argument is the ROSTER (`assignment.ranked.slice(0,
+    // GENRE_SLOT_COUNT)`), not the full ranking — only a genre holding a
+    // reserved hue can get a band. g8 sits past the roster, so it folds even
+    // though the view has room for it.
+    const roster = ["g1", "g2", "g3", "g4", "g5", "g6", "g7"];
+    const share = buildGenreShare([g([["g1", 5]]), g([["g8", 3]])], roster);
     const fold = share.bands[share.bands.length - 1];
     expect(fold.kind).toBe("fold");
     expect(fold.name).toBe(GENRE_FOLD_LABEL);
     const col = share.columns[1]!;
-    expect(col.total).toBe(5);
-    expect(col.counts[share.bands.length - 1]).toBe(5);
+    expect(col.total).toBe(3);
+    expect(col.counts[share.bands.length - 1]).toBe(3);
+  });
+
+  it("backfills a band left vacant by a rostered genre with no plays in this view (D-3)", () => {
+    // g2..g6 outrank g7 globally but have no plays in the partition being
+    // drawn. Before D-3 the stream sliced the roster BEFORE filtering, so
+    // those five vacancies were simply lost and g7 — the DJ's actual second
+    // genre here — was swallowed by the neutral fold band.
+    const roster = ["g1", "g2", "g3", "g4", "g5", "g6", "g7"];
+    const share = buildGenreShare([g([["g1", 9], ["g7", 4]])], roster);
+    expect(share.bands.map((b) => b.name)).toEqual(["g1", "g7"]);
+    expect(share.bands.every((b) => b.kind === "named")).toBe(true);
+    expect(share.columns[0]).toEqual({ counts: [9, 4], total: 13 });
+  });
+
+  it("caps bands at 6 by view-local count but orders them by global rank (D-3)", () => {
+    const roster = ["g1", "g2", "g3", "g4", "g5", "g6", "g7"];
+    // g7 is the biggest thing in THIS view; g1 the smallest. Seven rostered
+    // genres are present and the cap is six, so exactly one loses its band —
+    // the view's smallest, not the globally-lowest-ranked.
+    const share = buildGenreShare(
+      [g([["g1", 1], ["g2", 2], ["g3", 3], ["g4", 4], ["g5", 5], ["g6", 6], ["g7", 7]])],
+      roster,
+    );
+    expect(share.bands.map((b) => b.name)).toEqual([
+      "g2",
+      "g3",
+      "g4",
+      "g5",
+      "g6",
+      "g7",
+      GENRE_FOLD_LABEL,
+    ]);
+    expect(share.columns[0]!.counts).toEqual([2, 3, 4, 5, 6, 7, 1]);
+  });
+
+  it("selects the same genres the breakdown bars do, from the same roster (G-1)", () => {
+    // buildGenreShare duplicates `genreColor.ts`'s `selectGenreBands` rather
+    // than importing it (this module is that one's upstream). This test is
+    // the pin that keeps the two copies honest — if one changes, it fails.
+    const roster = ["g1", "g2", "g3", "g4", "g5", "g6", "g7"];
+    const values = [g([["g2", 8], ["g5", 6], ["g7", 9], ["g1", 1]])];
+    const share = buildGenreShare(values, roster);
+    const viewTotals = new Map<string, number>();
+    for (const v of values) for (const t of v.breakdown) viewTotals.set(t.name, t.count);
+    const assignment = { ranked: roster, colors: {} };
+    expect(share.bands.filter((b) => b.kind === "named").map((b) => b.name)).toEqual(
+      selectGenreBands(assignment, viewTotals, GENRE_STREAM_MAX),
+    );
   });
 
   it("shows no fold band at exactly 6 named genres and one at 7 (AC-2 boundary)", () => {

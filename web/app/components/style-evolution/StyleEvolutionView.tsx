@@ -52,8 +52,19 @@ const RETIRED_CONVERSION_WINDOW_STORAGE_KEY = "curfew:style-evolution:conversion
 /** The gated trend slots' insufficient copy — the page-level EXPERIENCE.md
  *  line claims the whole page has nothing to show, which stopped being true
  *  the moment the heroes started rendering off one set (AC-12). Same
- *  console-voice promise register, scoped to the trends. */
-const TREND_GATE_COPY = "Sets from a second month and the trend lines draw themselves.";
+ *  console-voice promise register, scoped to the trends.
+ *
+ *  One line per section rather than one shared line (D-4, code review
+ *  2026-08-08). Genre and Key used to render NOTHING in their gated slot, so
+ *  a one-month DJ saw Tempo explain itself while the other two sections just
+ *  stopped after their hero with no account of the missing second chart.
+ *  Naming the specific trend also keeps three visible gate lines from reading
+ *  as the same sentence stamped three times. */
+const TREND_GATE_COPY = {
+  bpm: "Sets from a second month and the trend lines draw themselves.",
+  genre: "Sets from a second month and the diversity trend draws itself.",
+  harmonic: "Sets from a second month and the harmonic trend draws itself.",
+} as const;
 
 export function StyleEvolutionView({ model }: { model: StyleEvolutionModel }) {
   const [granularity, setGranularity] = useGranularitySelection();
@@ -115,18 +126,34 @@ export function StyleEvolutionView({ model }: { model: StyleEvolutionModel }) {
     const total = keySeries.reduce((sum, k) => sum + (k?.no_key_count ?? 0), 0);
     const parts: string[] = [];
     if (total > 0) parts.push(`${total} ${total === 1 ? "play" : "plays"} without a key`);
+    // A PLAY count, not a count of distinct key strings (`buildCamelotWheel`
+    // sums `t.count`) — so it has to be worded as plays, like the clause it
+    // sits beside. "N keys unreadable" put two different units in one
+    // sentence (P-2, code review 2026-08-08).
     if (wheel.unreadableCount > 0) {
-      parts.push(`${wheel.unreadableCount} ${wheel.unreadableCount === 1 ? "key" : "keys"} unreadable`);
+      parts.push(
+        `${wheel.unreadableCount} ${wheel.unreadableCount === 1 ? "play" : "plays"} with an unreadable key`,
+      );
     }
     return parts.length > 0 ? parts.join(" · ") : null;
   }, [keySeries, wheel.unreadableCount]);
   // Story 4.8 AC-10 (Task 6): transitions the harmonic rate could not score,
-  // summed across the visible partition — the same wording the tile-level
-  // disclosure already uses, so the page never says one thing two ways.
+  // summed across the visible partition — the scope this line's own chart
+  // draws, and the same scope its sibling disclosures above use.
+  //
+  // Deliberately NOT the tile's wording (P-1, code review 2026-08-08).
+  // Reusing it verbatim was meant to stop the page saying one thing two
+  // ways, but the tile reads the CURRENT bucket only (`buildSummaryTiles`)
+  // while this reads every bucket, so the identical sentence rendered twice
+  // on one page with different numbers and no way to tell which was which.
+  // Two scopes need two sentences; "across these <buckets>" is the scope
+  // word that makes this one answerable.
   const harmonicDisclosure = useMemo(() => {
     const total = harmonicSeries.reduce((sum, h) => sum + (h?.excludedNoKey ?? 0), 0);
-    return total > 0 ? `${total} ${total === 1 ? "transition" : "transitions"} excluded — no key` : null;
-  }, [harmonicSeries]);
+    if (total === 0) return null;
+    const span = granularity === "week" ? "weeks" : "months";
+    return `${total} ${total === 1 ? "transition" : "transitions"} across these ${span} excluded — no key`;
+  }, [harmonicSeries, granularity]);
   // A set with no readable start time has no bucket to sit in, so it is
   // absent from every metric here — including the wheel (G-4's caveat).
   // Said out loud once, at the page level, rather than repeated under the
@@ -173,10 +200,9 @@ export function StyleEvolutionView({ model }: { model: StyleEvolutionModel }) {
             metric="bpm"
             bpmSeries={bpmSeries}
             genreSeries={[]}
-            keySeries={[]}
           />
         ) : (
-          <InsufficientHistory copy={TREND_GATE_COPY} />
+          <InsufficientHistory copy={TREND_GATE_COPY.bpm} />
         )}
       </section>
 
@@ -191,17 +217,18 @@ export function StyleEvolutionView({ model }: { model: StyleEvolutionModel }) {
           genreSeries={genreSeries}
           genreColors={genreColors}
         />
-        {sectionsReady && (
+        {sectionsReady ? (
           <TrendChart
             buckets={series.buckets}
             granularity={granularity}
             metric="genre"
             bpmSeries={[]}
             genreSeries={genreSeries}
-            keySeries={[]}
             genreColors={genreColors}
             showCaption={false}
           />
+        ) : (
+          <InsufficientHistory copy={TREND_GATE_COPY.genre} />
         )}
         {genreDisclosure && <p className="se-disclosure">{genreDisclosure}</p>}
       </section>
@@ -214,16 +241,17 @@ export function StyleEvolutionView({ model }: { model: StyleEvolutionModel }) {
         <h2 className="se-section-title">Key</h2>
         <div className="se-key-row">
           <CamelotWheel wheel={wheel} />
-          {sectionsReady && (
+          {sectionsReady ? (
             <TrendChart
               buckets={series.buckets}
               granularity={granularity}
               metric="harmonic"
               bpmSeries={[]}
               genreSeries={[]}
-              keySeries={[]}
               harmonicSeries={harmonicSeries}
             />
+          ) : (
+            <InsufficientHistory copy={TREND_GATE_COPY.harmonic} />
           )}
         </div>
         {keyDisclosure && <p className="se-disclosure">{keyDisclosure}</p>}
