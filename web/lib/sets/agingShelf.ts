@@ -305,12 +305,19 @@ export function buildAgingShelf(
       basis = "add-date";
     }
 
-    // One guard for every clock source that can sit in the future — a
-    // future-dated `added_at`, a future-dated play, or (unreachable, but not
-    // assumed) a future observation start. All three are the same fact to a DJ:
-    // a date Curfew cannot reconcile. Counted rather than dropped silently, so
-    // the population reconciles; see this function's own note on the open
-    // three-way ruling.
+    // One guard on `startMs`, whichever clock source produced it for this row
+    // — a future-dated last play (observed branch) or a future-dated,
+    // already-clamped `added_at` (fallback branch). Both are the same fact to
+    // a DJ: a date Curfew cannot reconcile. Counted rather than dropped
+    // silently, so the population reconciles; see this function's own note on
+    // the open three-way ruling.
+    //
+    // NOT covered (code review finding, 2026-08-08): a future-dated
+    // `added_at` on a row that also has a real, past observed play. `startMs`
+    // is `lastPlayMs` there, so the bad `added_at` is never inspected — it
+    // affects nothing this model computes (the play is what sets the clock),
+    // so it is left unflagged rather than reaching into a fact the row's own
+    // clock doesn't use.
     if (startMs > nowMs) {
       unreconciledDateCount += 1;
       continue;
@@ -393,13 +400,24 @@ export function buildAgingShelf(
  * synced set whose `started_at` predates signup would produce rows while
  * `canJudge` is false, and rendering "not yet possible" above a list of real
  * rows would be the module contradicting itself on screen.
+ *
+ * **`all-clear` also requires zero unreconciled/unknown-date rows** (code
+ * review finding, 2026-08-08). `EXPERIENCE.md`'s copy is an unqualified claim
+ * — "Everything you've bought is getting played." — and a track whose dates
+ * Curfew cannot reconcile, or whose play status is genuinely unclassifiable,
+ * means that claim is not actually known to be true. Reusing `not-yet-possible`
+ * for that case rather than inventing a fourth state: its copy states the
+ * mechanism, not a reason, so it stays true whether the "not known yet" is
+ * because observation is short or because some rows can't be judged.
  */
 export type AgingShelfState = "rows" | "nothing-synced" | "not-yet-possible" | "all-clear";
 
 export function agingShelfState(model: AgingShelfModel): AgingShelfState {
   if (model.qualifyingCount > 0) return "rows";
   if (model.presentTrackCount === 0) return "nothing-synced";
-  return model.canJudge ? "all-clear" : "not-yet-possible";
+  if (!model.canJudge) return "not-yet-possible";
+  if (model.unreconciledDateCount > 0 || model.unknownAddDateCount > 0) return "not-yet-possible";
+  return "all-clear";
 }
 
 /**

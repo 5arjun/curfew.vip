@@ -836,8 +836,10 @@ So that I can gauge how much of my library I actually use.
 ### Story 4.4: Aging shelf with prep-crate action
 
 As a DJ,
-I want a list of library tracks unplayed for 3+ months, sortable by days-unplayed, each with an "add to prep crate" action,
-So that neglected tracks resurface and I can act on them.
+I want a list of library tracks unplayed for 3+ months, sortable by days-unplayed, ~~each with an "add to prep crate" action,~~
+So that neglected tracks resurface ~~and I can act on them~~ **instead of disappearing into a catalogue I never scroll.**
+
+**The prep-crate action is RULED OUT OF MVP (2026-08-08, Arjun) — see AC-2 below.** The section title and story key keep the historical "with prep-crate action" phrasing for tracking continuity; the shipped shelf is read-only.
 
 > **⚑ UNBLOCKED (2026-08-08) — Story 4.11 is merged.** Two *separate* problems sat on this story; only one was Decision B's. (1) "Last play" is go-forward-unknowable, so a veteran's played catalogue falsely read all-aging — closed by the re-spec directly below. (2) **The cloud could count an added-but-never-played track but couldn't NAME it** — closed by Story 4.11's roster sync, now on `main`. Both blockers are clear; this story can start.
 

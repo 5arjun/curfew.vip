@@ -673,7 +673,9 @@ development_status:
   #         TimeToFirstPlay's identical state.
   #   Also the first render EVER of the merged composition — now FOUR modules,
   #   walked 1440/375/320, zero console errors/warnings, zero horizontal
-  #   overflow, sort control 139x28 (WCAG 2.5.8 needs 24x24). The 440px module
+  #   overflow, sort control 34x34 (WCAG 2.5.8 needs 24x24) after the later
+  #   click-to-toggle-chip redesign — this note originally measured the
+  #   pre-redesign 139x28 <select> and was corrected in code review. The 440px module
   #   cap HOLDS against list content; the se-empty rule did not, see above.
   #   FLAGGED, NOT SILENTLY RESOLVED (both in deferred-work.md): the all-clear
   #   copy and the 30-day nudge can contradict each other on screen and both
@@ -685,7 +687,7 @@ development_status:
   #   FR-12 body + UJ-6 path/climax + glossary + the UJ-1 nudge note,
   #   EXPERIENCE.md's Components row + aging-shelf-empty row + nudge row +
   #   UJ-6 step 4, epics.md AC-1/AC-4/AC-5 and two new ACs.
-  4-4-aging-shelf-with-prep-crate-action: review
+  4-4-aging-shelf-with-prep-crate-action: done
   4-5-time-to-first-play: review
   # [LAUNCH BLOCKER, previously unstoried] Ruled by Arjun 2026-08-07: web/'s
   # read path (getRecentSets/getSetById/deleteSet/getLibraryAddEvents) is

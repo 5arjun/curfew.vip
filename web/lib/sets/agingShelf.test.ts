@@ -570,6 +570,22 @@ describe("agingShelfState — the four terminal states (AC-4, AC-5, Context §4)
     );
   });
 
+  // Code review finding, 2026-08-08: "Everything you've bought is getting
+  // played." is an unqualified claim. A row Curfew can't reconcile, or can't
+  // classify at all, means that claim is not actually known to be true — even
+  // though every OTHER track is genuinely all caught up.
+  it("reports not-yet-possible, never all-clear, when an unreconciled-date row survives alongside zero qualifying tracks", () => {
+    const state = build([entry({ track_id: "t1", added_at: daysAgo(-5) })], OBSERVING_2_YEARS);
+    expect(state).toBe("not-yet-possible");
+    expect(state).not.toBe("all-clear");
+  });
+
+  it("reports not-yet-possible, never all-clear, when an unknown-add-date row survives alongside zero qualifying tracks", () => {
+    const state = build([entry({ track_id: "t1" })], OBSERVING_2_YEARS);
+    expect(state).toBe("not-yet-possible");
+    expect(state).not.toBe("all-clear");
+  });
+
   it("reports rows when tracks qualify", () => {
     expect(build([entry({ track_id: "t1", added_at: daysAgo(400) })], OBSERVING_2_YEARS)).toBe(
       "rows",

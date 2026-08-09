@@ -169,7 +169,12 @@ export function AgingShelf({ model }: { model: AgingShelfModel }) {
               section's accessible name states the COUNT, and these rows are
               the track names themselves, which is content rather than a
               duplicate of it. */}
-          <ol className="lu-shelf-list">
+          {/* `tabIndex={0}` (code review finding, 2026-08-08): the rows are
+              deliberately non-interactive (AC-3), so without it a keyboard-only
+              user with no mouse/trackpad had no way to focus this
+              `overflow-y: auto` container and could not reach ~90 of the
+              possible 100 rows past the visible ~9. */}
+          <ol className="lu-shelf-list" tabIndex={0}>
             {rows.map((row) => (
               <li className="lu-shelf-row" key={row.trackId}>
                 <span className="lu-shelf-track">
@@ -256,7 +261,9 @@ export function AgingShelf({ model }: { model: AgingShelfModel }) {
               verdict `buildTimeToFirstPlay` reaches 200px above, not a fourth
               one; see `deferred-work.md`'s open three-way ruling. */}
           {model.unreconciledDateCount > 0 && (
-            <span className="lu-shelf-note">{model.unreconciledDateCount} unusable dates</span>
+            <span className="lu-shelf-note">
+              {model.unreconciledDateCount} unusable {model.unreconciledDateCount === 1 ? "date" : "dates"}
+            </span>
           )}
 
           {/* AC-11's fail-closed disclosure. Without it the suppression is
