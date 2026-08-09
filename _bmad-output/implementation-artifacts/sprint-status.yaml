@@ -745,9 +745,18 @@ development_status:
   # eslint + tsc + next build clean. Deferred to deferred-work.md: the same
   # reveal-blind resetKey in TrendChart itself (pre-existing since 4.1), and
   # locale-dependent SSR'd axis tick labels (hydration mismatch on non-en
-  # browsers, pre-existing house pattern). NOT re-walked in a browser after
-  # the patches — the palette and gate-copy changes are visual and owed a
-  # look before this story goes to done.
+  # browsers, pre-existing house pattern). POST-REVIEW WALKTHROUGH DONE
+  # (Playwright, fixture-fed SSR at 1440/375/320 + a one-set slice): 0 console
+  # errors/warnings anywhere, no hydration mismatch; contrast measured ON THE
+  # RENDERED DOM at 3.25:1 worst for both stream and bars, matching the
+  # validator; AC-3 recolor test passed live (reveal + Week together recolored
+  # nothing); all 6 interactive targets pass a 4-corner 24x24 hit test, which
+  # closes Task 8's owed measurement; no overflow at any width and R-8 stays
+  # closed (first chart y=609 in a 720px viewport at 320px); AC-12/D-4 verified
+  # on one set (heroes render, all three trend slots show their own gate line),
+  # landmarks 7 in both states. The /dev48 route is deleted and VERIFIED gone.
+  # Bars + legend swatches also moved 0.65 -> 0.70 (Arjun) so they share the
+  # validated composite; at 0.65 five of nine sat at 2.96-2.99:1.
   4-8-genre-share-stream-camelot-wheel: review
   # [ADDED 2026-08-07, same Arjun session] Library Utilization's turn. 4-9 is
   # the page composition + the utilization stats that need ZERO agent work
