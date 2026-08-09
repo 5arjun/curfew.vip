@@ -1,29 +1,33 @@
 // Data-access seam for sets (Story 3.6 Task 4, AC-13 / SM-1).
 //
 // The dashboard and Set Detail import ONLY from here — never a fixture file, a
-// Supabase client, or the wire envelope directly. Four of the five DJ-data
-// functions below (`getRecentSets`, `getSetById`, `deleteSet`,
-// `getLibraryAddEvents` — but not `getLibraryRoster`, see below)
-// read/write Supabase directly (Story 4.6 — the cloud read path landed):
-// `sets` + its `plays` and `sessions` embeds, and `library_track_events`, all
-// owner-`SELECT`-only via RLS (AD-7) — no `dj_id` filter needed or wanted,
-// `auth.uid()` is the filter, same precedent `getAgentStatus` (Story 3.9)
-// already set.
+// Supabase client, or the wire envelope directly. EVERY DJ-data function below
+// reads/writes Supabase directly as of Story 4.4 (`getLibraryRoster` was the
+// last hardcoded one; it now reads `library_roster`, and Story 4.4's
+// `getObservationStart` reads `djs`): `sets` + its `plays` and `sessions`
+// embeds, `library_track_events`, `library_roster`, `agent_status` and `djs` —
+// all owner-`SELECT`-only via RLS (AD-7), so no `dj_id` filter is needed or
+// wanted, `auth.uid()` is the filter, the same precedent `getAgentStatus`
+// (Story 3.9) set.
 //
-// The three READS (`getRecentSets`, `getSetById`, `getLibraryAddEvents`) follow
-// `getAgentStatus`'s shape exactly: lazy `@/lib/supabase/server` import,
-// try/catch around the whole body, dev-only console logging on failure, and a
-// calm empty/`null` fallback in production — never a thrown error reaching a
-// page. `deleteSet` deliberately does NOT (Story 4.6 code review): it is a
-// mutation, and a calm fallback there reports a delete that did not happen. It
-// throws instead — see its own doc comment.
+// Every READ follows `getAgentStatus`'s shape exactly: lazy
+// `@/lib/supabase/server` import, try/catch around the whole body, dev-only
+// console logging on failure, and a calm empty/`null` fallback in production —
+// never a thrown error reaching a page. `deleteSet` deliberately does NOT
+// (Story 4.6 code review): it is a mutation, and a calm fallback there reports
+// a delete that did not happen. It throws instead — see its own doc comment.
+//
+// `getObservationStart`'s `null` is the one fallback that is NOT merely
+// "render nothing": it is a binding instruction to its caller to suppress a
+// whole branch of the aging shelf's clock (Story 4.4 AC-11). Read its doc
+// comment before treating it like the others.
 //
 // Two things here exist because PostgREST fails silently rather than loudly,
 // and neither is redundant defensiveness: every unbounded select is capped at
 // `max_rows` (1000) with HTTP 200 and `error: null`, so `getRecentSets` orders
-// and limits explicitly and `getLibraryAddEvents` pages; and `derived` is cast
-// rather than validated, so `hasRenderableDerived` drops a blob too incomplete
-// for callers that dereference it without guards.
+// and limits explicitly while `getLibraryAddEvents` and `getLibraryRoster`
+// page; and `derived` is cast rather than validated, so `hasRenderableDerived`
+// drops a blob too incomplete for callers that dereference it without guards.
 //
 // `recent-sets.fixture.json` / `library-add-events.fixture.json` are no
 // longer read by this module — they were the day-one stand-in for this exact
@@ -44,12 +48,12 @@
 // kept as sample data for `libraryRoster.test.ts`/future stories, same
 // disposition as the two above.
 //
-// All five are `async` — the signature already matched the eventual awaited
-// Supabase reads even at the fixture stage, so no component changes here, and
-// so the roster swap will need none either.
+// All of these are `async` — the signature already matched the eventual
+// awaited Supabase reads even at the fixture stage, which is why Story 4.4's
+// roster swap needed no component changes either.
 import type { AgentStatusRow, AgentStatusSnapshot } from "./agentStatus";
 import type { LibraryAddEvent } from "./libraryConversion";
-import type { LibraryRosterSnapshot } from "./libraryRoster";
+import type { LibraryRosterEntry, LibraryRosterSnapshot } from "./libraryRoster";
 import type { SetRecord, SyncPlay, SyncSetDerived } from "./types";
 
 /** Row shape of a single `plays` select, as the `sets` nested-select below returns it. */
@@ -337,36 +341,160 @@ export async function getLibraryAddEvents(): Promise<LibraryAddEventSnapshot> {
 
 /**
  * The current DJ's library roster (Story 4.11, AD-22) — Tier A only
- * (title/artist; BPM/key/genre are Tier B, parked).
+ * (title/artist; BPM/key/genre are Tier B, parked and NOT in this select; see
+ * Story 4.4 Context §5).
  *
- * Returns the day-one empty shape, which is the honest answer today. It used
- * to return `library-roster.fixture.json`; see this module's header for why
- * that shipped one developer's library counts to every DJ as their own, and
- * why the "pending Story 4.6" justification for it had already expired by the
- * time Story 4.11 merged.
- *
- * Empty is not a placeholder standing in for a number — it is what this seam
- * genuinely knows, and it is the same contract the other four functions honor
- * for a brand-new account (Story 4.6 AC-3): never throw, never invent.
- * `unidentifiableTracksDisclosure` returns `null` at 0, so Story 4.11 AC-6's
- * line simply does not render rather than rendering a false one.
- *
- * Two DIFFERENT pieces of work are needed to make this real, and they are not
- * the same size — conflating them is what produced the bug:
- *   - `entries` CAN be read now. `library_roster` exists with owner-SELECT RLS
- *     and a `(dj_id, absent_at)` index; it needs a paged select like
- *     `getLibraryAddEvents`. Deliberately left for Story 4.4/4.10, the first
- *     stories with a consumer, rather than written speculatively here.
+ * **`entries` reads `library_roster` for real as of Story 4.4** (AC-10), the
+ * first story with a consumer. `excludedNoIdentityCount`/`totalCatalogueRows`
+ * deliberately still do not — the split below is not an oversight, and
+ * conflating the two halves is what produced the bug this function's history
+ * records:
+ *   - `entries` CAN be read. `library_roster` exists with owner-SELECT RLS
+ *     (AD-7 — no `dj_id` filter needed or wanted, `auth.uid()` is the filter)
+ *     and a `(dj_id, absent_at)` index. Paged exactly like
+ *     `getLibraryAddEvents`, for the same reason: PostgREST silently caps an
+ *     unbounded select at `max_rows` with HTTP 200 and `error: null`, and a
+ *     truncated roster renders a confidently short aging shelf.
  *   - `excludedNoIdentityCount`/`totalCatalogueRows` CANNOT. They are
  *     scan-level scalars with no cloud carrier at all: `library_roster` is
  *     per-track (wrong shape) and AD-20's heartbeat carries no derived Serato
  *     data. The agent computes them (`store::scan_identity_coverage`) and
  *     persists them locally, but nothing ships them — that function has no
  *     caller outside its own unit test. Needs a named decision (an extra
- *     AD-22 RPC argument, or two `agent_status` columns), not a default.
+ *     AD-22 RPC argument, or two `agent_status` columns), not a default —
+ *     tracked in `deferred-work.md`. They stay `0`, which is what makes
+ *     `unidentifiableTracksDisclosure` return `null` and Story 4.11 AC-6's
+ *     line not render rather than render a false one. **Do not "make them
+ *     consistent" with `entries` by deriving them from the rows below** —
+ *     the roster is post-exclusion by construction, so anything computed from
+ *     it would be a different number wearing the same name.
+ *
+ * `absent_at is null` is filtered SERVER-side (Story 4.4 AC-8). Not a
+ * post-filter: it is what makes the paging cap count tracks the DJ still owns
+ * rather than burning pages on deleted ones, and it is the exact predicate
+ * `library_roster_dj_id_absent_at_idx` exists for. `.is()`, not `.eq()` —
+ * `eq` renders `absent_at=eq.null`, a literal string comparison matching
+ * nothing.
+ *
+ * Returns the empty shape rather than throwing on failure or on a brand-new
+ * account, the same contract the other reads honor (Story 4.6 AC-3).
  */
 export async function getLibraryRoster(): Promise<LibraryRosterSnapshot> {
-  return { entries: [], excludedNoIdentityCount: 0, totalCatalogueRows: 0 };
+  // The two scalars ride along unchanged on every return path below — see the
+  // doc comment: they have no carrier, and 0 is the honest answer, not a
+  // placeholder.
+  const empty: LibraryRosterSnapshot = {
+    entries: [],
+    excludedNoIdentityCount: 0,
+    totalCatalogueRows: 0,
+  };
+
+  try {
+    const { createClient } = await import("@/lib/supabase/server");
+    const supabase = await createClient();
+
+    // Ordered by `track_id` — `unique (dj_id, track_id)` makes it a total
+    // order, so pages cannot overlap or skip rows the way a nullable
+    // `added_at` ordering could. Same discipline as `getLibraryAddEvents`.
+    const entries: LibraryRosterEntry[] = [];
+    for (let page = 0; page < MAX_PAGES; page += 1) {
+      const from = page * MAX_ROWS_PER_PAGE;
+      const { data, error } = await supabase
+        .from("library_roster")
+        .select("track_id, title, artist, added_at, is_baseline, absent_at")
+        .is("absent_at", null)
+        .order("track_id", { ascending: true })
+        .range(from, from + MAX_ROWS_PER_PAGE - 1);
+
+      if (error) {
+        if (process.env.NODE_ENV !== "production") {
+          console.error("getLibraryRoster: Supabase read failed, rendering as empty", error);
+        }
+        // Empty, not the pages already collected: a partial roster is the exact
+        // failure this pagination exists to prevent, so it must never be the
+        // fallback. The aging shelf would otherwise state a qualifying count
+        // out loud (AC-9) that is simply short.
+        return empty;
+      }
+
+      const batch = (data ?? []) as LibraryRosterEntry[];
+      entries.push(...batch);
+      if (batch.length < MAX_ROWS_PER_PAGE) return { ...empty, entries };
+    }
+
+    // Ran out of pages with a full final batch — the library is larger than
+    // MAX_PAGES * MAX_ROWS_PER_PAGE. Loud in dev rather than a silent cap.
+    if (process.env.NODE_ENV !== "production") {
+      console.error(
+        `getLibraryRoster: stopped at ${MAX_PAGES} pages (${entries.length} entries); roster may be incomplete`,
+      );
+    }
+    return { ...empty, entries };
+  } catch (err) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error("getLibraryRoster: unexpected failure, rendering as empty", err);
+    }
+    return empty;
+  }
+}
+
+/**
+ * When Curfew started being able to observe this DJ's plays at all, in epoch
+ * ms — or `null` if that cannot be established (Story 4.4, Context §3).
+ *
+ * This is the lower bound on the aging shelf's "days unplayed" clock. Decision
+ * A means Curfew only ever observes plays going forward, so a veteran's track
+ * added in 2019 and played every weekend — but never yet in a Curfew-captured
+ * set — would otherwise read as "2,400 days unplayed". A track's shelf age
+ * must never be older than however long Curfew has actually been watching it.
+ *
+ * **`djs.created_at` is the anchor, and the alternatives are wrong, not merely
+ * worse.** `library_roster.created_at` reads as "Curfew started watching last
+ * Tuesday" for any DJ who installed before Story 4.11 shipped, clamping the
+ * entire shelf to empty. The earliest `sessions.started_at` does not exist for
+ * a DJ who has synced no sets — and that is exactly the DJ this metric is
+ * about.
+ *
+ * KNOWN IMPRECISION, accepted: signup precedes agent install, so a DJ who
+ * signs up and installs a week later gets up to a week of "unplayed" time
+ * Curfew could not actually observe. It errs toward showing MORE age, not
+ * less, and Epic 2's onboarding drives install straight off signup. Not worth
+ * a second anchor.
+ *
+ * **FAIL-CLOSED, and this is binding (AC-11).** `null` means the caller must
+ * SUPPRESS the no-play branch entirely — only tracks with a real observed last
+ * play may age. It must NEVER be treated as "fall back to raw `added_at`":
+ * that is precisely the pre-fix behaviour the clamp exists to remove, and
+ * shipping it under a story claiming to have fixed it would be a silent
+ * regression with a green gate. See `buildAgingShelf` in `./agingShelf`, which
+ * owns the suppression.
+ */
+export async function getObservationStart(): Promise<number | null> {
+  try {
+    const { createClient } = await import("@/lib/supabase/server");
+    const supabase = await createClient();
+    const { data, error } = await supabase.from("djs").select("created_at").maybeSingle();
+
+    if (error && process.env.NODE_ENV !== "production") {
+      console.error("getObservationStart: Supabase read failed, suppressing the add-date branch", error);
+    }
+
+    if (error || !data) return null;
+
+    const createdAt = (data as { created_at: string | null }).created_at;
+    // `not null default now()` in the schema, so a null here is unreachable —
+    // but `new Date(null).getTime()` is 0, not NaN, and a 0 would clamp every
+    // track to 1970 and quietly restore the raw-`added_at` behaviour this
+    // function exists to prevent. Guarded rather than assumed.
+    if (!createdAt) return null;
+    const ms = new Date(createdAt).getTime();
+    return Number.isNaN(ms) ? null : ms;
+  } catch (err) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error("getObservationStart: unexpected failure, suppressing the add-date branch", err);
+    }
+    return null;
+  }
 }
 
 /**

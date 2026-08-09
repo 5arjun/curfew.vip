@@ -89,9 +89,23 @@
    `.se-empty` itself, which is correct at its own call site. */
 .lu-module .se-empty {
   min-height: 0;
-  padding: 14px 4px 6px;
+  padding: 13px 16px;
   place-items: start;
   text-align: left;
+  /* MEASURED and fixed in Story 4.4's browser pass, closing the open
+     `deferred-work.md` finding that named this exact rule as "the first thing
+     to measure" and unverified. `.dz-shell`'s 50px radius is sized for Style
+     Evolution's 260px chart slot; `min-height: 0` above collapses this box to
+     66px, so the radius exceeded HALF THE HEIGHT and the state rendered as a
+     pill with its copy 6px inside a 50px corner arc. Scaled to the module's
+     own 22px language instead, and the horizontal padding raised from 4px so
+     the first character clears the curve rather than sitting on it.
+
+     Deliberately fixes `TimeToFirstPlay`'s insufficient-history state too —
+     it is the same component at the same call site on the same page, and the
+     finding was logged against it. Story 4.4 has two gated states that render
+     through here, which is what made it measurable at last. */
+  border-radius: 16px;
 }
 
 .lu-module .se-empty-copy {
@@ -179,6 +193,218 @@
   box-shadow:
     0 0 0 2px var(--color-abyss-accent),
     0 0 0 6px var(--color-abyss-accent-glow);
+}
+
+/* ─── Aging shelf (Story 4.4, FR-12 / UX-DR12) — the first `.lu-module`
+   content that is a LIST rather than a single stat readout, which is what
+   makes the two post-merge repair rules above worth re-checking here:
+
+   `.lu > .lu-module { max-width: 440px }` HOLDS. A row is title — artist —
+   days, all short-form text; 440px leaves the track column ~330px, which is
+   comfortably wider than the Set Detail track rows this borrows its shape
+   from. The cap is not the problem a list creates — HEIGHT is, see
+   `.lu-shelf-list` below.
+
+   `.lu-module .se-empty { min-height: 0 }` is exercised by all three of this
+   module's gated states, two of which (`not-yet-possible`, `nothing-synced`)
+   render through `InsufficientHistory` exactly as `TimeToFirstPlay`'s does. */
+
+.lu-shelf-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  /* The cap is 100 rows (SHELF_ROW_CAP). At ~38px each that is a ~3,800px
+     column of one module on a page with three others above it — the list
+     scrolls inside its own bounds instead, so the shelf stays a module rather
+     than becoming the page. Roughly nine rows visible, which reads as a list
+     that continues rather than one that ended. */
+  max-height: 340px;
+  overflow-y: auto;
+  /* Scrolling the shelf must not chain into the page once it bottoms out —
+     on a trackpad that reads as the page lurching for no reason. Hidden
+     scrollbar + `overscroll-behavior: contain` is the same pairing
+     `.dz-list-scroll` and `.dz-sheet-tracklist ol` already use. */
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.lu-shelf-list::-webkit-scrollbar {
+  display: none;
+}
+
+/* `tabIndex={0}` (code review finding, 2026-08-08) makes this container
+   keyboard-focusable so a mouse/trackpad-less user can scroll it — the ring
+   marks the whole scroll region rather than a single row, since the rows
+   themselves stay non-interactive by ruling (AC-3). */
+.lu-shelf-list:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--color-abyss-accent);
+}
+
+@media (forced-colors: active) {
+  .lu-shelf-list:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: -2px;
+  }
+}
+
+.lu-shelf-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 2px;
+  border-bottom: 1px solid var(--color-abyss-row-line);
+  /* DELIBERATELY no hover, no pointer, no focus ring: these rows are
+     read-only by ruling (AC-3, Arjun 2026-08-08 — the prep-crate action is out
+     of MVP and no substitute affordance replaces it). A hover highlight would
+     be a false affordance, promising an interaction that does not exist. */
+}
+
+.lu-shelf-row:last-child {
+  border-bottom: none;
+}
+
+.lu-shelf-track {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  /* Without `min-width: 0` a long title refuses to shrink inside the flex row
+     and pushes the day count off the 320px layout entirely. */
+  min-width: 0;
+}
+
+.lu-shelf-title,
+.lu-shelf-artist {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-wrap: nowrap;
+}
+
+.lu-shelf-title {
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--color-abyss-text);
+}
+
+.lu-shelf-artist {
+  font-family: var(--font-inter);
+  font-size: 11.5px;
+  color: var(--color-abyss-text-45);
+}
+
+/* The footnote row (Arjun, 2026-08-08). The first version stacked up to four
+   full sentences of `lu-disclosure` under the list, each explaining its own
+   reasoning — a wall nobody reads, which makes an AC-required disclosure
+   worthless in practice even though it is technically present. Same facts,
+   now clauses on one wrapping row, separated by a middot the way a caption
+   strip reads rather than a paragraph. Smaller and dimmer than
+   `lu-disclosure`: these are footnotes to the list, not statements about it. */
+.lu-shelf-notes {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--color-abyss-text-45);
+}
+
+/* Inline flow, NOT a flex row, and the separator TRAILS its phrase rather than
+   leading the next one. Both choices are the same fix: as a wrapping flex row
+   with a leading `::before`, a note pushed onto its own line at 320px carried
+   the middot with it and the line opened with an orphaned separator (measured,
+   not predicted). Trailing means the middot stays at the end of the line it
+   belongs to, which is what a wrapped caption should look like.
+
+   A pseudo-element rather than a character in the markup, so it is never read
+   aloud by a screen reader or picked up when the text is copied. */
+.lu-shelf-note:not(:last-child)::after {
+  content: " · ";
+  color: var(--color-abyss-text-22);
+}
+
+/* Tabular figures so the day counts form a clean right-aligned column — the
+   sort key is the one value on the row a DJ scans down, and proportional
+   digits make a sorted column look ragged enough to read as unsorted. */
+.lu-shelf-days {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-abyss-text-72);
+  text-wrap: nowrap;
+}
+
+.lu-shelf-days-unit {
+  font-family: var(--font-inter);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--color-abyss-text-45);
+}
+
+/* The sort toggle (Arjun, 2026-08-08) — a click-to-toggle icon chip borrowing
+   the Spotlight search's sort-chip treatment (`.spot-chip button`,
+   dashboard.css) rather than the conversion dropdown's `<select>`: raised
+   round fill, resting at 45% opacity, coming to full strength with the accent
+   glow on hover, same focus-visible ring. Scaled 48px → 34px, because those
+   chips sit beside a 52px search pill while this sits beside a 15.8px module
+   label — 48px here would outweigh the heading it belongs to.
+
+   34px clears WCAG 2.2 AA SC 2.5.8's 24×24 minimum (AC-12) with real margin,
+   which the previous `<select>` only just did on default platform metrics.
+   4.1 and 4.7 both shipped sub-24px targets that survived visual review, so
+   this is measured in the browser rather than trusted. */
+.lu-shelf-sort {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--color-abyss-raised);
+  color: var(--color-abyss-text);
+  /* 0.7 at rest, NOT the Spotlight chips' 0.45 — copying that number would be
+     copying the value rather than the intent. Those chips only exist while the
+     search pill is hovered, so they are already inside an active hover context
+     and 0.45 reads as "secondary within a thing you are touching". This one is
+     always on screen and is the module's ONLY affordance: at 0.45 it is the
+     single cue telling a DJ the list is sortable, dimmed to near-invisible.
+     Hover still lifts to full strength, so the interaction reads the same. */
+  opacity: 0.7;
+  cursor: pointer;
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-standard),
+    box-shadow var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lu-shelf-sort:hover {
+  opacity: 1;
+  box-shadow: 0 0 18px var(--color-abyss-accent-glow);
+}
+
+.lu-shelf-sort:focus-visible {
+  outline: none;
+  opacity: 1;
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 6px var(--color-abyss-accent-glow);
+}
+
+.lu-shelf-sort svg {
+  width: 17px;
+  height: 17px;
+  stroke-width: 1.5;
+}
+
+/* Matches the Spotlight chips' own forced-colors treatment (dashboard.css):
+   the glow-and-opacity focus cue does not survive a forced-colors palette, so
+   the ring becomes a real outline there. */
+@media (forced-colors: active) {
+  .lu-shelf-sort:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
 }
 
 .lu-stat-readout {

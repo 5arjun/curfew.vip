@@ -1,4 +1,5 @@
-import { getLibraryAddEvents, getLibraryRoster, getRecentSets } from "@/lib/sets";
+import { getLibraryAddEvents, getLibraryRoster, getObservationStart, getRecentSets } from "@/lib/sets";
+import { buildAgingShelf } from "@/lib/sets/agingShelf";
 import {
   buildLibraryConversion,
   buildLiveConversionRate,
@@ -10,14 +11,16 @@ import {
 } from "@/lib/sets/libraryConversion";
 import { unidentifiableTracksDisclosure } from "@/lib/sets/libraryRoster";
 import { SilkBackdrop } from "@/app/components/dashboard/SilkBackdrop";
+import { AgingShelf } from "@/app/components/library-utilization/AgingShelf";
 import { LibraryUtilizationView } from "@/app/components/library-utilization/LibraryUtilizationView";
 import { TimeToFirstPlay } from "@/app/components/library-utilization/TimeToFirstPlay";
 
-// Library Utilization (Story 4.3, AC-5; Story 4.5; Story 4.7, AC-3) —
-// supersedes the Story 3.5 throwaway stub. Reads through the SAME data-access
-// seam `style-evolution/page.tsx` uses (`getRecentSets`,
-// `getLibraryAddEvents`), plus `getLibraryRoster` (Story 4.11) for the
-// disclosure below.
+// Library Utilization (Story 4.3, AC-5; Story 4.4; Story 4.5; Story 4.7,
+// AC-3) — supersedes the Story 3.5 throwaway stub. Reads through the SAME
+// data-access seam `style-evolution/page.tsx` uses (`getRecentSets`,
+// `getLibraryAddEvents`), plus `getLibraryRoster` (Story 4.11 — now a real
+// Supabase read as of Story 4.4, feeding both the disclosure below and the
+// aging shelf's rows) and `getObservationStart` (Story 4.4).
 //
 // Story 4.7 AC-3 moved Style Evolution's library-conversion TREND here
 // (`buildLibraryConversion`), alongside Story 4.3's LIVE meter
@@ -40,10 +43,16 @@ import { TimeToFirstPlay } from "@/app/components/library-utilization/TimeToFirs
 // own, the trend's insufficient state is scoped to itself, and Story 4.5's
 // module renders its own two gates inside its own shell.
 export default async function LibraryUtilizationPage() {
-  const [sets, addEvents, roster] = await Promise.all([
+  const [sets, addEvents, roster, observationStartMs] = await Promise.all([
     getRecentSets(),
     getLibraryAddEvents(),
     getLibraryRoster(),
+    // Story 4.4, Context §3: `djs.created_at`, the lower bound on the aging
+    // shelf's clock. `null` is a BINDING instruction to suppress the shelf's
+    // no-play branch (AC-11), not merely "render nothing" — see
+    // `getObservationStart`'s own doc comment before treating it like the
+    // other calm fallbacks on this line.
+    getObservationStart(),
   ]);
   // Story 4.11 AC-6: measured 27.7% (252/910) of Arjun's real catalogue rows
   // excluded for having no resolvable title/artist at all — well above the
@@ -97,6 +106,35 @@ export default async function LibraryUtilizationPage() {
   // one index now instead of two. The clock comes from the data seam
   // (`readAtMs`), never read in render.
   const timeToFirstPlay = buildTimeToFirstPlay(addEvents.events, sets, addEvents.readAtMs, playIndex);
+
+  // Story 4.4 (FR-12): the aging shelf. The FOURTH module to read the one
+  // shared `playIndex` — it asks a different question of the same ascending
+  // arrays (the LAST play, where the three conversion metrics read the first
+  // at-or-after), which is exactly why one index is shared rather than each
+  // module diffing `sets` for itself.
+  //
+  // Reads `roster.entries`, NOT `addEvents.events`, and the difference is the
+  // point: `library_track_events` is go-forward-only by construction, so it
+  // structurally cannot contain the pre-install back catalogue this shelf
+  // exists to surface. `library_roster` carries baseline tracks on purpose
+  // (AD-22) — which is also why `observationStartMs` has to clamp the clock
+  // here where Story 4.5's module needed no such filter.
+  //
+  // **`roster.added_at`/`is_baseline` stop here.** They must never reach any
+  // conversion computation: `library_track_events` remains the only cohort
+  // denominator (AD-22, Story 4.11 AC-3), and a baseline track's real
+  // pre-install add-date entering cohort math would retroactively populate old
+  // months against a still-go-forward numerator, silently changing numbers the
+  // DJ has already seen.
+  //
+  // Clock from the data seam (`readAtMs`), never `Date.now()` here — Story
+  // 4.1's review lesson, and `react-hooks/purity` rejects it besides.
+  const agingShelf = buildAgingShelf(
+    roster.entries,
+    observationStartMs,
+    addEvents.readAtMs,
+    playIndex,
+  );
 
   // Rendered ONCE for the page, not once per module (Story 4.5 review). The
   // meter and this story's module read the same `addEvents.events` and
@@ -177,8 +215,22 @@ export default async function LibraryUtilizationPage() {
           own note that further modules are expected to grow below it. */}
       <TimeToFirstPlay model={timeToFirstPlay} />
 
+      {/* Story 4.4 — a SIBLING below `TimeToFirstPlay`, outside
+          `LibraryUtilizationView`, for the same reason stated at length above:
+          the shelf has no trailing window, so nesting it under the shared
+          conversion dropdown would put a window-independent list under a
+          control that visibly does not move it. `LibraryUtilizationView`'s own
+          doc comment says further modules grow below it.
+
+          Unlike the two modules above it this one IS a client component, but
+          only for a single `useState` holding the sort direction — the whole
+          model is still computed here on the server and passed in, so the page
+          itself stays a server component and no data work crosses the
+          boundary. */}
+      <AgingShelf model={agingShelf} />
+
       {/* Last, so it sits under everything it speaks for — the meter (which no
-          longer renders its own) and the module directly above. */}
+          longer renders its own) and the modules directly above. */}
       {undatedNote && <p className="lu-disclosure">{undatedNote}</p>}
     </main>
   );
