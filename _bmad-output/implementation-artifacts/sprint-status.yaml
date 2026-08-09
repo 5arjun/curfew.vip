@@ -757,7 +757,9 @@ development_status:
   # landmarks 7 in both states. The /dev48 route is deleted and VERIFIED gone.
   # Bars + legend swatches also moved 0.65 -> 0.70 (Arjun) so they share the
   # validated composite; at 0.65 five of nine sat at 2.96-2.99:1.
-  4-8-genre-share-stream-camelot-wheel: review
+  # 4-8 code review CLOSED -> done (all 4 decisions ruled, 15 patches
+  # applied, walkthrough measured). NOT yet merged: no PR is open.
+  4-8-genre-share-stream-camelot-wheel: done
   # [ADDED 2026-08-07, same Arjun session] Library Utilization's turn. 4-9 is
   # the page composition + the utilization stats that need ZERO agent work
   # (repeat-track rate, set-similarity heatmap, workhorses by sets-appeared-in,

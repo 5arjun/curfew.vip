@@ -4,7 +4,7 @@ baseline_commit: 67b44018cb5117b3d957bd4c4ca66fad7290e79e
 
 # Story 4.8: Genre share stream + Camelot wheel
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
