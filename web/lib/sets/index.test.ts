@@ -14,9 +14,12 @@ import {
   deleteSet,
   getLibraryAddEvents,
   getLibraryRoster,
+  getMixNeighbours,
   getObservationStart,
   getRecentSets,
   getSetById,
+  getTrackPlays,
+  getTrackRosterEntry,
 } from "./index";
 import { unidentifiableTracksDisclosure } from "./libraryRoster";
 
@@ -45,6 +48,11 @@ function mockSupabase(results: Result | Result[]) {
     select: [] as (string | undefined)[],
     eq: [] as unknown[][],
     is: [] as unknown[][],
+    // Story 4.10: `in` is a distinct postgrest-js method again, not an alias —
+    // it renders `column=in.(a,b,c)` where `eq` renders a single comparison.
+    // `getMixNeighbours` is built on the two-`.in()` cross product (D-31), so a
+    // test asserting that shape cannot be allowed to pass against `eq`.
+    in: [] as unknown[][],
     order: [] as unknown[][],
     range: [] as unknown[][],
     limit: [] as unknown[],
@@ -69,6 +77,10 @@ function mockSupabase(results: Result | Result[]) {
       // test asserting the null-filter cannot pass against the wrong one.
       is: vi.fn((...args: unknown[]) => {
         calls.is.push(args);
+        return fb;
+      }),
+      in: vi.fn((...args: unknown[]) => {
+        calls.in.push(args);
         return fb;
       }),
       order: vi.fn((...args: unknown[]) => {
@@ -803,5 +815,254 @@ describe("getObservationStart (Story 4.4, Context §3)", () => {
     // behaviour. Guarded rather than assumed.
     mockSupabase({ data: { created_at: null }, error: null });
     expect(await getObservationStart()).toBeNull();
+  });
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Story 4.10 — the three track-detail reads (D-30, D-31, D-38)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** One `TRACK_PLAYS_SELECT` row, with a renderable parent set. */
+function trackPlayRow(overrides: Record<string, unknown> = {}) {
+  return {
+    set_id: "set-1",
+    position: 4,
+    title: "Deep End",
+    artist: "Hardrive",
+    started_at: "2026-06-01T22:00:00.000Z",
+    bpm: 124,
+    genre_raw: "House",
+    genre_normalized: "house",
+    subgenre: "deep house",
+    taxonomy_version: 1,
+    camelot_key: "8A",
+    in_library: true,
+    played_ms: 210_000,
+    library_added_at: "2026-05-01T00:00:00.000Z",
+    track_id: "id-deep",
+    sets: {
+      id: "set-1",
+      started_at: "2026-06-01T21:00:00.000Z",
+      ended_at: "2026-06-02T02:00:00.000Z",
+      derived: {
+        confidence: { value: 1, track_count: 40, long_gap_count: 0 },
+        bpm_distribution: { count: 1, min: 124, max: 124, mean: 124, median: 124 },
+        genre_breakdown: { buckets: [], no_genre_count: 0 },
+        track_count: 40,
+      },
+      sessions: { session_identity: "serato4:975" },
+    },
+    ...overrides,
+  };
+}
+
+describe("getTrackPlays (D-30)", () => {
+  it("reads plays filtered by track_id, ordered and explicitly bounded", async () => {
+    const { calls } = mockSupabase({ data: [trackPlayRow()], error: null });
+    await getTrackPlays("id-deep");
+
+    expect(calls.tables).toContain("plays");
+    expect(calls.eq).toContainEqual(["track_id", "id-deep"]);
+    // Bounded, because PostgREST truncates at `max_rows` with HTTP 200 and
+    // `error: null` — a silent truncation this seam is structurally blind to.
+    expect(calls.limit[0]).toBe(500);
+    // Ordered SERVER-side, so the bound keeps the oldest plays — the end
+    // "first played" is read from. An unordered limit would hand back an
+    // arbitrary slice and AC-7's first play would describe a subset.
+    expect(calls.order).toContainEqual(["started_at", { ascending: true }]);
+  });
+
+  // Written out independently rather than asserted against the exported
+  // constant, which would be tautological — the test would pass if a column
+  // were deleted from both.
+  it("selects every column the detail page renders, plus the set embed", () => {
+    const { calls } = mockSupabase({ data: [], error: null });
+    return getTrackPlays("id-deep").then(() => {
+      const select = calls.select[0] ?? "";
+      for (const column of [
+        "set_id",
+        "position",
+        "title",
+        "artist",
+        "started_at",
+        "bpm",
+        "genre_raw",
+        "genre_normalized",
+        "subgenre",
+        "taxonomy_version",
+        "camelot_key",
+        "in_library",
+        "played_ms",
+        "library_added_at",
+        "track_id",
+      ]) {
+        expect(select).toContain(column);
+      }
+      // `sessions(session_identity)` is what keeps `SET 975` out of being the
+      // raw uuid; `derived` is what `isLowConfidenceSet` reads.
+      expect(select).toContain("sets(id, started_at, ended_at, derived, sessions(session_identity))");
+    });
+  });
+
+  it("reshapes a row into a TrackPlayRecord, session identity carried raw", async () => {
+    mockSupabase({ data: [trackPlayRow()], error: null });
+    const [record] = await getTrackPlays("id-deep");
+    expect(record.setId).toBe("set-1");
+    expect(record.setLabel).toBe("serato4:975");
+    expect(record.play.position).toBe(4);
+    expect(record.play.genre).toEqual({
+      raw: "House",
+      normalized: "house",
+      taxonomy_version: 1,
+      subgenre: "deep house",
+    });
+  });
+
+  it("is empty for a brand-new account", async () => {
+    mockSupabase({ data: [], error: null });
+    await expect(getTrackPlays("id-deep")).resolves.toEqual([]);
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it("falls back calmly on a read error, logging exactly once", async () => {
+    mockSupabase({ data: null, error: { message: "boom" } });
+    await expect(getTrackPlays("id-deep")).resolves.toEqual([]);
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back calmly on an unexpected throw", async () => {
+    vi.mocked(createClient).mockRejectedValue(new Error("nope") as never);
+    await expect(getTrackPlays("id-deep")).resolves.toEqual([]);
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+  });
+
+  // Per-row, so one malformed set drops its own plays rather than emptying the
+  // history — and `isLowConfidenceSet` dereferences `derived.confidence.value`
+  // without a guard, so an incomplete blob would throw in the CALLER.
+  it("drops a play whose set has an unrenderable derived blob, keeping the rest", async () => {
+    mockSupabase({
+      data: [
+        trackPlayRow(),
+        trackPlayRow({ set_id: "set-2", sets: { id: "set-2", started_at: null, ended_at: null, derived: {}, sessions: null } }),
+      ],
+      error: null,
+    });
+    const records = await getTrackPlays("id-deep");
+    expect(records).toHaveLength(1);
+    expect(records[0].setId).toBe("set-1");
+  });
+
+  it("drops a play whose set embed is null rather than throwing", async () => {
+    mockSupabase({ data: [trackPlayRow({ sets: null })], error: null });
+    await expect(getTrackPlays("id-deep")).resolves.toEqual([]);
+  });
+});
+
+describe("getMixNeighbours (D-31)", () => {
+  it("asks for the cross product of set ids and position ± 1", async () => {
+    const { calls } = mockSupabase({ data: [], error: null });
+    await getMixNeighbours([
+      { setId: "s1", position: 5 },
+      { setId: "s2", position: 9 },
+    ]);
+
+    expect(calls.in).toContainEqual(["set_id", ["s1", "s2"]]);
+    expect(calls.in).toContainEqual(["position", [4, 6, 8, 10]]);
+    expect(calls.limit[0]).toBe(1000);
+  });
+
+  // The cross product over-fetches by construction; this is the filter that
+  // makes it exact. Without it, s2's position 4 would read as s1's neighbour.
+  it("filters the over-fetch down to the exact (set_id, position) pairs", async () => {
+    mockSupabase({
+      data: [
+        { set_id: "s1", position: 4, title: "Right", artist: "A", track_id: "id-1" },
+        { set_id: "s2", position: 4, title: "Wrong Set", artist: "B", track_id: "id-2" },
+      ],
+      error: null,
+    });
+    const rows = await getMixNeighbours([
+      { setId: "s1", position: 5 },
+      { setId: "s2", position: 9 },
+    ]);
+    expect(rows.map((r) => r.title)).toEqual(["Right"]);
+  });
+
+  it("never asks for position 0 — the column is 1-based", async () => {
+    const { calls } = mockSupabase({ data: [], error: null });
+    await getMixNeighbours([{ setId: "s1", position: 1 }]);
+    expect(calls.in).toContainEqual(["position", [2]]);
+  });
+
+  it("touches no network at all for an empty anchor list", async () => {
+    const { from } = mockSupabase({ data: [], error: null });
+    await expect(getMixNeighbours([])).resolves.toEqual([]);
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it("falls back calmly on a read error, logging exactly once", async () => {
+    mockSupabase({ data: null, error: { message: "boom" } });
+    await expect(getMixNeighbours([{ setId: "s1", position: 5 }])).resolves.toEqual([]);
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back calmly on an unexpected throw", async () => {
+    vi.mocked(createClient).mockRejectedValue(new Error("nope") as never);
+    await expect(getMixNeighbours([{ setId: "s1", position: 5 }])).resolves.toEqual([]);
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("getTrackRosterEntry (D-38)", () => {
+  it("filters absent_at with `is`, not `eq`", async () => {
+    const { calls } = mockSupabase({ data: null, error: null });
+    await getTrackRosterEntry("id-owned");
+    expect(calls.tables).toContain("library_roster");
+    expect(calls.eq).toContainEqual(["track_id", "id-owned"]);
+    // `eq` would render `absent_at=eq.null` — a literal string comparison
+    // matching nothing, which would make every owned track look removed.
+    expect(calls.is).toContainEqual(["absent_at", null]);
+    expect(calls.eq).not.toContainEqual(["absent_at", null]);
+  });
+
+  it("selects the roster's Tier A columns", async () => {
+    const { calls } = mockSupabase({ data: null, error: null });
+    await getTrackRosterEntry("id-owned");
+    for (const column of ["track_id", "title", "artist", "added_at", "is_baseline", "absent_at"]) {
+      expect(calls.select[0]).toContain(column);
+    }
+  });
+
+  it("returns the entry when the DJ still owns the track", async () => {
+    mockSupabase({
+      data: {
+        track_id: "id-owned",
+        title: "Owned",
+        artist: "Owner",
+        added_at: "2026-05-01T00:00:00.000Z",
+        is_baseline: true,
+        absent_at: null,
+      },
+      error: null,
+    });
+    await expect(getTrackRosterEntry("id-owned")).resolves.toMatchObject({ track_id: "id-owned" });
+  });
+
+  it("returns null for not-in-roster without logging — that is a normal answer", async () => {
+    mockSupabase({ data: null, error: null });
+    await expect(getTrackRosterEntry("id-owned")).resolves.toBeNull();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it("falls back calmly on a read error, logging exactly once", async () => {
+    mockSupabase({ data: null, error: { message: "boom" } });
+    await expect(getTrackRosterEntry("id-owned")).resolves.toBeNull();
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back calmly on an unexpected throw", async () => {
+    vi.mocked(createClient).mockRejectedValue(new Error("nope") as never);
+    await expect(getTrackRosterEntry("id-owned")).resolves.toBeNull();
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
   });
 });

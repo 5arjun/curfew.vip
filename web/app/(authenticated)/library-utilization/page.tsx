@@ -17,8 +17,11 @@ import {
   buildUtilizationIndex,
   buildWorkhorses,
   partitionSetsByConfidence,
+  unlinkableTracksDisclosure,
   utilizationDisclosure,
+  type UtilizationIndex,
 } from "@/lib/sets/libraryUtilization";
+import { buildTrackSearchIndex } from "@/lib/sets/trackSearch";
 import { unidentifiableTracksDisclosure } from "@/lib/sets/libraryRoster";
 import type { SetRecord } from "@/lib/sets";
 import type { LibraryAddEventSnapshot } from "@/lib/sets";
@@ -103,6 +106,18 @@ export default async function LibraryUtilizationPage() {
   // and 0 plays when this landed, re-measured read-only on 2026-08-08.
   const { surviving, hidden } = partitionSetsByConfidence(sets);
 
+  // Story 4.10. Hoisted OUT of `renderBody` and threaded in, because search
+  // needs both populations at once and `renderBody` only ever sees one. Not an
+  // extra pass either — `renderBody` used to build its own index per call, so
+  // this is the same two builds, now reachable from both consumers.
+  const survivingIndex = buildUtilizationIndex(surviving);
+  // Reuses the surviving index when nothing was hidden: the two populations are
+  // then the same list, and `buildUtilizationIndex` is a full walk over every
+  // play of every set. Same "don't build what nothing can read" rule the
+  // `including` prop below already follows.
+  const allIndex = hidden.length > 0 ? buildUtilizationIndex(sets) : survivingIndex;
+  const searchIndex = buildTrackSearchIndex(survivingIndex, allIndex, roster.entries);
+
   return (
     <main className="lu">
       <SilkBackdrop />
@@ -134,12 +149,43 @@ export default async function LibraryUtilizationPage() {
           of the markup in the RSC payload. The doc comment below defends "the
           expensive work happens once, server-side, up front"; it was happening
           twice. */}
+      {/* Story 4.10 (AC-1/AC-2/AC-13) — the track lookup, threaded through the
+          reveal's `search` slot.
+
+          **PLACEMENT DEVIATES FROM D-36, deliberately and flagged for review.**
+          D-36 asks for the field "inside the 'Tracks' group, above the pair",
+          and in the same breath names the reason it cannot be there: the Tracks
+          group lives inside `renderBody`, `renderBody` is called TWICE, and
+          "putting query state inside it produces two independent search
+          fields" — a DJ's typed query silently discarded the moment they touch
+          the reveal. The two clauses are not both satisfiable, and only one of
+          them has a named failure mode, so that one governs.
+
+          Page level is also where a search field belongs on its merits: it is
+          the one control here that answers a question about a single track
+          rather than about an aggregate, and it reads as the page's lead tool
+          rather than as a caption on the workhorses list.
+
+          It is a SLOT on the reveal rather than a sibling here because its
+          results carry play counts and so are governed by the same exclusion —
+          see `LibraryUtilizationReveal`'s `search` prop for the two-controls
+          defect that shape fixes.
+
+          No new `<h2>` and no new landmark, per the rest of D-36. */}
       <LibraryUtilizationReveal
         hiddenCount={hidden.length}
-        excluding={renderBody(surviving, addEvents, unidentifiableDisclosure, roster, observationStartMs)}
+        search={searchIndex}
+        excluding={renderBody(
+          surviving,
+          survivingIndex,
+          addEvents,
+          unidentifiableDisclosure,
+          roster,
+          observationStartMs,
+        )}
         including={
           hidden.length > 0
-            ? renderBody(sets, addEvents, unidentifiableDisclosure, roster, observationStartMs)
+            ? renderBody(sets, allIndex, addEvents, unidentifiableDisclosure, roster, observationStartMs)
             : null
         }
       />
@@ -157,6 +203,10 @@ export default async function LibraryUtilizationPage() {
  */
 function renderBody(
   sets: SetRecord[],
+  // Story 4.10: built by the page rather than here, because the search field
+  // outside this function needs BOTH populations' indices and this function
+  // only ever sees one. Passed in rather than rebuilt so the two never diverge.
+  utilization: UtilizationIndex,
   addEvents: LibraryAddEventSnapshot,
   unidentifiableDisclosure: string | null,
   // Story 4.4's two inputs, threaded rather than closed over. The aging shelf
@@ -287,13 +337,16 @@ function renderBody(
   // built once and read by all five — and deliberately NOT `playIndex` above
   // (GAP-4): that one is `track_id`-keyed and carries no set identity, so it
   // cannot answer "which sets was this track in" at all.
-  const utilization = buildUtilizationIndex(sets);
   const rotation = buildRotationSize(utilization, addEvents.readAtMs);
   const repeats = buildRepeatTrackRate(utilization);
   const similarity = buildSetSimilarity(utilization);
   const workhorses = buildWorkhorses(utilization);
   const oneAndDone = buildOneAndDone(utilization);
   const utilizationNote = utilizationDisclosure(utilization);
+  // Story 4.10 AC-4: how many of the tracks in the lists above (and in search)
+  // carry no identity and so cannot open. Population-dependent like every other
+  // figure here, so it is built per call rather than once at page level.
+  const unlinkableNote = unlinkableTracksDisclosure(utilization);
 
   return (
     <>
@@ -436,6 +489,13 @@ function renderBody(
           precisely when it had the most to say. */}
       {undatedNote && <p className="lu-disclosure">{undatedNote}</p>}
       {utilizationNote && <p className="lu-disclosure">{utilizationNote}</p>}
+      {/* Story 4.10 AC-4 — a THIRD line rather than a clause folded into the
+          one above it, for the same reason those two are not one sentence: this
+          one names a limit on what can be OPENED, where the other two name
+          plays and sets excluded from the FIGURES. Merging them would produce a
+          sentence claiming both kinds of exclusion apply to both, which is
+          false in both directions. */}
+      {unlinkableNote && <p className="lu-disclosure">{unlinkableNote}</p>}
     </>
   );
 }

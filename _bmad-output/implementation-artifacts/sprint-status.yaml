@@ -1017,7 +1017,15 @@ development_status:
   # Conversion is honest by construction because it only ever asks about
   # tracks added AFTER install, which is the go-forward set that is synced.
   4-9-library-utilization-composition-play-side-stats: review
-  4-10-track-lookup-and-track-detail: backlog
+  # [2026-08-10] Implemented; the last unbuilt story in Epic 4. Two rulings
+  # taken during the work rather than deferred: D-25 (search covers played u
+  # owned, discharging 4-11's AC-9 and superseding 4-10's own pre-roster scope
+  # boundary) and D-39 (the search index ships tuple rows -- D-29's written
+  # form measured 498.9 KB against its own ~150 KB stop-condition). Two
+  # decisions flagged rather than silently resolved, both in deferred-work.md:
+  # D-36's placement clause contradicts its own "Critical" clause, and
+  # `.se-hidden-toggle` fails SC 2.5.8 but is Story 4.1's shipped component.
+  4-10-track-lookup-and-track-detail: review
   # [ADDED 2026-08-07] 4-11 STORIES THE ABOVE FINDING. Promoted from "a note
   # owned by 4-4" to its own story sequenced BEFORE 4-4, because it has THREE
   # consumers (4-3's meter, 4-4's shelf, 4-10's search) and a prerequisite

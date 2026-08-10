@@ -18,7 +18,7 @@
 
 import { isLowConfidenceSet } from "./listModel";
 import { MOST_PLAYED_RECENT_SETS } from "./rightColumn";
-import { formatSessionLabel } from "./format";
+import { formatDayDate, formatSessionLabel } from "./format";
 import type { SetRecord } from "./types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -193,6 +193,42 @@ export interface UtilizationIndex {
   /** {@link trackKey} → the order it was first seen in. The total-order tie-break. */
   firstSeenByKey: Map<string, number>;
   /**
+   * {@link trackKey} → the `plays.track_id` that key's plays carry, or `null`
+   * when there is no single one (Story 4.10, **D-27**). The bridge between this
+   * file's `trackKey` space and `/track/[track_id]`'s `track_id` space — the
+   * two key spaces D-18 forbids reconciling, carried one-directionally rather
+   * than merged.
+   *
+   * **CARRIED THROUGH FROM THE PLAY ROWS, NEVER RE-DERIVED.** `track_id` is
+   * `fnv1a_hex(normalize(title) ␞ normalize(artist))`, computed in Rust
+   * (`agent/src-tauri/src/capture.rs:146-189`). Do NOT reimplement `fnv1a` or
+   * `normalize_identity_text` in TypeScript to fill this map: a second
+   * implementation that drifts by one whitespace or case-folding rule produces
+   * `/track/…` URLs that silently 404, and nothing in any gate would catch it.
+   * `SET_WITH_PLAYS_SELECT` already selects `track_id` on every play, so this
+   * map costs one `Map.set` per play row the builder was already walking —
+   * zero new computation, zero new query.
+   *
+   * **`null` covers two different causes, deliberately treated alike (D-26,
+   * D-28):**
+   *   1. *No identity at all* — the play resolved no artist tag, so
+   *      `track_id_from_title_artist` returned nothing (AD-11: one field alone
+   *      is too little signal to trust as an identity). Measured at ~21% of
+   *      real plays, 212 of 1,267 `trackKey` groups on the committed seed.
+   *   2. *Two identities for one key* — **fails closed** (D-28). A play synced
+   *      before Story 4.3's deploy carries the old path-hash `track_id`
+   *      permanently, and nothing re-derives a historical play's identity, so
+   *      one key CAN in principle span two ids. Picking one arbitrarily would
+   *      send the DJ to a page holding half their plays. Measured 0 on the
+   *      seed and unreachable in production (re-measured read-only 2026-08-10:
+   *      1 dj / 0 sets / 0 plays), so this branch is defensive today — covered
+   *      by a unit test rather than a browser state.
+   *
+   * Both render the row unlinked and count into the ONE disclosure
+   * {@link unlinkableTracksDisclosure} builds (SM-C1).
+   */
+  trackIdByKey: Map<string, string | null>;
+  /**
    * Plays excluded for having no `title` at all — never omitted, never guessed
    * (AD-11; `rightColumn.ts:114`'s own `title != null` guard). A play with no
    * title has no identity to count under, and inventing one would merge every
@@ -232,6 +268,12 @@ export function buildUtilizationIndex(sets: SetRecord[]): UtilizationIndex {
   const displayByKey = new Map<string, { title: string; artist: string }>();
   const lastPlayedMsByKey = new Map<string, number>();
   const firstSeenByKey = new Map<string, number>();
+  const trackIdByKey = new Map<string, string | null>();
+  // Keys that have already seen two different ids. Separate from the map above
+  // because `null` there is ambiguous by design (D-27): it means both "no id
+  // yet" and "failed closed", and without this set a conflict would be undone
+  // by the next play carrying either of the two ids.
+  const conflictedKeys = new Set<string>();
   let nullTitlePlayCount = 0;
   let undatedSetCount = 0;
 
@@ -264,6 +306,28 @@ export function buildUtilizationIndex(sets: SetRecord[]): UtilizationIndex {
       // track; only the display differs.
       if (!displayByKey.has(key)) displayByKey.set(key, { title, artist: play.artist || "Unknown" });
       playsByKey.set(key, (playsByKey.get(key) ?? 0) + 1);
+
+      // D-27/D-28. `.trim()` and the `""` check for the same reason the title
+      // guard above needs them (Non-negotiable 9): `plays.track_id` is a bare
+      // nullable `text` column with no CHECK against `''`, and an empty or
+      // blank id would pass every `== null` guard, then route to `/track/`
+      // — a URL that is not this route at all.
+      const rawId = play.track_id;
+      const id = rawId != null && rawId.trim() !== "" ? rawId.trim() : null;
+      if (id === null) {
+        // Records the key as *seen with no id yet*. Must not overwrite an id a
+        // previous play already supplied: a key whose plays are half-identified
+        // still has exactly one identity, and D-28 fails closed only on TWO
+        // ids, never on one id plus a gap.
+        if (!trackIdByKey.has(key)) trackIdByKey.set(key, null);
+      } else if (!conflictedKeys.has(key)) {
+        const existing = trackIdByKey.get(key) ?? null;
+        if (existing === null) trackIdByKey.set(key, id);
+        else if (existing !== id) {
+          trackIdByKey.set(key, null);
+          conflictedKeys.add(key);
+        }
+      }
 
       const membership = setsByTrack.get(key);
       if (membership === undefined) setsByTrack.set(key, new Set([set.external_id]));
@@ -307,6 +371,7 @@ export function buildUtilizationIndex(sets: SetRecord[]): UtilizationIndex {
     displayByKey,
     lastPlayedMsByKey,
     firstSeenByKey,
+    trackIdByKey,
     nullTitlePlayCount,
     undatedSetCount,
   };
@@ -480,8 +545,64 @@ function disambiguateLabels(labels: string[]): string[] {
   });
 }
 
+/**
+ * The axis labels the matrix actually shows (Arjun, 2026-08-10).
+ *
+ * **A date, not the Serato session number.** `formatSessionLabel` yields
+ * `SET 975`, and the grid then stripped the word so the axis read a bare
+ * `975` — an internal id from Serato's `history_session` table that means
+ * nothing to the DJ, on the one axis where they most need to recognise a
+ * night. `Jun 13` is a night they remember.
+ *
+ * **The session label is not discarded**, it moves: it stays on
+ * {@link SimilarityAxis.label} and rides the link's accessible name, so the
+ * identity the rest of the product uses (`SetDetail`'s header, `/track`'s set
+ * rows) is still reachable and the two surfaces cannot be read as different
+ * sets.
+ *
+ * **Same-day collisions get the session number back, not a counter.** Two gigs
+ * on one night is ordinary, and `disambiguateLabels`' numeric suffix would read
+ * `Jun 13 1` / `Jun 13 2` — which looks like a typo and identifies nothing.
+ * Appending the real session number (`Jun 13 · 975`) disambiguates with a fact.
+ * The numeric form still runs afterwards as the second guard, for the pair that
+ * shares a day AND has no session label at all.
+ *
+ * Undated sets cannot reach here: `buildSetSimilarity` reads `index.dated`, so
+ * every axis has a real date and there is no `"—"` case to design for.
+ */
+function buildAxisDayLabels(recent: IndexedSet[]): string[] {
+  const dayOf = (s: IndexedSet) => formatDayDate(new Date(s.startMs).toISOString());
+
+  const dayCounts = new Map<string, number>();
+  for (const s of recent) {
+    const day = dayOf(s);
+    dayCounts.set(day, (dayCounts.get(day) ?? 0) + 1);
+  }
+
+  const withNumbers = recent.map((s) => {
+    const day = dayOf(s);
+    if ((dayCounts.get(day) ?? 0) < 2) return day;
+    // `formatSessionLabel`'s output minus its prefix — the same strip the grid
+    // used to do at render time, done once here so the axis and the text
+    // equivalent cannot disagree about what a set is called.
+    const session = s.label.replace(/^SET /, "");
+    return session && s.label !== "Untitled set" ? `${day} · ${session}` : day;
+  });
+
+  return disambiguateLabels(withNumbers);
+}
+
+export interface SimilarityAxis {
+  /** `sets.id` — the `/set/[id]` route key. Never rendered; it is a uuid. */
+  setId: string;
+  /** `SET 975`, from `session_label`. The product-wide identity, kept for the accessible name. */
+  label: string;
+  /** What the axis shows: a date, disambiguated. See {@link buildAxisDayLabels}. */
+  dayLabel: string;
+}
+
 export interface SimilarityPair {
-  /** Indexes into {@link SetSimilarityModel.labels}. */
+  /** Indexes into {@link SetSimilarityModel.axes}. */
   a: number;
   b: number;
   /** Jaccard overlap, 0–1. */
@@ -489,8 +610,13 @@ export interface SimilarityPair {
 }
 
 export interface SetSimilarityModel {
-  /** Axis labels, newest-first. From `session_label`, never the raw uuid. */
-  labels: string[];
+  /**
+   * The sets on both axes, newest-first — each carrying its route key, its
+   * session label and its date label. Was a bare `labels: string[]` until
+   * 2026-08-10; the matrix's axes are now links into `/set/[id]`, which needs
+   * an id the string never carried.
+   */
+  axes: SimilarityAxis[];
   /**
    * `matrix[a][b]` is the Jaccard overlap of two sets' distinct tracks.
    * `null` on the diagonal (a set against itself is trivially 1.0 and says
@@ -528,7 +654,12 @@ export function buildSetSimilarity(index: UtilizationIndex): SetSimilarityModel 
   // take — never take then reverse, which would show the OLDEST ten.
   const recent = [...index.dated].reverse().slice(0, SIMILARITY_MATRIX_SETS);
 
-  const labels = disambiguateLabels(recent.map((s) => s.label));
+  const dayLabels = buildAxisDayLabels(recent);
+  const axes: SimilarityAxis[] = recent.map((s, i) => ({
+    setId: s.id,
+    label: s.label,
+    dayLabel: dayLabels[i],
+  }));
   const matrix: (number | null)[][] = recent.map(() => recent.map(() => null));
   const ranked: SimilarityPair[] = [];
 
@@ -556,7 +687,7 @@ export function buildSetSimilarity(index: UtilizationIndex): SetSimilarityModel 
   ranked.sort((x, y) => y.share - x.share || x.a - y.a || x.b - y.b);
 
   return {
-    labels,
+    axes,
     matrix,
     shownSetCount: recent.length,
     survivingSetCount: index.dated.length,
@@ -582,8 +713,11 @@ export function setSimilaritySummary(model: SetSimilarityModel): string {
   const cap = model.truncated
     ? ` Showing your ${model.shownSetCount} most recent sets of ${model.survivingSetCount}.`
     : "";
+  // The DATE labels, matching what the axes and the ranked list show — a text
+  // equivalent that named the sets differently from the picture would be a
+  // second vocabulary for the same two nights.
   return (
-    `${model.labels[top.a]} and ${model.labels[top.b]} are your most alike sets, ` +
+    `${model.axes[top.a].dayLabel} and ${model.axes[top.b].dayLabel} are your most alike sets, ` +
     `sharing ${pct(top.share)} of their tracks.${cap}`
   );
 }
@@ -623,6 +757,12 @@ export interface WorkhorseRow {
   setCount: number;
   /** Total plays, the tie-break. Shown for context, never the rank. */
   plays: number;
+  /**
+   * `/track/[track_id]`'s identity, or `null` when this track has none
+   * (Story 4.10, D-26). A `null` row renders as plain text, never a dead link,
+   * and counts into {@link unlinkableTracksDisclosure}.
+   */
+  trackId: string | null;
 }
 
 export interface WorkhorsesModel {
@@ -680,6 +820,7 @@ export function buildWorkhorses(index: UtilizationIndex): WorkhorsesModel {
         artist: display.artist,
         setCount: sets.size,
         plays: index.playsByKey.get(key) ?? 0,
+        trackId: index.trackIdByKey.get(key) ?? null,
       },
       firstSeen: index.firstSeenByKey.get(key) ?? 0,
     });
@@ -737,6 +878,8 @@ export interface OneAndDoneRow {
   artist: string;
   /** When it played. `-Infinity` when no play carried a parseable time. */
   lastPlayedMs: number;
+  /** See {@link WorkhorseRow.trackId} — same contract, same disclosure. */
+  trackId: string | null;
 }
 
 export interface OneAndDoneModel {
@@ -790,6 +933,7 @@ export function buildOneAndDone(index: UtilizationIndex): OneAndDoneModel {
         title: display.title,
         artist: display.artist,
         lastPlayedMs: index.lastPlayedMsByKey.get(key) ?? -Infinity,
+        trackId: index.trackIdByKey.get(key) ?? null,
       },
       firstSeen: index.firstSeenByKey.get(key) ?? 0,
     });
@@ -956,4 +1100,47 @@ export function utilizationDisclosure(index: UtilizationIndex): string | null {
   }
   if (clauses.length === 0) return null;
   return `${clauses.join(". ")}.`;
+}
+
+/**
+ * Tracks in this index that have no `track_id`, and so no `/track/[track_id]`
+ * page (Story 4.10, **AC-4**; D-26/D-28).
+ *
+ * Counted over the WHOLE index rather than over the rendered rows, and that is
+ * the honest denominator rather than the convenient one: Workhorses and
+ * played-once are both capped at `TRACK_LIST_MAX_ROWS`, and search shows a
+ * capped slice of whatever matched, so a count of "unlinkable rows currently on
+ * screen" would move every time a `<details>` opened and would understate the
+ * population the DJ is actually searching.
+ */
+export function unlinkableTrackCount(index: UtilizationIndex): number {
+  let n = 0;
+  for (const id of index.trackIdByKey.values()) if (id === null) n += 1;
+  return n;
+}
+
+/**
+ * AC-4's one-sentence disclosure: some tracks cannot be opened, and the DJ is
+ * told how many rather than left to discover it by clicking (SM-C1).
+ *
+ * **Returns `null` only when nothing is excluded — never `"0 tracks"`.** That
+ * is the Story 4.7 R-2 failure, the single most-repeated defect in this epic: a
+ * disclosure collapsing to 0 in precisely the case it exists for. Note that the
+ * 100%-excluded case here reads `"212 of the 212 tracks"`, not `"0"` — the
+ * count is of the excluded population, so it *rises* to the total rather than
+ * falling to zero as the exclusion widens.
+ *
+ * No ranking vocabulary and no apology (`DESIGN.md:199`; UX-DR18's calm failure
+ * register): this states a property of the tags, not a shortcoming of the DJ or
+ * a fault in Curfew.
+ */
+export function unlinkableTracksDisclosure(index: UtilizationIndex): string | null {
+  const n = unlinkableTrackCount(index);
+  if (n === 0) return null;
+  const total = index.trackIdByKey.size;
+  return (
+    `${n} of the ${total} ${plural(total, "track", "tracks")} here ${plural(n, "has", "have")} ` +
+    `no identity Curfew can open a page on — that needs both a title and an artist tag. ` +
+    `${plural(n, "It", "They")} still ${plural(n, "shows", "show")} in the lists and in search, without a link.`
+  );
 }

@@ -1,5 +1,21 @@
 # Deferred Work
 
+## Deferred from: Story 4.10 — track lookup and track detail (2026-08-10)
+
+### Open — accessibility, pre-existing, one small fix
+
+- **`.se-hidden-toggle` ("show them") is 63.5 x 19.5 CSS px — under WCAG 2.2 AA SC 2.5.8's 24x24 floor.** Measured against the DOM in Story 4.10's browser pass at 1440/375/320: of the 97 interactive targets on `/library-utilization`, this is the **only** one that fails, at every width. It is `LowConfidenceReveal`'s button, shipped by Story 4.1 and shared with `/style-evolution`, so it is pre-existing and not introduced by 4.10 — but Story 4.10's AC-14 says "every target", so it is recorded rather than passed over. **Not fixed here deliberately:** the component is another story's shipped UI on a page 4.10 does not otherwise touch, and re-styling shared shipped controls is the drive-by this epic has already been bitten by (failure mode 5 — shared CSS re-scoped for one call site, breaking another). The fix is two lines (`display: inline-flex; align-items: center; min-height: 24px`) and wants a browser pass on `/style-evolution` too. [web/app/components/style-evolution/LowConfidenceReveal.tsx; web/app/style-evolution.css]
+
+### Open — decision deviated from, needs a ruling to confirm or reverse
+
+- **D-36's placement clause and its own "Critical" clause are not both satisfiable, and the Critical one was followed.** D-36 asks for the search field "inside the 'Tracks' group, above the pair" and, in the same paragraph, names why it cannot be there: the Tracks group lives inside `renderBody`, `renderBody` is called **twice** (excluding/including populations), and "putting query state inside it produces two independent search fields" — the DJ's typed query silently discarded the moment they touch the reveal. **Shipped at page level instead**, as a slot on `LibraryUtilizationReveal` so one boolean governs both the search results and the page body. Verified in the browser pass: typing a query, toggling the reveal, and finding the query still in the field and the counts correctly changed. The page's outline (five `<h2>`s) and landmark count (3) are unchanged, so the rest of D-36 holds. If Arjun prefers the field lower on the page, the constraint to preserve is the single owner of `revealed`, not the placement. [web/app/(authenticated)/library-utilization/page.tsx; web/app/components/library-utilization/LibraryUtilizationReveal.tsx]
+
+- **D-29's `haystack`-in-the-model-layer form measured 3.3x over its own stop-condition; ruled to tuple rows (D-39, Arjun 2026-08-10).** Recorded here because the numbers should not have to be re-measured: at seed scale (1,644 entries) D-29 as written serializes to **498.9 KB** against a ~150 KB bar — content is only 92.5 KB of title+artist, the rest being per-entry JSON key names (~148 KB), the `haystack` duplicating title+artist, and a redundant `key`. Shipped form is tuple rows with the haystack rebuilt once client-side: **157.2 KB raw / 61.8 KB gzipped**. The 157.2 is 4.8% over the nominal bar and that overage is entirely AC-12's second count pair (6.4 KB), which is what lets the reveal be a swap rather than a second read. Alternatives measured and declined: 6-tuple with a sparse override list for the 247 rows that actually differ, 153.2 KB — 4 KB saved for a second indirection on every read. **If the index ever needs to shrink further, the next lever is a server-side search, and GAP-5 says that needs its own ruling** (no index on `plays.title`/`artist` or `library_roster.title`/`artist`, and no trigram/full-text extension anywhere; a GIN index is a migration). [web/lib/sets/trackSearch.ts]
+
+### Open — noted while working, not this story's call
+
+- **`SpotlightSearch`'s placeholder is not `aria-hidden`, so its text is announced alongside the input's own `aria-label`.** Story 4.10's field marks its placeholder `aria-hidden` (Task 3 required it); the dashboard's original does not, so a screen-reader user there hears the region named twice. One attribute, on another story's shipped component. [web/app/components/dashboard/SpotlightSearch.tsx]
+
 ## Deferred from: Story 4.4 — aging shelf (2026-08-08)
 
 ### Open — post-MVP feature, cost already measured (do not re-measure)
