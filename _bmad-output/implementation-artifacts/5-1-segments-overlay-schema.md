@@ -4,7 +4,7 @@ baseline_commit: 0d9bf793f5bde725fd67df59d73b2f0df13d91f2
 
 # Story 5.1: Segments overlay schema
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -58,10 +58,23 @@ This story is **schema only**, mirroring Story 3.1's own boundary discipline exa
   - [x] 4.5 `supabase test db supabase/tests` — confirm the full suite (including the updated `grant_matrix_test.sql`) passes
 - [x] Task 5: Close the two account-deletion runbook forward-hooks (AC: #1)
   - [x] 5.1 `supabase/ACCOUNT-DELETION-EXPORT-RUNBOOK.md` §2 already names this story and states the cascade *should* already be covered by its ruling — confirm that for real against local Postgres (not assumed from the DDL), same discipline Story 3.1 used on itself, and update the note from "should" to "confirmed" once verified
-  - [x] 5.2 §3's export query list already has the `segments` line added (`select * from public.segments where dj_id = '<uuid>';`) — no further edit needed, just confirm it's present
+  - [x] 5.2 §3's export query list did **not** already have the `segments` line — that premise was stale (see Completion Notes). Added `select * from public.segments where dj_id = '<uuid>';` for real and removed the now-resolved forward-hook TODO
 - [x] Task 6: Update `supabase/README.md`'s migration tree map (AC: #1)
   - [x] 6.1 Add the new migration filename to the `migrations/` block in the top-of-file tree, matching the existing entry format (`  <filename>  # <one-line> (Story 5.1)`)
   - [x] 6.2 Add `segments_isolation_test.sql` to the `tests/` block the same way
+
+### Review Findings
+
+- [x] [Review][Patch] Empty-string `label` bypasses the "custom requires a label" CHECK constraint — `label is not null` is satisfied by `''` [supabase/migrations/20260810153813_create_segments.sql:28] — fixed: CHECK now also requires `label <> ''`; regression case added (Case 1d2)
+- [x] [Review][Patch] `segments_isolation_test.sql`'s Case 7b cascade test only exercises `first_play_id`'s `on delete cascade`; `last_play_id`'s identical cascade is never independently proven [supabase/tests/segments_isolation_test.sql] — fixed: added Case 7c exercising the `last_play_id` cascade path independently
+- [x] [Review][Patch] Story Task 5.2's checked-off text still asserts the stale premise ("§3's export query list already has the segments line added — no further edit needed") that the Dev Agent Record's own Completion Notes disclose was false [_bmad-output/implementation-artifacts/5-1-segments-overlay-schema.md:61] — fixed: Task 5.2's text rewritten to state what actually happened
+- [x] [Review][Defer] `first_play_id`/`last_play_id` aren't constrained to belong to the same `set_id` as the `segments` row — a segment could reference plays from a different set [supabase/migrations/20260810153813_create_segments.sql:19-29] — deferred, pre-existing pattern: Story 3.1's own migration explicitly documents the identical "known gap, not this story's to close" for `dj_id`-vs-parent consistency; enforcement belongs to the future write-path story (5.2/5.3), which must derive rather than trust these values, matching AD-19's pattern
+- [x] [Review][Defer] `dj_id` isn't validated against the `dj_id` implied by `set_id` — a row could claim a different owner than its set actually has; RLS trusts this denormalized column directly [supabase/migrations/20260810153813_create_segments.sql:22] — deferred, same precedent as above
+- [x] [Review][Defer] No ordering constraint that `first_play_id`'s play precedes `last_play_id`'s play — a segment's boundaries could be chronologically reversed [supabase/migrations/20260810153813_create_segments.sql:25-26] — deferred, requires a trigger (not a plain CHECK, since it needs a cross-row join to `plays.position`); belongs with the write-path story that will already be computing positions
+- [x] [Review][Defer] No test independently deletes a `sets` row to prove cascade into `segments` via `set_id` — only the `dj_id`/`auth.users` and `plays`-FK cascade paths are exercised [supabase/tests/segments_isolation_test.sql] — deferred, pre-existing gap: `sessions_sets_plays_isolation_test.sql` has the identical gap for `sets`/`sessions`
+- [x] [Review][Defer] `grant_matrix_test.sql` has no hardcoded `authenticated`-scoped INSERT/DELETE sweep for any table, `segments` included — coverage exists only via `segments_isolation_test.sql`'s own Case 5 [supabase/tests/grant_matrix_test.sql] — deferred, pre-existing structural gap across all 8 tables, not introduced by this story
+- [x] [Review][Defer] `supabase/README.md`'s migration/test tree map is presented as a directory listing but has been known-incomplete since Story 3.2 [supabase/README.md] — deferred, pre-existing gap, not introduced by this diff
+- [x] [Review][Defer] No decision recorded on whether overlapping/duplicate segments within a set are permitted [supabase/migrations/20260810153813_create_segments.sql] — deferred, explicitly out of this story's scope (Story 5.3 owns the segment editor / write UX)
 
 ## Dev Notes
 
@@ -170,3 +183,4 @@ Claude Sonnet 5 (claude-sonnet-5), via bmad-dev-story skill
 ## Change Log
 
 - 2026-08-10: Implemented `public.segments` overlay table (migration, RLS, hosted auto-expose-trap mitigation), extended `grant_matrix_test.sql`, added `segments_isolation_test.sql` (13 assertions, full suite `Files=10, Tests=224, Result: PASS`), closed both `ACCOUNT-DELETION-EXPORT-RUNBOOK.md` forward-hooks (including correcting a stale "already done" premise in Task 5.2's own text), and updated `supabase/README.md`'s tree map. Status → review.
+- 2026-08-10: CODE REVIEW CLOSED. review -> done. Three-layer review (Blind Hunter, Edge Case Hunter, Acceptance Auditor) against the diff (rebased onto main, which had picked up Story 4.10 in the interim) and this story's own ACs/Scope Boundaries/Dev Notes; Acceptance Auditor found zero spec violations. 3 patches applied and gate-verified: the `type='custom'` CHECK admitted an empty-string label (`is not null` alone doesn't exclude `''`) — constraint now also requires `label <> ''`, with a regression case added; `segments_isolation_test.sql`'s cascade coverage only ever exercised `first_play_id`'s `on delete cascade`, never `last_play_id`'s independently — added Case 7c; Task 5.2's checked-off text still asserted a premise the Completion Notes themselves disclosed was false — rewritten to state what actually happened. 7 items deferred, all pre-existing patterns or explicitly out of this story's scope (not introduced by this diff): `first_play_id`/`last_play_id`/`dj_id` not cross-checked against `segments.set_id` (mirrors 3.1's own documented "known gap, not this story's to close"); no ordering constraint between the two boundary FKs (needs a trigger, belongs with the write-path story); no independent test of the `set_id` cascade path (mirrors an identical gap in `sessions_sets_plays_isolation_test.sql`); `grant_matrix_test.sql` has no hardcoded `authenticated` INSERT/DELETE sweep for any table; `README.md`'s tree map has been incomplete since Story 3.2; no decision recorded on overlapping/duplicate segments (Story 5.3's job). Gate re-run clean after patches: `Files=10, Tests=226, Result: PASS` (up from the story's own 224), additive-only guard clean, migration applies cleanly from a full reset. Status → done.

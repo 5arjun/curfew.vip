@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(13);
+select plan(15);
 
 -- Seed two auth users; the AFTER INSERT trigger (handle_new_dj) creates the
 -- matching public.djs row for each, same as djs_isolation_test.sql.
@@ -50,6 +50,17 @@ select throws_ok(
   '23514'::char(5),
   NULL,
   'a segments row with type=custom and a null label is rejected by the CHECK constraint'
+);
+
+-- Case 1d2 (Review Findings, code review 2026-08-10): type='custom' with an
+-- EMPTY STRING label is rejected too, not just a null one -- '' satisfies
+-- `is not null` on its own, so the CHECK's `label <> ''` clause is what
+-- actually closes this off.
+select throws_ok(
+  $$ insert into public.segments (set_id, dj_id, type, label, first_play_id, last_play_id) values ('11111111-bbbb-bbbb-bbbb-111111111111', '11111111-1111-1111-1111-111111111111', 'custom', '', '11111111-cccc-cccc-cccc-111111111111', '11111111-cccc-cccc-cccc-222222222222') $$,
+  '23514'::char(5),
+  NULL,
+  'a segments row with type=custom and an empty-string label is rejected by the CHECK constraint'
 );
 
 -- Case 1e: type='custom' WITH a label is accepted (the CHECK constraint's
@@ -204,6 +215,34 @@ select is(
   (select count(*)::int from public.segments where id = '66666666-dddd-dddd-dddd-666666666666'),
   0,
   'deleting the plays row referenced by first_play_id cascades and removes the segments row that pointed at it'
+);
+
+-- Case 7c (Review Findings, code review 2026-08-10): the identical proof
+-- for `last_play_id` -- Case 7b only ever exercised `first_play_id`'s `on
+-- delete cascade`, leaving `last_play_id`'s independently unproven. Fresh
+-- DJ so this doesn't collide with Case 7a/7b's deletes above.
+insert into auth.users (id, email) values
+  ('77777777-7777-7777-7777-777777777777', 'dj-play-cascade-last@example.com');
+
+insert into public.sessions (id, dj_id, session_identity) values
+  ('77777777-aaaa-aaaa-aaaa-777777777777', '77777777-7777-7777-7777-777777777777', 'session-play-cascade-last');
+
+insert into public.sets (id, session_id, dj_id, started_at, ended_at) values
+  ('77777777-bbbb-bbbb-bbbb-777777777777', '77777777-aaaa-aaaa-aaaa-777777777777', '77777777-7777-7777-7777-777777777777', now(), now());
+
+insert into public.plays (id, set_id, dj_id, position, in_library) values
+  ('77777777-cccc-cccc-cccc-111111111111', '77777777-bbbb-bbbb-bbbb-777777777777', '77777777-7777-7777-7777-777777777777', 1, true),
+  ('77777777-cccc-cccc-cccc-222222222222', '77777777-bbbb-bbbb-bbbb-777777777777', '77777777-7777-7777-7777-777777777777', 2, true);
+
+insert into public.segments (id, set_id, dj_id, type, first_play_id, last_play_id) values
+  ('77777777-dddd-dddd-dddd-777777777777', '77777777-bbbb-bbbb-bbbb-777777777777', '77777777-7777-7777-7777-777777777777', 'dancefloor', '77777777-cccc-cccc-cccc-111111111111', '77777777-cccc-cccc-cccc-222222222222');
+
+delete from public.plays where id = '77777777-cccc-cccc-cccc-222222222222';
+
+select is(
+  (select count(*)::int from public.segments where id = '77777777-dddd-dddd-dddd-777777777777'),
+  0,
+  'deleting the plays row referenced by last_play_id cascades and removes the segments row that pointed at it'
 );
 
 select * from finish();

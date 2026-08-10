@@ -25,7 +25,7 @@ create table public.segments (
   first_play_id  uuid not null references public.plays (id) on delete cascade,
   last_play_id   uuid not null references public.plays (id) on delete cascade,
   created_at     timestamptz not null default now(),
-  check ((type = 'custom' and label is not null) or (type <> 'custom'))
+  check ((type = 'custom' and label is not null and label <> '') or (type <> 'custom'))
 );
 
 -- `dj_id` is denormalized directly onto `segments` (not just reachable via

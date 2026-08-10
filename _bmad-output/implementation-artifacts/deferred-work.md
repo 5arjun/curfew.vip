@@ -1,5 +1,203 @@
 # Deferred Work
 
+## Triage (2026-08-10, Epic 4 retrospective — ai-15)
+
+Every entry below this section that does **not** already carry an inline `[RESOLVED …]` / `[CLOSED …]` / closed-by-ruling marker, sorted by urgency. Adapted from `pre-launch-services-checklist.md`'s §1–§6 scheme for code-level work. Pointers are `[story / section heading it lives under]` — no line numbers, the heading is enough to find it. Nothing below this section was edited to produce it.
+
+### A. Launch-blocking — would ship visibly wrong data, or a security/privacy hole, to a real user today
+
+- [code review of 4-1 — Arjun's timezone ruling] Sets bucket to the server's UTC, not the DJ's local night — late gigs file on the wrong day/month.
+- [post-merge review of #20/#21/#22/#23 — agent-side] Reach high-water mark never shrinks; one drive swap permanently disables absent-marking, so sold/deleted tracks read "owned, never played".
+- [code review of 4-5-time-to-first-play] `getRecentSets`' 500-set cap silently reclassifies older debuts as "never played" in a lifetime metric.
+
+### B. Pre-launch hardening — close before Epic 6 (first public-facing) or Epic 7 (billing) story-creation
+
+- [code review of 3-5-floating-pill-nav] `(authenticated)` route group still ships with no auth gating at all.
+- [code review of 4-6-web-read-path-supabase-swap] Style Evolution and Library Utilization pages have no auth self-guard either.
+- [code review of story-3.7] `deleteSetAction` has no ownership check; Server Actions bypass route-group gating.
+- [code review of 4-6-web-read-path-supabase-swap] Hosted `auto_expose_new_tables` re-grants every future table to `anon`; nothing local fails.
+- [post-merge review of #20/#21/#22/#23 — SQL hardening] No test asserts RLS is enabled on every `public` table; the anon-privilege sweeps have holes.
+- [post-merge review of #20/#21/#22/#23 — SQL hardening] `service_role` has no CRUD grants on a fresh replay — detonates on Epic 7's Stripe webhook.
+- [code review of 2-3c-phone-on-file-post-signup-prompt] AD-19's column-scoped grant is enforced only by a comment; Epic 7 could re-add a blanket `grant update on djs`.
+- [code review of 2-1-supabase-cloud-foundation-isolation-baseline] Additive-only guard has no opinion on function/trigger redefinition.
+- [code review of 2-1 …, round 2] Additive-only guard bypassed entirely by `ALTER TYPE … RENAME/DROP` — an Epic 7 enum's exact shape.
+- [code review of 2-1 …, round 2] Nothing protects the load-bearing `grant select on public.djs` from a future silent `REVOKE`.
+- [code review of 4-6-web-read-path-supabase-swap] Supabase leaked-password (HaveIBeenPwned) protection is disabled — one dashboard toggle.
+- [code review of 2-3a-email-identity-path-email-password-passkey] No application-level rate limiting on `signIn`/`signUp` Server Actions.
+- [code review of 2-4-auth-ui-components] `rp_id` pinned to the throwaway `.vercel.app` host; every passkey breaks at the `curfew.vip` move.
+- [code review of 2-10-agent-secure-token-storage] Refresh token travels through a URL and OS argv, readable by any local process on Windows/Linux.
+- [code review of 2-10-agent-secure-token-storage] `curfew-agent://` scheme has no protection against another app squatting it.
+- [code review of 1-1-monorepo-scaffold-with-three-workspaces] `csp: null` in the Tauri config the agent inherits while loading local Serato data.
+- [code review of 3-4-format-drift-resilience-backfill] Sentry has no fingerprinting and its free-text messages may embed local paths / OS username once a DSN lands.
+- [code review of 4-6-web-read-path-supabase-swap] A real production read failure renders identically to a brand-new account, with zero telemetry.
+- [post-merge review of #20/#21/#22/#23 — contract and guard gaps] `no-raw-data.test.ts` covers 1 of 3 schemas, so a future `portable_path` ships an AD-2 breach unguarded.
+- [3-4-format-drift-resilience-backfill dev-story session] Sync payload never carries `agent_version` despite AD-3 — no fleet-version handling once real installs diverge.
+- [code review of 4-11-library-roster-sync] One poison roster batch head-of-line-blocks the whole queue forever; no quarantine set.
+- [post-merge review of #20/#21/#22/#23 — agent-side] Unbounded first roster drain blocks the AD-20 heartbeat, so the healthiest agent reads stale.
+- [code review of 2-9b-windows-signed-build] Two release workflows race on one GitHub Release; a failed platform publishes a silently incomplete release and update manifest.
+- [code review of 2-9c-signed-auto-updater-pipeline] No key-rotation plan for the updater signing keypair if it is ever compromised.
+- [code review of 2-3a-email-identity-path-email-password-passkey] Visiting `/login` while already signed in re-shows the form — an Epic 6 entry surface.
+- [code review of 5-1-segments-overlay-schema] `segments.dj_id` isn't cross-checked against `set_id`'s real owner; RLS trusts the denormalized column.
+- [code review of 5-1-segments-overlay-schema] `grant_matrix_test.sql` has no `authenticated`-scoped INSERT/DELETE sweep for any table.
+
+### C. Real gap, no story owns it yet
+
+- [code review of 4-11-library-roster-sync — Arjun's library-scope ruling] NEEDS A STORY: exclude video loops and untagged rips from the library denominator.
+- [code review of 4-11-library-roster-sync — Arjun's single-machine ruling] NEEDS A STORY: one linked machine per DJ, plus the missing unlink path.
+- [code review of 4-1-style-evolution-trend-view-excludes-low-confidence] One app-wide i18n decision owed: six sites use runtime-default locale, hydration-mismatching on non-`en` browsers.
+- [post-merge review of #20/#21/#22/#23 — agent-side] `scan_identity_coverage`'s scalars have no cloud carrier, so AC-6's disclosure can never render.
+- [post-merge review of #20/#21/#22/#23 — three-way future-dated disposition] Ruled count-and-disclose 2026-08-10; the `libraryConversion.ts` implementation is still owed.
+- [merging main (4.6 + 4.11 + 4.7) into 4-5-time-to-first-play] Ruled 2026-08-10 that the page note owns `noAddDateCount`; the trend call-site change is owed.
+- [3-3-offline-sync-queue manual verification] Windows Serato 4 internal history path is unknown, so Windows DJs may capture nothing.
+- [code review of 2-6-serato-folder-auto-detection-first-run-confirm] Windows paths and removable-volume detection are entirely unverified.
+- [code review of 2-10-agent-secure-token-storage] Windows/Linux deep-link argv forwarding has zero verification on a shipping target.
+- [3-3-offline-sync-queue manual verification] Verified-setup onboarding that ends in a live test capture — deliberately deferred to its own story.
+- [Surfaced by 2-11-account-deletion-data-export-manual-runbook] Agent cannot learn its account was deleted; local SQLite purge stays a manual instruction.
+- [code review of 1-6-edge-genre-normalization-versioned] Genre fold mis-buckets multi-value tags, punctuation and Unicode variants to "Other"; refinement trigger already passed.
+- [code review of 1-6-edge-genre-normalization-versioned] V1 taxonomy omits high-volume electronic buckets it claims to target; needs a real frequency histogram.
+- [code review of 1-4-library-join-for-in-library-enrichment] Volume-hosted `database V2` path resolution unproven — a USB library may read wholly off-library.
+- [code review of 1-4-library-join-for-in-library-enrichment] Path encoding/case agreement untested; every accented artist could silently read off-library.
+- [code review of 1-4-library-join-for-in-library-enrichment] Serato 4+ `in_library` is unconditionally guessed `true`, against the spine's "never guessed"; `asset_id` is a confirmed candidate signal.
+- [code review of 4-1-style-evolution-trend-view-excludes-low-confidence] No rolling window or outlier guard: one bad `started_at` yields ~670 buckets in a blocking server render.
+
+### D. Product/copy judgment call awaiting a ruling from Arjun
+
+- [Story 4.10 — track lookup and track detail] D-36's placement clause contradicts its own Critical clause; confirm or reverse the page-level search field.
+- [code review of 4-10-track-lookup-and-track-detail] Per-module "no data" copy in `TrackDetail` can't distinguish genuinely-nothing from hidden-by-reveal.
+- [Story 4.4 — aging shelf] The all-clear line and the recently-downloaded nudge contradict each other on screen; both are AC-required.
+- [code review of 1-8-live-practice-confidence-signal] Confidence tier has no density/rate ceiling; thresholds are explicitly Arjun's call (Open Question #1).
+- [implementation of 1-8-live-practice-confidence-signal] The 865-play/27.5-minute previewing session is the concrete input for that same threshold ruling.
+- [code review of 5-1-segments-overlay-schema] No decision recorded on whether overlapping or duplicate segments within a set are permitted.
+
+### E. Post-MVP / low priority — efficiency, cleanup, pre-existing a11y, or already measured and declined
+
+- [Story 4.10 — track lookup and track detail] `.se-hidden-toggle` is under the 24x24 WCAG floor; pre-existing, shared with `/style-evolution`.
+- [Story 4.10 — track lookup and track detail] D-29's index form measured 3.3x over its bar and was ruled to tuple rows; next lever needs GAP-5.
+- [Story 4.10 — track lookup and track detail] `SpotlightSearch`'s placeholder isn't `aria-hidden`, so its text is announced twice.
+- [code review of 4-10-track-lookup-and-track-detail] `SetSimilarity`'s server-rendered day labels are locale/timezone-dependent; ruled accept-and-disclose.
+- [code review of 4-10-track-lookup-and-track-detail] Search can list one physical track twice under a D-28 identity conflict; zero instances today.
+- [Story 4.4 — aging shelf] The row-level prep-crate action is out of MVP; its structural cost is recorded so nobody re-derives it.
+- [Story 4.4 — aging shelf] The clamp gives every pre-observation track an identical day count, making that block's sort inert.
+- [code review of 4-4-aging-shelf-with-prep-crate-action] `epics.md` and the architecture spine still describe the prep-crate action with no ruling note.
+- [post-merge review of #20/#21/#22/#23 — contract and guard gaps] `SyncLibraryRosterBatch`'s TS type describes a body PostgREST rejects.
+- [post-merge review of #20/#21/#22/#23 — contract and guard gaps] `shared/package.json`'s `exports` omits the roster schema its own constant points at.
+- [post-merge review of #20/#21/#22/#23 — contract and guard gaps] `hasRenderableDerived` guards 3 of 9 dereferenced `derived` sub-objects; currently unreachable.
+- [post-merge review of #20/#21/#22/#23 — contract and guard gaps] Nothing validates any payload against any JSON Schema at runtime.
+- [post-merge review of #20/#21/#22/#23 — contract and guard gaps] Both `export_real_library.rs` integration tests are `#[ignore]`, so the new export path is uncovered.
+- [post-merge review of #20/#21/#22/#23 — SQL hardening] `auth_rls_initplan` on all 10 policies: `auth.uid()` re-evaluated per row.
+- [post-merge review of #20/#21/#22/#23 — SQL hardening] Index cleanup, plus the actually-hot `getRecentSets` ordering query is unindexed.
+- [post-merge review of #20/#21/#22/#23 — SQL hardening] Orphan `sessions` rows accumulate with no cleanup path; harmless today.
+- [post-merge review of #20/#21/#22/#23 — UI, a11y, and efficiency] Two sibling modules expose the same "early read" caveat differently to assistive tech.
+- [post-merge review of #20/#21/#22/#23 — UI, a11y, and efficiency] Under-shared work: `styleEvolution.ts`'s O(buckets x sets) pass, six `aggregateBucket` passes, agent double-reads.
+- [post-merge review of #20/#21/#22/#23 — process] The undated-add-date disclosure state has never rendered anywhere; the fixture carries zero.
+- [code review of 4-6-web-read-path-supabase-swap] Every dashboard / Style Evolution / Library Utilization render fetches all 14 play columns, uncached.
+- [code review of 3-6-dashboard-home, chunk 2/2 CSS/config] Several CSS selector blocks are reopened non-adjacently and silently clobber earlier declarations.
+- [code review of 3-6-dashboard-home, chunk 2/2 CSS/config] Motion tokens are routinely bypassed with hardcoded durations and easings.
+- [code review of 3-6-dashboard-home, chunk 2/2 CSS/config] No z-index scale exists; values are ad hoc across `dashboard.css`.
+- [code review of 3-6-dashboard-home, chunk 2/2 CSS/config] `.spot-goo`'s SVG filter has no `@supports` guard or fallback; Safari risk.
+- [code review of 3-6-dashboard-home, chunk 2/2 CSS/config] `components.json` registers an unpinned third-party shadcn registry.
+- [code review of 3-6-dashboard-home, chunk 2/2 CSS/config] `forced-colors` and `prefers-contrast: more` have no support path.
+- [code review of 3-6-dashboard-home, chunk 2/2 UI components] `Silk.jsx`'s `hexToNormalizedRGB` has no format validation; internal tokens only.
+- [code review of 3-6-dashboard-home, chunk 2/2 UI components] Aggregate WebGL context budget isn't reconciled against real device ceilings.
+- [code review of 3-6-dashboard-home, chunk 2/2 UI components] Incomplete ARIA tablist pattern across three dashboard components; one a11y pass, not three patches.
+- [code review of 3-6-dashboard-home, chunk 2/2 UI components] `RightColumn`'s `ResizeObserver` watches the wrong box, so scroll-fade indicators go stale.
+- [code review of 3-6-dashboard-home, chunk 2/2 UI components] `SetListPanel`'s sheet geometry is measured once at open, with no resize/rotation handling.
+- [code review of 3-6-dashboard-home, chunk 1/2] Camelot mapping's "verified 24/24 against real data" claim has no committed artifact.
+- [code review of 3-6-dashboard-home, chunk 1/2] Dancefloor density-floor bias is a known interim gap, superseded by Story 5.2.
+- [code review of 3-6-dashboard-home, chunk 1/2] Backfill sweep re-derives all captured serato4 rows on every agent startup.
+- [code review of 3-6-dashboard-home, chunk 1/2] `FloatingNav` reintroduces a `:focus-visible` Safari pattern; its breakpoint is comment-synced only.
+- [code review of 3-6-dashboard-home, chunk 1/2] `export_real_fixtures.rs` hardcodes real gig dates in source comments.
+- [code review of 3-6-dashboard-home, chunk 1/2] `arcDirection` can label a set with a dramatic mid-set arc "steady".
+- [code review of 3-5-floating-pill-nav] No `padding-bottom` under the dock on 3.5's stub pages; superseded per-page already.
+- [code review of 3-5-floating-pill-nav] No `env(safe-area-inset-bottom)` on those same stub pages; same resolution path.
+- [code review of 3-5-floating-pill-nav] The icon-color root cause is patched only on `.floating-nav-link`; other anchors stay exposed.
+- [code review of 3-5-floating-pill-nav] `FloatingNav` has zero component-level test coverage beyond one pure helper.
+- [code review of 3-9-console-voice-failure-register-state-a11y-responsive-pass] `set_agent_status` surfaces a raw FK violation if the `djs` row is deleted mid-token.
+- [code review of 3-7-set-detail-summary-tracklist backend group] `DateAddedIndex::live` re-implements a `/Volumes` scan instead of reusing `DiskSource`.
+- [code review of 3-7-set-detail-summary-tracklist backend group] Catalogue loading is synchronous on the watch-loop thread; worth one confirmation.
+- [code review of 3-7-set-detail-summary-tracklist backend group] No backfill test covers the played-flag filter against the re-derive sweep.
+- [3-4-format-drift-resilience-backfill dev-story session] A terminal capture failure re-fires the error reporter on every poll tick forever.
+- [code review of 3-3-offline-sync-queue] No test exercises `sync_loop`'s pass-level `Err` branch end-to-end.
+- [3-3-offline-sync-queue manual verification] Open Q: whether Serato 4 ever double-writes a `.session` for a `master.sqlite` set.
+- [code review of 2-11-account-deletion-data-export-manual-runbook] `pre-launch-services-checklist.md` §3 holds a documentation-debt row in a provisioning-only section.
+- [code review of 2-11-account-deletion-data-export-manual-runbook] "Party 2026-07-20" attributions carry no linked source artifact.
+- [code review of 2-10-agent-secure-token-storage] `link-agent/page.tsx`'s `getUser()` is unguarded; matches an already-shipped sibling pattern.
+- [code review of 2-9a-macos-signed-build-notarization] No Rust build caching in `release-macos.yml`; cost nit on a rare workflow.
+- [code review of story-2-8-set-capture-into-local-sqlite] `recheck_pending_serato4` opens a fresh connection every poll tick regardless of pending work.
+- [code review of story-2-8-set-capture-into-local-sqlite] `store::open_at` sets no `busy_timeout`/WAL pragmas — premise ("only one connection") expired once 3.2/3.3 landed.
+- [code review of story-2-8-set-capture-into-local-sqlite] An externally-deleted `history_session` row is retried forever with no terminal outcome.
+- [code review of story-2-8-set-capture-into-local-sqlite] A `Remove` event on a legacy `.session` refreshes its quiet clock instead of dropping it.
+- [code review of story-2-7-local-only-raw-data-boundary] `watch_loop`'s watermark isn't durable across restart, re-surfacing all history as new.
+- [code review of 2-6-serato-folder-auto-detection-first-run-confirm] The legacy watch path emits no discoverable "new session" signal; Story 2.8's territory.
+- [code review of 2-6-serato-folder-auto-detection-first-run-confirm] `watch_loop`'s connect/reconnect/watermark state machine has no automated coverage.
+- [code review of 2-6-serato-folder-auto-detection-first-run-confirm] A new SQLite connection is opened per poll tick instead of held for the loop.
+- [code review of 2-6-serato-folder-auto-detection-first-run-confirm] Override-change comparison does no path normalization, so cosmetic differences tear down the watcher.
+- [code review of 2-6-serato-folder-auto-detection-first-run-confirm] `Cargo.lock` carries two `windows` crate versions via `sysinfo`.
+- [code review of 2-5-agent-shell-tray-ui] `is_visible().unwrap_or(false)` swallows errors in the tray click handler (also filed under 1.1 round 2).
+- [code review of 2-5-agent-shell-tray-ui] Concurrent Save clicks race on the settings file; benign last-click-wins.
+- [code review of 2-5-agent-shell-tray-ui] HiDPI-aware tray icon lookup was never implemented; Retina shows the upscaled `@1x`.
+- [3rd code review of 2-3b-oauth-paths-account-linking-google-apple] A falsy `data.user` after a successful exchange skips Story 2.3c's phone gate.
+- [3rd code review of 2-3b-oauth-paths-account-linking-google-apple] Google's OAuth button has no availability gate; local dev-setup rough edge only.
+- [code review of 2-3b-oauth-paths-account-linking-google-apple (2026-07-27)] Callback route's `createClient()` sits outside its own try/catch, in both routes.
+- [code review of 2-3b-oauth-paths-account-linking-google-apple (2026-07-27)] A reused OAuth code redirects an already-signed-in user to an error page.
+- [code review of 2-3a-email-identity-path-email-password-passkey] `experimental.passkey` opt-in is duplicated verbatim across three client constructors.
+- [code review of 2-3a-email-identity-path-email-password-passkey] Task 5.1's "prompt after successful signUp" trigger can never fire as written.
+- [code review of 1-9-golden-file-regression-harness] Golden fixtures never cover two plays tied on `start_time`.
+- [code review of 1-8-live-practice-confidence-signal] No guard against violated `start_time` ordering in `classify`/`count_long_gaps`.
+- [implementation of 1-7-core-per-set-stat-engine] `TrackIdentity` collides on (title, artist), and blank/blank collides across unrelated plays.
+- [implementation of 1-7-core-per-set-stat-engine] AC-4's ≤10s p95 full-library-pass target has never been honestly benchmarked.
+- [code review of 1-6-edge-genre-normalization-versioned] Legacy numeric ID3v1 TCON maps to "Other"; none observed in the real corpus.
+- [code review of 1-3b-master-sqlite-play-log-reader] A NULL `history_entry.session_id` would make a row silently unreachable.
+- [code review of 1-3b-master-sqlite-play-log-reader] `start_time`'s real range was never independently confirmed, unlike `deck`'s.
+- [code review of 1-4-library-join-for-in-library-enrichment] `sane_bpm` has no upper bound, so a corrupted positive BPM passes as a measurement.
+- [code review of 1-4-library-join-for-in-library-enrichment] Duplicate-path last-wins tiebreak is still an unconfirmed assumption; local catalogue had no duplicates.
+- [code review of 1-4-library-join-for-in-library-enrichment] `serato4::join_session` fails a whole session on one row's type-coercion error.
+- [code review of 1-3-clean-room-session-parser] RF-2's trailing-fragment hard failure, refuted on the real 474-file corpus, kept as synthetic coverage.
+- [code review of 1-3-clean-room-session-parser] Fixture gotcha: understating an `oent` length yields `Truncated`, not `Desync`.
+- [code review of 1-1-monorepo-scaffold-with-three-workspaces] No OS matrix in CI; the agent core is built and tested only on ubuntu.
+- [code review round 2 of 1-1-monorepo-scaffold-with-three-workspaces] The full Supabase stack boots in CI just to prove one no-op migration applies.
+- [code review of 1-2-parser-validation-spike-against-real-sessions] `ParseError::Truncated` is unreachable dead code in the throwaway spike crate.
+- [code review of 1-2-parser-validation-spike-against-real-sessions] Spike `home()` and `to_str().unwrap()` panic instead of failing gracefully.
+- [code review of 1-2-parser-validation-spike-against-real-sessions] Spike byte-level resync could theoretically desync on a coincidental UTF-16 match.
+- [code review of 1-2-parser-validation-spike-against-real-sessions] `2521.session`'s AD-17 "morning block + gap" framing is imprecise.
+- [code review of 1-5-off-library-embedded-tag-fallback-with-visible-unknown] Disabling lofty's ID3v2 compression support can drop a readable FLAC Vorbis block.
+- [code review of 1-5-off-library-embedded-tag-fallback-with-visible-unknown] `embedded_tags`' module doc overstates content-sniffed dispatch; extension still seeds it.
+- [code review of 1-10-freeze-the-shared-sync-contract] No test round-trips a realistic `SyncPayload` through a real JSON-schema validator.
+- [code review of 2-1-supabase-cloud-foundation-isolation-baseline] `handle_new_dj` never backfills a `djs` row for a pre-existing `auth.users` row.
+- [code review of 2-1 …, round 2] The additive-only guard's splitter ignores `$$` bodies, so its "statement-aware" docstring overclaims.
+- [code review of 2-2-obsidian-design-token-system-web-shell] The hardcoded-color guard can't catch dynamically-constructed color strings.
+- [code review of 2-9b-windows-signed-build] `signCommand`'s `%1` is unquoted while `productName` contains a space; verify on the first real build.
+- [code review of 2-9b-windows-signed-build] The Azure signing endpoint is still a literal placeholder, blocked on provisioning tracked elsewhere.
+- [code review of 2-9c-signed-auto-updater-pipeline] No preflight check that `TAURI_SIGNING_PRIVATE_KEY` exists before the expensive build.
+- [code review of 2-9c-signed-auto-updater-pipeline] The update endpoint hardcodes the repo slug with no fallback or mirror.
+- [code review of 2-9c-signed-auto-updater-pipeline] `$VERSION` is interpolated unescaped into `sed` and `node -e`; maintainer-reachable only.
+- [code review of 3-1-sessions-sets-plays-schema-visibility-content-overlay-split] `plays.genre_normalized`/`taxonomy_version` independence isn't enforced by a CHECK.
+- [code review of 3-1-sessions-sets-plays-schema-visibility-content-overlay-split] `plays.position`/`camelot_key` have no format or range validation.
+- [code review of 3-1-sessions-sets-plays-schema-visibility-content-overlay-split] `sessions.session_identity` has no non-empty or normalization guard.
+- [code review of 3-2-idempotent-set-sync] No pagination or cap on a sync pass; serial blocking HTTP per row.
+- [code review of 3-2-idempotent-set-sync] No guard against concurrent or overlapping `sync_pending_sessions` calls.
+- [code review of story-3.7] `bpmHistogram` doesn't clamp single-outlier BPM values, stretching the overlay's band.
+- [code review of story-3.7] One Escape keypress closes the delete modal and a drill-in veil together.
+- [code review of 3-8-energy-arc-chart-summary] No component or DOM tests for `DetailArc`, `TempoSpark`, `AnimateNumber`.
+- [code review of 3-8-energy-arc-chart-summary] `AnimateNumber`'s digit roll is asymmetric across a magnitude boundary.
+- [code review of 3-8-energy-arc-chart-summary] Backfill has no recovery path if Serato prunes its own history out from under a pending row.
+- [code review of 4-1-style-evolution-trend-view-excludes-low-confidence] The dashed gap-bridge affordance is explained nowhere the user can see.
+- [code review of 4-11-library-roster-sync] Nondeterministic dedupe tie-break can flip retained title/artist and re-upload a row forever.
+- [code review of 4-11-library-roster-sync] AC-5's soft-delete still has no end-to-end coverage of a real removal.
+- [code review of 4-8-genre-share-stream-camelot-wheel] `TrendChart`'s error-boundary `resetKey` is reveal-blind; same hole in three components.
+- [code review of 4-8-genre-share-stream-camelot-wheel] Locale-dependent server-rendered axis ticks in `GenreShareStream`/`TrendChart`; same seam as the i18n decision above.
+- [code review of 4-9-library-utilization-composition-play-side-stats] Two pgTAP global-count assertions stay unscoped and will break an unrelated future story.
+- [code review of 4-9-library-utilization-composition-play-side-stats] `SIMILARITY_MATRIX_SETS` aliases a dashboard constant; a retune silently falsifies the PRD.
+- [code review of 4-9-library-utilization-composition-play-side-stats] Set similarity's cap statement counts only dated survivors; unreachable while `started_at` is NOT NULL.
+- [code review of 5-1-segments-overlay-schema] `first_play_id`/`last_play_id` aren't constrained to belong to the same `set_id` as their segment.
+- [code review of 5-1-segments-overlay-schema] Nothing rejects a segment whose first play falls after its last; needs a trigger, owned by 5.2/5.3.
+- [code review of 5-1-segments-overlay-schema] `segments_isolation_test.sql` never deletes a `sets` row, so the `set_id` cascade is unproven.
+- [code review of 5-1-segments-overlay-schema] `supabase/README.md`'s migration/test tree map has been known-incomplete since Story 3.2.
+
+**Totals:** 175 still open (A: 3, B: 27, C: 17, D: 6, E: 122), 56 already closed inline.
+
+*(Not counted in either figure: the post-merge review's seven "Verified NOT broken" records and its one "not over-engineered" record, which are verification notes rather than deferred findings. The Story 5.1 section was appended by a concurrent session while this triage was being written and is included above.)*
+
 ## Deferred from: Story 4.10 — track lookup and track detail (2026-08-10)
 
 ### Open — accessibility, pre-existing, one small fix
@@ -523,3 +721,19 @@ Stories 4.5, 4.6, 4.7 and 4.11 merged to `main` inside one hour (merge order: #2
 - **`SIMILARITY_MATRIX_SETS` is an alias of the dashboard's `MOST_PLAYED_RECENT_SETS`.** This is as D-19 ruled (reuse the existing "recent" scale rather than invent a second one on the same product), so it is deferred rather than patched — but `rightColumn.ts:78-83` records that this constant has already been retuned once (5→10, 2026-08-06) for reasons entirely about the most-played card's pool size. D-19, `epics.md` AC-4 and FR-30 all pin "the 10 most recent". A future dashboard-motivated retune to 15 silently widens the similarity matrix and falsifies the PRD; it surfaces as a failure in `libraryUtilization.test.ts`'s truncation test, whose name and location give no hint the cause is a dashboard constant. Worth a comment at the `rightColumn.ts` definition site naming the second consumer, if not a decoupling. [web/lib/sets/libraryUtilization.ts:433, web/lib/sets/rightColumn.ts:78-83]
 
 - **Set similarity's on-screen cap statement counts only dated survivors.** `buildSetSimilarity` sets `survivingSetCount: index.dated.length` and `truncated: index.dated.length > recent.length`, so undated survivors are absent from "your 10 most recent sets, of N" with no disclosure — inconsistent with the undated-disclosure discipline the same file applies everywhere else. Unreachable today because `sets.started_at` is `NOT NULL` (the seed header documents this, and 4.9's undated handling is explicitly defensive against a future nullable column). Becomes live the moment that column is made nullable. [web/lib/sets/libraryUtilization.ts:514-515]
+
+## Deferred from: code review of 5-1-segments-overlay-schema (2026-08-10)
+
+- **`first_play_id`/`last_play_id` aren't constrained to belong to the same `set_id` as the `segments` row.** A segment could reference `plays` rows from an entirely different set — nothing at the DB layer ties the two FKs together. Pre-existing pattern, not a novel gap: Story 3.1's own migration explicitly documents the identical "known gap, not this story's to close" for `sets.dj_id`/`plays.dj_id` never being checked against their parent row's `dj_id` (`20260730204057_create_sessions_sets_plays.sql`'s trailing comment), and rules that the write-path story must derive, never trust, these values (AD-19's pattern). Story 5.2 (algorithm-written suggestions) and Story 5.3 (DJ drag/keyboard editing) own closing this when they design the actual write path. [supabase/migrations/20260810153813_create_segments.sql:19-29]
+
+- **`dj_id` isn't validated against the `dj_id` implied by `set_id`.** A `segments` row could claim a different owner than its own `set_id` actually belongs to; RLS (`segments_select_own`) trusts the denormalized `dj_id` column directly with no cross-check. Same precedent and same owner as the finding above.
+
+- **No ordering constraint that `first_play_id`'s play precedes `last_play_id`'s play.** A segment's boundaries could be inserted chronologically reversed and nothing rejects it. Not fixable with a plain CHECK (it needs a cross-row join to `plays.position`, which requires a trigger) — belongs with the write-path story (5.2/5.3) that will already be computing positions to write these FKs in the first place. [supabase/migrations/20260810153813_create_segments.sql:25-26]
+
+- **`segments_isolation_test.sql` never independently deletes a `sets` row to prove cascade via `set_id`.** Only the `dj_id`/`auth.users` cascade and the `plays`-FK cascade (via `first_play_id`) are exercised; a typo'd or mis-pointed `set_id` FK would pass every test in the suite. Pre-existing gap, not introduced by this story: `sessions_sets_plays_isolation_test.sql` has the identical hole for `sets`/`sessions`. [supabase/tests/segments_isolation_test.sql]
+
+- **`grant_matrix_test.sql` has no hardcoded `authenticated`-scoped INSERT/DELETE sweep for any table.** `segments` was correctly added to the `anon` INSERT-denied and `anon` DELETE-denied arrays (the two that exist), but there is no equivalent `authenticated` array to add it to — that coverage exists only via `segments_isolation_test.sql`'s own Case 5. Pre-existing structural gap across all 8 tables in the file, not introduced by this story. [supabase/tests/grant_matrix_test.sql]
+
+- **`supabase/README.md`'s migration/test tree map has been known-incomplete since Story 3.2.** It reads as a directory listing but is missing migrations/tests from several intervening stories; this story adds its own two entries correctly without closing the pre-existing gap. Not introduced by this diff. [supabase/README.md]
+
+- **No decision recorded on whether overlapping/duplicate segments within a set are permitted.** Two segments could cover an identical (or overlapping) `plays` range with nothing to prevent it. Explicitly out of this story's scope per its own Scope Boundaries — Story 5.3 owns the segment editor and the write UX that will need to rule on this. [supabase/migrations/20260810153813_create_segments.sql]
