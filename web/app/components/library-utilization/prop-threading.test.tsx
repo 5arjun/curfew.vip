@@ -67,7 +67,10 @@ function repeats(overrides: Partial<RepeatTrackRateModel> = {}): RepeatTrackRate
 
 function similarity(overrides: Partial<SetSimilarityModel> = {}): SetSimilarityModel {
   return {
-    labels: ["SET 902", "SET 901"],
+    axes: [
+      { setId: "set-902", label: "SET 902", dayLabel: "Sat, Jun 13" },
+      { setId: "set-901", label: "SET 901", dayLabel: "Fri, Jun 12" },
+    ],
     matrix: [
       [null, 0.5],
       [0.5, null],
@@ -207,7 +210,7 @@ describe("SetSimilarity threads its model to the DOM (AC-4, D-19, D-22)", () => 
   // NEGATIVE CONTROL for the whole module.
   it("renders no matrix and no figure below its gate", () => {
     const html = renderToStaticMarkup(
-      <SetSimilarity model={similarity({ ranked: [], matrix: [], labels: [], shownSetCount: 0 })} />,
+      <SetSimilarity model={similarity({ ranked: [], matrix: [], axes: [], shownSetCount: 0 })} />,
     );
     expect(html).not.toContain("lu-sim-grid");
     expect(html).not.toContain("%");

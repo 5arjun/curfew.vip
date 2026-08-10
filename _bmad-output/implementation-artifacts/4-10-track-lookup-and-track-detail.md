@@ -330,7 +330,17 @@ Ruled: tuple rows. D-29's architecture is untouched — the filter is still clie
 - **`SpotlightSearch`'s own placeholder is not `aria-hidden`** — noticed while reusing its shape; another story's component, flagged not fixed.
 - `getMixNeighbours` needed `.in()` on `index.test.ts`'s `mockSupabase`, which the helper did not model. Added the same way the helper already models `is` vs `eq` — as a **distinct** method, so a test asserting the cross-product shape cannot pass against `eq`. The helper is otherwise reused verbatim.
 
-**Gate, after implementation.** `pnpm lint`, `pnpm typecheck`, `pnpm build` all clean; **717 tests / 31 files**, up from the 596 / 28 baseline (**+121 tests, +3 files**; no test was removed or skipped). **This story adds no migration, so pgTAP stays at 209** — `git diff --stat` confirms zero files under `supabase/migrations/`. Also verified against failure mode 13: no binary files and no stray NUL bytes in the diff, and no temporary/preview routes left behind.
+**Post-implementation change, requested by Arjun (2026-08-10) — Story 4.9's set-similarity matrix.**
+
+Two asks, both done on this branch even though the component is 4.9's: the axes are now **links into `/set/[id]`**, and they render **dates rather than Serato session numbers**. Recorded here because it widens this story's blast radius beyond its own File List.
+
+- `SetSimilarityModel.labels: string[]` became `axes: SimilarityAxis[]` (`setId`, `label`, `dayLabel`) — the string never carried a route key. The session label is kept, not discarded: it rides the link's accessible name (`"Sat, Jun 13, SET 967"`), so the identity `SetDetail`'s header uses stays reachable and the two surfaces cannot read as different sets. Verified in the browser: clicking the `Sat, Jun 13` axis lands on a Set Detail whose header reads `SAT · 13 JUN 2026 · SET 967`.
+- **Same-night collisions disambiguate with the real session number** (`Jun 13 · 975`), not a counter — two gigs in one night is ordinary, and `Jun 13 1` / `Jun 13 2` looks like a typo and identifies neither. The old numeric guard still runs behind it for the pair that shares a night *and* has no session label.
+- **Making the axes interactive moved the `aria-hidden` boundary**, and this was the one genuine hazard in the change: focusable content inside an `aria-hidden` subtree is a keyboard trap. The attribute moved down off the grid and onto the cells, which is a strict a11y improvement — ten navigable set links where there were none, with the 100 cell percentages still out of the tree. Column headers are the same ten destinations, so they are `aria-hidden` + `tabIndex={-1}`.
+- **One defect caught by re-measuring, not by the gate:** the phone-width ranked list's `.lu-row-title` wrapper was 24px while the anchors inside it were 18px — the same row-is-not-the-target mistake found earlier on the track rows. Fixed on the anchors. Re-measured at 375 and 320: 10 visible links, **0** under the floor, no overflow.
+- Tests updated rather than deleted: the two disambiguation cases now assert date labels, plus a new case for same-night sets and one pinning `setId`/`label` alongside `dayLabel`. 719 tests / 31 files.
+
+**Gate, after implementation.** `pnpm lint`, `pnpm typecheck`, `pnpm build` all clean; **719 tests / 31 files**, up from the 596 / 28 baseline (**+123 tests, +3 files**; no test was removed or skipped). **This story adds no migration, so pgTAP stays at 209** — `git diff --stat` confirms zero files under `supabase/migrations/`. Also verified against failure mode 13: no binary files and no stray NUL bytes in the diff, and no temporary/preview routes left behind.
 
 ### File List
 
@@ -353,6 +363,7 @@ Ruled: tuple rows. D-29's architecture is untouched — the filter is still clie
 - `web/app/components/library-utilization/Workhorses.tsx`
 - `web/app/components/library-utilization/OneAndDone.tsx`
 - `web/app/components/library-utilization/prop-threading.test.tsx`
+- `web/app/components/library-utilization/SetSimilarity.tsx` *(Story 4.9's component — axes linked + date-labelled at Arjun's request, 2026-08-10)*
 - `web/app/globals.css`
 - `web/app/library-utilization.css`
 - `web/lib/sets/index.ts`
@@ -369,7 +380,7 @@ Ruled: tuple rows. D-29's architecture is untouched — the filter is still clie
 - `_bmad-output/implementation-artifacts/deferred-work.md`
 - `_bmad-output/implementation-artifacts/4-10-track-lookup-and-track-detail.md` *(this file)*
 
-Checked against `git diff --stat`: 29 files, and every one of them is listed above.
+Checked against `git diff --stat`: 30 files, and every one of them is listed above.
 
 ## Change Log
 

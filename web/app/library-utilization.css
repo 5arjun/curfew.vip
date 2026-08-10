@@ -633,6 +633,79 @@
   padding-right: 6px;
 }
 
+/* The axes link into `/set/[id]` (2026-08-10). A date is longer than the bare
+   session number the axis used to show, so the column headers wrap rather than
+   forcing the grid wider — the row axis is `auto`-sized and the columns are
+   `1fr`, so nothing here can push the module into horizontal overflow. */
+.lu-sim-axis-link {
+  /* 24px floor for SC 2.5.8. The row axis inherits the cell row's 26px, but a
+     column header sits in its own row and would otherwise be ~11px tall. */
+  min-height: 24px;
+  color: var(--color-abyss-accent);
+  text-decoration: none;
+  /* The non-colour cue, so a link is never distinguished by colour alone
+     (WCAG SC 1.4.1) — and dotted rather than solid, because ten underlines
+     across the top of a matrix read as a rule line. */
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--color-abyss-glint);
+  text-align: center;
+  overflow-wrap: anywhere;
+  transition: color var(--motion-duration-fast) var(--motion-ease-liquid);
+}
+
+.lu-sim-axis-link:hover {
+  color: var(--color-abyss-text);
+  text-decoration-color: var(--color-abyss-accent);
+}
+
+.lu-sim-axis-link:focus-visible {
+  outline: none;
+  border-radius: var(--radius-xl);
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 6px var(--color-abyss-accent-glow);
+}
+
+/* The phone-width list's own links — the grid is `display: none` there, so
+   these are the only axis links in the tree at that width. */
+.lu-sim-ranked-link {
+  /* 24px floor for SC 2.5.8, on the ANCHOR — the `.lu-row-title` wrapper was
+     already 24px and the links inside it were still 18px, which is the same
+     row-is-not-the-target mistake measured on the track rows. */
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  color: var(--color-abyss-accent);
+  text-decoration: none;
+  text-decoration-line: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--color-abyss-glint);
+}
+
+.lu-sim-ranked-link:hover {
+  text-decoration-color: var(--color-abyss-accent);
+}
+
+.lu-sim-ranked-link:focus-visible {
+  outline: none;
+  border-radius: var(--radius-xl);
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 6px var(--color-abyss-accent-glow);
+}
+
+/* The ranked row's target is the two links inside it, so the row itself grows
+   to keep them clear of the 24px floor at the width this list actually shows. */
+.lu-sim-ranked-row .lu-row-title {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 24px;
+}
+
 .lu-sim-cell {
   position: relative;
   display: flex;

@@ -483,8 +483,10 @@ describe("buildSetSimilarity (AC-4, D-19)", () => {
       }),
     );
     const model = buildSetSimilarity(buildUtilizationIndex(sets));
-    expect(model.labels[0]).toBe("SET 911");
-    expect(model.labels).not.toContain("SET 900");
+    // `label` still carries the session identity even though the AXIS now
+    // shows a date — the newest-first slice is what this case is about.
+    expect(model.axes[0].label).toBe("SET 911");
+    expect(model.axes.map((a) => a.label)).not.toContain("SET 900");
   });
 
   it("does not flag truncation when everything fits", () => {
@@ -505,8 +507,11 @@ describe("buildSetSimilarity (AC-4, D-19)", () => {
     );
     expect(model.ranked[0].share).toBe(1);
     const summary = setSimilaritySummary(model);
-    expect(summary).toContain("SET 3");
-    expect(summary).toContain("SET 1");
+    // The two nights that share a track — named by DATE since 2026-08-10, the
+    // same vocabulary the axes and the ranked list use. `a` and `c` are the
+    // pair; `b` shares nothing with either.
+    expect(summary).toContain(model.axes.find((x) => x.label === "SET 3")!.dayLabel);
+    expect(summary).toContain(model.axes.find((x) => x.label === "SET 1")!.dayLabel);
     expect(summary).toContain("100%");
   });
 
@@ -855,31 +860,89 @@ describe("review regressions", () => {
     expect(display.artist).toBe("Unknown");
   });
 
-  it("disambiguates duplicate axis labels so the text equivalent can identify each set", () => {
-    // Two sets with no `session_label` both fall back to "Untitled set",
-    // giving the matrix two identical axes, duplicate React keys, and a text
-    // equivalent reading "Untitled set and Untitled set are your most alike
-    // sets" — which identifies neither (AC-4, SC 1.4.1).
+  it("labels the axes by DATE, and carries the route key and session label alongside", () => {
+    // Changed 2026-08-10 (Arjun): the axis used to render a bare `975` — the
+    // Serato `history_session` id, which means nothing to a DJ. It now renders
+    // the night. `setId` rides along because the axes are links into
+    // `/set/[id]`, and `label` because the accessible name still names the set
+    // the way the rest of the product does.
     const index = buildUtilizationIndex([
       set({
-        external_id: "a",
+        external_id: "set-a",
         started_at: "2026-06-01T22:00:00.000Z",
+        sessionLabel: "serato4:101",
         trackCount: 6,
         plays: [t("A", "X", "2026-06-01T22:00:00.000Z"), t("B", "X", "2026-06-01T22:01:00.000Z")],
       }),
       set({
-        external_id: "b",
+        external_id: "set-b",
         started_at: "2026-06-02T22:00:00.000Z",
+        sessionLabel: "serato4:102",
         trackCount: 6,
         plays: [t("A", "X", "2026-06-02T22:00:00.000Z"), t("C", "X", "2026-06-02T22:01:00.000Z")],
       }),
     ]);
     const model = buildSetSimilarity(index);
 
-    expect(new Set(model.labels).size).toBe(model.labels.length);
-    expect(model.labels).toEqual(["Untitled set 1", "Untitled set 2"]);
-    expect(setSimilaritySummary(model)).toContain("Untitled set 1");
-    expect(setSimilaritySummary(model)).toContain("Untitled set 2");
+    // Newest-first. `vitest.config.ts` pins TZ=UTC and LC_ALL=en-US, so these
+    // strings are deterministic here — the rendered form for a DJ in another
+    // zone is a browser-pass question, not a unit-test one.
+    expect(model.axes.map((a) => a.dayLabel)).toEqual(["Tue, Jun 2", "Mon, Jun 1"]);
+    expect(model.axes.map((a) => a.setId)).toEqual(["set-b", "set-a"]);
+    expect(model.axes.map((a) => a.label)).toEqual(["SET 102", "SET 101"]);
+    expect(setSimilaritySummary(model)).toContain("Tue, Jun 2");
+    expect(setSimilaritySummary(model)).toContain("Mon, Jun 1");
+  });
+
+  it("disambiguates two sets on the SAME night with their session numbers, not a counter", () => {
+    // Two gigs in one night is ordinary. A bare counter would read "Jun 1 1" /
+    // "Jun 1 2", which looks like a typo and identifies neither.
+    const index = buildUtilizationIndex([
+      set({
+        external_id: "a",
+        started_at: "2026-06-01T18:00:00.000Z",
+        sessionLabel: "serato4:101",
+        trackCount: 6,
+        plays: [t("A", "X", "2026-06-01T18:00:00.000Z"), t("B", "X", "2026-06-01T18:01:00.000Z")],
+      }),
+      set({
+        external_id: "b",
+        started_at: "2026-06-01T23:00:00.000Z",
+        sessionLabel: "serato4:102",
+        trackCount: 6,
+        plays: [t("A", "X", "2026-06-01T23:00:00.000Z"), t("C", "X", "2026-06-01T23:01:00.000Z")],
+      }),
+    ]);
+    const model = buildSetSimilarity(index);
+
+    expect(model.axes.map((a) => a.dayLabel)).toEqual(["Mon, Jun 1 · 102", "Mon, Jun 1 · 101"]);
+    expect(new Set(model.axes.map((a) => a.dayLabel)).size).toBe(2);
+  });
+
+  it("falls back to a counter when same-night sets have no session label either", () => {
+    // Two sets with no `session_label` both fall back to "Untitled set", so
+    // there is no number to disambiguate with — the numeric guard is what
+    // keeps the axes unique and the React keys distinct (AC-4, SC 1.4.1).
+    const index = buildUtilizationIndex([
+      set({
+        external_id: "a",
+        started_at: "2026-06-01T18:00:00.000Z",
+        trackCount: 6,
+        plays: [t("A", "X", "2026-06-01T18:00:00.000Z"), t("B", "X", "2026-06-01T18:01:00.000Z")],
+      }),
+      set({
+        external_id: "b",
+        started_at: "2026-06-01T23:00:00.000Z",
+        trackCount: 6,
+        plays: [t("A", "X", "2026-06-01T23:00:00.000Z"), t("C", "X", "2026-06-01T23:01:00.000Z")],
+      }),
+    ]);
+    const model = buildSetSimilarity(index);
+    const days = model.axes.map((a) => a.dayLabel);
+
+    expect(new Set(days).size).toBe(days.length);
+    expect(days).toEqual(["Mon, Jun 1 1", "Mon, Jun 1 2"]);
+    expect(setSimilaritySummary(model)).toContain("Mon, Jun 1 1");
   });
 
   it("leaves already-unique labels untouched", () => {
@@ -898,7 +961,11 @@ describe("review regressions", () => {
       }),
     ]);
 
-    expect(buildSetSimilarity(index).labels).toEqual(["SET 102", "SET 101"]);
+    // Distinct nights, so no suffix is added to either axis.
+    expect(buildSetSimilarity(index).axes.map((a) => a.dayLabel)).toEqual([
+      "Tue, Jun 2",
+      "Mon, Jun 1",
+    ]);
   });
 
   it("names the unit in the workhorses summary instead of a pronoun with the wrong antecedent", () => {

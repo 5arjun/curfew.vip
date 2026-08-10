@@ -18,7 +18,7 @@
 
 import { isLowConfidenceSet } from "./listModel";
 import { MOST_PLAYED_RECENT_SETS } from "./rightColumn";
-import { formatSessionLabel } from "./format";
+import { formatDayDate, formatSessionLabel } from "./format";
 import type { SetRecord } from "./types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -545,8 +545,64 @@ function disambiguateLabels(labels: string[]): string[] {
   });
 }
 
+/**
+ * The axis labels the matrix actually shows (Arjun, 2026-08-10).
+ *
+ * **A date, not the Serato session number.** `formatSessionLabel` yields
+ * `SET 975`, and the grid then stripped the word so the axis read a bare
+ * `975` — an internal id from Serato's `history_session` table that means
+ * nothing to the DJ, on the one axis where they most need to recognise a
+ * night. `Jun 13` is a night they remember.
+ *
+ * **The session label is not discarded**, it moves: it stays on
+ * {@link SimilarityAxis.label} and rides the link's accessible name, so the
+ * identity the rest of the product uses (`SetDetail`'s header, `/track`'s set
+ * rows) is still reachable and the two surfaces cannot be read as different
+ * sets.
+ *
+ * **Same-day collisions get the session number back, not a counter.** Two gigs
+ * on one night is ordinary, and `disambiguateLabels`' numeric suffix would read
+ * `Jun 13 1` / `Jun 13 2` — which looks like a typo and identifies nothing.
+ * Appending the real session number (`Jun 13 · 975`) disambiguates with a fact.
+ * The numeric form still runs afterwards as the second guard, for the pair that
+ * shares a day AND has no session label at all.
+ *
+ * Undated sets cannot reach here: `buildSetSimilarity` reads `index.dated`, so
+ * every axis has a real date and there is no `"—"` case to design for.
+ */
+function buildAxisDayLabels(recent: IndexedSet[]): string[] {
+  const dayOf = (s: IndexedSet) => formatDayDate(new Date(s.startMs).toISOString());
+
+  const dayCounts = new Map<string, number>();
+  for (const s of recent) {
+    const day = dayOf(s);
+    dayCounts.set(day, (dayCounts.get(day) ?? 0) + 1);
+  }
+
+  const withNumbers = recent.map((s) => {
+    const day = dayOf(s);
+    if ((dayCounts.get(day) ?? 0) < 2) return day;
+    // `formatSessionLabel`'s output minus its prefix — the same strip the grid
+    // used to do at render time, done once here so the axis and the text
+    // equivalent cannot disagree about what a set is called.
+    const session = s.label.replace(/^SET /, "");
+    return session && s.label !== "Untitled set" ? `${day} · ${session}` : day;
+  });
+
+  return disambiguateLabels(withNumbers);
+}
+
+export interface SimilarityAxis {
+  /** `sets.id` — the `/set/[id]` route key. Never rendered; it is a uuid. */
+  setId: string;
+  /** `SET 975`, from `session_label`. The product-wide identity, kept for the accessible name. */
+  label: string;
+  /** What the axis shows: a date, disambiguated. See {@link buildAxisDayLabels}. */
+  dayLabel: string;
+}
+
 export interface SimilarityPair {
-  /** Indexes into {@link SetSimilarityModel.labels}. */
+  /** Indexes into {@link SetSimilarityModel.axes}. */
   a: number;
   b: number;
   /** Jaccard overlap, 0–1. */
@@ -554,8 +610,13 @@ export interface SimilarityPair {
 }
 
 export interface SetSimilarityModel {
-  /** Axis labels, newest-first. From `session_label`, never the raw uuid. */
-  labels: string[];
+  /**
+   * The sets on both axes, newest-first — each carrying its route key, its
+   * session label and its date label. Was a bare `labels: string[]` until
+   * 2026-08-10; the matrix's axes are now links into `/set/[id]`, which needs
+   * an id the string never carried.
+   */
+  axes: SimilarityAxis[];
   /**
    * `matrix[a][b]` is the Jaccard overlap of two sets' distinct tracks.
    * `null` on the diagonal (a set against itself is trivially 1.0 and says
@@ -593,7 +654,12 @@ export function buildSetSimilarity(index: UtilizationIndex): SetSimilarityModel 
   // take — never take then reverse, which would show the OLDEST ten.
   const recent = [...index.dated].reverse().slice(0, SIMILARITY_MATRIX_SETS);
 
-  const labels = disambiguateLabels(recent.map((s) => s.label));
+  const dayLabels = buildAxisDayLabels(recent);
+  const axes: SimilarityAxis[] = recent.map((s, i) => ({
+    setId: s.id,
+    label: s.label,
+    dayLabel: dayLabels[i],
+  }));
   const matrix: (number | null)[][] = recent.map(() => recent.map(() => null));
   const ranked: SimilarityPair[] = [];
 
@@ -621,7 +687,7 @@ export function buildSetSimilarity(index: UtilizationIndex): SetSimilarityModel 
   ranked.sort((x, y) => y.share - x.share || x.a - y.a || x.b - y.b);
 
   return {
-    labels,
+    axes,
     matrix,
     shownSetCount: recent.length,
     survivingSetCount: index.dated.length,
@@ -647,8 +713,11 @@ export function setSimilaritySummary(model: SetSimilarityModel): string {
   const cap = model.truncated
     ? ` Showing your ${model.shownSetCount} most recent sets of ${model.survivingSetCount}.`
     : "";
+  // The DATE labels, matching what the axes and the ranked list show — a text
+  // equivalent that named the sets differently from the picture would be a
+  // second vocabulary for the same two nights.
   return (
-    `${model.labels[top.a]} and ${model.labels[top.b]} are your most alike sets, ` +
+    `${model.axes[top.a].dayLabel} and ${model.axes[top.b].dayLabel} are your most alike sets, ` +
     `sharing ${pct(top.share)} of their tracks.${cap}`
   );
 }

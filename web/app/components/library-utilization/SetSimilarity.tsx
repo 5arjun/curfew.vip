@@ -1,7 +1,9 @@
+import Link from "next/link";
 import {
   hasEnoughSimilarityHistory,
   setSimilaritySummary,
   type SetSimilarityModel,
+  type SimilarityAxis,
 } from "@/lib/sets/libraryUtilization";
 import { InsufficientHistory } from "@/app/components/style-evolution/InsufficientHistory";
 
@@ -38,9 +40,11 @@ function pct(share: number): string {
  *    SC 1.4.1). Every populated cell prints its own percentage as text. The
  *    visual ramp is a redundant encoding, not the encoding.
  *
- * 2. *The grid is `aria-hidden`, and the section's accessible name is the text
- *    equivalent.* A 10×10 table announced cell by cell is 100 announcements to
- *    find one fact. `setSimilaritySummary` — the most-alike pair and its share,
+ * 2. *The grid's CELLS are `aria-hidden`, and the section's accessible name is
+ *    the text equivalent.* A 10×10 table announced cell by cell is 100
+ *    announcements to find one fact. (This read "the grid is `aria-hidden`"
+ *    until 2026-08-10, when the axes became links and the attribute had to move
+ *    down to the cells — see the note below.) `setSimilaritySummary` — the most-alike pair and its share,
  *    in words — is what `EXPERIENCE.md`'s chart rule actually asks for, and it
  *    is present at every width. Note the ranked list is NOT a second accessible
  *    copy: it is `display: none` above 620px, so on desktop neither the grid
@@ -63,6 +67,21 @@ function pct(share: number): string {
  *
  * No cell is interactive, so there is no keyboard path to provide — the data a
  * hover tooltip would have carried is printed in the cell instead.
+ *
+ * **The AXES are interactive as of 2026-08-10 (Arjun), and that moved the
+ * `aria-hidden` boundary.** Each axis now links into `/set/[id]`, and the grid
+ * could not stay wholly `aria-hidden` around them: focusable content inside an
+ * `aria-hidden` subtree is the classic trap — a keyboard user tabs to a control
+ * a screen reader cannot announce. So the attribute moved DOWN, off the grid
+ * and onto the cells and the corner, which is also a strict improvement: an
+ * assistive-tech user now gets ten navigable set links instead of nothing,
+ * while the 100 cell percentages stay out of the tree exactly as decision (2)
+ * above requires.
+ *
+ * The COLUMN headers are the same ten destinations as the row axis, so they are
+ * `aria-hidden` and `tabIndex={-1}`: clickable with a mouse where the DJ's
+ * instinct points, but not a second set of ten tab stops to the same places.
+ * The row axis is the keyboard and screen-reader path.
  */
 export function SetSimilarity({ model }: { model: SetSimilarityModel }) {
   const ready = hasEnoughSimilarityHistory(model);
@@ -87,25 +106,22 @@ export function SetSimilarity({ model }: { model: SetSimilarityModel }) {
         <>
           <div
             className="lu-sim-grid"
-            aria-hidden="true"
             style={{ "--lu-sim-columns": model.shownSetCount + 1 } as React.CSSProperties}
           >
             {/* Corner spacer, then the column headers. */}
-            <span className="lu-sim-corner" />
+            <span className="lu-sim-corner" aria-hidden="true" />
             {/* Keyed by POSITION, not by label. The label is a display string
                 that is not guaranteed unique at its source — an unlabelled set
                 falls back to the literal "Untitled set" — and two of those gave
                 duplicate React keys on both axes. `buildSetSimilarity` now
                 disambiguates the labels too, so this is the second of two
                 guards rather than the only one. */}
-            {model.labels.map((label, col) => (
-              <span key={`col-${col}`} className="lu-sim-axis lu-sim-axis-col">
-                {label.replace(/^SET /, "")}
-              </span>
+            {model.axes.map((axis, col) => (
+              <AxisLink key={`col-${col}`} axis={axis} className="lu-sim-axis-col" duplicate />
             ))}
 
-            {model.labels.map((rowLabel, row) => (
-              <Row key={`row-${row}`} label={rowLabel} cells={model.matrix[row]} row={row} />
+            {model.axes.map((axis, row) => (
+              <Row key={`row-${row}`} axis={axis} cells={model.matrix[row]} row={row} />
             ))}
           </div>
 
@@ -116,8 +132,12 @@ export function SetSimilarity({ model }: { model: SetSimilarityModel }) {
           <ol className="lu-sim-ranked">
             {model.ranked.slice(0, 5).map((pair) => (
               <li key={`${pair.a}-${pair.b}`} className="lu-sim-ranked-row">
+                {/* The phone-width path to the same two sets. The grid is
+                    `display: none` here, so these are the only axis links in
+                    the accessibility tree at this width — never a duplicate. */}
                 <span className="lu-row-title">
-                  {model.labels[pair.a]} &amp; {model.labels[pair.b]}
+                  <RankedLink axis={model.axes[pair.a]} /> &amp;{" "}
+                  <RankedLink axis={model.axes[pair.b]} />
                 </span>
                 <span className="lu-row-value">{pct(pair.share)} shared</span>
               </li>
@@ -137,27 +157,78 @@ export function SetSimilarity({ model }: { model: SetSimilarityModel }) {
   );
 }
 
+/**
+ * One axis label, linking into `/set/[id]`.
+ *
+ * The visible text is the DATE; the accessible name carries the date AND the
+ * session label, so a link announced out of context still identifies which
+ * night it goes to and stays recognisable against `SetDetail`'s own header.
+ *
+ * `duplicate` marks the column headers — the same ten destinations as the row
+ * axis. They stay mouse-clickable but leave the accessibility tree and the tab
+ * order; see this module's doc comment.
+ */
+function AxisLink({
+  axis,
+  className,
+  duplicate = false,
+}: {
+  axis: SimilarityAxis;
+  className: string;
+  duplicate?: boolean;
+}) {
+  return (
+    <Link
+      className={`lu-sim-axis lu-sim-axis-link ${className}`}
+      href={`/set/${encodeURIComponent(axis.setId)}`}
+      aria-label={duplicate ? undefined : `${axis.dayLabel}, ${axis.label}`}
+      aria-hidden={duplicate || undefined}
+      tabIndex={duplicate ? -1 : undefined}
+    >
+      {axis.dayLabel}
+    </Link>
+  );
+}
+
+/** The ranked list's own link — same destination, same accessible name. */
+function RankedLink({ axis }: { axis: SimilarityAxis }) {
+  return (
+    <Link
+      className="lu-sim-ranked-link"
+      href={`/set/${encodeURIComponent(axis.setId)}`}
+      aria-label={`${axis.dayLabel}, ${axis.label}`}
+    >
+      {axis.dayLabel}
+    </Link>
+  );
+}
+
 function Row({
-  label,
+  axis,
   cells,
   row,
 }: {
-  label: string;
+  axis: SimilarityAxis;
   cells: (number | null)[];
   row: number;
 }) {
   return (
     <>
-      <span className="lu-sim-axis lu-sim-axis-row">{label.replace(/^SET /, "")}</span>
+      <AxisLink axis={axis} className="lu-sim-axis-row" />
       {cells.map((share, col) =>
         share === null ? (
           // The diagonal, and any pair where a set had no identified tracks.
           // Blank rather than "0%" — `0 ÷ 0` is unknown, not zero (D-8).
-          <span key={`${row}-${col}`} className="lu-sim-cell lu-sim-cell-empty" />
+          <span key={`${row}-${col}`} className="lu-sim-cell lu-sim-cell-empty" aria-hidden="true" />
         ) : (
           <span
             key={`${row}-${col}`}
             className="lu-sim-cell"
+            // `aria-hidden` sits HERE rather than on the grid, since the axes
+            // became links — see this module's doc comment. Without it the
+            // 100 cell percentages re-enter the accessibility tree, which is
+            // exactly what decision (2) exists to prevent.
+            aria-hidden="true"
             // Intensity rides `opacity` on a token-coloured fill. The colour
             // guard (`no-hardcoded-colors.test.ts`) rejects `color-mix()`,
             // `rgba()`, `hsl()`, `oklch` AND the bare words `transparent` /
