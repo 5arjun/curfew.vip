@@ -41,7 +41,24 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-21
-last_updated: 2026-08-08
+last_updated: 2026-08-10
+# 2026-08-10: story 4-5 -- STATUS BOOKKEEPING CLOSED. review -> done. PR #22
+# merged to main on 2026-08-08 with all 5 review decisions ruled and all 11
+# patches applied; the pre-merge Playwright pass (1440/375) was clean. The
+# story then stayed marked "review" because the post-merge browser
+# walkthrough it owed after the 4.6/4.7/4.11 merge was actually done in a
+# LATER, separate branch (fix/epic-4-merge-integration, PR #24, merged
+# 2026-08-08T18:30:12Z) which fixed two real number-corrupting defects
+# (getLibraryRoster serving a dev's real library to every DJ; the conversion
+# metrics discarding real conversions on a global-earliest-play predicate)
+# and walked the merged three-module page in a browser -- but never updated
+# this file or 4-5-time-to-first-play.md's own Status field. Caught by
+# deferred-work.md's own "Open — process" section (line ~61, logged
+# 2026-08-08 during that same integration review) and confirmed stale again
+# in this session. Also ruled the two items deferred-work.md's future-dated
+# disposition and duplicate-disclosure findings were waiting on (see that
+# file for the rulings; both still need implementation, not done here).
+# epic-4 unchanged (in-progress). 4-5-time-to-first-play: review -> done.
 # 2026-08-07: story 4-5 -- MERGED origin/main (4.6 + 4.11 + 4.7) into the
 # branch. Merge, not rebase: PR #22 is open, matching how 4.11 and 4.7 landed.
 # 6 conflicts (page.tsx, ConversionRateMeter.tsx, libraryConversion.test.ts,
@@ -688,7 +705,7 @@ development_status:
   #   EXPERIENCE.md's Components row + aging-shelf-empty row + nudge row +
   #   UJ-6 step 4, epics.md AC-1/AC-4/AC-5 and two new ACs.
   4-4-aging-shelf-with-prep-crate-action: done
-  4-5-time-to-first-play: review
+  4-5-time-to-first-play: done
   # [LAUNCH BLOCKER, previously unstoried] Ruled by Arjun 2026-08-07: web/'s
   # read path (getRecentSets/getSetById/deleteSet/getLibraryAddEvents) is
   # still fixture-backed while the write path has been live since Epic 3 —
