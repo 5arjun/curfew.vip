@@ -21,26 +21,42 @@ export function LowConfidenceReveal({
   revealed,
   onReveal,
   onHide,
+  descriptor = "low-confidence",
 }: {
   hiddenCount: number;
   revealed: boolean;
   onReveal: () => void;
   onHide: () => void;
+  /**
+   * What the hidden sessions have in common, as an adjective phrase (Story
+   * 4.9, D-20(iii)). The default describes Style Evolution's bare
+   * `confidence.value < 1.0` predicate accurately and is what shipped.
+   *
+   * `/library-utilization` overrides it, because it hides on `listModel`'s
+   * COMPOUND predicate — which also excludes short sessions that scored a
+   * perfectly confident `1.0`. Leaving the default there would have stated a
+   * count whose noun was wrong: the sentence would have called a six-play,
+   * fully-classifiable soundcheck "low-confidence" when the reason it was
+   * hidden is that it was short. A count is only honest if its noun is.
+   */
+  descriptor?: string;
 }) {
   if (hiddenCount === 0) return null;
+
+  const sessions = hiddenCount === 1 ? "session" : "sessions";
 
   return (
     <p className="se-hidden-note">
       {revealed ? (
         <>
-          Showing {hiddenCount} low-confidence {hiddenCount === 1 ? "session" : "sessions"} —{" "}
+          Showing {hiddenCount} {descriptor} {sessions} —{" "}
           <button type="button" className="se-hidden-toggle" onClick={onHide}>
             hide them
           </button>
         </>
       ) : (
         <>
-          {hiddenCount} low-confidence {hiddenCount === 1 ? "session" : "sessions"} hidden —{" "}
+          {hiddenCount} {descriptor} {sessions} hidden —{" "}
           <button type="button" className="se-hidden-toggle" onClick={onReveal}>
             show them
           </button>

@@ -77,10 +77,13 @@ export function TimeToFirstPlay({ model }: { model: TimeToFirstPlayModel }) {
   const summary = enoughTracks ? timeToFirstPlaySummary(model) : "Time to first play";
 
   return (
-    <section className="lu-module dz-shell" aria-label={summary}>
+    // `role="group"`, not `<section>` (Story 4.9; deferred-work R-10) — see
+    // `ConversionRateMeter` for the reasoning. The accessible name is retained
+    // exactly; only its landmark status is dropped.
+    <div className="lu-module dz-shell" role="group" aria-label={summary}>
       <span className="dz-dots" aria-hidden="true" />
       <div className="lu-stat-head">
-        <p className="lu-stat-label">Time to first play</p>
+        <h3 className="lu-stat-label">Time to first play</h3>
       </div>
 
       {!enoughTracks ? (
@@ -139,6 +142,6 @@ export function TimeToFirstPlay({ model }: { model: TimeToFirstPlayModel }) {
               timeToFirstPlaySummary(model)}
         </p>
       )}
-    </section>
+    </div>
   );
 }

@@ -194,6 +194,18 @@ export interface StyleEvolutionModel {
 // register identically low-confidence. This is a known, accepted limitation
 // of a frozen, do-not-tune signal (Epic 1 retro D4), not something this
 // story attempts to fix.
+//
+// ONE OF THREE disagreeing definitions in `web/` — see `listModel.ts`'s
+// exported `isLowConfidenceSet` for the full map (the other is
+// `SetHeader.tsx`'s display-only bar). This bare form does NOT exclude short
+// sessions: `confidence.rs` is symmetric, so a two-track soundcheck scores
+// `1.0` and survives. That is tolerable here, where the predicate only decides
+// which sets a trend line is drawn through, and NOT tolerable on
+// `/library-utilization`, which is why Story 4.9's D-20 deliberately adopted
+// `listModel`'s compound form rather than this one despite AC-10's "the same
+// contract Style Evolution does" wording. The shared thing is the reveal
+// AFFORDANCE, not the predicate. Do not "reconcile" these by pointing that
+// page here.
 function isLowConfidence(set: SetRecord): boolean {
   return set.derived.confidence.value < 1.0;
 }

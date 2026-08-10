@@ -45,7 +45,13 @@ export function LibraryConversionTrend({
   );
 
   return (
-    <div className="lu-trend">
+    // `role="group"` + `<h3>`, matching `ConversionRateMeter` and every Story
+    // 4.9 module. This was the one module on the page with no heading and no
+    // accessible name at all — a bare `<div>` — so R-10's outline fix was
+    // complete everywhere except the module that sits directly beside the one
+    // it was written for.
+    <div className="lu-trend" role="group" aria-label="Conversion trend">
+      <h3 className="lu-stat-label">Conversion trend</h3>
       {!hasEnoughCohorts(library, window) ? (
         <InsufficientHistory copy={libraryInsufficientCopy(window)} />
       ) : (
