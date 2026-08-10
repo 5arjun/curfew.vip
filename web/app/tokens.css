@@ -456,19 +456,45 @@
      (`#0a0e13`, the `.dz-shell` glass fill) rather than the skill's generic
      reference surface: all six checks pass (lightness band, chroma floor,
      worst adjacent CVD ΔE 8.4, worst adjacent normal-vision ΔE 19.3, all
-     ≥3:1 contrast). Only the first 6 slots are used here (5-6 genres is the
-     UI's own cap) — a strict prefix of an already-adjacent-validated order,
-     so truncating the tail never reopens a failing pair. Key-breakdown bars
-     reuse the existing `--camelot-*` wheel instead (an exact, already-
-     established mapping — genres have no such precedent). */
-  --chart-cat-1: #3987e5;
-  --chart-cat-2: #d95926;
+     ≥3:1 contrast). Slots 7-8 added by Story 4.8 (the genre share stream
+     needs 6 named genres + the taxonomy's own literal "Other" genre with
+     colors of their own) — the same `dataviz` 8-hue order's violet/red dark
+     steps.
+
+     RE-PICKED AT LIGHTER STEPS 2026-08-08 (code review, D-1). The genre
+     share stream renders these bands at `fill-opacity: 0.7`, so the ALPHA
+     COMPOSITE (0.7*fg + 0.3*#0a0e13) — not the raw token — is the state that
+     actually reaches the eye, and every validation above measured the raw
+     token. On the composite four old steps fell under the 3:1 non-text floor
+     (fold neutral 2.22, slot 6 2.47, slot 5 2.92, slot 2 2.95); found while
+     fixing that, slots 4↔5 had also collapsed to tritanopia ΔE 2.3 —
+     effectively one color to a tritanope, and invisible to a contrast-only
+     check because both of those slots passed contrast.
+
+     Same `dataviz` 8-hue order, same hues (OKLCH hue held fixed, max drift
+     0.23°), a pure lightening pass: no slot got darker, slots 3 and 8 are
+     untouched, and the fold neutral's chroma DROPPED 0.024 → 0.007, so it
+     reads grayer than before rather than creeping toward a category.
+     Re-validated ON THE 0.7 COMPOSITE against `#0a0e13`: all 9 ≥3.25:1
+     contrast, worst adjacent normal-vision ΔE 17.4 at fold↔slot-7, worst
+     adjacent CVD ΔE 8.4 tritan at slots 6↔7. The breakdown bars and their legend
+     swatches were moved 0.65 → 0.70 in the same pass so they share this
+     validated composite: at 0.65 five of the nine sat at 2.96–2.99:1, just
+     under the floor. All 9 also clear ≥5.5:1 at full opacity. Re-run the
+     check against the COMPOSITE, not the hex, if either alpha moves again.
+
+     Key-breakdown bars reuse the existing `--camelot-*` wheel instead (an
+     exact, already-established mapping — genres have no such precedent). */
+  --chart-cat-1: #3c8ae9;
+  --chart-cat-2: #e46332;
   --chart-cat-3: #199e70;
-  --chart-cat-4: #c98500;
-  --chart-cat-5: #d55181;
-  --chart-cat-6: #008300;
-  /* "Other" (categories folded past the top-6 cap) — a muted neutral,
+  --chart-cat-4: #e6a036;
+  --chart-cat-5: #d2678a;
+  --chart-cat-6: #2d9e28;
+  --chart-cat-7: #9288e7;
+  --chart-cat-8: #e66767;
+  /* "Other" (categories folded past the top-N cap) — a muted neutral,
      deliberately outside the categorical order so it never impersonates a
      real category. */
-  --chart-cat-other: #5b6773;
+  --chart-cat-other: #868a8d;
 }

@@ -126,11 +126,19 @@
   }
 }
 
-@media (max-width: 480px) {
-  .se-tiles {
-    grid-template-columns: 1fr;
-  }
-}
+/* R-8 (Story 4.8, closing 4.7's carried-forward item) is closed by the
+   ≤900px rule above and the DELETION of what used to sit here: a
+   `grid-template-columns: 1fr` override that forced a single column below
+   480px, pushing the first chart to y≈750 on a 720px phone viewport just as
+   this story added two more charts below the fold. Two-up halves the tile
+   rows' height so a chart edge stays in reach, and the tile values still fit
+   at 320/2 − gap ≈ 142px wide (the widest reading, "0:54 / track", measures
+   ~90px at the clamp floor).
+
+   No @media block replaces it: re-declaring `repeat(2, …)` here would be
+   byte-identical to the rule already in force at every width ≤480, and dead
+   CSS under a six-line justification reads as load-bearing to the next
+   editor (P-9, code review 2026-08-08). */
 
 /* ─── Sections (Story 4.7, AC-1) — Tempo/Genre/Key, stacked and all visible
    at once, replacing the retired metric-chip's single shared slot. */
@@ -606,15 +614,26 @@
   pointer-events: none;
 }
 
-/* Opacity matched to set-detail's key strip (`.sd-arc-strip-seg`, 0.65 → 0.9
-   on hover) so a key reads at the same weight on both pages, and the chrome
-   line stays the hero over both breakdowns. */
+/* Opacity was matched to set-detail's key strip (`.sd-arc-strip-seg`, 0.65 →
+   0.9 on hover) so a key read at the same weight on both pages, with the
+   chrome line staying the hero over both breakdowns.
+
+   0.65 → 0.70 (Arjun, 2026-08-08, code review D-1 follow-up). The D-1
+   re-pick validated the categorical palette on the STREAM's 0.7 composite;
+   these bars render the same tokens at their own weight, and at 0.65 five of
+   the nine still landed at 2.96–2.99:1 against the chart surface — hairline
+   misses of the 3:1 non-text floor, but misses. 0.70 clears all nine, and it is the
+   smallest move that does. The bars still recede behind the line (that was
+   the point of the original 0.65) and the hover state is unchanged at 0.9,
+   so the resting-to-hover contrast step the strip idiom depends on survives.
+   `.sd-arc-strip-seg` deliberately NOT changed: it draws `--camelot-*` hues
+   on a different surface and is outside this palette's validation. */
 .se-chart-bar {
   display: block;
   flex: 1 1 0; /* every ranked category holds its slot, even at zero plays */
   min-width: 0;
   border-radius: 2px 2px 0 0;
-  opacity: 0.65;
+  opacity: 0.7;
   pointer-events: auto;
   cursor: pointer;
   /* Height AND flex-grow are both animated so toggling Show other reads as one
@@ -896,7 +915,13 @@
   height: 8px;
   border-radius: 2px;
   flex: none;
-  opacity: 0.65; /* the swatch reads at the bars' own weight */
+  /* The swatch reads at the bars' own weight — moved 0.65 → 0.70 with them
+     (code review D-1 follow-up). It is an 8px graphical identifier carrying
+     the legend's whole mapping, so it is exactly the kind of mark the 3:1
+     non-text floor is about; leaving it behind would also have made this
+     comment false. Now identical to the stream's band alpha, which is why
+     the stream no longer needs a swatch override of its own. */
+  opacity: 0.7;
 }
 
 /* Footnote for the MAX_CATEGORIES cap — rendered only when the cap actually
@@ -906,6 +931,118 @@
   font-style: italic;
   color: var(--color-abyss-text-45);
   opacity: 0.8;
+}
+
+/* ─── Genre share stream (Story 4.8, AC-1..6) — the Genre section's hero.
+   Reuses the .se-chart card/plot/ticks/cats chrome wholesale; only the
+   band fills are new. ────────────────────────────────────────────────────── */
+/* 0.7 (Arjun, 2026-08-08, second pass: "a bit more translucent").
+   The alpha is the design intent and it is fixed; the PALETTE was re-picked
+   around it instead (code review D-1, 2026-08-08). The earlier note here
+   claimed 0.7 "passes the normal-vision floor exactly … legal WITH secondary
+   encoding" — that check only ever measured band-to-band separation. It
+   never re-measured contrast against the surface, where four of the nine
+   composited fills were sitting between 2.22:1 and 2.95:1, below the 3:1
+   non-text floor AC-4 claims. It also missed slots 4↔5 collapsing to tritan
+   ΔE 2.3.
+
+   The lightened tokens now clear both bars ON THE COMPOSITE, so 0.7 no
+   longer rides on secondary encoding to be legal: all 9 ≥3.25:1, worst
+   adjacent normal-vision ΔE 17.4, worst adjacent CVD ΔE 8.4. See the
+   validation record in tokens.css. If this alpha changes, re-run that check
+   against the composite — the raw hex values will not tell you. */
+.se-stream-band {
+  /* The dataviz mark spec's surface gap between stacked fills, done as a
+     hairline stroke so it survives preserveAspectRatio="none" undistorted. */
+  stroke: var(--color-abyss-hairline);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+  fill-opacity: 0.7;
+  pointer-events: auto; /* parent .se-chart-svg is pointer-events: none */
+  transition: fill-opacity var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.se-stream-band[data-hot] {
+  fill-opacity: 1;
+}
+
+/* ─── Key row (Arjun, 2026-08-08): the wheel is square and doesn't earn a
+   full row — on desktop it sits beside the harmonic trend; below 900px the
+   pair stacks like every other chart. The 1fr second track collapses
+   gracefully when the harmonic chart is gated away. ─────────────────────── */
+/* The stacked form is the UNCONDITIONAL base, with the side-by-side grid as
+   the ≥900.02px enhancement (P-12, code review 2026-08-08). Paired
+   `max-width: 900px` / `min-width: 900.02px` queries left a real hole:
+   nothing matched at a fractional width inside (900, 900.02), reachable via
+   browser zoom or fractional-DPI scaling, and the pair fell back to plain
+   block layout with no gap between the wheel and the trend. */
+.se-key-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+@media (min-width: 900.02px) {
+  .se-key-row {
+    display: grid;
+    grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+    gap: 12px;
+    align-items: stretch;
+  }
+  .se-key-row > :only-child {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ─── Camelot wheel (Story 4.8, AC-7/8/11) — the Key section's hero. A
+   radial graphic that is NOT OPERABLE: no focus, no activation, no tap
+   targets, so G-6's non-interactive ruling stands for SC 2.5.8 purposes and
+   the Chart Summary caption remains the accessible reading surface. It does
+   carry mouse-only hover enrichment (the chip below), added in the
+   2026-08-08 walkthrough round — this header used to claim "no hover" while
+   the rules ten lines down styled it, which is exactly the kind of comment a
+   reviewer reads first and trusts (P-7). ────────────────────────────────── */
+.se-wheel-plot {
+  display: grid;
+  place-items: center;
+  padding: 8px 0 4px;
+}
+
+/* 280px, down from 340 (Arjun, 2026-08-08): sized for the side-by-side Key
+   row, still comfortably legible — the cells are hover targets for the
+   chip, not tap targets (G-6's non-interactive ruling stands: nothing is
+   operable). */
+.se-wheel-svg {
+  width: min(100%, 280px);
+  height: auto;
+}
+
+/* Zero-count cells keep the hairline outline only — an EMPTY cell (D-8),
+   never a minimum-intensity one.
+
+   `pointer-events: all`, not `visiblePainted` (P-6, code review
+   2026-08-08): an empty cell renders `fill="none"`, and `visiblePainted`
+   excludes an unpainted interior from hit-testing, so the only reachable
+   part of a never-played key was its ~0.7 CSS px stroke. That made the
+   "3B · never played" chip unreachable on precisely the cells the explainer
+   tells the DJ to identify by their empty outline. */
+.se-wheel-cell {
+  stroke: var(--color-abyss-hairline);
+  stroke-width: 1px;
+  pointer-events: all;
+  transition: stroke var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.se-wheel-cell[data-hot] {
+  stroke: var(--color-abyss-accent);
+}
+
+.se-wheel-number {
+  fill: var(--color-abyss-text-45);
+  font-family: var(--font-geist-mono);
+  font-size: 12px;
+  text-anchor: middle;
+  dominant-baseline: central;
 }
 
 @media (max-width: 640px) {

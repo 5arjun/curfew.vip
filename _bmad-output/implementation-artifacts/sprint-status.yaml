@@ -807,7 +807,59 @@ development_status:
   # story/4-7-sectioned-style-evolution-summary-tiles -> PR #20.
   # 4-7-sectioned-style-evolution-summary-tiles: review -> done.
   4-7-sectioned-style-evolution-summary-tiles: done
-  4-8-genre-share-stream-camelot-wheel: backlog
+  # [2026-08-08] 4.8 implemented on story/4-8-genre-share-stream-camelot-wheel
+  # (main merged in first at ec15b20). Genre share stream + Camelot wheel
+  # heroes, harmonic trend as a TrendChart metric, shared name-keyed genre
+  # color map (new genreColor.ts) consumed by stream AND bars, tokens
+  # extended to 8 validated slots, gate pushed inside Genre/Key (heroes
+  # render off one set), 4.7's R-8 closed via 2x2 tiles at <=480px. All
+  # G-1..G-10 rulings recorded as numbered Completion Notes; nonobvious ones:
+  # wheel cells non-interactive (drops AC-11's keyboard + phone-fallback
+  # branches), Key Usage 2^H chart replaced by the harmonic trend per Task 7
+  # (flagged for review). Gate: 423/423 vitest (47 new), eslint/tsc/build
+  # clean; fixture-fed SSR walkthrough at 1440/375/320: 0 console errors, no
+  # hydration mismatch, live recolor test passed, landmarks stay 7.
+  # NOTE: Supabase dev project has ZERO sets — walkthrough used the committed
+  # fixture through a temporary /dev48 preview route.
+  # [2026-08-08] 4.8 CODE REVIEW (bmad-code-review, 3 adversarial layers over
+  # ec15b20..HEAD; every finding re-verified against source before triage).
+  # 4 decisions ruled by Arjun, 15 patches applied, 2 deferred, 4 dismissed.
+  # CORRECTS TWO FACTS THIS ENTRY ASSERTED: bands did NOT stay full-opacity
+  # (two feedback rounds took them to 0.8 then 0.7, below the 0.85 that had
+  # been rejected), and the preview route was NOT deleted — dev48/page.tsx
+  # was still on disk, untracked, and compiled into every build the gate
+  # claimed. Both fixed. HEADLINE DEFECT: each alpha step re-checked
+  # band-to-band ΔE but never re-checked CONTRAST against the surface, so 4
+  # of 9 composited fills shipped at 2.22–2.95:1 under an AC-4 that claims
+  # AA; re-picking the palette also caught slots 4<->5 collapsing to tritan
+  # ΔE 2.3, which a contrast-only fix would have missed entirely. Alpha kept
+  # (it is Arjun's design intent), tokens lightened instead: all 9 now
+  # >=3.25:1, worst adjacent normal ΔE 17.4 / CVD ΔE 8.4. Standing rule now
+  # in tokens.css: validate the COMPOSITE, never the hex, whenever the band
+  # alpha moves. Other rulings: genre color roster widened 6->7 so band
+  # selection can follow the current view without ever recoloring (AC-3
+  # governs color, D-3 governs inclusion); per-section trend gate copy; the
+  # harmonic exclusion line no longer renders the tile's identical sentence
+  # with a different number; dead metric="key" path removed from TrendChart
+  # (keyDiversitySummary deliberately kept). Gate: 430/430 vitest (7 new),
+  # eslint + tsc + next build clean. Deferred to deferred-work.md: the same
+  # reveal-blind resetKey in TrendChart itself (pre-existing since 4.1), and
+  # locale-dependent SSR'd axis tick labels (hydration mismatch on non-en
+  # browsers, pre-existing house pattern). POST-REVIEW WALKTHROUGH DONE
+  # (Playwright, fixture-fed SSR at 1440/375/320 + a one-set slice): 0 console
+  # errors/warnings anywhere, no hydration mismatch; contrast measured ON THE
+  # RENDERED DOM at 3.25:1 worst for both stream and bars, matching the
+  # validator; AC-3 recolor test passed live (reveal + Week together recolored
+  # nothing); all 6 interactive targets pass a 4-corner 24x24 hit test, which
+  # closes Task 8's owed measurement; no overflow at any width and R-8 stays
+  # closed (first chart y=609 in a 720px viewport at 320px); AC-12/D-4 verified
+  # on one set (heroes render, all three trend slots show their own gate line),
+  # landmarks 7 in both states. The /dev48 route is deleted and VERIFIED gone.
+  # Bars + legend swatches also moved 0.65 -> 0.70 (Arjun) so they share the
+  # validated composite; at 0.65 five of nine sat at 2.96-2.99:1.
+  # 4-8 code review CLOSED -> done (all 4 decisions ruled, 15 patches
+  # applied, walkthrough measured). NOT yet merged: no PR is open.
+  4-8-genre-share-stream-camelot-wheel: done
   # [ADDED 2026-08-07, same Arjun session] Library Utilization's turn. 4-9 is
   # the page composition + the utilization stats that need ZERO agent work
   # (repeat-track rate, set-similarity heatmap, workhorses by sets-appeared-in,
