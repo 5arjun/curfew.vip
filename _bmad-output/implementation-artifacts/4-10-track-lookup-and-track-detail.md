@@ -1,6 +1,6 @@
 # Story 4.10: Track lookup and track detail
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -272,11 +272,104 @@ Note the route-group path: `web/app/(authenticated)/track/…`, **not** `web/app
 
 ### Agent Model Used
 
+claude-opus-5
+
 ### Debug Log References
+
+- Gate baseline re-run in a fresh worktree off `origin/main` @ `ac58637`.
+- Production counts read read-only through the Supabase MCP (`select count(*)` only).
+- Seed measurements taken against the local stack already seeded from the committed `supabase/seed.sql` (verified 2,294 plays / 653 roster rows before measuring).
+- Payload measurements scripted against the seed's real title/artist strings, not estimated.
+- Browser pass on a production build (`pnpm build` + `pnpm start`) on port **3010**, Playwright driving Chrome at 1440 / 375 / 320.
 
 ### Completion Notes List
 
+**Task 1 — the three stop-conditions, measured not inferred (2026-08-10).**
+
+1. **Gate baseline, fresh worktree @ `ac58637`:** `pnpm lint` clean, `pnpm typecheck` clean, **596 tests / 28 files**, `pnpm build` exit 0. *(One transient failure worth recording: the first `pnpm build` failed with `next/font/google` module-not-found — a network flake fetching Google Fonts, not a code failure. Re-ran clean and every subsequent build passed.)*
+2. **Production, re-measured read-only:** `djs 1 / sessions 0 / sets 0 / plays 0 / library_roster 0` — **unchanged** from Story 4.9's 2026-08-08 measurement. **No stop.** D-28's legacy path-hash branch therefore stays defensive-only, covered by unit tests rather than by a browser state, exactly as D-28 anticipated.
+3. **Committed seed, `trackKey` group shapes** (title non-null and non-blank):
+   - **1,267** `trackKey` groups total
+   - **(a) exactly one distinct non-null `track_id`: 1,055** — and 0 of those are "mixed" (some plays carrying the id, some null); all 1,055 are clean
+   - **(b) no `track_id` at all: 212**
+   - **(c) two or more distinct `track_id`s: 0** — D-28 is unreachable on the seed as well as in production
+   - Supporting: 2,294 plays; 93 with a null/empty title; 473 with a null `track_id`; 1,055 distinct non-null `track_id`s; roster 653 rows, all `absent_at IS NULL`; 58 sets, of which **19** are low-confidence under `listModel`'s compound predicate (11 by `confidence.value < 1.0`, 12 by `track_count < 8`).
+   - Also measured, because Non-negotiable 9 turns on it: **0 empty-string and 0 whitespace-only** titles or artists in either `plays` or `library_roster`. The `.trim()` guards this story adds are therefore **defensive on today's data** — which is precisely why they are written rather than inferred from a green test run.
+
+**Task 3 — the payload stop-condition FIRED, and was ruled (D-39, Arjun 2026-08-10).**
+
+D-29 as written — one object per track carrying a precomputed `haystack` — measures **498.9 KB** serialized at seed scale (1,644 entries), **3.3x** the ~150 KB bar. Breakdown: the actual content is only 92.5 KB of title+artist (avg title 39.7 chars, avg artist 17.9); the rest is per-entry JSON key names (~148 KB), the `haystack` duplicating title+artist, and a redundant `key`. Measured alternatives:
+
+| encoding | raw | gzip |
+|---|---|---|
+| D-29 as written (objects + haystack + key) | 498.9 KB | 117.0 KB |
+| lean objects (no haystack/key) | 277.3 KB | 67.5 KB |
+| **tuple rows, haystack client-side — SHIPPED** | **157.2 KB** | **61.8 KB** |
+| 6-tuple + sparse overrides for the 247 differing rows | 153.2 KB | 61.8 KB |
+
+Ruled: tuple rows. D-29's architecture is untouched — the filter is still client-side over a server-built index, and the haystack is still built **once per index rather than once per keystroke** (a `useMemo` keyed on the rows array); only the wire encoding changed. **The shipped 157.2 KB is 4.8% over the nominal bar and that overage is stated rather than rounded away:** it is entirely AC-12's second count pair (6.4 KB), which is what lets the reveal be a swap rather than a recompute or a second read. The sparse-override form saves 4 KB and costs a second indirection on every read; declined.
+
+**Two defects found by the browser pass that no gate could have caught.**
+
+1. **Two identical reveal controls, ~200px apart.** The first build gave `TrackSearch` its own `LibraryUtilizationReveal`, so the page rendered "16 short or low-confidence sessions hidden — show them" twice — the identical-sentence-twice failure Story 4.5's review already ruled against for `undatedDisclosure`. Fixed by making the search field a **slot on the page's one reveal**, so a single boolean governs both surfaces and they can never describe different set populations at the same moment. Verified after the fix: typing a query, toggling the reveal, and finding the query still in the field with the counts correctly changed.
+2. **Interactive targets under SC 2.5.8's 24x24 floor.** The row `<li>` carried `min-height: 24px`, but **the target is the anchor, not the row** — measured 18px for the set links, 20px for the neighbour titles and for `.lu-row-link`. Grown on the anchors themselves. Also caught at 320px: the ride-time readout wrapped mid-value ("3m" above "15s"), a single quantity split across two lines; fixed with `text-wrap: nowrap` on the figure plus `flex-wrap` on the row.
+
+**Task 9 — browser pass, production build, port 3010, real DOM measurement.**
+
+- **D-32 verified against the actual clock, not asserted.** This is the one thing `vitest` structurally cannot check, since `vitest.config.ts` pins `TZ=UTC`. Browser in `America/New_York`; the track's plays are stored at **15:00 UTC** and the strip rendered **11am**, with the accessible summary reading "Of 10 timed plays, 4 landed in the 11am hour". UTC rendering would have said 3pm. The pre-hydration branch emits a placeholder and no hour at all, which the component test pins independently.
+- **Every state driven, not just the populated one:** no query; no match; a match with an id; a match with **no** id (rendered unlinked); an owned-but-never-played track (search row reads "Not played yet · added Sat, May 25"; detail page renders identity + add date + one honest line and **zero** empty modules); a track played exactly once (`Played once, for 1m 32s` — the word "typically" absent); low-confidence hidden **and** revealed on both surfaces; an unknown `track_id` (**404**); and a stale `/set/[id]` link (**404**, the same path a deleted-set row hits).
+- **Outline and landmarks unchanged.** `/library-utilization` renders five `<h2>`s and **3** landmarks before and after this story — this story adds none. **Note the story's Task 9 asks to confirm "four `<h2>`s" and "landmark count 2"; both numbers were already stale before this story started**, because `AgingShelf` renders its own `<h2>` and its own `<section aria-label>` (the single logged exception, recorded in `page.tsx`'s own comment and in `deferred-work.md`). Reported as measured rather than as asked.
+- **Targets:** `/track/[track_id]` — 28 targets, **0** under 24x24 at 1440/375/320. `/library-utilization` — 97 targets, **1** under the floor at every width: `.se-hidden-toggle` at 63.5 x 19.5, which is Story 4.1's shipped `LowConfidenceReveal` button shared with `/style-evolution`. Pre-existing, not introduced here, **flagged rather than fixed** — see `deferred-work.md`. *(A methodology note, because the first audit reported 76 false failures: rows inside a collapsed `<details>` keep layout boxes but are not hit-testable, and a scroll-and-hit-test loop races the scroll on a page this long. The numbers above are measured with every `<details>` opened and the scroll settled.)*
+- **No horizontal overflow** at 1440 / 375 / 320 on either surface; mix-neighbour columns stack below 640px. **Zero console errors and zero warnings** on both pages.
+- **Keyboard:** the field, every result link and every `<details>` toggle are reachable and operable; focus rings render on the new links; the field carries an explicit `aria-label` and its placeholder is `aria-hidden`.
+
+**Deviations and flags — none silently resolved.**
+
+- **D-36's two clauses are not both satisfiable** (placement "inside the Tracks group" vs. "renderBody is called twice"). The clause with the named failure mode governs; the field ships at page level as a slot on the reveal. Logged in `deferred-work.md` with the constraint to preserve if Arjun wants it moved.
+- **`.se-hidden-toggle` fails SC 2.5.8** — pre-existing, shared with another page, flagged not fixed.
+- **`SpotlightSearch`'s own placeholder is not `aria-hidden`** — noticed while reusing its shape; another story's component, flagged not fixed.
+- `getMixNeighbours` needed `.in()` on `index.test.ts`'s `mockSupabase`, which the helper did not model. Added the same way the helper already models `is` vs `eq` — as a **distinct** method, so a test asserting the cross-product shape cannot pass against `eq`. The helper is otherwise reused verbatim.
+
+**Gate, after implementation.** `pnpm lint`, `pnpm typecheck`, `pnpm build` all clean; **717 tests / 31 files**, up from the 596 / 28 baseline (**+121 tests, +3 files**; no test was removed or skipped). **This story adds no migration, so pgTAP stays at 209** — `git diff --stat` confirms zero files under `supabase/migrations/`. Also verified against failure mode 13: no binary files and no stray NUL bytes in the diff, and no temporary/preview routes left behind.
+
 ### File List
+
+**New**
+- `web/app/(authenticated)/track/[track_id]/page.tsx`
+- `web/app/components/track-detail/TrackDetail.tsx`
+- `web/app/components/track-detail/ClockStrip.tsx`
+- `web/app/components/track-detail/prop-threading.test.tsx`
+- `web/app/components/library-utilization/TrackSearch.tsx`
+- `web/app/track-detail.css`
+- `web/lib/sets/trackDetail.ts`
+- `web/lib/sets/trackDetail.test.ts`
+- `web/lib/sets/trackSearch.ts`
+- `web/lib/sets/trackSearch.test.ts`
+
+**Modified**
+- `web/app/(authenticated)/library-utilization/page.tsx`
+- `web/app/components/library-utilization/LibraryUtilizationReveal.tsx`
+- `web/app/components/library-utilization/TrackRowList.tsx`
+- `web/app/components/library-utilization/Workhorses.tsx`
+- `web/app/components/library-utilization/OneAndDone.tsx`
+- `web/app/components/library-utilization/prop-threading.test.tsx`
+- `web/app/globals.css`
+- `web/app/library-utilization.css`
+- `web/lib/sets/index.ts`
+- `web/lib/sets/index.test.ts`
+- `web/lib/sets/libraryUtilization.ts`
+- `web/lib/sets/libraryUtilization.test.ts`
+- `web/lib/supabase/phone-gate.ts`
+- `web/lib/supabase/phone-gate.test.ts`
+
+**Docs (Task 10)**
+- `_bmad-output/planning-artifacts/epics.md`
+- `_bmad-output/planning-artifacts/prds/prd-name-pending-2026-07-19/prd.md`
+- `_bmad-output/planning-artifacts/ux-designs/ux-name-pending-2026-07-19/EXPERIENCE.md`
+- `_bmad-output/implementation-artifacts/deferred-work.md`
+- `_bmad-output/implementation-artifacts/4-10-track-lookup-and-track-detail.md` *(this file)*
+
+Checked against `git diff --stat`: 29 files, and every one of them is listed above.
 
 ## Change Log
 

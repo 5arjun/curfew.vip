@@ -24,7 +24,6 @@ import {
   type TrackSearchRow,
 } from "@/lib/sets/trackSearch";
 import { InsufficientHistory } from "@/app/components/style-evolution/InsufficientHistory";
-import { LibraryUtilizationReveal } from "./LibraryUtilizationReveal";
 import { TrackRowList } from "./TrackRowList";
 
 /**
@@ -35,13 +34,15 @@ import { TrackRowList } from "./TrackRowList";
  * one boolean). Every row it renders comes from `TrackRowList`, which stays a
  * server-shaped pure component; the index arrives prebuilt from the server.
  *
- * **Why it is a sibling of `renderBody` rather than a module inside it (D-36).**
- * `page.tsx` calls `renderBody()` TWICE — once excluding the short/low-confidence
- * sets, once including them — so a search field placed inside it would be two
- * independent fields, and revealing would silently discard whatever the DJ had
- * typed. It renders inside the "Tracks" group above the `.lu-pair`, adds no
- * `<h2>` and no landmark, and leaves the page's measured outline (four `<h2>`s)
- * and landmark count (2) exactly where Story 4.9's R-10 fix put them.
+ * **Why it is not a module inside `renderBody` (D-36).** `page.tsx` calls
+ * `renderBody()` TWICE — once excluding the short/low-confidence sets, once
+ * including them — so a search field placed inside it would be two independent
+ * fields, and revealing would silently discard whatever the DJ had typed. It is
+ * rendered instead from `LibraryUtilizationReveal`'s `search` slot, which is
+ * what lets ONE boolean govern both this and the page body (AC-12) without
+ * putting two identical reveal controls on screen. It adds no `<h2>` and no
+ * landmark, so the page's outline and landmark count are exactly what Story
+ * 4.9 left them.
  *
  * **Visual language from `SpotlightSearch`, mechanics deliberately not.** The
  * `.spot-*` chrome is reused verbatim (already global, `dashboard.css:1208`),
@@ -81,11 +82,16 @@ const NO_MATCH_COPY = "No track here matches that — Curfew has no play and no 
 
 export function TrackSearch({
   index,
-  hiddenSetCount,
+  revealed,
 }: {
   index: TrackSearchIndex;
-  /** Short/low-confidence sets the page hid (AC-12). `0` renders no reveal control. */
-  hiddenSetCount: number;
+  /**
+   * Whether the page's ONE reveal is open (AC-12) — owned by
+   * `LibraryUtilizationReveal`, never by this component. Results follow the
+   * same population as every other figure on the page, so the two can never
+   * describe different set populations at the same moment.
+   */
+  revealed: boolean;
 }) {
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -140,16 +146,10 @@ export function TrackSearch({
       {!searchable ? (
         <InsufficientHistory copy={TRACK_SEARCH_INSUFFICIENT_COPY} />
       ) : (
-        typed && (
-          <LibraryUtilizationReveal
-            hiddenCount={hiddenSetCount}
-            excluding={<SearchResults matches={matches} revealed={false} />}
-            // Same rule as `page.tsx`: with no control rendered, `revealed` can
-            // never become true, so building the second subtree would render
-            // something unreachable.
-            including={hiddenSetCount > 0 ? <SearchResults matches={matches} revealed /> : null}
-          />
-        )
+        // Nothing renders until the DJ types: the results list is a response to
+        // a question, and rendering the whole library under an empty field
+        // answers one nobody asked.
+        typed && <SearchResults matches={matches} revealed={revealed} />
       )}
     </div>
   );

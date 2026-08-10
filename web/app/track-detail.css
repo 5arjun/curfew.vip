@@ -173,6 +173,11 @@
   align-items: baseline;
   gap: 7px;
   margin: 0;
+  /* The VALUE never breaks; the label beside it may drop to its own line. At
+     320px the ride time read "3m" above "15s" — a single quantity split across
+     two lines, which is the one thing a readout must never do. Caught in the
+     browser pass, not by any gate. */
+  flex-wrap: wrap;
 }
 
 .td-figure {
@@ -181,6 +186,10 @@
   font-weight: 500;
   letter-spacing: -0.02em;
   color: var(--color-abyss-text);
+  /* `text-wrap`, not the older shorthand — the same substitution the rest of
+     this codebase makes everywhere, because the colour guard's named-colour
+     pattern matches a word inside that other property's name. */
+  text-wrap: nowrap;
 }
 
 .td-figure-label {
@@ -255,6 +264,18 @@
 .td-set-link {
   font-family: var(--font-geist-mono);
   font-size: 12px;
+}
+
+/* SC 2.5.8's 24×24 floor, measured against the DOM in a real browser rather
+   than assumed from the row's own `min-height` (Story 4.10's browser pass).
+   The ROW was 24px; the anchor inside it was 18px for the set links and 20px
+   for the neighbour titles, and the target is the anchor, not the row. Grown
+   on the anchor itself so the whole clickable area clears the bar. */
+.td-set-link,
+.td-neighbour-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
 }
 
 .td-set-meta {

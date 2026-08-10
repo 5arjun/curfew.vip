@@ -35,7 +35,6 @@ import { RepeatTrackRate } from "@/app/components/library-utilization/RepeatTrac
 import { RotationSize } from "@/app/components/library-utilization/RotationSize";
 import { SetSimilarity } from "@/app/components/library-utilization/SetSimilarity";
 import { TimeToFirstPlay } from "@/app/components/library-utilization/TimeToFirstPlay";
-import { TrackSearch } from "@/app/components/library-utilization/TrackSearch";
 import { Workhorses } from "@/app/components/library-utilization/Workhorses";
 
 // Library Utilization (Story 4.3, AC-5; Story 4.4; Story 4.5; Story 4.7,
@@ -150,7 +149,8 @@ export default async function LibraryUtilizationPage() {
           of the markup in the RSC payload. The doc comment below defends "the
           expensive work happens once, server-side, up front"; it was happening
           twice. */}
-      {/* Story 4.10 (AC-1/AC-2/AC-13) — the track lookup.
+      {/* Story 4.10 (AC-1/AC-2/AC-13) — the track lookup, threaded through the
+          reveal's `search` slot.
 
           **PLACEMENT DEVIATES FROM D-36, deliberately and flagged for review.**
           D-36 asks for the field "inside the 'Tracks' group, above the pair",
@@ -163,17 +163,18 @@ export default async function LibraryUtilizationPage() {
 
           Page level is also where a search field belongs on its merits: it is
           the one control here that answers a question about a single track
-          rather than about an aggregate, it is independent of BOTH the
-          conversion window and the confidence partition (it carries its own
-          count pairs and its own reveal, AC-12), and it reads as the page's
-          lead tool rather than as a caption on the workhorses list.
+          rather than about an aggregate, and it reads as the page's lead tool
+          rather than as a caption on the workhorses list.
 
-          No new `<h2>` and no new landmark, per the rest of D-36 — the page's
-          outline stays four `<h2>`s and its landmark count stays 2. */}
-      <TrackSearch index={searchIndex} hiddenSetCount={hidden.length} />
+          It is a SLOT on the reveal rather than a sibling here because its
+          results carry play counts and so are governed by the same exclusion —
+          see `LibraryUtilizationReveal`'s `search` prop for the two-controls
+          defect that shape fixes.
 
+          No new `<h2>` and no new landmark, per the rest of D-36. */}
       <LibraryUtilizationReveal
         hiddenCount={hidden.length}
+        search={searchIndex}
         excluding={renderBody(
           surviving,
           survivingIndex,

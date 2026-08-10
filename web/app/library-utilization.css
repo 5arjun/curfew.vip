@@ -776,6 +776,14 @@
    row opens (WCAG 1.4.1). Unlinked rows — the ~21% with no identity — keep
    `.lu-row-title` alone and are visibly plain text rather than dead links. */
 .lu-row-link {
+  /* SC 2.5.8's 24×24 floor. `.lu-row` already carried `min-height: 24px` and a
+     comment anticipating this story making the title a link — but the ROW is
+     not the target, the anchor is, and at 13px it measured 20px tall in the
+     browser pass. Grown here rather than by changing `.lu-row`, which two
+     shipped modules and the search results all share. */
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
   color: var(--color-abyss-accent);
   text-decoration: none;
   text-decoration-line: underline;
