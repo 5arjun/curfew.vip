@@ -686,7 +686,107 @@ development_status:
   # 289/289, tsc/eslint/next build clean. Real-browser walkthrough
   # (Playwright) at 1440px and 375x812, zero console errors.
   4-3-conversion-rate-led-pip-meter: done
-  4-4-aging-shelf-with-prep-crate-action: backlog
+  # [STORY CREATED 2026-08-08] Both blockers were already clear on entry (4.11
+  # merged, so the shelf can NAME tracks; the Decision B re-spec landed in
+  # e2ff244). The session's one real ruling was new:
+  #
+  # ⚑ ARJUN RULED THE PREP-CRATE ACTION OUT OF MVP. Rows ship read-only with
+  # NO substitute affordance (no dismiss, no star, no "mark reviewed"). The
+  # finding that forced the question, worth not re-measuring: THERE IS NO
+  # CLOUD->AGENT COMMAND CHANNEL ANYWHERE IN THIS SYSTEM. AD-8 and all three
+  # of its named write amendments (AD-20/AD-21/AD-22) are outbound-only;
+  # nothing pulls instructions down. A real Serato crate write would also be
+  # the first-ever WRITE to Serato (2.7 scopes the agent to reads), against a
+  # binary .crate format, with file-locking hazards while Serato runs -- its
+  # own story or epic. Two cheaper substitutes considered and also declined:
+  # a Curfew-side saved list in Supabase (DJ-writable via RLS, no new AD), and
+  # an .m3u8 export (weak anyway -- AD-2 keeps paths off the wire, so the
+  # roster is title/artist only and Serato must re-match on import).
+  # epics.md AC-2 struck through with the ruling; DOC-SYNC OWED on PRD FR-12's
+  # UJ-6 path (prd.md:89) and EXPERIENCE.md's Components row + UJ-6 step 4,
+  # which all still describe the action (the ai-2/ai-6 accretion shape).
+  #
+  # THREE further gaps closed in the story spec rather than left for review:
+  #   (1) COLD-START STATE, previously unnamed. Both clock branches are
+  #       bounded below by the clamp, so under 90 days of observation NO track
+  #       can qualify -- and EXPERIENCE.md's "Everything you've bought is
+  #       getting played." would be an affirmative FALSE claim to every DJ in
+  #       their first three months, i.e. every DJ at launch. epics.md AC-3
+  #       amended from one empty state to three (not-yet-possible /
+  #       genuinely-clear / nothing-synced).
+  #   (2) OBSERVATION ANCHOR NAMED: the re-spec says
+  #       max(add_date, subscription_start_date) but never said where that
+  #       date comes from. Ruled `djs.created_at` -- the only viable anchor.
+  #       library_roster.created_at is WRONG (the roster only began syncing
+  #       when 4.11 shipped, so it reads as "started watching last Tuesday"
+  #       and clamps the whole shelf empty); earliest sessions.started_at is
+  #       WRONG (a DJ with no synced sets has none, and that is exactly the DJ
+  #       this metric is about). Fail-closed contract attached: if it can't be
+  #       read, the add-date branch is SUPPRESSED, never degraded to raw
+  #       added_at -- that degradation is the pre-fix behaviour.
+  #   (3) ROW CAP: a cold 5,000-track catalogue puts thousands of rows on the
+  #       page. Capped at 100 with the full qualifying count stated out loud
+  #       (SM-C1 no-silent-caps), sorted BEFORE the cap in both directions so
+  #       ascending surfaces the shortest-aging 100 rather than a reversed
+  #       slice of the same 100.
+  #
+  # SCOPE: pure web/. No migration, no shared/ change, no agent change. Task 1
+  # implements getLibraryRoster's real paged Supabase read (the seam's own doc
+  # comment names this story as its owner) and adds getObservationStart; the
+  # two scan-level scalars stay 0 -- they have NO cloud carrier and need a
+  # named decision, already in deferred-work.md.
+  # INHERITED RISKS, all first-consumed here: the observe_catalogue_reach
+  # one-way ratchet (a retired drive silently disables mark_absent_tracks for
+  # the life of the install -> this shelf renders tracks deleted years ago),
+  # AD-22's multi-install oscillation, and absent_at having zero web-side
+  # coverage anywhere (Task 2's test is the first).
+  #
+  # [DEV COMPLETE 2026-08-08] Pure web/ as scoped — no migration, no shared/
+  # change, no agent change. 473 JS/TS tests green (62 new), tsc/eslint/next
+  # build clean.
+  #   SEAM: getLibraryRoster was the LAST hardcoded read in the seam and now
+  #   pages library_roster for real, filtering absent_at server-side with
+  #   `.is()` (not `.eq()` — `eq` renders `absent_at=eq.null`, a literal string
+  #   comparison matching nothing). The two scan-level scalars stay 0 on every
+  #   path: they have no cloud carrier, and the existing "does not report
+  #   another DJ's counts" tests were KEPT to stop a future consistency pass
+  #   deriving them from the rows. New getObservationStart reads djs.created_at
+  #   and fails CLOSED.
+  #   MODEL: buildAgingShelf clamps only the no-play branch; an observed play
+  #   is never clamped. is_baseline appears nowhere in it (max() handles both
+  #   populations). Mutation-tested the three binding rules — degrading the
+  #   fail-closed branch to raw added_at, capping before sorting, and branching
+  #   on is_baseline each fail 1-2 tests, so the suite genuinely bites.
+  #   BROWSER PASS found two real defects the suite did not:
+  #     (1) flipping the sort left the section's aria-label announcing "the
+  #         longest-unplayed 100 are listed" while the visible disclosure said
+  #         "shortest" — and the two capped lists share NO rows at the
+  #         extremes, so that was a wrong answer to a screen-reader user, not
+  #         stale wording. agingShelfSummary now takes the sort; regression
+  #         test added.
+  #     (2) `.lu-module .se-empty` rendered as a pill with its copy sitting on
+  #         a curved edge — 50px radius against a 66px box, i.e. radius >
+  #         half-height, copy 6px inside a 50px corner arc. This is the exact
+  #         thing deferred-work.md named as "the first thing to measure" and
+  #         unverified. Fixed to 16px + real horizontal padding; also fixes
+  #         TimeToFirstPlay's identical state.
+  #   Also the first render EVER of the merged composition — now FOUR modules,
+  #   walked 1440/375/320, zero console errors/warnings, zero horizontal
+  #   overflow, sort control 34x34 (WCAG 2.5.8 needs 24x24) after the later
+  #   click-to-toggle-chip redesign — this note originally measured the
+  #   pre-redesign 139x28 <select> and was corrected in code review. The 440px module
+  #   cap HOLDS against list content; the se-empty rule did not, see above.
+  #   FLAGGED, NOT SILENTLY RESOLVED (both in deferred-work.md): the all-clear
+  #   copy and the 30-day nudge can contradict each other on screen and both
+  #   are AC-required; and the clamp makes every pre-observation track report
+  #   the identical day count (616 tracks all reading "730 days" on the
+  #   fixture), so "sortable by days unplayed" does less for a veteran DJ than
+  #   FR-12 implies.
+  #   DOC-SYNC DONE (the ai-2/ai-6 accretion shape, closed not deferred): PRD
+  #   FR-12 body + UJ-6 path/climax + glossary + the UJ-1 nudge note,
+  #   EXPERIENCE.md's Components row + aging-shelf-empty row + nudge row +
+  #   UJ-6 step 4, epics.md AC-1/AC-4/AC-5 and two new ACs.
+  4-4-aging-shelf-with-prep-crate-action: done
   4-5-time-to-first-play: review
   # [LAUNCH BLOCKER, previously unstoried] Ruled by Arjun 2026-08-07: web/'s
   # read path (getRecentSets/getSetById/deleteSet/getLibraryAddEvents) is
@@ -806,7 +906,59 @@ development_status:
   # story/4-7-sectioned-style-evolution-summary-tiles -> PR #20.
   # 4-7-sectioned-style-evolution-summary-tiles: review -> done.
   4-7-sectioned-style-evolution-summary-tiles: done
-  4-8-genre-share-stream-camelot-wheel: backlog
+  # [2026-08-08] 4.8 implemented on story/4-8-genre-share-stream-camelot-wheel
+  # (main merged in first at ec15b20). Genre share stream + Camelot wheel
+  # heroes, harmonic trend as a TrendChart metric, shared name-keyed genre
+  # color map (new genreColor.ts) consumed by stream AND bars, tokens
+  # extended to 8 validated slots, gate pushed inside Genre/Key (heroes
+  # render off one set), 4.7's R-8 closed via 2x2 tiles at <=480px. All
+  # G-1..G-10 rulings recorded as numbered Completion Notes; nonobvious ones:
+  # wheel cells non-interactive (drops AC-11's keyboard + phone-fallback
+  # branches), Key Usage 2^H chart replaced by the harmonic trend per Task 7
+  # (flagged for review). Gate: 423/423 vitest (47 new), eslint/tsc/build
+  # clean; fixture-fed SSR walkthrough at 1440/375/320: 0 console errors, no
+  # hydration mismatch, live recolor test passed, landmarks stay 7.
+  # NOTE: Supabase dev project has ZERO sets — walkthrough used the committed
+  # fixture through a temporary /dev48 preview route.
+  # [2026-08-08] 4.8 CODE REVIEW (bmad-code-review, 3 adversarial layers over
+  # ec15b20..HEAD; every finding re-verified against source before triage).
+  # 4 decisions ruled by Arjun, 15 patches applied, 2 deferred, 4 dismissed.
+  # CORRECTS TWO FACTS THIS ENTRY ASSERTED: bands did NOT stay full-opacity
+  # (two feedback rounds took them to 0.8 then 0.7, below the 0.85 that had
+  # been rejected), and the preview route was NOT deleted — dev48/page.tsx
+  # was still on disk, untracked, and compiled into every build the gate
+  # claimed. Both fixed. HEADLINE DEFECT: each alpha step re-checked
+  # band-to-band ΔE but never re-checked CONTRAST against the surface, so 4
+  # of 9 composited fills shipped at 2.22–2.95:1 under an AC-4 that claims
+  # AA; re-picking the palette also caught slots 4<->5 collapsing to tritan
+  # ΔE 2.3, which a contrast-only fix would have missed entirely. Alpha kept
+  # (it is Arjun's design intent), tokens lightened instead: all 9 now
+  # >=3.25:1, worst adjacent normal ΔE 17.4 / CVD ΔE 8.4. Standing rule now
+  # in tokens.css: validate the COMPOSITE, never the hex, whenever the band
+  # alpha moves. Other rulings: genre color roster widened 6->7 so band
+  # selection can follow the current view without ever recoloring (AC-3
+  # governs color, D-3 governs inclusion); per-section trend gate copy; the
+  # harmonic exclusion line no longer renders the tile's identical sentence
+  # with a different number; dead metric="key" path removed from TrendChart
+  # (keyDiversitySummary deliberately kept). Gate: 430/430 vitest (7 new),
+  # eslint + tsc + next build clean. Deferred to deferred-work.md: the same
+  # reveal-blind resetKey in TrendChart itself (pre-existing since 4.1), and
+  # locale-dependent SSR'd axis tick labels (hydration mismatch on non-en
+  # browsers, pre-existing house pattern). POST-REVIEW WALKTHROUGH DONE
+  # (Playwright, fixture-fed SSR at 1440/375/320 + a one-set slice): 0 console
+  # errors/warnings anywhere, no hydration mismatch; contrast measured ON THE
+  # RENDERED DOM at 3.25:1 worst for both stream and bars, matching the
+  # validator; AC-3 recolor test passed live (reveal + Week together recolored
+  # nothing); all 6 interactive targets pass a 4-corner 24x24 hit test, which
+  # closes Task 8's owed measurement; no overflow at any width and R-8 stays
+  # closed (first chart y=609 in a 720px viewport at 320px); AC-12/D-4 verified
+  # on one set (heroes render, all three trend slots show their own gate line),
+  # landmarks 7 in both states. The /dev48 route is deleted and VERIFIED gone.
+  # Bars + legend swatches also moved 0.65 -> 0.70 (Arjun) so they share the
+  # validated composite; at 0.65 five of nine sat at 2.96-2.99:1.
+  # 4-8 code review CLOSED -> done (all 4 decisions ruled, 15 patches
+  # applied, walkthrough measured). NOT yet merged: no PR is open.
+  4-8-genre-share-stream-camelot-wheel: done
   # [ADDED 2026-08-07, same Arjun session] Library Utilization's turn. 4-9 is
   # the page composition + the utilization stats that need ZERO agent work
   # (repeat-track rate, set-similarity heatmap, workhorses by sets-appeared-in,

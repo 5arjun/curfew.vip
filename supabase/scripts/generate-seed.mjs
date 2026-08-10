@@ -285,27 +285,26 @@ for (let i = 0; i < eventRows.length; i += CHUNK) {
   w("");
 }
 
-// `library_roster` (Story 4.11, AD-22). Seeded as GROUNDWORK, and the reason
-// is stated accurately here because the first version of this comment got it
-// wrong and the browser pass caught it.
+// `library_roster` (Story 4.11, AD-22). Load-bearing: Story 4.4's aging shelf
+// reads these rows through `getLibraryRoster()`, so without them the shelf is
+// empty on the local stack and its browser states cannot be driven. Verified
+// after merging main — the seeded rows render 198 shelf tracks.
 //
-// It does NOT make Story 4.11's unidentifiable-tracks disclosure drivable.
-// `getLibraryRoster()` (`web/lib/sets/index.ts`) is a hardcoded stub returning
-// `{ entries: [], excludedNoIdentityCount: 0, totalCatalogueRows: 0 }` — it
-// never reads this table, so seeding it changes nothing on screen (verified in
-// a browser: the line still does not render). Its own doc comment explains the
-// split: `entries` COULD be read today and was deliberately left for Story
-// 4.4/4.10, the first stories with a consumer, while the two scalars the
-// disclosure actually gates on CANNOT be read at all — they are scan-level
-// values with no cloud carrier, computed by the agent and never shipped.
-//
-// So these rows are useful the moment 4.4/4.10 implement the paged select, and
-// inert until then. That is worth having; pretending it closes a browser-state
-// gap is not.
+// It still does NOT make Story 4.11's unidentifiable-tracks disclosure
+// drivable, and the distinction is worth keeping straight because this comment
+// has now been wrong in both directions. `getLibraryRoster()` returns
+// `entries` (a real Supabase read as of 4.4) alongside
+// `excludedNoIdentityCount`/`totalCatalogueRows` — and those two are
+// scan-level scalars with no cloud carrier at all: `library_roster` is the
+// wrong shape for them and AD-20's heartbeat carries no derived Serato data.
+// The agent computes them and nothing ships them, so the disclosure gates to
+// `null` no matter what is seeded here. Confirmed in a browser: the shelf
+// renders, the disclosure does not.
 w("-- Library roster — the current-state catalogue (Story 4.11, AD-22).");
-w("-- GROUNDWORK ONLY: `getLibraryRoster()` is still a stub that returns zeros");
-w("-- and never reads this table, so these rows are inert until Story 4.4/4.10");
-w("-- implements the paged select. `on conflict` mirrors the real write path.");
+w("-- Story 4.4's aging shelf reads these rows, so they are what makes its");
+w("-- browser states drivable locally. They do NOT enable 4.11's");
+w("-- unidentifiable-tracks disclosure: that gates on two scan-level scalars");
+w("-- which have no cloud carrier. `on conflict` mirrors the real write path.");
 const rosterRows = (roster.entries ?? []).map(
   (e) =>
     `  (${q(DJ_ID)}, ${q(e.track_id)}, ${q(e.title ?? null)}, ${q(e.artist ?? null)}, ` +

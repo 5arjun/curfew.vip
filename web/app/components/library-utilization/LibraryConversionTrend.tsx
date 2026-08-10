@@ -61,7 +61,6 @@ export function LibraryConversionTrend({
           metric="library"
           bpmSeries={[]}
           genreSeries={[]}
-          keySeries={[]}
           librarySeries={series}
           libraryModel={library}
           conversionWindow={window}

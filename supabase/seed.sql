@@ -3095,9 +3095,10 @@ insert into public.library_track_events (dj_id, track_id, added_at, created_at) 
 on conflict (dj_id, track_id) do nothing;
 
 -- Library roster — the current-state catalogue (Story 4.11, AD-22).
--- GROUNDWORK ONLY: `getLibraryRoster()` is still a stub that returns zeros
--- and never reads this table, so these rows are inert until Story 4.4/4.10
--- implements the paged select. `on conflict` mirrors the real write path.
+-- Story 4.4's aging shelf reads these rows, so they are what makes its
+-- browser states drivable locally. They do NOT enable 4.11's
+-- unidentifiable-tracks disclosure: that gates on two scan-level scalars
+-- which have no cloud carrier. `on conflict` mirrors the real write path.
 insert into public.library_roster (dj_id, track_id, title, artist, added_at, is_baseline, absent_at, created_at, updated_at) values
   ('00000000-0000-4000-8000-00000000d15c', '005965d952572402', 'I Wish (Clean) (Extended)', 'Skee Lo', '2025-09-28T22:17:37.000Z', false, null, now(), now()),
   ('00000000-0000-4000-8000-00000000d15c', '0065d8fed58d7a1f', 'Saat Samundar Paar, Pt. 1', 'Sadhana Sargam', '2025-12-07T15:57:25.000Z', false, null, now(), now()),

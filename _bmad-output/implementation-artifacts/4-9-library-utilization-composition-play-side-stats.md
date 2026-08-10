@@ -228,6 +228,19 @@ Re-run because the review's patches changed rendered output and the prior AC-11 
 - **Zero console errors and zero warnings** at all three widths, populated and empty. (The WebGL/`SilkBackdrop` noise recorded in the original pass did not reproduce in this browser.)
 - **Seed guard verified end-to-end, both directions:** a fresh `db reset` seeds cleanly (guard passes on an empty `auth.users`); re-applying `seed.sql` to the already-populated DB also passes (dev account only); and injecting a foreign `auth.users` row makes it `raise` and roll back with nothing written. **209 pgTAP tests pass** with the roster rows present.
 
+**Merge of `main` (15 commits: Stories 4.4 and 4.8) — 2026-08-10**
+
+The PR could not run CI at all: GitHub reported it `CONFLICTING`, and a conflicting PR has no merge ref, so `pull_request` workflows never fire. Merged `origin/main` and resolved 8 conflict hunks across 5 files.
+
+- **Story 4.4 put its aging shelf on this page**, which Task 6 had left a slot for. Kept at 4.4's shipped placement (a sibling below `TimeToFirstPlay`) rather than moved next to one-and-done as Task 6 suggested — re-siting shipped UI is not a merge's call. The suggestion is recorded as still open in `page.tsx`.
+- **`buildAgingShelf` was auto-merged INTO `renderBody`**, where `roster` and `observationStartMs` are out of scope — caught by `tsc`, not by reading. Both are now threaded as parameters, which is the correct outcome anyway: the shelf's `plays` argument is the per-population index, so it moves with the D-20 reveal instead of being the one module that silently keeps counting soundchecks.
+- **Convergent fix, worth recording:** Story 4.4's browser pass independently found and fixed the same `.lu-module .se-empty` radius defect 4.9 did, with the same diagnosis (scale the radius, leave the height alone). 4.4's values shipped first and are kept; 4.9's were not better, just later.
+- **Two defects the merge itself introduced, both caught in the browser rather than by review:** the CSS resolution left a comment unclosed and dropped `border-radius`, breaking the Tailwind build; and adding an `<h2>Shelf</h2>` put two H2s over one module, since `AgingShelf` renders its own. Both fixed.
+- **Correction to a review patch, now that main has landed.** The review's roster-seeding patch was justified as making Story 4.11's disclosure drivable; that was wrong pre-merge (the seam was a stub) and is still wrong post-merge for the disclosure — but the rows turned out load-bearing for a different reason: 4.4 made `entries` a real read, and the seed is what populates the shelf locally (198 rows, verified). The two scalars the disclosure needs still have no carrier. Both `generate-seed.mjs` and `deferred-work.md` now say this accurately.
+- **Left deliberately unchanged:** `AgingShelf` renders a `<section aria-label>`, so the landmark count is 3 rather than the 2 R-10's fix established. That is 4.4's shipped markup, logged rather than edited during a merge.
+
+Post-merge gates: **596 tests / 28 files**, lint, typecheck, build all clean. Browser re-verified at 1440: outline correct with a single `H2 Aging shelf`, no overflow, heatmap ramp still isolated from its text across all 90 populated cells, row caps holding at 100 rows.
+
 **Owed before this story can be called done — created BY the review, not found by it**
 
 - [x] **Re-run AC-11's browser pass.** Done 2026-08-10 — see the record above.

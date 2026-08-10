@@ -48,7 +48,7 @@ Nothing else combines all three pieces: Serato Playlists uploads history but has
   - **Climax:** The genre chart reveals a gap between what they played and what the room wanted — an actionable "do better next time" moment, not just a report.
   - **Resolution:** Leaves with two concrete takeaways — a specific forgotten track, and a genre-mix adjustment for next time at that venue.
   - **Realizes:** FR-1, FR-4 (silent auto-sync overnight), FR-16 (declinable Layer 2 prompt), FR-6 (genre breakdown).
-  - `[NOTE FOR PM]` Suggests "recently downloaded but not yet played" may be worth a direct dashboard nudge (days-scale), distinct from the 3-month aging-shelf view (FR-12). **RESOLVED (design phase)** — committed as a quiet secondary nudge (same banner pattern as the new-set-detected nudge), threshold **30 days** since download with no play yet: long enough that a same-day download doesn't nag, short enough to read as distinct from the 3-month aging shelf (FR-12). See EXPERIENCE.md State Patterns and epics.md Story 4.4.
+  - `[NOTE FOR PM]` Suggests "recently downloaded but not yet played" may be worth a direct dashboard nudge (days-scale), distinct from the 3-month aging-shelf view (FR-12). **RESOLVED (design phase)** — committed as a quiet secondary nudge (same banner pattern as the new-set-detected nudge), threshold **30 days** since download with no play yet: long enough that a same-day download doesn't nag, short enough to read as distinct from the 3-month aging shelf (FR-12). See EXPERIENCE.md State Patterns and epics.md Story 4.4. **SHIPPED 2026-08-08 (Story 4.4) with two deviations from this note, both recorded rather than silently absorbed:** (1) it renders as a **count line on the Library Utilization aging-shelf module**, not as a Dashboard banner — a dashboard banner is a different page and was unrequested scope, and the count line reverts cleanly if the banner is still wanted; (2) the **30-day threshold remains `[ASSUMPTION]`** — it was never confirmed by Arjun, and the implementation marks it as such at the constant (`RECENT_DOWNLOAD_DAYS`). The count is computed from **raw add date with no clamp**, deliberately: it is a real fact about the DJ's library rather than an inference about observation, so it renders even in the gated states where the shelf itself cannot judge.
 
 - **UJ-2. A DJ gets curious about a friend's set, and it turns into a collaboration lead.** *(Phase 2)*
   - **Persona + context:** A DJ browsing the feed.
@@ -86,8 +86,8 @@ Nothing else combines all three pieces: Serato Playlists uploads history but has
 - **UJ-6. Library accountability, before a gig.** *(Phase 1)*
   - **Persona + context:** A working DJ prepping for an upcoming set.
   - **Entry state:** Logged in, browsing Library Utilization ahead of a gig.
-  - **Path:** (1) Checks the aging-shelf view before prepping. (2) Sees tracks bought 3+ months ago, never played, some forgotten entirely. (3) Deliberately pulls a few into the prep crate for the upcoming gig, specifically to break the streak.
-  - **Climax:** The list directly changes what the DJ digs for — behavior change, not just awareness.
+  - **Path:** (1) Checks the aging-shelf view before prepping. (2) Sees tracks bought 3+ months ago, never played, some forgotten entirely. (3) ~~Deliberately pulls a few into the prep crate for the upcoming gig, specifically to break the streak.~~ **REVISED 2026-08-08 (Arjun) — the prep-crate action is OUT OF MVP.** The DJ takes the names off a read-only list and pulls those records themselves; Curfew surfaces, it does not act. The finding that forced the ruling, recorded so it is not re-measured: **there is no cloud→agent command channel anywhere in this system** — AD-8 and all three of its named write amendments (AD-20 heartbeat, AD-21 add-events, AD-22 roster) are outbound-only, and nothing pulls instructions down. A real Serato crate write would additionally be the first-ever *write* to Serato (Story 2.7 scopes the agent's filesystem capability to reads), against a binary `.crate` format, with file-locking hazards while Serato runs — its own story or epic. Two cheaper substitutes were considered and also declined for MVP: a Curfew-side saved list in Supabase, and an `.m3u8` export (weak regardless — AD-2 keeps file paths off the wire, so the roster is title/artist only and Serato would have to re-match on import). **No substitute affordance ships in its place** (no dismiss, star, or "mark reviewed"): without the action the shelf simply *is* the report, and that is the honest shape.
+  - **Climax:** ~~The list directly changes what the DJ digs for — behavior change, not just awareness.~~ **Reduced to awareness for MVP** by the ruling above. UX-DR12 calls the action "the one place the product nudges toward an action, not just a report," so this is a real loss and is recorded as one rather than papered over — the behavior change now depends on the DJ acting on what they read. Restoring it is post-MVP and tracked in `deferred-work.md`.
   - **Resolution:** Higher utilization of their own purchased library.
   - **Realizes:** FR-12 (aging shelf).
 
@@ -107,7 +107,7 @@ Nothing else combines all three pieces: Serato Playlists uploads history but has
 - **Layer 2 enrichment** — Optional, after-the-fact context (venue, crowd size, event type, notes) a DJ can add to a Set from the website (§4.6). Never required for core dashboard value.
 - **Segment** — A labeled time-range within a single Set (e.g. dancefloor / dinner / performance), for multi-context Sets like weddings (§4.5).
 - **Conversion rate** — % of tracks added to a DJ's library that have been played at least once in a Set, over a rolling window, default 60 days and selectable to 30 days or 2 weeks (FR-11). *(Originally 90 days, confirmed 2026-07-21; superseded 2026-08-07, Arjun — see FR-11.)*
-- **Aging shelf** — Library tracks unplayed for 3+ months (FR-12).
+- **Aging shelf** — Library tracks unplayed for 90+ days (FR-12), measured from the latest Curfew-observed play, or — with no observed play — from `max(add_date, observation_start)`. The clamp is load-bearing, not a detail: without it every pre-install track reads as aging by however long the DJ has owned it. *(Clarified 2026-08-08, Arjun — see FR-12.)*
 - **Per-track hide** — Marking an individual track within a Set as hidden; renders as a redacted placeholder rather than being omitted (FR-22).
 - **Visibility tier** — A Set's sharing level: public, friends-only, or private (FR-23).
 - **Circle** — The set of DJs a given DJ follows; used for circle-scoped comparisons (FR-25) as distinct from network-wide ones (FR-24).
@@ -242,7 +242,19 @@ DJ can view the % of tracks added to their library that have been played at leas
 
 #### FR-12: Aging shelf
 
-DJ can view library tracks unplayed for 3+ months (from add date or last play).
+DJ can view library tracks unplayed for 3+ months, sortable by days unplayed. The list is **read-only**.
+
+**Consequences (testable):** *(all three resolved 2026-08-08, Arjun — implemented in Story 4.4, see `4-4-aging-shelf-with-prep-crate-action.md`)*
+
+- **"3+ months" is 90 days**, not three calendar months. Every other window in Epic 4 is a day count (FR-11's are 60/30/14), and a calendar-month definition drifts by up to 3 days depending on which month a track's clock starts in.
+- **The clock is CLAMPED, which this line originally omitted.** "From add date or last play" is only half the rule and, taken literally, produces the failure Decision B names: Curfew observes plays only going forward (Decision A), so a veteran's track added in 2019 and played every weekend — but not yet in a Curfew-captured set — would read "2,400 days unplayed" and the whole shelf would read as all-aging. The measured rule is:
+  - **observed branch** — the track has ≥1 play in a Curfew-captured set → measured from that track's **latest play, unclamped**. An observed play is a fact, not an inference.
+  - **fallback branch** — no observed play at all → measured from **`max(add_date, observation_start)`**, where `observation_start` is `djs.created_at`. A track's shelf age must never be older than however long Curfew has been able to watch it.
+  - **fail-closed** — if `observation_start` cannot be read, the fallback branch is **suppressed entirely** and only observed-play tracks can age. It never degrades to raw add date; that degradation *is* the pre-fix behaviour.
+- **Three terminal states, never two.** Both branches are bounded below by the clamp, so under 90 days of observation **no track can structurally qualify** — which makes EXPERIENCE.md's aging-shelf-empty copy ("Everything you've bought is getting played.") an affirmative false claim to every DJ in their first three months, i.e. every DJ at launch. The states are: **not yet possible** (observation < 90 days, or no anchor — a positive-framed wait that says nothing about whether tracks are getting played), **genuinely clear** (observation ≥ 90 days and zero qualifying — the only place the existing copy is true), and **nothing synced** (empty roster — the day-one shape).
+- **Rows are read-only, and the row-level "add to prep crate" action is OUT OF MVP.** See UJ-6 below for the ruling and the finding behind it. No substitute affordance replaces it.
+- **The list is capped at 100 rows with the cap stated out loud** — the full qualifying count is always rendered alongside it, and both sort directions sort before capping so ascending surfaces the genuinely shortest-aging 100 rather than a reversed slice of the same 100.
+- **Rows carry title, artist and the day count only.** `library_roster` is Tier A; BPM/key/genre are Tier B and parked (AD-22).
 
 #### FR-13: Time-to-first-play
 

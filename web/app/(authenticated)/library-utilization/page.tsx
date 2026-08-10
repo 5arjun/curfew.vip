@@ -1,4 +1,5 @@
-import { getLibraryAddEvents, getLibraryRoster, getRecentSets } from "@/lib/sets";
+import { getLibraryAddEvents, getLibraryRoster, getObservationStart, getRecentSets } from "@/lib/sets";
+import { buildAgingShelf } from "@/lib/sets/agingShelf";
 import {
   buildLibraryConversion,
   buildLiveConversionRate,
@@ -21,7 +22,9 @@ import {
 import { unidentifiableTracksDisclosure } from "@/lib/sets/libraryRoster";
 import type { SetRecord } from "@/lib/sets";
 import type { LibraryAddEventSnapshot } from "@/lib/sets";
+import type { LibraryRosterSnapshot } from "@/lib/sets/libraryRoster";
 import { SilkBackdrop } from "@/app/components/dashboard/SilkBackdrop";
+import { AgingShelf } from "@/app/components/library-utilization/AgingShelf";
 import { LibraryUtilizationReveal } from "@/app/components/library-utilization/LibraryUtilizationReveal";
 import { LibraryUtilizationView } from "@/app/components/library-utilization/LibraryUtilizationView";
 import { OneAndDone } from "@/app/components/library-utilization/OneAndDone";
@@ -31,11 +34,13 @@ import { SetSimilarity } from "@/app/components/library-utilization/SetSimilarit
 import { TimeToFirstPlay } from "@/app/components/library-utilization/TimeToFirstPlay";
 import { Workhorses } from "@/app/components/library-utilization/Workhorses";
 
-// Library Utilization (Story 4.3, AC-5; Story 4.5; Story 4.7, AC-3; composed
-// by Story 4.9) — supersedes the Story 3.5 throwaway stub. Reads through the
-// SAME data-access seam `style-evolution/page.tsx` uses (`getRecentSets`,
-// `getLibraryAddEvents`), plus `getLibraryRoster` (Story 4.11) for the
-// disclosure below.
+// Library Utilization (Story 4.3, AC-5; Story 4.4; Story 4.5; Story 4.7,
+// AC-3; composed by Story 4.9) — supersedes the Story 3.5 throwaway stub.
+// Reads through the SAME data-access seam `style-evolution/page.tsx` uses
+// (`getRecentSets`, `getLibraryAddEvents`), plus `getLibraryRoster` (Story
+// 4.11 — now a real Supabase read as of Story 4.4, feeding both the
+// disclosure below and the aging shelf's rows) and `getObservationStart`
+// (Story 4.4).
 //
 // Story 4.7 AC-3 moved Style Evolution's library-conversion TREND here
 // (`buildLibraryConversion`), alongside Story 4.3's LIVE meter
@@ -66,10 +71,16 @@ import { Workhorses } from "@/app/components/library-utilization/Workhorses";
 // own, the trend's insufficient state is scoped to itself, and each Story
 // 4.5/4.9 module renders its own gate inside its own shell.
 export default async function LibraryUtilizationPage() {
-  const [sets, addEvents, roster] = await Promise.all([
+  const [sets, addEvents, roster, observationStartMs] = await Promise.all([
     getRecentSets(),
     getLibraryAddEvents(),
     getLibraryRoster(),
+    // Story 4.4, Context §3: `djs.created_at`, the lower bound on the aging
+    // shelf's clock. `null` is a BINDING instruction to suppress the shelf's
+    // no-play branch (AC-11), not merely "render nothing" — see
+    // `getObservationStart`'s own doc comment before treating it like the
+    // other calm fallbacks on this line.
+    getObservationStart(),
   ]);
   // Story 4.11 AC-6: measured 27.7% (252/910) of Arjun's real catalogue rows
   // excluded for having no resolvable title/artist at all — well above the
@@ -125,9 +136,11 @@ export default async function LibraryUtilizationPage() {
           twice. */}
       <LibraryUtilizationReveal
         hiddenCount={hidden.length}
-        excluding={renderBody(surviving, addEvents, unidentifiableDisclosure)}
+        excluding={renderBody(surviving, addEvents, unidentifiableDisclosure, roster, observationStartMs)}
         including={
-          hidden.length > 0 ? renderBody(sets, addEvents, unidentifiableDisclosure) : null
+          hidden.length > 0
+            ? renderBody(sets, addEvents, unidentifiableDisclosure, roster, observationStartMs)
+            : null
         }
       />
     </main>
@@ -146,6 +159,13 @@ function renderBody(
   sets: SetRecord[],
   addEvents: LibraryAddEventSnapshot,
   unidentifiableDisclosure: string | null,
+  // Story 4.4's two inputs, threaded rather than closed over. The aging shelf
+  // is built in here (not in the page body where 4.4 had it) because its
+  // `plays` argument is the per-population play index — so the shelf moves
+  // with the D-20 reveal like every other figure on the page, instead of
+  // being the one module that silently keeps counting soundchecks.
+  roster: LibraryRosterSnapshot,
+  observationStartMs: number | null,
 ) {
   // Decision E-1: the LIVE current-window rate, not a read of the Story 4.2
   // cohort model — see `buildLiveConversionRate`'s own doc comment. The clock
@@ -195,6 +215,35 @@ function renderBody(
   // one index now instead of two. The clock comes from the data seam
   // (`readAtMs`), never read in render.
   const timeToFirstPlay = buildTimeToFirstPlay(addEvents.events, sets, addEvents.readAtMs, playIndex);
+
+  // Story 4.4 (FR-12): the aging shelf. The FOURTH module to read the one
+  // shared `playIndex` — it asks a different question of the same ascending
+  // arrays (the LAST play, where the three conversion metrics read the first
+  // at-or-after), which is exactly why one index is shared rather than each
+  // module diffing `sets` for itself.
+  //
+  // Reads `roster.entries`, NOT `addEvents.events`, and the difference is the
+  // point: `library_track_events` is go-forward-only by construction, so it
+  // structurally cannot contain the pre-install back catalogue this shelf
+  // exists to surface. `library_roster` carries baseline tracks on purpose
+  // (AD-22) — which is also why `observationStartMs` has to clamp the clock
+  // here where Story 4.5's module needed no such filter.
+  //
+  // **`roster.added_at`/`is_baseline` stop here.** They must never reach any
+  // conversion computation: `library_track_events` remains the only cohort
+  // denominator (AD-22, Story 4.11 AC-3), and a baseline track's real
+  // pre-install add-date entering cohort math would retroactively populate old
+  // months against a still-go-forward numerator, silently changing numbers the
+  // DJ has already seen.
+  //
+  // Clock from the data seam (`readAtMs`), never `Date.now()` here — Story
+  // 4.1's review lesson, and `react-hooks/purity` rejects it besides.
+  const agingShelf = buildAgingShelf(
+    roster.entries,
+    observationStartMs,
+    addEvents.readAtMs,
+    playIndex,
+  );
 
   // Rendered ONCE for the page, not once per module (Story 4.5 review). The
   // meter and Story 4.5's module read the same `addEvents.events` and
@@ -335,14 +384,50 @@ function renderBody(
       <h2 className="lu-group-heading">First play</h2>
       <TimeToFirstPlay model={timeToFirstPlay} />
 
+      {/* ── Shelf ─────────────────────────────────────────────────────────
+          Story 4.4's aging shelf, kept at the placement it SHIPPED with — a
+          sibling below `TimeToFirstPlay`, outside `LibraryUtilizationView`,
+          for the same reason stated at length above: the shelf has no trailing
+          window, so nesting it under the shared conversion dropdown would put
+          a window-independent list under a control that visibly does not move
+          it.
+
+          Story 4.9 had left a note here suggesting the shelf belongs NEXT TO
+          one-and-done under "Tracks", since both are neglect lists. 4.4 landed
+          first and placed it here, and re-siting shipped UI is not a decision
+          a merge should make on its own — so the suggestion is recorded as
+          still open rather than silently applied or silently dropped. It needs
+          no heading from this page: `AgingShelf` renders its own `<h2>Aging
+          shelf</h2>`, and adding one here put TWO H2s over one module in the
+          rendered outline — caught by the post-merge browser pass, not by
+          reading the diff.
+
+          One inconsistency left deliberately: `AgingShelf` renders a
+          `<section aria-label>`, so the page's landmark count is 3 rather than
+          the 2 that R-10's fix established by converting every module to
+          `<div role="group">`. 4.4 shipped it that way in parallel; changing
+          another story's markup is not a merge decision. Logged in
+          `deferred-work.md` instead.
+
+          The two lists remain complements, not duplicates, and the distinction
+          is the reason a merge could reasonably leave them apart: one-and-done
+          is about tracks the DJ DID play and dropped; the shelf is about
+          tracks never reached at all.
+
+          Unlike the modules above it this one IS a client component, but only
+          for a single `useState` holding the sort direction — the whole model
+          is computed on the server and passed in, so the page itself stays a
+          server component and no data work crosses the boundary. */}
+      <AgingShelf model={agingShelf} />
+
       {/* Last, so they sit under everything they speak for.
 
           TWO lines, not one, and they are not interchangeable: the first names
           exclusions on the ADD side (tracks with no add date, tracks whose add
-          date can't be reconciled) and covers the meter and time-to-first-play;
-          the second names exclusions on the PLAY side (plays with no track
-          name, sets with no date) and covers Story 4.9's five modules. Folding
-          them together would produce one sentence claiming both sets of
+          date can't be reconciled) and covers the meter, time-to-first-play and
+          the shelf; the second names exclusions on the PLAY side (plays with no
+          track name, sets with no date) and covers Story 4.9's five modules.
+          Folding them together would produce one sentence claiming both sets of
           exclusions apply to every figure above, which is false in both
           directions.
 

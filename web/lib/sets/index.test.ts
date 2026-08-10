@@ -10,7 +10,14 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 import { createClient } from "@/lib/supabase/server";
-import { deleteSet, getLibraryAddEvents, getLibraryRoster, getRecentSets, getSetById } from "./index";
+import {
+  deleteSet,
+  getLibraryAddEvents,
+  getLibraryRoster,
+  getObservationStart,
+  getRecentSets,
+  getSetById,
+} from "./index";
 import { unidentifiableTracksDisclosure } from "./libraryRoster";
 
 type Result = { data: unknown; error: unknown };
@@ -37,10 +44,12 @@ function mockSupabase(results: Result | Result[]) {
   const calls = {
     select: [] as (string | undefined)[],
     eq: [] as unknown[][],
+    is: [] as unknown[][],
     order: [] as unknown[][],
     range: [] as unknown[][],
     limit: [] as unknown[],
     deletes: 0,
+    tables: [] as string[],
   };
 
   function makeFilterBuilder() {
@@ -52,6 +61,14 @@ function mockSupabase(results: Result | Result[]) {
     const fb = {
       eq: vi.fn((...args: unknown[]) => {
         calls.eq.push(args);
+        return fb;
+      }),
+      // `is` is a distinct postgrest-js method from `eq`, not an alias: `eq`
+      // renders `column=eq.null` (a literal string comparison that matches
+      // nothing) where `is` renders `column=is.null`. Modelled separately so a
+      // test asserting the null-filter cannot pass against the wrong one.
+      is: vi.fn((...args: unknown[]) => {
+        calls.is.push(args);
         return fb;
       }),
       order: vi.fn((...args: unknown[]) => {
@@ -73,16 +90,19 @@ function mockSupabase(results: Result | Result[]) {
     return fb;
   }
 
-  const from = vi.fn(() => ({
-    select: vi.fn((columns?: string) => {
-      calls.select.push(columns);
-      return makeFilterBuilder();
-    }),
-    delete: vi.fn(() => {
-      calls.deletes += 1;
-      return makeFilterBuilder();
-    }),
-  }));
+  const from = vi.fn((table: string) => {
+    calls.tables.push(table);
+    return {
+      select: vi.fn((columns?: string) => {
+        calls.select.push(columns);
+        return makeFilterBuilder();
+      }),
+      delete: vi.fn(() => {
+        calls.deletes += 1;
+        return makeFilterBuilder();
+      }),
+    };
+  });
 
   vi.mocked(createClient).mockResolvedValue({ from } as never);
   return { from, calls };
@@ -559,8 +579,15 @@ describe("getLibraryAddEvents", () => {
 // are missing a title or artist tag" as a fact about their own library. Story
 // 4.11 justified the fixture as "pending Story 4.6's Supabase read-path swap"
 // but merged one commit AFTER that swap landed. Nothing tested this function.
-describe("getLibraryRoster (Story 4.11 / Story 4.6 AC-3)", () => {
-  it("returns the empty shape, never fixture data", async () => {
+//
+// Story 4.4 makes `entries` a real Supabase read (AC-10). The two scan-level
+// scalars stay 0 and the fixture-regression tests below stay exactly as they
+// were: the swap fixes the half that HAS a carrier, and asserting the other
+// half is still zero is what stops a future "make it consistent" pass
+// inventing one.
+describe("getLibraryRoster (Story 4.11 / Story 4.6 AC-3 / Story 4.4 AC-10)", () => {
+  it("AC-10: returns the empty shape for a DJ with nothing synced, never fixture data", async () => {
+    mockSupabase({ data: [], error: null });
     expect(await getLibraryRoster()).toEqual({
       entries: [],
       excludedNoIdentityCount: 0,
@@ -571,23 +598,210 @@ describe("getLibraryRoster (Story 4.11 / Story 4.6 AC-3)", () => {
   // The regression this file exists to prevent: the guard is not "the numbers
   // are small", it is "the numbers are not one person's library".
   it("does not report another DJ's measured catalogue counts", async () => {
+    mockSupabase({ data: [], error: null });
     const roster = await getLibraryRoster();
     expect(roster.excludedNoIdentityCount).not.toBe(252);
     expect(roster.totalCatalogueRows).not.toBe(910);
   });
 
   // The whole point of returning zeros rather than plausible-looking numbers:
-  // AC-6's sentence must not render at all when we cannot measure it.
-  it("yields no disclosure, so AC-6's line does not render on unknown data", async () => {
+  // AC-6's sentence must not render at all when we cannot measure it. Still
+  // true after the entries swap — the two scalars have no cloud carrier, so
+  // reading real rows must not be mistaken for being able to measure them.
+  it("yields no disclosure even when entries are real, so AC-6's line does not render on unknown data", async () => {
+    mockSupabase({
+      data: [
+        {
+          track_id: "t1",
+          title: "A",
+          artist: "B",
+          added_at: null,
+          is_baseline: false,
+          absent_at: null,
+        },
+      ],
+      error: null,
+    });
     const roster = await getLibraryRoster();
+    expect(roster.entries).toHaveLength(1);
     expect(
       unidentifiableTracksDisclosure(roster.excludedNoIdentityCount, roster.totalCatalogueRows),
     ).toBeNull();
   });
 
-  it("needs no Supabase client, so it cannot throw on a brand-new account", async () => {
-    vi.mocked(createClient).mockReset();
-    await expect(getLibraryRoster()).resolves.toBeDefined();
-    expect(createClient).not.toHaveBeenCalled();
+  it("reads library_roster and requests every Tier A column the shelf renders", async () => {
+    const { from, calls } = mockSupabase({ data: [], error: null });
+    await getLibraryRoster();
+
+    expect(from).toHaveBeenCalledWith("library_roster");
+    // Written out independently of the module's own constant on purpose —
+    // asserting against the exported string would be tautological.
+    for (const column of ["track_id", "title", "artist", "added_at", "is_baseline", "absent_at"]) {
+      expect(calls.select[0]).toContain(column);
+    }
+  });
+
+  // Tier B stays parked (Context §5). A shelf where some rows carry BPM/key and
+  // most do not reads as broken data rather than a deliberate scope, and the
+  // roster table has no such columns to give.
+  it("requests no Tier B columns", async () => {
+    const { calls } = mockSupabase({ data: [], error: null });
+    await getLibraryRoster();
+    for (const column of ["bpm", "camelot_key", "genre"]) {
+      expect(calls.select[0]).not.toContain(column);
+    }
+  });
+
+  // AC-8. Server-side, not a post-filter: it is what makes the paging cap count
+  // PRESENT tracks rather than burning pages on deleted ones, and
+  // `library_roster_dj_id_absent_at_idx` exists for exactly this predicate.
+  it("AC-8: filters absent_at server-side with `is`, not `eq`", async () => {
+    const { calls } = mockSupabase({ data: [], error: null });
+    await getLibraryRoster();
+    expect(calls.is).toEqual([["absent_at", null]]);
+    expect(calls.eq).toEqual([]);
+  });
+
+  it("orders by track_id and pages by range, so max_rows cannot silently cap the roster", async () => {
+    const { calls } = mockSupabase({ data: [], error: null });
+    await getLibraryRoster();
+
+    expect(calls.order[0]).toEqual(["track_id", { ascending: true }]);
+    expect(calls.range[0]).toEqual([0, 999]);
+  });
+
+  it("keeps paging past a full page and concatenates every page", async () => {
+    const entry = (id: string) => ({
+      track_id: id,
+      title: id,
+      artist: "artist",
+      added_at: null,
+      is_baseline: false,
+      absent_at: null,
+    });
+    const fullPage = Array.from({ length: 1000 }, (_, i) => entry(`page1-${i}`));
+    const { calls } = mockSupabase([
+      { data: fullPage, error: null },
+      { data: [entry("page2-0")], error: null },
+    ]);
+
+    const roster = await getLibraryRoster();
+
+    expect(roster.entries).toHaveLength(1001);
+    expect(calls.range).toEqual([
+      [0, 999],
+      [1000, 1999],
+    ]);
+    expect(roster.entries.at(-1)?.track_id).toBe("page2-0");
+  });
+
+  it("stops paging on a short page rather than issuing a needless extra request", async () => {
+    const { calls } = mockSupabase([
+      {
+        data: [
+          {
+            track_id: "only",
+            title: "t",
+            artist: "a",
+            added_at: null,
+            is_baseline: false,
+            absent_at: null,
+          },
+        ],
+        error: null,
+      },
+      { data: [], error: null },
+    ]);
+
+    const roster = await getLibraryRoster();
+    expect(roster.entries).toHaveLength(1);
+    expect(calls.range).toHaveLength(1);
+  });
+
+  // A truncated roster renders a confidently short shelf — the same failure
+  // `getLibraryAddEvents` pages against, so it gets the same fallback: empty,
+  // never the pages already collected.
+  it("AC-10: returns empty, not the pages already collected, when a later page fails", async () => {
+    const fullPage = Array.from({ length: 1000 }, (_, i) => ({
+      track_id: `page1-${i}`,
+      title: "t",
+      artist: "a",
+      added_at: null,
+      is_baseline: false,
+      absent_at: null,
+    }));
+    mockSupabase([
+      { data: fullPage, error: null },
+      { data: null, error: { message: "connection reset" } },
+    ]);
+
+    const roster = await getLibraryRoster();
+    expect(roster.entries).toEqual([]);
+    expect(consoleErrorSpy).toHaveBeenCalledOnce();
+  });
+
+  it("AC-10: a Supabase read failure renders as the empty shape, logged in dev, never thrown", async () => {
+    mockSupabase({ data: null, error: { message: "connection refused" } });
+    const roster = await getLibraryRoster();
+    expect(roster.entries).toEqual([]);
+    expect(consoleErrorSpy).toHaveBeenCalledOnce();
+  });
+
+  it("AC-10: an unexpected throw renders as the empty shape, never propagating", async () => {
+    vi.mocked(createClient).mockRejectedValue(new Error("boom"));
+    const roster = await getLibraryRoster();
+    expect(roster.entries).toEqual([]);
+    expect(consoleErrorSpy).toHaveBeenCalledOnce();
+  });
+});
+
+// Story 4.4, Context §3 + AC-11. The one anchor for the "days unplayed" clamp.
+describe("getObservationStart (Story 4.4, Context §3)", () => {
+  it("reads djs.created_at as epoch ms", async () => {
+    const { from, calls } = mockSupabase({
+      data: { created_at: "2026-01-01T00:00:00.000Z" },
+      error: null,
+    });
+
+    const startMs = await getObservationStart();
+
+    expect(from).toHaveBeenCalledWith("djs");
+    expect(calls.select[0]).toContain("created_at");
+    expect(startMs).toBe(Date.parse("2026-01-01T00:00:00.000Z"));
+  });
+
+  // The fail-closed contract (AC-11). Every one of these must return `null` so
+  // the model SUPPRESSES the add-date branch. Returning a number here — any
+  // number — would let the shelf age tracks off raw `added_at`, which is the
+  // exact pre-fix behaviour this story exists to remove.
+  it("AC-11: returns null when the row is missing (RLS filtered, or no djs row)", async () => {
+    mockSupabase({ data: null, error: null });
+    expect(await getObservationStart()).toBeNull();
+  });
+
+  it("AC-11: returns null on a read error, logged in dev, never thrown", async () => {
+    mockSupabase({ data: null, error: { message: "permission denied" } });
+    expect(await getObservationStart()).toBeNull();
+    expect(consoleErrorSpy).toHaveBeenCalledOnce();
+  });
+
+  it("AC-11: returns null on an unexpected throw, never propagating", async () => {
+    vi.mocked(createClient).mockRejectedValue(new Error("boom"));
+    expect(await getObservationStart()).toBeNull();
+    expect(consoleErrorSpy).toHaveBeenCalledOnce();
+  });
+
+  it("AC-11: returns null on an unparsable created_at rather than NaN", async () => {
+    mockSupabase({ data: { created_at: "not-a-date" }, error: null });
+    expect(await getObservationStart()).toBeNull();
+  });
+
+  it("AC-11: returns null on a null created_at rather than the epoch", async () => {
+    // `djs.created_at` is `not null default now()`, so this is unreachable
+    // through the schema — but `new Date(null).getTime()` is 0, not NaN, and a
+    // 0 here would clamp every track to 1970 and quietly restore raw-added_at
+    // behaviour. Guarded rather than assumed.
+    mockSupabase({ data: { created_at: null }, error: null });
+    expect(await getObservationStart()).toBeNull();
   });
 });
