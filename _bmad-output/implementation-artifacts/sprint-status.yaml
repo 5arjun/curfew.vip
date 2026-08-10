@@ -59,6 +59,105 @@ last_updated: 2026-08-10
 # disposition and duplicate-disclosure findings were waiting on (see that
 # file for the rulings; both still need implementation, not done here).
 # epic-4 unchanged (in-progress). 4-5-time-to-first-play: review -> done.
+# ⚑ 2026-08-08, RECONCILIATION -- TWO create-story passes ran on 4-9
+# CONCURRENTLY in this worktree, and this file carries the note from the first
+# one (below) while the story file on disk was written by the second. Neither
+# clobbered the other: the log entry landed at 16:16, the story file at 16:36,
+# and no story file was overwritten (none existed at that path). Recorded
+# rather than quietly merged, because the two passes agree on almost
+# everything and that makes the one place they DISAGREE easy to miss.
+# AGREED, independently, by both passes: the exclude-visibly contract does not
+# exist on this page at all and must be retrofitted page-wide; the naive
+# predicate (styleEvolution's bare < 1.0) does NOT exclude soundchecks because
+# confidence.rs is symmetric, so listModel's compound form is the right one;
+# the browser pass was unperformable with no seed file and the story owes a
+# local-dev seed; playsByTrack is a trap; rotation size is a FIXED 60 days
+# living outside the "Conversion" landmark; the color guard rejects every
+# natural heatmap ramp; prd.md §4.4 owes an FR (FR-30 free).
+# DIVERGENT, and it needs Arjun's one-line ruling before dev starts -- the
+# repeat-track-rate formula AC-3 forbids leaving open:
+#   (i) the note below rules a SINGLE RATIO over the trailing 5 surviving sets
+#       ("of the distinct tracks across those 5, the share appearing in more
+#       than one"), rejecting a mean-of-ratios on 4.5's skew lesson;
+#   (ii) the story file on disk rules it as D-17 -- the UNWEIGHTED MEAN of
+#       per-set carryover shares, each set measured against its own up-to-5
+#       PREDECESSORS, oldest set excluded for having none.
+# The trade: (i) is simpler and cannot skew, but reads only the most recent
+# block and so cannot answer "does a TYPICAL night repeat", which is the
+# question AC-2 poses; (ii) answers that question and is protected from the
+# small-set skew (i) fears by the compound predicate both passes adopted, but
+# is more code and more test surface. Recommendation on the record: (ii),
+# because AC-2's wording is about habit across nights rather than about one
+# recent window -- but this is a product call, not a technical one.
+# THE STORY FILE IS THE SINGLE SOURCE OF TRUTH for the dev agent, and its
+# decisions are numbered D-17..D-24 (continuing Epic 4's sequence) -- the
+# D-1..D-6 numbering in the note below belongs to the superseded pass and
+# should not be cited. The divergence above is flagged inside the story file
+# at D-17 as well, so it cannot be missed by reading only one document.
+# 2026-08-08: story 4-9 create-story session. Story written, SEVEN decisions
+# ruled at creation rather than deferred, because AC-3 explicitly forbids
+# leaving its quantity "for the implementation to settle" and four more gaps
+# turned out to be load-bearing. THREE ARE REAL DISCOVERIES, none visible from
+# epics.md alone:
+# (a) AC-10's exclude-visibly contract DOES NOT EXIST ON THIS PAGE AT ALL --
+# libraryConversion.ts has zero set-confidence filtering, so the meter, the
+# trend and time-to-first-play have always counted soundchecks. Ruled
+# page-wide, not scoped to the new modules (two populations on one page is the
+# exact "modules disagreeing on screen" failure 4.7 AC-3 exists to prevent),
+# and ruled nearly free NOW because 4.5's review measured prod empty (plays 0,
+# sets 0, djs 1) -- no DJ has ever seen a number here, which will never be true
+# again. The PREDICATE is the subtle part and the naive reading is wrong:
+# AC-10 says "the same contract Style Evolution does", which selects
+# styleEvolution.ts's binary `confidence.value < 1.0` -- and that predicate
+# DOES NOT EXCLUDE THE SOUNDCHECKS AC-10 NAMES. confidence.rs:118-131 returns
+# LOW_CONFIDENCE only for track_count>=4 AND >=2 timestamps AND zero long
+# gaps; every other case, including a two-track cue-up, returns 1.0.
+# listModel.ts's compound `|| trackCount < HERO_MIN_TRACKS` exists precisely to
+# catch that, and rightColumn.ts:60-64 records the bug it fixed (a one-play
+# soundcheck crowning most-played). Ruled: adopt the compound predicate, record
+# the divergence from Style Evolution as deliberate. Also noted for whoever
+# reconciles it later: there are THREE disagreeing definitions of "low
+# confidence" in web/ (styleEvolution < 1.0; listModel < 1.0 || <6 tracks;
+# SetHeader <= 0.5 || <4 tracks) -- do not add a fourth; reconciling all three
+# is its own story.
+# (b) THE BROWSER PASS AC-9/AC-11 DEMAND WAS UNPERFORMABLE. Story 4.6 retired
+# the fixtures from the read path (index.ts:28-33), prod is empty, and there is
+# no supabase/seed.sql -- so there was no way to get a populated page, let
+# alone 0/1/2-set states, into a browser. Ruled: this story authors a local-dev
+# seed loading the committed fixture JSON into the local stack. Additive,
+# local-only, and it unblocks every future Epic-4/5 browser pass.
+# (c) playsByTrack IS A TRAP for these metrics -- it is already built on the
+# page, it is the obvious index to reach for, and it CANNOT answer any of
+# AC-2/4/5 (it is track_id -> timestamps, carrying no set identity) while also
+# silently dropping plays with unparseable started_at. Ruled a separate
+# set-membership index, with the post-merge "one index, not two" rule scoped to
+# playsByTrack's conversion consumers where it belongs.
+# The other four: D-1 pins the repeat-rate quantity ("of the distinct tracks
+# across your trailing 5 surviving sets, the share appearing in more than one"
+# -- rejecting a mean-of-ratios on 4.5's skew lesson); D-2 rules rotation size
+# a FIXED 60-day window living OUTSIDE the window-governed landmark, since
+# AC-7 names 60 as the source of the number, not a subscription to the
+# selection, and following it would either put a play-side stat inside
+# "Conversion" or promote the dropdown to page level where it would falsely
+# govern six modules (4.5's inverted-AC-3 failure, multiplied); D-5 bounds the
+# aggregates (10-set matrix, top-10 lists, and the note that
+# RECENT_SETS_LIMIT=500 means "play history" is not "all time"); D-6 rules the
+# reveal's component shape (a thin client wrapper taking BOTH prerendered
+# subtrees as props, so five stateless modules are not dragged across the
+# boundary for one boolean) plus set labelling (never raw external_id -- it is
+# a uuid post-4.6) and a disclosed undated-SET count.
+# ALSO FOUND: the color guard is stricter than "no hexes" -- it rejects
+# color-mix(), rgba(), hsl(), oklch and `transparent`, i.e. every natural way
+# to build a heatmap intensity ramp; the story routes that to `opacity` or
+# discrete tokens.css steps before the dev hits the gate.
+# DOC-SYNC OWED, and the story owns it: prd.md §4.4 has NO FR for any of the
+# five metrics (FR-30 proposed; FR-29 is the highest today), EXPERIENCE.md owes
+# Component Patterns rows, epics.md owes D-1's definition to AC-3 and a stale
+# UX-DR17 enumeration refresh. Story file validated in a fresh adversarial
+# context; all 11 ACs verified byte-identical to epics.md 948-958 and every
+# file/line citation re-checked against the tree at ec15b20.
+# epic-4 unchanged (in-progress).
+# 4-9-library-utilization-composition-play-side-stats: backlog -> ready-for-dev.
 # 2026-08-07: story 4-5 -- MERGED origin/main (4.6 + 4.11 + 4.7) into the
 # branch. Merge, not rebase: PR #22 is open, matching how 4.11 and 4.7 landed.
 # 6 conflicts (page.tsx, ConversionRateMeter.tsx, libraryConversion.test.ts,
@@ -917,7 +1016,7 @@ development_status:
   # library" refers only to the D-1 pre-install BASELINE, a different set.
   # Conversion is honest by construction because it only ever asks about
   # tracks added AFTER install, which is the go-forward set that is synced.
-  4-9-library-utilization-composition-play-side-stats: backlog
+  4-9-library-utilization-composition-play-side-stats: review
   4-10-track-lookup-and-track-detail: backlog
   # [ADDED 2026-08-07] 4-11 STORIES THE ABOVE FINDING. Promoted from "a note
   # owned by 4-4" to its own story sequenced BEFORE 4-4, because it has THREE

@@ -82,6 +82,19 @@ function setTracklist(plays: SyncPlay[]): SetTrack[] {
  * They used to diverge: the list hid these sets while the card beside it
  * still counted their plays, which is how a 1-play soundcheck ended up
  * crowning the most-played track.
+ *
+ * **THREE definitions of "low confidence" exist in `web/`, they disagree, and
+ * this is the one to reach for when the question is "should this session count
+ * toward a statistic":**
+ *   - here — `confidence.value < 1.0 || trackCount < HERO_MIN_TRACKS`. Also
+ *     adopted page-wide by `/library-utilization` (Story 4.9, D-20).
+ *   - `styleEvolution.ts`'s module-private `isLowConfidence` — the bare
+ *     `confidence.value < 1.0` (Story 4.1's D-4: binary, no tier). It does NOT
+ *     exclude short sessions, because `agent/src-tauri/src/confidence.rs` is
+ *     symmetric by design and a two-track soundcheck scores a clean `1.0`.
+ *   - `SetHeader.tsx`'s display-only `c.value <= 0.5 || c.track_count < 4` — a
+ *     quieter bar for a note that hides nothing.
+ * Do not add a fourth. Reconciling the three is its own story, not a drive-by.
  */
 export function isLowConfidenceSet(set: SetRecord): boolean {
   const trackCount = set.derived.track_count ?? set.plays.length;

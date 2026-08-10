@@ -76,9 +76,14 @@ export function ConversionRateMeter({
   const litPips = rate.rate == null ? 0 : Math.floor(rate.rate * PIP_COUNT);
 
   return (
-    <section className="lu-module dz-shell" aria-label={summary}>
+    // `role="group"`, not `<section>` (Story 4.9; deferred-work R-10). The
+    // accessible name is this module's FINDING, which is worth announcing —
+    // but as one of eight modules on the page it must not also be a landmark.
+    // Eight landmarks makes the landmark list useless for navigating; a real
+    // `<h2>`/`<h3>` outline is what serves that, and now exists.
+    <div className="lu-module dz-shell" role="group" aria-label={summary}>
       <span className="dz-dots" aria-hidden="true" />
-      <p className="lu-stat-label">Conversion rate</p>
+      <h3 className="lu-stat-label">Conversion rate</h3>
       {rate.added > 0 ? (
         <>
           <LedPips litCount={litPips} totalCount={PIP_COUNT} />
@@ -101,6 +106,6 @@ export function ConversionRateMeter({
         </p>
       )}
       {unidentifiableDisclosure && <p className="lu-disclosure">{unidentifiableDisclosure}</p>}
-    </section>
+    </div>
   );
 }
