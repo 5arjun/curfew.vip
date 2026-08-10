@@ -64,6 +64,10 @@ export function Workhorses({ model }: { model: WorkhorsesModel }) {
               key: trackKey(row.title, row.artist),
               title: row.title,
               artist: row.artist,
+              // Story 4.10 AC-3/AC-4 (D-26): `null` renders the title as plain
+              // text rather than a dead link, and is counted once at page level
+              // by `unlinkableTracksDisclosure` — never per row.
+              trackId: row.trackId,
               value: `${row.setCount} sets · ${row.plays} plays`,
             }))}
             visibleRows={WORKHORSES_VISIBLE_ROWS}

@@ -626,11 +626,89 @@
   font-size: 9px;
   letter-spacing: 0.04em;
   color: var(--color-abyss-text-45);
+  /* A date is longer than the bare session number the axis used to show, so
+     it must wrap rather than force the grid wider — moved here (off
+     `.lu-sim-axis-link`) so the non-interactive duplicate column headers
+     (plain `<span>`, no `-link` class as of the aria-hidden-focusable fix)
+     keep the same overflow protection the row axis link has. */
+  overflow-wrap: anywhere;
+  text-align: center;
 }
 
 .lu-sim-axis-row {
   justify-content: flex-end;
   padding-right: 6px;
+}
+
+/* The axes link into `/set/[id]` (2026-08-10). A date is longer than the bare
+   session number the axis used to show, so the column headers wrap rather than
+   forcing the grid wider — the row axis is `auto`-sized and the columns are
+   `1fr`, so nothing here can push the module into horizontal overflow. */
+.lu-sim-axis-link {
+  /* 24px floor for SC 2.5.8. The row axis inherits the cell row's 26px, but a
+     column header sits in its own row and would otherwise be ~11px tall. */
+  min-height: 24px;
+  color: var(--color-abyss-accent);
+  text-decoration: none;
+  /* The non-colour cue, so a link is never distinguished by colour alone
+     (WCAG SC 1.4.1) — and dotted rather than solid, because ten underlines
+     across the top of a matrix read as a rule line. */
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--color-abyss-glint);
+  transition: color var(--motion-duration-fast) var(--motion-ease-liquid);
+}
+
+.lu-sim-axis-link:hover {
+  color: var(--color-abyss-text);
+  text-decoration-color: var(--color-abyss-accent);
+}
+
+.lu-sim-axis-link:focus-visible {
+  outline: none;
+  border-radius: var(--radius-xl);
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 6px var(--color-abyss-accent-glow);
+}
+
+/* The phone-width list's own links — the grid is `display: none` there, so
+   these are the only axis links in the tree at that width. */
+.lu-sim-ranked-link {
+  /* 24px floor for SC 2.5.8, on the ANCHOR — the `.lu-row-title` wrapper was
+     already 24px and the links inside it were still 18px, which is the same
+     row-is-not-the-target mistake measured on the track rows. */
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  color: var(--color-abyss-accent);
+  text-decoration: none;
+  text-decoration-line: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--color-abyss-glint);
+}
+
+.lu-sim-ranked-link:hover {
+  text-decoration-color: var(--color-abyss-accent);
+}
+
+.lu-sim-ranked-link:focus-visible {
+  outline: none;
+  border-radius: var(--radius-xl);
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 6px var(--color-abyss-accent-glow);
+}
+
+/* The ranked row's target is the two links inside it, so the row itself grows
+   to keep them clear of the 24px floor at the width this list actually shows. */
+.lu-sim-ranked-row .lu-row-title {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 24px;
 }
 
 .lu-sim-cell {
@@ -722,4 +800,83 @@
   .lu-sim-ranked {
     display: flex;
   }
+}
+
+/* ─── Track search (Story 4.10, AC-1/AC-2) ──────────────────────────────────
+   The field reuses `.spot-*` (dashboard.css:1208) verbatim; only its container
+   and its results chrome live here. No `.spot-goo`: that class exists to carry
+   the blob filter that merges the pill with `SpotlightSearch`'s sort chips, and
+   this field has no chips to merge with. */
+
+.lu-search {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lu-search-status {
+  margin: 0;
+  font-family: var(--font-inter);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--color-abyss-text-45);
+}
+
+/* The results' entrance, in CSS rather than framer-motion — this file's
+   `prefers-reduced-motion` guard is the same contract `<MotionConfig
+   reducedMotion="user">` provides, without pulling the library toward a page
+   that animates nothing else. */
+.lu-search .lu-row-list,
+.lu-search .lu-search-status {
+  animation: lu-search-in 180ms var(--motion-ease-liquid) both;
+}
+
+@keyframes lu-search-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lu-search .lu-row-list,
+  .lu-search .lu-search-status {
+    animation: none;
+  }
+}
+
+/* The row title becomes a link (AC-3). Inherits `.lu-row-title`'s type; the
+   underline is the non-colour cue, so colour is never the only signal that a
+   row opens (WCAG 1.4.1). Unlinked rows — the ~21% with no identity — keep
+   `.lu-row-title` alone and are visibly plain text rather than dead links. */
+.lu-row-link {
+  /* SC 2.5.8's 24×24 floor. `.lu-row` already carried `min-height: 24px` and a
+     comment anticipating this story making the title a link — but the ROW is
+     not the target, the anchor is, and at 13px it measured 20px tall in the
+     browser pass. Grown here rather than by changing `.lu-row`, which two
+     shipped modules and the search results all share. */
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  color: var(--color-abyss-accent);
+  text-decoration: none;
+  text-decoration-line: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--color-abyss-glint);
+}
+
+.lu-row-link:hover {
+  text-decoration-color: var(--color-abyss-accent);
+}
+
+.lu-row-link:focus-visible {
+  outline: none;
+  border-radius: var(--radius-xl);
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 6px var(--color-abyss-accent-glow);
 }

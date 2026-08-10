@@ -11,6 +11,11 @@ describe("isPhoneGatedPath", () => {
     expect(isPhoneGatedPath("/library-utilization")).toBe(true);
     expect(isPhoneGatedPath("/settings")).toBe(true);
     expect(isPhoneGatedPath("/set/abc-123")).toBe(true);
+    // Story 4.10 (D-35). The bare prefix is unreachable as a page — there is no
+    // `/track/page.tsx` — but the gate is asserted on both forms so the day one
+    // gets added it is already covered.
+    expect(isPhoneGatedPath("/track/8f14e45fceea167a")).toBe(true);
+    expect(isPhoneGatedPath("/track")).toBe(true);
   });
 
   it("gates /link-agent explicitly (a top-level route, not in the group)", () => {
@@ -33,5 +38,6 @@ describe("isPhoneGatedPath", () => {
   it("does not gate lookalike prefixes", () => {
     expect(isPhoneGatedPath("/settings-export")).toBe(false);
     expect(isPhoneGatedPath("/setlist")).toBe(false);
+    expect(isPhoneGatedPath("/tracking")).toBe(false);
   });
 });

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 /**
@@ -19,13 +20,31 @@ import type { ReactNode } from "react";
  * ordered, because an ordered list is how you find the thing you are looking
  * for; nothing around them scores the DJ against anyone. The row number is
  * deliberately absent for the same reason.
+ *
+ * **Story 4.10: the title links when — and only when — the track has an
+ * identity (AC-3/AC-4; D-26).** `trackId` is `null` for the ~21% of real plays
+ * that resolve no artist tag, and such a row renders as the same plain text it
+ * always did rather than as a link that 404s. The count is disclosed once at
+ * page level (`unlinkableTracksDisclosure`), never per row — a badge on every
+ * unlinked row would be noise on a fifth of the list and would say the same
+ * thing 212 times.
+ *
+ * Still a server component: `next/link` needs no client boundary, so both
+ * modules and the search results keep rendering on the server.
  */
 export function TrackRowList({
   rows,
   visibleRows,
   moreLabel,
 }: {
-  rows: { title: string; artist: string; value: ReactNode; key: string }[];
+  rows: {
+    title: string;
+    artist: string;
+    value: ReactNode;
+    key: string;
+    /** `/track/[track_id]` identity, or `null` for an unlinkable row (D-26). */
+    trackId?: string | null;
+  }[];
   /** How many rows show before the disclosure. */
   visibleRows: number;
   /** The `<summary>` copy, e.g. "Show the other 14". */
@@ -38,7 +57,13 @@ export function TrackRowList({
     <>
       <ul className="lu-row-list">
         {visible.map((row) => (
-          <TrackRow key={row.key} title={row.title} artist={row.artist} value={row.value} />
+          <TrackRow
+            key={row.key}
+            title={row.title}
+            artist={row.artist}
+            value={row.value}
+            trackId={row.trackId}
+          />
         ))}
       </ul>
 
@@ -47,7 +72,13 @@ export function TrackRowList({
           <summary className="lu-row-more-toggle">{moreLabel(hidden.length)}</summary>
           <ul className="lu-row-list">
             {hidden.map((row) => (
-              <TrackRow key={row.key} title={row.title} artist={row.artist} value={row.value} />
+              <TrackRow
+            key={row.key}
+            title={row.title}
+            artist={row.artist}
+            value={row.value}
+            trackId={row.trackId}
+          />
             ))}
           </ul>
         </details>
@@ -56,11 +87,36 @@ export function TrackRowList({
   );
 }
 
-function TrackRow({ title, artist, value }: { title: string; artist: string; value: ReactNode }) {
+function TrackRow({
+  title,
+  artist,
+  value,
+  trackId,
+}: {
+  title: string;
+  artist: string;
+  value: ReactNode;
+  trackId?: string | null;
+}) {
   return (
     <li className="lu-row">
       <span className="lu-row-track">
-        <span className="lu-row-title">{title}</span>
+        {trackId ? (
+          // The accessible name is the title alone. The artist sits in its own
+          // element beside it and the value is a separate cell, so pulling
+          // either inside the link would make every row announce a sentence
+          // where the DJ wanted a track name — and the artist is not part of
+          // what the link goes to.
+          <Link className="lu-row-title lu-row-link" href={`/track/${encodeURIComponent(trackId)}`}>
+            {title}
+          </Link>
+        ) : (
+          // D-26: readable, and NOT a dead link. `encodeURIComponent` above is
+          // belt-and-braces — a `track_id` is 16 hex chars — but the id is
+          // untrusted text from the wire, and building a route from unescaped
+          // input is how a path separator becomes a different route.
+          <span className="lu-row-title">{title}</span>
+        )}
         {/* "Unknown" rather than an empty cell or a guess (AD-11's "never
             omitted, never guessed"; the same fallback `rightColumn.ts:116`
             already uses for the dashboard's most-played row). */}

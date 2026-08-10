@@ -2,6 +2,8 @@
 
 import { useState, type ReactNode } from "react";
 import { LowConfidenceReveal } from "@/app/components/style-evolution/LowConfidenceReveal";
+import type { TrackSearchIndex } from "@/lib/sets/trackSearch";
+import { TrackSearch } from "./TrackSearch";
 
 /**
  * The reveal row's descriptor for this page (D-20(iii)).
@@ -55,9 +57,34 @@ export function LibraryUtilizationReveal({
   hiddenCount,
   excluding,
   including,
+  search,
 }: {
   /** Sets the compound predicate hid. `0` renders no control at all. */
   hiddenCount: number;
+  /**
+   * Story 4.10's track search, rendered from THIS component's one boolean
+   * (AC-12) rather than owning a second.
+   *
+   * **Why the search field is a slot here and not a sibling in `page.tsx`.**
+   * Search results carry play and set counts, so they are governed by the same
+   * exclusion everything else on this page is — and the first build gave
+   * `TrackSearch` its own `LibraryUtilizationReveal`. That put TWO controls on
+   * screen ~200px apart, both reading "16 short or low-confidence sessions
+   * hidden — show them", which is the identical-sentence-twice failure Story
+   * 4.5's review already ruled against for `undatedDisclosure` (caught in this
+   * story's own browser pass, not by any gate).
+   *
+   * A slot is what resolves it: the boolean stays singular, the ONE control
+   * still sits above everything it governs, and the two surfaces can no longer
+   * disagree about which population they are describing. The field renders
+   * BELOW the control for that reason — the control must not appear to own a
+   * figure it sits underneath.
+   *
+   * `TrackSearchIndex` is plain serializable data (tuple rows and two counts),
+   * so this stays a prop rather than becoming a render callback, which a server
+   * component could not pass anyway.
+   */
+  search?: TrackSearchIndex | null;
   /** The page body computed from the surviving population — the default view. */
   excluding: ReactNode;
   /**
@@ -85,6 +112,7 @@ export function LibraryUtilizationReveal({
           />
         </div>
       )}
+      {search != null && <TrackSearch index={search} revealed={revealed} />}
       {revealed ? including : excluding}
     </>
   );

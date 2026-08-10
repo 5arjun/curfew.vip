@@ -20,6 +20,7 @@ import {
   SIMILARITY_MATRIX_SETS,
   trackKey,
   TRACK_LIST_MAX_ROWS,
+  unlinkableTracksDisclosure,
   utilizationDisclosure,
   workhorsesSummary,
 } from "./libraryUtilization";
@@ -482,8 +483,10 @@ describe("buildSetSimilarity (AC-4, D-19)", () => {
       }),
     );
     const model = buildSetSimilarity(buildUtilizationIndex(sets));
-    expect(model.labels[0]).toBe("SET 911");
-    expect(model.labels).not.toContain("SET 900");
+    // `label` still carries the session identity even though the AXIS now
+    // shows a date — the newest-first slice is what this case is about.
+    expect(model.axes[0].label).toBe("SET 911");
+    expect(model.axes.map((a) => a.label)).not.toContain("SET 900");
   });
 
   it("does not flag truncation when everything fits", () => {
@@ -504,8 +507,11 @@ describe("buildSetSimilarity (AC-4, D-19)", () => {
     );
     expect(model.ranked[0].share).toBe(1);
     const summary = setSimilaritySummary(model);
-    expect(summary).toContain("SET 3");
-    expect(summary).toContain("SET 1");
+    // The two nights that share a track — named by DATE since 2026-08-10, the
+    // same vocabulary the axes and the ranked list use. `a` and `c` are the
+    // pair; `b` shares nothing with either.
+    expect(summary).toContain(model.axes.find((x) => x.label === "SET 3")!.dayLabel);
+    expect(summary).toContain(model.axes.find((x) => x.label === "SET 1")!.dayLabel);
     expect(summary).toContain("100%");
   });
 
@@ -854,31 +860,89 @@ describe("review regressions", () => {
     expect(display.artist).toBe("Unknown");
   });
 
-  it("disambiguates duplicate axis labels so the text equivalent can identify each set", () => {
-    // Two sets with no `session_label` both fall back to "Untitled set",
-    // giving the matrix two identical axes, duplicate React keys, and a text
-    // equivalent reading "Untitled set and Untitled set are your most alike
-    // sets" — which identifies neither (AC-4, SC 1.4.1).
+  it("labels the axes by DATE, and carries the route key and session label alongside", () => {
+    // Changed 2026-08-10 (Arjun): the axis used to render a bare `975` — the
+    // Serato `history_session` id, which means nothing to a DJ. It now renders
+    // the night. `setId` rides along because the axes are links into
+    // `/set/[id]`, and `label` because the accessible name still names the set
+    // the way the rest of the product does.
     const index = buildUtilizationIndex([
       set({
-        external_id: "a",
+        external_id: "set-a",
         started_at: "2026-06-01T22:00:00.000Z",
+        sessionLabel: "serato4:101",
         trackCount: 6,
         plays: [t("A", "X", "2026-06-01T22:00:00.000Z"), t("B", "X", "2026-06-01T22:01:00.000Z")],
       }),
       set({
-        external_id: "b",
+        external_id: "set-b",
         started_at: "2026-06-02T22:00:00.000Z",
+        sessionLabel: "serato4:102",
         trackCount: 6,
         plays: [t("A", "X", "2026-06-02T22:00:00.000Z"), t("C", "X", "2026-06-02T22:01:00.000Z")],
       }),
     ]);
     const model = buildSetSimilarity(index);
 
-    expect(new Set(model.labels).size).toBe(model.labels.length);
-    expect(model.labels).toEqual(["Untitled set 1", "Untitled set 2"]);
-    expect(setSimilaritySummary(model)).toContain("Untitled set 1");
-    expect(setSimilaritySummary(model)).toContain("Untitled set 2");
+    // Newest-first. `vitest.config.ts` pins TZ=UTC and LC_ALL=en-US, so these
+    // strings are deterministic here — the rendered form for a DJ in another
+    // zone is a browser-pass question, not a unit-test one.
+    expect(model.axes.map((a) => a.dayLabel)).toEqual(["Tue, Jun 2", "Mon, Jun 1"]);
+    expect(model.axes.map((a) => a.setId)).toEqual(["set-b", "set-a"]);
+    expect(model.axes.map((a) => a.label)).toEqual(["SET 102", "SET 101"]);
+    expect(setSimilaritySummary(model)).toContain("Tue, Jun 2");
+    expect(setSimilaritySummary(model)).toContain("Mon, Jun 1");
+  });
+
+  it("disambiguates two sets on the SAME night with their session numbers, not a counter", () => {
+    // Two gigs in one night is ordinary. A bare counter would read "Jun 1 1" /
+    // "Jun 1 2", which looks like a typo and identifies neither.
+    const index = buildUtilizationIndex([
+      set({
+        external_id: "a",
+        started_at: "2026-06-01T18:00:00.000Z",
+        sessionLabel: "serato4:101",
+        trackCount: 6,
+        plays: [t("A", "X", "2026-06-01T18:00:00.000Z"), t("B", "X", "2026-06-01T18:01:00.000Z")],
+      }),
+      set({
+        external_id: "b",
+        started_at: "2026-06-01T23:00:00.000Z",
+        sessionLabel: "serato4:102",
+        trackCount: 6,
+        plays: [t("A", "X", "2026-06-01T23:00:00.000Z"), t("C", "X", "2026-06-01T23:01:00.000Z")],
+      }),
+    ]);
+    const model = buildSetSimilarity(index);
+
+    expect(model.axes.map((a) => a.dayLabel)).toEqual(["Mon, Jun 1 · 102", "Mon, Jun 1 · 101"]);
+    expect(new Set(model.axes.map((a) => a.dayLabel)).size).toBe(2);
+  });
+
+  it("falls back to a counter when same-night sets have no session label either", () => {
+    // Two sets with no `session_label` both fall back to "Untitled set", so
+    // there is no number to disambiguate with — the numeric guard is what
+    // keeps the axes unique and the React keys distinct (AC-4, SC 1.4.1).
+    const index = buildUtilizationIndex([
+      set({
+        external_id: "a",
+        started_at: "2026-06-01T18:00:00.000Z",
+        trackCount: 6,
+        plays: [t("A", "X", "2026-06-01T18:00:00.000Z"), t("B", "X", "2026-06-01T18:01:00.000Z")],
+      }),
+      set({
+        external_id: "b",
+        started_at: "2026-06-01T23:00:00.000Z",
+        trackCount: 6,
+        plays: [t("A", "X", "2026-06-01T23:00:00.000Z"), t("C", "X", "2026-06-01T23:01:00.000Z")],
+      }),
+    ]);
+    const model = buildSetSimilarity(index);
+    const days = model.axes.map((a) => a.dayLabel);
+
+    expect(new Set(days).size).toBe(days.length);
+    expect(days).toEqual(["Mon, Jun 1 1", "Mon, Jun 1 2"]);
+    expect(setSimilaritySummary(model)).toContain("Mon, Jun 1 1");
   });
 
   it("leaves already-unique labels untouched", () => {
@@ -897,7 +961,11 @@ describe("review regressions", () => {
       }),
     ]);
 
-    expect(buildSetSimilarity(index).labels).toEqual(["SET 102", "SET 101"]);
+    // Distinct nights, so no suffix is added to either axis.
+    expect(buildSetSimilarity(index).axes.map((a) => a.dayLabel)).toEqual([
+      "Tue, Jun 2",
+      "Mon, Jun 1",
+    ]);
   });
 
   it("names the unit in the workhorses summary instead of a pronoun with the wrong antecedent", () => {
@@ -1054,5 +1122,167 @@ describe("track-list row cap (code review decision, 2026-08-08)", () => {
     // The cap slices the ALREADY-SORTED list, so it drops the tail, never the
     // lead — the rows the module exists to show survive it.
     expect(model.rows[0].setCount).toBe(60);
+  });
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Story 4.10 — `trackIdByKey` (D-27/D-28) and AC-4's disclosure
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+describe("buildUtilizationIndex carries track_id through, one direction only (D-27)", () => {
+  // Task 1's measurement on the committed seed, which these three cases are the
+  // shapes of: 1,267 `trackKey` groups — 1,055 with a single non-null id, 212
+  // with none, 0 with two. The third is defensive rather than observed, and
+  // production is empty (re-measured read-only 2026-08-10, 1 dj / 0 sets / 0
+  // plays), so a unit test is the only place it can be exercised at all.
+  it("(a) carries the id when every play of a key agrees", () => {
+    const index = buildUtilizationIndex([
+      set({
+        external_id: "s1",
+        started_at: "2026-06-01T22:00:00.000Z",
+        plays: [
+          { ...t("Deep End", "Hardrive", "2026-06-01T22:00:00.000Z"), track_id: "abc123" },
+          { ...t("Deep End", "Hardrive", "2026-06-01T23:00:00.000Z"), track_id: "abc123" },
+        ],
+      }),
+    ]);
+    expect(index.trackIdByKey.get(trackKey("Deep End", "Hardrive"))).toBe("abc123");
+  });
+
+  it("(b) is null when no play of a key carries one — the ~21% with no artist tag", () => {
+    const index = buildUtilizationIndex([
+      set({
+        external_id: "s1",
+        started_at: "2026-06-01T22:00:00.000Z",
+        plays: [{ ...t("Untagged", null, "2026-06-01T22:00:00.000Z"), track_id: null }],
+      }),
+    ]);
+    expect(index.trackIdByKey.get(trackKey("Untagged", null))).toBeNull();
+  });
+
+  it("(c) FAILS CLOSED on two distinct ids for one key (D-28), never picking one", () => {
+    const index = buildUtilizationIndex([
+      set({
+        external_id: "s1",
+        started_at: "2026-06-01T22:00:00.000Z",
+        plays: [
+          // The legacy path-hash shape: a play synced before Story 4.3's deploy
+          // keeps its old id permanently, and nothing re-derives it.
+          { ...t("Deep End", "Hardrive", "2026-06-01T22:00:00.000Z"), track_id: "oldpathhash" },
+          { ...t("Deep End", "Hardrive", "2026-06-01T23:00:00.000Z"), track_id: "newidentity" },
+        ],
+      }),
+    ]);
+    expect(index.trackIdByKey.get(trackKey("Deep End", "Hardrive"))).toBeNull();
+  });
+
+  it("a later matching id cannot resurrect a key that already failed closed", () => {
+    const index = buildUtilizationIndex([
+      set({
+        external_id: "s1",
+        started_at: "2026-06-01T22:00:00.000Z",
+        plays: [
+          { ...t("Deep End", "Hardrive", "2026-06-01T22:00:00.000Z"), track_id: "one" },
+          { ...t("Deep End", "Hardrive", "2026-06-01T23:00:00.000Z"), track_id: "two" },
+          { ...t("Deep End", "Hardrive", "2026-06-02T00:00:00.000Z"), track_id: "one" },
+        ],
+      }),
+    ]);
+    expect(index.trackIdByKey.get(trackKey("Deep End", "Hardrive"))).toBeNull();
+  });
+
+  it("adopts the one id a half-identified key carries — a gap is not a conflict", () => {
+    const index = buildUtilizationIndex([
+      set({
+        external_id: "s1",
+        started_at: "2026-06-01T22:00:00.000Z",
+        plays: [
+          { ...t("Deep End", "Hardrive", "2026-06-01T22:00:00.000Z"), track_id: null },
+          { ...t("Deep End", "Hardrive", "2026-06-01T23:00:00.000Z"), track_id: "abc123" },
+        ],
+      }),
+    ]);
+    expect(index.trackIdByKey.get(trackKey("Deep End", "Hardrive"))).toBe("abc123");
+  });
+
+  it("treats an empty or blank track_id as absent, never as a route", () => {
+    const index = buildUtilizationIndex([
+      set({
+        external_id: "s1",
+        started_at: "2026-06-01T22:00:00.000Z",
+        plays: [
+          { ...t("Blank", "Artist", "2026-06-01T22:00:00.000Z"), track_id: "" },
+          { ...t("Spaces", "Artist", "2026-06-01T23:00:00.000Z"), track_id: "   " },
+        ],
+      }),
+    ]);
+    expect(index.trackIdByKey.get(trackKey("Blank", "Artist"))).toBeNull();
+    expect(index.trackIdByKey.get(trackKey("Spaces", "Artist"))).toBeNull();
+  });
+});
+
+describe("unlinkableTracksDisclosure (AC-4, SM-C1)", () => {
+  const withIds = (rows: [string, string | null, string | null][]) =>
+    buildUtilizationIndex([
+      set({
+        external_id: "s1",
+        started_at: "2026-06-01T22:00:00.000Z",
+        plays: rows.map(([title, artist, id], i) => ({
+          ...t(title, artist, `2026-06-01T2${i}:00:00.000Z`),
+          track_id: id,
+        })),
+      }),
+    ]);
+
+  it("returns null when every track is linkable — never '0 tracks'", () => {
+    expect(unlinkableTracksDisclosure(withIds([["A", "X", "id1"], ["B", "Y", "id2"]]))).toBeNull();
+  });
+
+  it("states the count against the total", () => {
+    const note = unlinkableTracksDisclosure(withIds([["A", "X", "id1"], ["B", null, null]]));
+    expect(note).toContain("1 of the 2 tracks");
+    expect(note).toContain("has");
+  });
+
+  // STORY 4.7 R-2, the single most-repeated defect in this epic: the count must
+  // not collapse in the case the disclosure exists for. Here 100% excluded
+  // makes it RISE to the total rather than fall to zero.
+  it("still states a count when EVERY track is unlinkable", () => {
+    const note = unlinkableTracksDisclosure(withIds([["A", null, null], ["B", null, null]]));
+    expect(note).toContain("2 of the 2 tracks");
+    expect(note).not.toContain("0 ");
+  });
+
+  it("pluralizes both halves rather than rendering '1 tracks'", () => {
+    const one = unlinkableTracksDisclosure(withIds([["A", null, null]]));
+    expect(one).toContain("1 of the 1 track ");
+    expect(one).toContain("It still shows");
+    expect(one).not.toContain("They still");
+  });
+});
+
+describe("Story 4.10 threads trackId onto both list models", () => {
+  const index = buildUtilizationIndex([
+    set({
+      external_id: "s1",
+      started_at: "2026-06-01T22:00:00.000Z",
+      plays: [
+        { ...t("Carried", "X", "2026-06-01T22:00:00.000Z"), track_id: "id-carried" },
+        { ...t("Once", null, "2026-06-01T23:00:00.000Z"), track_id: null },
+      ],
+    }),
+    set({
+      external_id: "s2",
+      started_at: "2026-06-08T22:00:00.000Z",
+      plays: [{ ...t("Carried", "X", "2026-06-08T22:00:00.000Z"), track_id: "id-carried" }],
+    }),
+  ]);
+
+  it("gives a workhorse row its id", () => {
+    expect(buildWorkhorses(index).rows[0].trackId).toBe("id-carried");
+  });
+
+  it("gives a played-once row a null id when the track has no identity", () => {
+    expect(buildOneAndDone(index).rows[0].trackId).toBeNull();
   });
 });
