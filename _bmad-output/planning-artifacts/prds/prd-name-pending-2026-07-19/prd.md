@@ -225,7 +225,7 @@ DJ can view BPM range, genre diversity, and key-usage patterns month-over-month 
 
 ### 4.4 Library Utilization *(Phase 1 — Launch)*
 
-**Description:** Surfaces whether a DJ's library spending translates into actual playing — whether recently-added tracks make it into sets, conversion rate, aging shelf, and time-to-first-play, all derived from library and session data with no manual input.
+**Description:** Surfaces whether a DJ's library spending translates into actual playing, and how they are *using* what they already own — whether recently-added tracks make it into sets, conversion rate, aging shelf, time-to-first-play, and the play-side utilization stats (repeat-track rate, set similarity, workhorses, one-and-done, rotation size), all derived from library and session data with no manual input. *(The four-item list this Description carried until 2026-08-08 predated FR-30 and was left incomplete when those five metrics landed — the same accretion FR-9's sectioned composition and FR-10's §4.3→§4.4 move each had to close. Amended with FR-30 rather than after it.)*
 
 **Functional Requirements:**
 
@@ -247,6 +247,20 @@ DJ can view library tracks unplayed for 3+ months (from add date or last play).
 #### FR-13: Time-to-first-play
 
 DJ can view the elapsed time between a track being added to the library and its first play in a set.
+
+#### FR-30: Play-side utilization stats
+
+DJ can see how they are *using* the library they already own — whether they keep replaying the same tracks, which tracks they actually lean on, and which they played once and forgot — rather than only whether newly-added tracks convert. *(Added 2026-08-08, alongside epics.md Story 4.9. FR-10–FR-13 are all measured from the **add** side and need a reliable add-date; these five are measured from the **play** side and need no add-date at all, which is why they were buildable while FR-12's aging shelf was blocked on the ~6% missing-`tadd` question in ARCHITECTURE-SPINE.md Open Questions #2.)*
+
+**Consequences (testable):**
+- **Repeat-track rate.** The unweighted mean, across every set that has at least one predecessor, of *(distinct tracks in that set that also appear in the up-to-5 sets immediately preceding it) ÷ (distinct tracks in that set)* — surfaced with the number of sets it averaged over stated alongside it. The 5 are **predecessors only**; the measured set is never one of its own window. The oldest set has no predecessor and is **excluded from the mean, never counted as 0%**. Unweighted is deliberate: the question is whether a typical *night* repeats, so each night counts once regardless of length. *(Ruled by Arjun 2026-08-08; a single-ratio alternative over the trailing 5 sets was considered and rejected for reading only the most recent block. See epics.md Story 4.9 AC-3 and its D-17.)*
+- **Set similarity.** Pairwise track overlap (Jaccard) across recent sets, as an aggregate matrix rather than a time series. Capped at the **10 most recent** qualifying sets, and the cap is stated on screen whenever more sets exist than the matrix shows — a silent truncation reads as "this is all your history".
+- **Workhorses.** Tracks ranked by the **number of sets they appeared in**, not by play count — deliberately a different question from the dashboard's most-played card (which ranks by play count, over the last 10 sets, scoped to each set's dancefloor segment). The two surfaces are expected to disagree and must never be reconciled.
+- **One-and-done.** Tracks played exactly **once** across the qualifying population — the actionable mirror of workhorses. A track played twice within a single set does not qualify. Reads as a complement to FR-12's aging shelf, not a duplicate: this is about tracks the DJ *did* play and dropped; the shelf is about tracks never reached at all.
+- **Rotation size.** Distinct tracks against total plays over a **fixed trailing 60-day window**, rendering as e.g. "340 plays, 180 unique", and naming its own window. Fixed rather than following FR-11's selectable rolling window, so the figure is never governed by a control that cannot move it.
+- **Every stat here counts only Curfew-captured plays**, and the page says so once, plainly, framed as the DJ's own record rather than as a limitation — never as elapsed subscription time.
+- **Low-confidence sessions are excluded visibly, page-wide** (FR-27), under a single reveal that governs every figure on the screen including FR-10, FR-11 and FR-13's. The exclusion predicate is the compound one (*rehearsal-grade confidence **or** too few tracks for dancefloor detection*), not confidence alone: the confidence signal is symmetric by design, so a two-track soundcheck scores maximum confidence and would otherwise inflate a repeat rate. *(See epics.md Story 4.9 AC-10 and its D-20.)*
+- Each of the five renders its **own** positive-framed insufficient state rather than the page blanking; repeat-track rate and set similarity genuinely require ≥2 captured sets.
 
 **Notes:**
 - `[ASSUMPTION]` FR-10–FR-13 depend on a reliable "date added to library" timestamp field from Serato's library DB. Domain research's field-coverage table didn't explicitly confirm this field; flagged for architecture-stage validation (see `addendum.md`).

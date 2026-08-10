@@ -89,9 +89,27 @@
    `.se-empty` itself, which is correct at its own call site. */
 .lu-module .se-empty {
   min-height: 0;
-  padding: 14px 4px 6px;
+  padding: 14px 16px 12px;
   place-items: start;
   text-align: left;
+  /* MEASURED DEFECT, closed by Story 4.9's browser pass — and predicted by
+     name in `deferred-work.md` before it was ever rendered.
+
+     `.se-empty` is a `dz-shell`, which carries `border-radius: 50px` because
+     it is designed for tall cards. The `min-height: 0` above (correct — it
+     stopped a one-sentence state rendering 3× the height of its sibling)
+     leaves these blocks 45–87px tall, so a 50px radius EXCEEDS HALF THE
+     HEIGHT and the shell degenerates into a lozenge with its copy pressed
+     into a curve. Measured at 1440/375/320 across the 0-, 1- and 2-set
+     states: 45px tall against a 50px radius at its worst (Set Similarity's
+     insufficient branch, the widest module), flagged in 7 of 9 measurements.
+
+     The height was never the problem, so it is not what changed. The radius
+     is scaled to the block's real size instead — 18px sits between
+     `.lu-module`'s own 22px and the 16px used elsewhere — and the horizontal
+     padding goes from 4px to 16px so the first character clears the corner
+     arc rather than sitting 4px from it. */
+  border-radius: 18px;
 }
 
 .lu-module .se-empty-copy {
@@ -112,6 +130,15 @@
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--color-abyss-text-45);
+}
+
+/* The page-level low-confidence reveal (Story 4.9, AC-10 / D-20). Reuses Style
+   Evolution's `.se-hidden-note`/`.se-hidden-toggle` verbatim — the affordance
+   AC-10 asks this page to share — and only adds the 4px inset the other
+   page-level rows on this page already sit at (`.lu-conversion-head`). It sits
+   above everything it governs, which on this page is every module. */
+.lu-reveal {
+  padding: 0 4px;
 }
 
 /* ─── Conversion pair (Story 4.7, AC-3) — the meter (Story 4.3) and the
@@ -200,4 +227,282 @@
 .lu-disclosure {
   font-size: 11.5px;
   color: var(--color-abyss-text-45);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Story 4.9 — composition + the five play-side stat modules
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* AC-8's page-level capture note. Sits between the header and the reveal, and
+   reads as a quiet standing fact rather than a caveat — same register as
+   `.lu-subtitle` directly above it, one step down in emphasis. */
+.lu-capture-note {
+  margin: 0;
+  padding: 0 4px;
+  font-family: var(--font-inter);
+  font-size: 12.5px;
+  color: var(--color-abyss-text-45);
+}
+
+/* Real `<h2>` group headings (deferred-work R-10). The page carried NO heading
+   below `<h1>` at all, so heading navigation skipped it entirely and the group
+   labels were `<p>`s whose text duplicated a landmark's accessible name.
+   Styled identically to `.lu-stat-label` so the visual language is unchanged —
+   this is a semantics fix, not a redesign. */
+.lu-group-heading {
+  margin: 6px 0 0;
+  padding: 0 4px;
+  font-family: var(--font-geist-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-abyss-text-45);
+}
+
+/* Two modules that are one thought, side by side — the same grid shape
+   `.lu-conversion-body` uses for the meter and the trend, collapsing at the
+   same breakpoint so the whole page reflows in one step rather than three.
+
+   `.lu > .lu-module { max-width: 440px }` is scoped to DIRECT children of
+   `.lu`, and a module in here is not one — so the cap is RESTATED explicitly
+   rather than left to inheritance. Losing it is a regression that has already
+   shipped once on this page (see the comment above that rule). */
+.lu-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.lu-pair > .lu-module {
+  max-width: 440px;
+}
+
+@media (max-width: 900px) {
+  .lu-pair {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ─── Track rows (AC-5 workhorses, AC-6 one-and-done) ───────────────────── */
+
+.lu-row-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.lu-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  /* 6px vertical plus the 13px line box clears the 24px SC 2.5.8 floor with
+     room to spare. Sized for the interactive case even while the rows are
+     static: Story 4.10 makes each row a link to `/track/[track_id]`, and a row
+     that has to grow to meet 24×24 later is a row whose layout changes later.
+     Whichever of the two states this file is read in, the height is correct. */
+  padding: 6px 0;
+  border-bottom: 1px solid var(--color-abyss-hairline);
+  min-height: 24px;
+}
+
+.lu-row:last-child {
+  border-bottom: none;
+}
+
+.lu-row-track {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.lu-row-title {
+  font-family: var(--font-inter);
+  font-size: 13px;
+  color: var(--color-abyss-text);
+  overflow-wrap: anywhere;
+}
+
+.lu-row-artist {
+  font-family: var(--font-inter);
+  font-size: 11.5px;
+  color: var(--color-abyss-text-45);
+  overflow-wrap: anywhere;
+}
+
+.lu-row-value {
+  flex: none;
+  font-family: var(--font-geist-mono);
+  font-size: 11px;
+  color: var(--color-abyss-text-72);
+  /* `text-wrap`, not the older wrapping shorthand — the same substitution
+     `dashboard.css` and `set-detail.css` already make everywhere, because the
+     colour guard's named-colour pattern matches a word inside that other
+     property's name. A lint-driven idiom, but a consistent one. */
+  text-wrap: nowrap;
+}
+
+/* The "load more" (EXPERIENCE.md:108 bans infinite scroll on track lists). A
+   native `<details>`, so both modules stay server components and the keyboard
+   path comes for free. */
+.lu-row-more {
+  margin-top: 2px;
+}
+
+.lu-row-more-toggle {
+  /* 24x24 minimum for SC 2.5.8 — this is the one genuinely interactive target
+     these two modules add, so it is sized deliberately rather than inherited. */
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 4px 2px;
+  font-family: var(--font-inter);
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--color-abyss-accent);
+  cursor: pointer;
+  list-style: none;
+}
+
+.lu-row-more-toggle::-webkit-details-marker {
+  display: none;
+}
+
+.lu-row-more-toggle:focus-visible {
+  outline: none;
+  border-radius: var(--radius-full);
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 6px var(--color-abyss-accent-glow);
+}
+
+/* ─── Set similarity (AC-4) ─────────────────────────────────────────────── */
+
+/* The matrix is the one module on this page whose content is a grid rather
+   than a stat line, so it is deliberately NOT capped at 440px. Stated
+   explicitly rather than left to a wrapper's inheritance. */
+.lu > .lu-module-wide {
+  max-width: none;
+}
+
+.lu-sim-grid {
+  display: grid;
+  grid-template-columns: auto repeat(calc(var(--lu-sim-columns) - 1), minmax(0, 1fr));
+  gap: 2px;
+  margin-top: 6px;
+}
+
+.lu-sim-corner {
+  display: block;
+}
+
+.lu-sim-axis {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-geist-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--color-abyss-text-45);
+}
+
+.lu-sim-axis-row {
+  justify-content: flex-end;
+  padding-right: 6px;
+}
+
+.lu-sim-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  border-radius: 4px;
+  font-family: var(--font-geist-mono);
+  font-size: 9px;
+  color: var(--color-abyss-text);
+}
+
+/* THE INTENSITY RAMP, on its OWN LAYER. `no-hardcoded-colors.test.ts` rejects
+   hex literals, every alpha-bearing colour function, the modern colour spaces,
+   the blending function, and the two bare keywords for a see-through or
+   inherited fill — i.e. every natural way to build a heatmap gradient. (Its
+   comment stripper only handles single-line forms, so naming those tokens here
+   would itself trip it.) The ramp therefore rides `opacity` over a token fill.
+   `--lu-sim-intensity` is set per cell inline by the component.
+
+   It MUST stay on this pseudo-element rather than on `.lu-sim-cell` itself.
+   `opacity` composites the whole subtree, so putting it on the cell faded the
+   cell's own percentage label with it: a 0-10% overlap cell rendered its text
+   at 8-17% opacity, i.e. illegible — destroying the redundant text encoding
+   that is the entire reason the ramp is allowed to be opacity-based (Task 7,
+   UX-DR21, SC 1.4.1/1.4.3). It also made a genuine 0% cell fainter than the
+   `lu-sim-cell-empty` UNKNOWN cell below, inverting the two. */
+.lu-sim-cell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+  background-color: var(--color-abyss-accent);
+  opacity: var(--lu-sim-intensity, 0.08);
+}
+
+/* Positioned, so it paints above the ramp layer at full opacity without
+   needing a negative z-index (which would sit behind the grid's own
+   background). This is what keeps the number readable at every intensity. */
+.lu-sim-cell-value {
+  position: relative;
+}
+
+/* The diagonal, and pairs where a set had no identified track. Blank, not
+   "0%" — 0 divided by 0 is unknown, not zero. */
+.lu-sim-cell-empty {
+  display: block;
+  min-height: 26px;
+  border-radius: 4px;
+  background-color: var(--color-abyss-hairline);
+  opacity: 0.4;
+}
+
+/* D-22: below the width at which every cell can meet 24x24 inside `.lu`'s
+   gutters, the matrix is replaced by a ranked "most alike" list. `display:
+   none` (rather than visual hiding) also removes the inactive form from the
+   accessibility tree, so only one of the two is ever announced. Expect the
+   list to BE the phone experience — an 11-column grid at 375px gives each cell
+   ~28px before gutters, and at 320px it cannot. */
+.lu-sim-ranked {
+  display: none;
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  flex-direction: column;
+}
+
+.lu-sim-ranked-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  min-height: 24px;
+  border-bottom: 1px solid var(--color-abyss-hairline);
+}
+
+.lu-sim-ranked-row:last-child {
+  border-bottom: none;
+}
+
+@media (max-width: 620px) {
+  .lu-sim-grid {
+    display: none;
+  }
+
+  .lu-sim-ranked {
+    display: flex;
+  }
 }

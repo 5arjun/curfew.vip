@@ -77,8 +77,15 @@ delete from public.sets;
 reset role;
 reset request.jwt.claims;
 
+-- Scoped to the two DJs this test creates, not a global `count(*) from
+-- public.sets` (Story 4.9). That global form asserted the right property by
+-- accident: it only held while the database was empty apart from this test,
+-- and `supabase/seed.sql` (D-23, local-dev sample data) made it read 60. The
+-- property under test is unchanged and still fully pinned -- if the NULL-uid
+-- delete had matched every row instead of none, both of these would be 0.
 select is(
-  (select count(*)::int from public.sets),
+  (select count(*)::int from public.sets
+   where dj_id in ('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222')),
   2,
   'an unscoped delete with a NULL auth.uid() matches nothing -- both DJs'' sets survive'
 );

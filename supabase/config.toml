@@ -65,11 +65,31 @@ schema_paths = []
 
 [db.seed]
 # If enabled, seeds the database after migrations during a db reset.
-# Disabled: no seed data exists yet (this scaffold's only migration is a no-op),
-# and sql_paths below points at a file that isn't committed. A fresh CI volume
-# seeds automatically on first `supabase start`/`db reset`, so leaving this on
-# with a missing seed file would break the AC-4 migration-apply CI gate.
-enabled = false
+#
+# Enabled 2026-08-08 by Story 4.9 (D-23), and `./seed.sql` is committed in the
+# SAME change — the ordering this comment used to warn about. It previously read
+# "Disabled: no seed data exists yet ... and sql_paths below points at a file
+# that isn't committed. A fresh CI volume seeds automatically on first
+# `supabase start`/`db reset`, so leaving this on with a missing seed file would
+# break the AC-4 migration-apply CI gate." That hazard is closed by the file
+# existing, not by the flag staying off.
+#
+# LOCAL DEV ONLY — enforced, not assumed. `db reset` is NOT a local-only
+# command: it accepts `--linked` and `--db-url`, and ships `--no-seed` because
+# seeding is the default after a reset. (This comment previously claimed
+# "nothing applies a seed to a linked project", which was false and was stated
+# as settled fact in three files.) seed.sql therefore opens with a guard that
+# aborts if the database holds any auth user other than the dev account, so a
+# project with real users refuses the seed rather than absorbing a
+# plaintext-password login. The file is generated from the committed sample fixtures
+# (supabase/scripts/generate-seed.mjs) so the local stack renders the same data
+# the unit tests assert on — WITHOUT re-pointing web/lib/sets/index.ts back at
+# the fixtures, which would silently revert Story 4.6's read-path swap.
+#
+# It exists because Story 4.6 retired the fixtures from the read path and
+# production is empty, which left every browser-measurement AC after it
+# unperformable (Story 4.9, GAP-5).
+enabled = true
 # Specifies an ordered list of seed files to load during db reset.
 # Supports glob patterns relative to supabase directory: "./seeds/*.sql"
 sql_paths = ["./seed.sql"]

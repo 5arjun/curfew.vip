@@ -36,9 +36,16 @@ export function LibraryUtilizationView({
   const [window, setWindow] = useConversionWindowSelection();
 
   return (
-    <section className="lu-conversion" aria-label="Conversion">
+    // Story 4.9 (deferred-work R-10): the group heading is a real `<h2>`, and
+    // the section's `aria-label` is GONE rather than duplicating it. A
+    // `<section>` with no accessible name is not exposed as a landmark, which
+    // is the point — this page carried a landmark whose name simply repeated
+    // the `<p>` beneath it, and heading navigation skipped the page entirely
+    // because it had no `<h2>` at all. Dropping the name also un-nests the
+    // landmarks the meter and the modules below used to sit inside.
+    <section className="lu-conversion">
       <div className="lu-conversion-head">
-        <p className="lu-stat-label">Conversion</p>
+        <h2 className="lu-stat-label">Conversion</h2>
         <ConversionWindowDropdown value={window} onChange={setWindow} />
       </div>
       <div className="lu-conversion-body">

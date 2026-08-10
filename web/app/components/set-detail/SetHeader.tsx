@@ -19,7 +19,15 @@ import { MetalRim } from "./MetalRim";
 /** Low-confidence display rule (AC-38): the note shows for the ambiguous
  * dense-continuous classification (value ≤ 0.5) and for a session too sparse
  * to be a set at all (fewer than 4 plays — confidence.rs's own
- * MIN_PLAYS_FOR_AMBIGUITY). Quiet and non-hiding: no stat is ever hidden. */
+ * MIN_PLAYS_FOR_AMBIGUITY). Quiet and non-hiding: no stat is ever hidden.
+ *
+ * ONE OF THREE disagreeing definitions in `web/` — see `listModel.ts`'s
+ * exported `isLowConfidenceSet` for the full map (the third is
+ * `styleEvolution.ts`'s bare `< 1.0`). This one is deliberately the loosest:
+ * it decides whether to show a NOTE on a set the DJ explicitly opened, not
+ * whether that set counts toward an aggregate, so a bar that hid less would
+ * cost nothing and a bar that hid more would nag. Do not unify it with the
+ * other two without ruling all three together. */
 function isLowConfidence(set: SetRecord): boolean {
   const c = set.derived.confidence;
   return c.value <= 0.5 || c.track_count < 4;

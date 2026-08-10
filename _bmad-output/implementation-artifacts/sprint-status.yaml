@@ -847,7 +847,7 @@ development_status:
   # library" refers only to the D-1 pre-install BASELINE, a different set.
   # Conversion is honest by construction because it only ever asks about
   # tracks added AFTER install, which is the go-forward set that is synced.
-  4-9-library-utilization-composition-play-side-stats: ready-for-dev
+  4-9-library-utilization-composition-play-side-stats: review
   4-10-track-lookup-and-track-detail: backlog
   # [ADDED 2026-08-07] 4-11 STORIES THE ABOVE FINDING. Promoted from "a note
   # owned by 4-4" to its own story sequenced BEFORE 4-4, because it has THREE
