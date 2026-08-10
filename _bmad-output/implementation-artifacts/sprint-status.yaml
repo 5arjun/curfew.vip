@@ -1,5 +1,5 @@
 # generated: 2026-07-21
-# last_updated: 2026-08-07
+# last_updated: 2026-08-10
 # project: name-pending
 # project_key: NOKEY
 # tracking_system: file-system
@@ -1017,7 +1017,48 @@ development_status:
   # Conversion is honest by construction because it only ever asks about
   # tracks added AFTER install, which is the go-forward set that is synced.
   4-9-library-utilization-composition-play-side-stats: review
-  4-10-track-lookup-and-track-detail: backlog
+  # [STORY CREATED 2026-08-10] Last unbuilt story in Epic 4. Pure web/ — no
+  # migration, no shared/, no agent change; every field it renders already
+  # exists in the cloud. D-25..D-38 recorded in the story file. The three
+  # rulings worth not re-deriving:
+  #
+  # ⚑ THE EPIC'S OWN SCOPE BOUNDARY FOR THIS STORY IS STALE. epics.md:972 says
+  # search covers PLAYED tracks only and "widen discovery when the roster
+  # lands" — the roster landed in 4.11, whose AC-9 (epics.md:1009) assigns the
+  # widening to exactly this story. Later + shipped wins: search covers
+  # played ∪ owned, each result stating which. AC-1's "never your library" and
+  # AC-2's whole empty state were written for a pre-roster world and are
+  # amended. DOC-SYNC OWED on the blockquote itself + PRD §4.4 (next free FR is
+  # FR-31, this is a post-PRD extension like 4.7/4.8 were) + EXPERIENCE.md.
+  #
+  # ⚑ /track/[track_id] IS UNREACHABLE FOR ~21% OF REAL PLAYS, BY DESIGN.
+  # AD-11 requires BOTH title and artist for an identity, so 473 of 2,294 real
+  # plays carry no track_id (380 missing artist alone) — and 271 of 930
+  # catalogue rows have no artist tag at all (.m4a/.mp4/.mov are 100%
+  # artist-less). The two lists this story links (Workhorses, one-and-done)
+  # key on trackKey(title, artist), which covers all of them. Ruled: rows
+  # without an identity stay readable, render UNLINKED rather than as dead
+  # links, and their count is disclosed (SM-C1). Not a bug to route around —
+  # Story 4.3 paid this coverage cost deliberately. The mapping is carried
+  # through from the play rows (SET_WITH_PLAYS_SELECT already selects
+  # track_id); fnv1a + normalize_identity_text must NEVER be reimplemented in
+  # TypeScript, and a key resolving to ≥2 distinct track_ids fails closed.
+  #
+  # ⚑ AC-7'S CLOCK STRIP HAS NO TIMEZONE. plays.started_at is timestamptz, the
+  # capture-side offset is normalized away, and nothing stores a venue or DJ
+  # zone. Server-rendering an hour is both wrong and a hydration mismatch —
+  # which would be this epic's SECOND unfixed one after the locale-dependent
+  # axis ticks. Ruled: model ships epoch ms only, labels are produced in the
+  # browser, text equivalent generated from the same values so they cannot
+  # drift. Note vitest pins TZ=UTC, so a green test proves nothing here.
+  #
+  # ALSO CAUGHT, ships green and broken if missed: web/lib/supabase/
+  # phone-gate.ts's GATED_PREFIXES must gain "/track", or the new route
+  # silently bypasses the phone-on-file gate. Its own doc comment says every
+  # new (authenticated) route must be added there.
+  #
+  # Baseline gate measured, not assumed: 596 tests / 28 files clean.
+  4-10-track-lookup-and-track-detail: ready-for-dev
   # [ADDED 2026-08-07] 4-11 STORIES THE ABOVE FINDING. Promoted from "a note
   # owned by 4-4" to its own story sequenced BEFORE 4-4, because it has THREE
   # consumers (4-3's meter, 4-4's shelf, 4-10's search) and a prerequisite
@@ -1060,8 +1101,8 @@ development_status:
   epic-4-retrospective: optional
 
   # ---- Epic 5: Set Segments & Layer 2 Enrichment ----
-  epic-5: backlog
-  5-1-segments-overlay-schema: backlog
+  epic-5: in-progress
+  5-1-segments-overlay-schema: ready-for-dev
   5-2-segment-detection-algorithm: backlog
   5-3-segment-editor: backlog
   5-4-segment-scoped-stats: backlog

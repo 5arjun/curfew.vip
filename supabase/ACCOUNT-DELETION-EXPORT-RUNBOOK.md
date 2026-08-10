@@ -74,8 +74,8 @@ this section describing a channel Story 3.10 has since replaced.
 
    There is nothing else to delete against today's schema — this is the
    entire cascade. `segments` and other enrichment overlay tables don't
-   exist yet (Epic 5, still backlog); this step will need to be re-verified
-   once they land.
+   exist yet (Story 5.1, still backlog); this step will need to be
+   re-verified once they land.
 
    **If the delete call errors, times out, or you're unsure whether it
    succeeded:** verify via a direct query (`select count(*) from auth.users
@@ -110,11 +110,14 @@ this section describing a channel Story 3.10 has since replaced.
    Step 2 above already covers them — their cascade was verified for real,
    not assumed from the DDL alone.
 
-   **Forward-hook, TODO for whichever Epic 5 story lands `segments` or any
-   enrichment overlay table:** confirm that table's actual `ON DELETE
-   CASCADE` behavior back to `djs.id` before assuming step 2 already covers
-   it — if it is **not** cascade-configured, add an explicit `DELETE ...
-   WHERE dj_id = '<uuid>'` statement here instead of assuming.
+   **Forward-hook, TODO for Story 5.1 (segments overlay schema):** design
+   ruling (party 2026-08-10) is `segments.dj_id references public.djs (id)
+   on delete cascade`, matching the `sessions`/`sets`/`plays` pattern — so
+   this step is *expected* to already cover it once the migration ships.
+   Confirm that for real against local Postgres (don't assume from the DDL
+   alone, same discipline as Story 3.1's own verification) — if the shipped
+   migration ever deviates from the ruling and isn't cascade-configured, add
+   an explicit `DELETE ... WHERE dj_id = '<uuid>'` statement here instead.
 
 ## 3. Export procedure (today's schema)
 
@@ -148,10 +151,10 @@ their `dj_id`.
    the DJ's `phone` number, so don't route any of these through any other
    channel.
 
-**Forward-hook, TODO for whichever Epic 5 story lands `segments` or any
-enrichment overlay table:** extend the query list above with that table,
-scoped to the same `dj_id`, so the export keeps covering the DJ's full
-derived data as the schema grows.
+**Forward-hook, TODO for Story 5.1 (segments overlay schema):** extend the
+query list above with `select * from public.segments where dj_id =
+'<uuid>';`, so the export keeps covering the DJ's full derived data as the
+schema grows.
 
 ## 4. Future self-serve trigger (AC-4)
 
