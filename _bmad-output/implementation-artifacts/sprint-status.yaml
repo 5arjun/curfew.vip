@@ -1102,7 +1102,7 @@ development_status:
 
   # ---- Epic 5: Set Segments & Layer 2 Enrichment ----
   epic-5: in-progress
-  5-1-segments-overlay-schema: ready-for-dev
+  5-1-segments-overlay-schema: review
   5-2-segment-detection-algorithm: backlog
   5-3-segment-editor: backlog
   5-4-segment-scoped-stats: backlog

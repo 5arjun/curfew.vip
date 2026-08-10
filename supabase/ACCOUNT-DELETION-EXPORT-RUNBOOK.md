@@ -2,21 +2,23 @@
 
 Story 2.11's own text describes this runbook against the **full, eventual**
 schema (`sessions`, `sets`, `plays`, `segments`, enrichment overlays, a Stripe
-customer). As of Story 3.1, the live schema is `public.djs` (`id`,
-`created_at`, `phone`) plus `sessions`/`sets`/`plays` — Epic 7's billing
-columns are still backlog. This runbook is written accurate to **today's**
-schema, with an explicit forward-hook section (a clearly marked TODO, not a
-fabricated step) for the one future story that will still need to extend it.
+customer). As of Story 5.1, the live schema is `public.djs` (`id`,
+`created_at`, `phone`) plus `sessions`/`sets`/`plays`/`segments` — Epic 7's
+billing columns and Story 5.5's Layer 2 enrichment overlay are still
+backlog. This runbook is written accurate to **today's** schema, with an
+explicit forward-hook section (a clearly marked TODO, not a fabricated
+step) for the future stories that will still need to extend it.
 
-**Status as of 2026-07-30:** this is a pure manual/operator runbook — no
+**Status as of 2026-08-10:** this is a pure manual/operator runbook — no
 self-serve in-app deletion or export exists (MVP scope, AC-3). Today's
 deletion procedure is one step: deleting the `auth.users` row cascades
-through `public.djs` and, as of Story 3.1, transitively through
-`sessions`/`sets`/`plays` too — confirmed for real against local Postgres
-(insert a DJ's full row set, delete their `auth.users` row, all four tables'
-rows are gone). The export procedure now joins those three tables as well.
-Both will grow again once Epic 7 lands billing columns — see the
-forward-hook TODO inline below.
+through `public.djs` and, as of Story 5.1, transitively through
+`sessions`/`sets`/`plays`/`segments` too — confirmed for real against local
+Postgres (insert a DJ's full row set, delete their `auth.users` row, all
+five tables' rows are gone). The export procedure now joins those four
+tables as well. Both will grow again once Epic 7 lands billing columns or
+Story 5.5 lands its enrichment overlay — see the forward-hook TODO inline
+below.
 
 ## 1. Requesting a deletion or export
 
@@ -62,7 +64,9 @@ this section describing a channel Story 3.10 has since replaced.
    Either path cascades automatically through the entire schema, confirmed
    for real against local Postgres (Story 3.1's dev-story: seeded a DJ with
    one row in each of `djs`/`sessions`/`sets`/`plays`, deleted their
-   `auth.users` row, confirmed all four tables' rows were gone):
+   `auth.users` row, confirmed all four tables' rows were gone; Story 5.1's
+   dev-story repeated the same check with a `segments` row added to the
+   chain, confirmed all five tables' rows were gone):
    - `public.djs.id` is `references auth.users (id) on delete cascade`
      (`supabase/migrations/20260726012050_create_djs_table.sql`).
    - `public.sessions.dj_id`, `public.sets.dj_id`, and `public.plays.dj_id`
@@ -71,11 +75,17 @@ this section describing a channel Story 3.10 has since replaced.
      `sessions`/`sets`/`plays` also cascade transitively through their
      parent-row FK (`sets.session_id`, `plays.set_id`), so there is no path
      that leaves an orphaned row in any of them.
+   - `public.segments.dj_id` also `references public.djs (id) on delete
+     cascade`, and `segments.first_play_id`/`segments.last_play_id` each
+     `references public.plays (id) on delete cascade`
+     (`supabase/migrations/20260810153813_create_segments.sql`) — so a
+     `segments` row is unreachable via two independent cascade paths (its
+     own `dj_id`, and transitively through the `plays` row it brackets).
 
    There is nothing else to delete against today's schema — this is the
-   entire cascade. `segments` and other enrichment overlay tables don't
-   exist yet (Story 5.1, still backlog); this step will need to be
-   re-verified once they land.
+   entire cascade. Story 5.5's Layer 2 enrichment overlay table doesn't
+   exist yet (still backlog); this step will need to be re-verified once it
+   lands.
 
    **If the delete call errors, times out, or you're unsure whether it
    succeeded:** verify via a direct query (`select count(*) from auth.users
@@ -110,20 +120,21 @@ this section describing a channel Story 3.10 has since replaced.
    Step 2 above already covers them — their cascade was verified for real,
    not assumed from the DDL alone.
 
-   **Forward-hook, TODO for Story 5.1 (segments overlay schema):** design
-   ruling (party 2026-08-10) is `segments.dj_id references public.djs (id)
-   on delete cascade`, matching the `sessions`/`sets`/`plays` pattern — so
-   this step is *expected* to already cover it once the migration ships.
-   Confirm that for real against local Postgres (don't assume from the DDL
-   alone, same discipline as Story 3.1's own verification) — if the shipped
-   migration ever deviates from the ruling and isn't cascade-configured, add
-   an explicit `DELETE ... WHERE dj_id = '<uuid>'` statement here instead.
+   **`segments` (Story 5.1): closed, no manual step needed.** The shipped
+   migration (`supabase/migrations/20260810153813_create_segments.sql`)
+   matches the design ruling exactly: `segments.dj_id references
+   public.djs (id) on delete cascade`. Confirmed for real against local
+   Postgres, not assumed from the DDL alone (same discipline as Story 3.1's
+   own verification and `segments_isolation_test.sql`'s cascade case):
+   seeded a DJ with a full `sessions`/`sets`/`plays`/`segments` row chain,
+   deleted their `auth.users` row, confirmed all four tables' rows were
+   gone. Step 2 above already covers `segments` too.
 
 ## 3. Export procedure (today's schema)
 
-As of Story 3.1, a DJ's derived data is their `public.djs` row (`id`,
-`created_at`, `phone`) plus every `sessions`/`sets`/`plays` row scoped to
-their `dj_id`.
+As of Story 5.1, a DJ's derived data is their `public.djs` row (`id`,
+`created_at`, `phone`) plus every `sessions`/`sets`/`plays`/`segments` row
+scoped to their `dj_id`.
 
 1. **Identify the DJ's `uuid`.** Same matching step as §2.1 (match on
    verified email against `auth.users`) — if zero rows or more than one row
@@ -137,24 +148,21 @@ their `dj_id`.
    select * from public.sessions where dj_id = '<uuid>';
    select * from public.sets where dj_id = '<uuid>';
    select * from public.plays where dj_id = '<uuid>';
+   select * from public.segments where dj_id = '<uuid>';
    ```
 
    **If the `djs` query returns zero rows,** confirm the account's current
    status (already deleted? wrong/mistyped `uuid`?) before reporting the
    export as complete — do not send an empty result back to the DJ as if it
-   were their data. Zero rows on `sessions`/`sets`/`plays` alone is
-   expected and not an error — not every DJ has synced a set yet.
+   were their data. Zero rows on `sessions`/`sets`/`plays`/`segments` alone
+   is expected and not an error — not every DJ has synced a set yet, and
+   not every set has a segment.
 3. Use the SQL Editor's own export/download button on each result set to
    save it as JSON or CSV — either is a "portable format" per AC-2.
 4. **Deliver the exported files to the DJ via the same admin@curfew.vip
    channel** used to receive the request (§1) — the `djs` export contains
    the DJ's `phone` number, so don't route any of these through any other
    channel.
-
-**Forward-hook, TODO for Story 5.1 (segments overlay schema):** extend the
-query list above with `select * from public.segments where dj_id =
-'<uuid>';`, so the export keeps covering the DJ's full derived data as the
-schema grows.
 
 ## 4. Future self-serve trigger (AC-4)
 
@@ -179,6 +187,11 @@ this section exists so that trigger condition is tracked, not forgotten.
   `sessions`/`sets`/`plays` tables and their `on delete cascade` FKs back to
   `djs.id`, confirmed for real against local Postgres in Story 3.1's
   dev-story and now covered by §2/§3 above.
+- `supabase/migrations/20260810153813_create_segments.sql` — the `segments`
+  overlay table and its two independent `on delete cascade` FK paths
+  (`dj_id`, and transitively via `first_play_id`/`last_play_id`),
+  confirmed for real against local Postgres in Story 5.1's dev-story and
+  now covered by §2/§3 above.
 - `agent/src-tauri/src/store.rs` — `local.sqlite` filename and
   `app_local_data_dir()` path, for the manual local-purge instruction.
 - `supabase/EMAIL-PROVISIONING.md` — the runbook-doc precedent (structure,
