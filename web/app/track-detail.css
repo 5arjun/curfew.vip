@@ -1,0 +1,424 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Track Detail (Story 4.10) — `/track/[track_id]`. All classes prefixed `td-`.
+   Token-only: `no-hardcoded-colors.test.ts` scans this file and bans every
+   colour literal — including the two bare keywords, and including inside
+   comments, which is why this header names none of them. Read that test for
+   the list rather than writing an example here; the first draft of this comment
+   failed the gate by quoting it.
+
+   Reuses the shipped surfaces rather than inventing a second visual language:
+   `.dz-shell`/`.dz-dots` (dashboard.css) for every module, `SilkBackdrop` for
+   the ground, and the same whole-page scroll `/set/[id]` uses. This file styles
+   only the page shell and the four modules' own chrome.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.td {
+  position: relative;
+  min-height: 100dvh;
+  width: 100%;
+  max-width: var(--container-max);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  /* Clears the floating nav's bottom dock plus the device safe area — the same
+     rule and the same terms `.lu` and `.dashboard-inner` carry, so all four
+     scrolling pages agree rather than each guessing. */
+  padding: var(--space-lg) var(--space-gutter)
+    calc(var(--space-xxl) + var(--space-lg) + env(safe-area-inset-bottom));
+  font-family: var(--font-hanken-grotesk);
+  color: var(--color-abyss-text);
+}
+
+/* Desktop nav clearance: with the rail standing at the left edge the page spans
+   the space to its right. Copied from `.lu`/`.sd` verbatim, including the
+   `900.02px` breakpoint — a hair above the 900px stack breakpoint so the two
+   can never both apply. */
+@media (min-width: 900.02px) {
+  .td {
+    max-width: none;
+    padding-left: calc(var(--nav-rail-inset) + var(--nav-rail-width) + var(--space-gutter));
+    padding-right: var(--space-gutter);
+  }
+}
+
+/* ─── Header: identity + tags ───────────────────────────────────────────── */
+
+.td-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.td-title {
+  margin: 0;
+  font-family: var(--font-hanken-grotesk);
+  font-size: clamp(26px, 5vw, 38px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--color-abyss-text);
+  /* A record title can be 100+ characters (remix credits, feature lists), and
+     a long unbroken one must wrap rather than push the page sideways at
+     320px — UX-DR21's no-horizontal-overflow rule. */
+  overflow-wrap: anywhere;
+}
+
+.td-artist {
+  margin: 0;
+  font-family: var(--font-inter);
+  font-size: 14px;
+  color: var(--color-abyss-text-72);
+  overflow-wrap: anywhere;
+}
+
+.td-tags {
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+}
+
+.td-tag {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid var(--color-abyss-hairline);
+  border-radius: var(--radius-full);
+  background: var(--color-abyss-shell);
+  /* 24px floor for SC 2.5.8 — these are not interactive, but they sit in a row
+     with links on narrow widths and a ragged row of heights reads as broken. */
+  min-height: 24px;
+}
+
+.td-tag dt {
+  font-family: var(--font-inter);
+  font-size: 10.5px;
+  font-weight: 550;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-abyss-text-45);
+}
+
+.td-tag dd {
+  margin: 0;
+  font-family: var(--font-geist-mono);
+  font-size: 12px;
+  color: var(--color-abyss-text);
+}
+
+/* ─── Modules ───────────────────────────────────────────────────────────── */
+
+.td-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.td-module {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px 24px;
+  /* Deliberately NOT the 440px cap `.lu > .lu-module` carries. That cap exists
+     so two modules sit side by side in a `.lu-pair`; these stack full-width,
+     and inheriting it would strand every module in the left third of a 1440px
+     screen. Recorded because "make it match the other page" is the obvious
+     drive-by, and `.lu-module`'s width cap has already been re-scoped for one
+     call site and broken another (failure mode 5 on this epic's list). */
+}
+
+.td-module-label {
+  margin: 0;
+  font-family: var(--font-inter);
+  font-size: 11px;
+  font-weight: 550;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-abyss-text-45);
+}
+
+/* `InsufficientHistory` renders its own `.dz-shell`, so a module's empty state
+   would otherwise be a bordered card inside a bordered card. Flattened for the
+   nested case only — the same treatment `.lu-module .se-empty` already applies,
+   and scoped by the descendant selector so the standalone usages are untouched
+   (failure mode 5: shared CSS re-scoped for one call site, breaking another). */
+.td-module .se-empty {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  padding: 2px 0;
+  min-height: 0;
+}
+
+/* ─── Figures ───────────────────────────────────────────────────────────── */
+
+.td-figures {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 28px;
+}
+
+.td-figures li,
+.td-readout {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 0;
+}
+
+.td-figure {
+  font-family: var(--font-geist-mono);
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--color-abyss-text);
+}
+
+.td-figure-label {
+  font-family: var(--font-inter);
+  font-size: 12px;
+  color: var(--color-abyss-text-45);
+}
+
+.td-span {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  font-family: var(--font-inter);
+  font-size: 12px;
+  color: var(--color-abyss-text-72);
+}
+
+/* ─── Set rows (AC-7) ───────────────────────────────────────────────────── */
+
+.td-set-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.td-set-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--color-abyss-hairline);
+  /* 24px floor for SC 2.5.8 — every row here holds a link. */
+  min-height: 24px;
+}
+
+.td-set-row:last-child {
+  border-bottom: none;
+}
+
+.td-set-link,
+.td-back,
+.td-neighbour-link {
+  color: var(--color-abyss-accent);
+  text-decoration: none;
+  /* The underline is the non-colour cue: colour alone must not be the only
+     thing distinguishing a link from its surrounding text (WCAG 1.4.1). */
+  text-decoration-line: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--color-abyss-glint);
+}
+
+.td-set-link:hover,
+.td-back:hover,
+.td-neighbour-link:hover {
+  text-decoration-color: var(--color-abyss-accent);
+}
+
+.td-set-link:focus-visible,
+.td-back:focus-visible,
+.td-neighbour-link:focus-visible {
+  outline: none;
+  border-radius: var(--radius-xl);
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 6px var(--color-abyss-accent-glow);
+}
+
+.td-set-link {
+  font-family: var(--font-geist-mono);
+  font-size: 12px;
+}
+
+.td-set-meta {
+  flex: none;
+  font-family: var(--font-inter);
+  font-size: 11.5px;
+  color: var(--color-abyss-text-45);
+  text-wrap: nowrap;
+}
+
+/* ─── Clock strip (AC-8) ────────────────────────────────────────────────── */
+
+.td-clock {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(24, 1fr);
+  align-items: end;
+  gap: 2px;
+  height: 84px;
+}
+
+.td-clock-slot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 100%;
+  min-width: 0;
+}
+
+.td-clock-bar {
+  width: 100%;
+  /* A slot with no plays still draws a hairline floor, so the strip reads as a
+     24-hour axis rather than as a handful of floating bars. */
+  min-height: 2px;
+  border-radius: 2px;
+  background: var(--color-abyss-text-22);
+}
+
+.td-clock-bar--on {
+  background: var(--color-abyss-accent);
+  box-shadow: 0 0 10px var(--color-abyss-accent-glow);
+}
+
+.td-clock-tick {
+  position: absolute;
+  bottom: -16px;
+  left: 0;
+  font-family: var(--font-geist-mono);
+  font-size: 9px;
+  color: var(--color-abyss-text-45);
+}
+
+/* The tick labels sit below the bars, so the module needs the room. */
+.td-clock {
+  margin-bottom: 18px;
+}
+
+/* ─── Mix neighbours (AC-10) ────────────────────────────────────────────── */
+
+.td-neighbours {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+@media (max-width: 640px) {
+  .td-neighbours {
+    grid-template-columns: 1fr;
+  }
+}
+
+.td-neighbour-col {
+  min-width: 0;
+}
+
+.td-neighbour-head {
+  margin: 0 0 4px;
+  font-family: var(--font-inter);
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--color-abyss-text-72);
+}
+
+.td-neighbour-empty {
+  margin: 0;
+  font-family: var(--font-inter);
+  font-size: 12px;
+  color: var(--color-abyss-text-45);
+}
+
+.td-neighbour-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.td-neighbour-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--color-abyss-hairline);
+  min-height: 24px;
+}
+
+.td-neighbour-row:last-child {
+  border-bottom: none;
+}
+
+.td-neighbour-track {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.td-neighbour-title {
+  font-family: var(--font-inter);
+  font-size: 13px;
+  color: var(--color-abyss-text);
+  overflow-wrap: anywhere;
+}
+
+.td-neighbour-artist {
+  font-family: var(--font-inter);
+  font-size: 11.5px;
+  color: var(--color-abyss-text-45);
+  overflow-wrap: anywhere;
+}
+
+.td-neighbour-count {
+  flex: none;
+  font-family: var(--font-geist-mono);
+  font-size: 11px;
+  color: var(--color-abyss-text-72);
+  text-wrap: nowrap;
+}
+
+/* ─── Disclosures and the way back ──────────────────────────────────────── */
+
+.td-disclosure {
+  margin: 2px 0 0;
+  font-family: var(--font-inter);
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--color-abyss-text-45);
+}
+
+.td-footnote {
+  margin: 4px 0 0;
+  font-family: var(--font-inter);
+  font-size: 12px;
+}
+
+.td-back {
+  display: inline-flex;
+  align-items: center;
+  /* 24px floor for SC 2.5.8 — the one standalone link on the page. */
+  min-height: 24px;
+  padding: 2px 0;
+}

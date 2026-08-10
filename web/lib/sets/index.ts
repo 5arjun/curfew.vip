@@ -54,6 +54,14 @@
 import type { AgentStatusRow, AgentStatusSnapshot } from "./agentStatus";
 import type { LibraryAddEvent } from "./libraryConversion";
 import type { LibraryRosterEntry, LibraryRosterSnapshot } from "./libraryRoster";
+// A VALUE import, deliberately: `MIX_NEIGHBOUR_SET_LIMIT` is declared beside
+// `buildNeighbourAnchors` because both sides need the same number — the query
+// below builds from it, and the model has to rebuild the same anchor set to
+// know which returned rows are "before" and which are "after". Two copies would
+// let the model look for pairs the query never asked for. `trackDetail` is a
+// pure module with no server dependencies, so importing it here adds nothing.
+import { MIX_NEIGHBOUR_SET_LIMIT } from "./trackDetail";
+import type { MixNeighbourRow, TrackPlayRecord } from "./trackDetail";
 import type { SetRecord, SyncPlay, SyncSetDerived } from "./types";
 
 /** Row shape of a single `plays` select, as the `sets` nested-select below returns it. */
@@ -72,6 +80,26 @@ type PlayRow = {
   played_ms: number | null;
   library_added_at: string | null;
   track_id: string | null;
+};
+
+/**
+ * Row shape of one `TRACK_PLAYS_SELECT` row — a play, plus the set it sat in.
+ *
+ * `sets` is nullable in the TYPE only: `plays.set_id` is `not null` with a
+ * foreign key, so a play with no parent set is unreachable. Modelled nullable
+ * anyway because an embed that RLS filters out comes back as `null` rather than
+ * as a missing row, and dereferencing it would throw inside the caller — after
+ * this module's try/catch has already returned.
+ */
+type TrackPlayRow = PlayRow & {
+  set_id: string;
+  sets: {
+    id: string;
+    started_at: string;
+    ended_at: string;
+    derived: SyncSetDerived;
+    sessions: { session_identity: string } | null;
+  } | null;
 };
 
 /** Row shape of a single `sets` select, nested `plays` + parent `sessions` included. */
@@ -98,6 +126,40 @@ type SetRow = {
 // survives in the cloud. See `formatSessionLabel` for the parse.
 const SET_WITH_PLAYS_SELECT =
   "id, started_at, ended_at, derived, sessions(session_identity), plays(position, title, artist, started_at, bpm, genre_raw, genre_normalized, subgenre, taxonomy_version, camelot_key, in_library, played_ms, library_added_at, track_id)";
+
+/**
+ * Every column `/track/[track_id]` needs, in ONE indexed read (Story 4.10,
+ * **D-30**).
+ *
+ * Selected FROM `plays` (not from `sets` with a nested filter), because
+ * `plays_dj_id_track_id_idx on public.plays (dj_id, track_id)` already exists
+ * (`20260807100000_create_library_track_events.sql:130`) and serves
+ * `.eq("track_id", …)` directly. The alternative — filtering `getRecentSets`'
+ * 500-set array in memory — would ship ~2,294 plays across the wire to render
+ * one track, and would silently inherit that seam's 500-set horizon on a page
+ * whose whole claim is "every time you've played this".
+ *
+ * `sets(...)` is a to-ONE embed (`plays.set_id → sets.id`), so PostgREST
+ * returns an object per row rather than an array — the same shape
+ * `SET_WITH_PLAYS_SELECT` relies on for `sessions`. One read therefore serves
+ * AC-7's linked set rows, AC-8's clock strip and AC-12's confidence predicate.
+ */
+const TRACK_PLAYS_SELECT =
+  "set_id, position, title, artist, started_at, bpm, genre_raw, genre_normalized, subgenre, taxonomy_version, camelot_key, in_library, played_ms, library_added_at, track_id, sets(id, started_at, ended_at, derived, sessions(session_identity))";
+
+/**
+ * How many plays of ONE track `getTrackPlays` will fetch.
+ *
+ * Explicit for the reason every bound in this file is explicit: PostgREST
+ * truncates at `max_rows` (1000) with HTTP 200 and `error: null`, which this
+ * seam's error handling is structurally blind to. Kept under that cap so the
+ * limit that applies is always this documented one.
+ *
+ * 500 is far past any real value — the busiest track on the committed seed has
+ * **10 plays across 10 sets** — and is deliberately not tuned tighter: a DJ who
+ * loops one record all night is exactly the DJ this page is for.
+ */
+const TRACK_PLAYS_LIMIT = 500;
 
 /**
  * How many sets `getRecentSets` will fetch. Explicit because PostgREST silently
@@ -129,8 +191,8 @@ const MAX_PAGES = 50;
  * confident-looking lie. Not reachable through `sync_set` today (it always
  * supplies the blob), which is why this is a guard and not a migration.
  */
-function hasRenderableDerived(row: SetRow): boolean {
-  const derived = row.derived as Partial<SyncSetDerived> | null;
+function hasRenderableDerived(blob: SyncSetDerived | null | undefined): boolean {
+  const derived = blob as Partial<SyncSetDerived> | null | undefined;
   return (
     derived != null &&
     typeof derived === "object" &&
@@ -221,7 +283,7 @@ export async function getRecentSets(): Promise<SetRecord[]> {
     // Per-row so one malformed set drops itself instead of emptying the archive.
     const sets = rows.flatMap((row) => {
       try {
-        if (!hasRenderableDerived(row)) {
+        if (!hasRenderableDerived(row.derived)) {
           if (process.env.NODE_ENV !== "production") {
             console.error("getRecentSets: dropping set with unrenderable `derived`", row.id);
           }
@@ -522,7 +584,7 @@ export async function getSetById(externalId: string): Promise<SetRecord | null> 
     const row = data as unknown as SetRow;
     // Same guard as `getRecentSets`, same reason — but here the alternative to
     // dropping is a 500 on Set Detail, so `null` (a calm 404) is the fallback.
-    if (!hasRenderableDerived(row)) {
+    if (!hasRenderableDerived(row.derived)) {
       if (process.env.NODE_ENV !== "production") {
         console.error("getSetById: set has unrenderable `derived`, rendering as not-found", row.id);
       }
@@ -533,6 +595,186 @@ export async function getSetById(externalId: string): Promise<SetRecord | null> 
   } catch (err) {
     if (process.env.NODE_ENV !== "production") {
       console.error("getSetById: unexpected failure, rendering as not-found", err);
+    }
+    return null;
+  }
+}
+
+/**
+ * Every play of ONE track, with the set each sat in (Story 4.10, AC-5..AC-12;
+ * **D-30**).
+ *
+ * Served by `plays_dj_id_track_id_idx` — see {@link TRACK_PLAYS_SELECT} for why
+ * this is a new read rather than a filter over `getRecentSets()`'s array.
+ *
+ * Follows `getSetById`'s shape exactly, and the calm-empty fallback is the
+ * load-bearing part: an empty array means "no plays", which the detail page
+ * renders as an honest state (a roster-only track, D-38), NOT as a 404. The
+ * page decides not-found by asking whether the track exists in either
+ * population — see `track/[track_id]/page.tsx`.
+ *
+ * No `dj_id` filter: RLS is owner-SELECT-only and `auth.uid()` is the filter
+ * (AD-7), the same precedent every read in this file follows.
+ */
+export async function getTrackPlays(trackId: string): Promise<TrackPlayRecord[]> {
+  try {
+    const { createClient } = await import("@/lib/supabase/server");
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("plays")
+      .select(TRACK_PLAYS_SELECT)
+      .eq("track_id", trackId)
+      // Ordered server-side so the explicit `.limit()` keeps the OLDEST plays
+      // when it bites, which is the end "first played" is read from. An
+      // unordered limit would hand back an arbitrary 500 and both AC-7's first
+      // play and AC-8's clock strip would quietly describe a subset.
+      .order("started_at", { ascending: true })
+      .order("position", { ascending: true })
+      .limit(TRACK_PLAYS_LIMIT);
+
+    if (error && process.env.NODE_ENV !== "production") {
+      console.error("getTrackPlays: Supabase read failed, rendering as no plays", error);
+    }
+
+    const rows = error || !data ? [] : (data as unknown as TrackPlayRow[]);
+    // Per-row, so one malformed set drops its own plays instead of emptying the
+    // whole history — the same discipline `getRecentSets` applies, and the same
+    // `derived` guard, because `isLowConfidenceSet` dereferences
+    // `derived.confidence.value` without one.
+    return rows.flatMap((row) => {
+      try {
+        if (row.sets == null || !hasRenderableDerived(row.sets.derived)) {
+          if (process.env.NODE_ENV !== "production") {
+            console.error("getTrackPlays: dropping play whose set is unrenderable", row.set_id);
+          }
+          return [];
+        }
+        return [
+          {
+            setId: row.sets.id,
+            setLabel: row.sets.sessions?.session_identity ?? null,
+            setStartedAt: row.sets.started_at,
+            setDerived: row.sets.derived,
+            play: toSyncPlay(row),
+          },
+        ];
+      } catch (err) {
+        if (process.env.NODE_ENV !== "production") {
+          console.error("getTrackPlays: dropping malformed play row", row?.set_id, err);
+        }
+        return [];
+      }
+    });
+  } catch (err) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error("getTrackPlays: unexpected failure, rendering as no plays", err);
+    }
+    return [];
+  }
+}
+
+/**
+ * What was played immediately before and after this track, across its plays
+ * (Story 4.10, AC-10; **D-31**).
+ *
+ * Adjacency is `position ± 1` **within the same set only**. `plays` carries
+ * `unique (set_id, position)` and the column is 1-based, so a neighbour is a
+ * lookup rather than a time comparison — and the last track of one night is
+ * never the neighbour of the first track of the next.
+ *
+ * **Two steps, and the second over-fetches on purpose.** PostgREST cannot
+ * express "these exact `(set_id, position)` pairs", so step 2 asks for the
+ * cross product `.in("set_id", …).in("position", …)` and the exact pairs are
+ * filtered client-side. The cross product is bounded by
+ * {@link MIX_NEIGHBOUR_SET_LIMIT} — see that constant for the arithmetic, and
+ * `buildMixNeighbours` for the disclosure when it bites.
+ *
+ * Returns `[]` for an empty anchor list without touching the network.
+ */
+export async function getMixNeighbours(
+  anchors: { setId: string; position: number }[],
+): Promise<MixNeighbourRow[]> {
+  if (anchors.length === 0) return [];
+
+  try {
+    const { createClient } = await import("@/lib/supabase/server");
+    const supabase = await createClient();
+
+    // The pairs we actually want, and the two `.in()` lists that will
+    // over-fetch a superset of them.
+    const wanted = new Set<string>();
+    const setIds = new Set<string>();
+    const positions = new Set<number>();
+    for (const anchor of anchors) {
+      if (setIds.size >= MIX_NEIGHBOUR_SET_LIMIT && !setIds.has(anchor.setId)) continue;
+      setIds.add(anchor.setId);
+      for (const position of [anchor.position - 1, anchor.position + 1]) {
+        // `position` is 1-based, so 0 is not a row — asking for it would widen
+        // the cross product by a value that can never match.
+        if (position < 1) continue;
+        positions.add(position);
+        wanted.add(`${anchor.setId}${position}`);
+      }
+    }
+    if (wanted.size === 0) return [];
+
+    const { data, error } = await supabase
+      .from("plays")
+      .select("set_id, position, title, artist, track_id")
+      .in("set_id", [...setIds])
+      .in("position", [...positions])
+      // Bounded explicitly even though the arithmetic above already keeps the
+      // cross product under `max_rows` — a silent server-side truncation is
+      // exactly what this file's other bounds exist to make impossible.
+      .limit(MAX_ROWS_PER_PAGE);
+
+    if (error && process.env.NODE_ENV !== "production") {
+      console.error("getMixNeighbours: Supabase read failed, rendering as no neighbours", error);
+    }
+
+    const rows = error || !data ? [] : (data as unknown as MixNeighbourRow[]);
+    return rows.filter((row) => wanted.has(`${row.set_id}${row.position}`));
+  } catch (err) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error("getMixNeighbours: unexpected failure, rendering as no neighbours", err);
+    }
+    return [];
+  }
+}
+
+/**
+ * One roster entry by `track_id`, or `null` (Story 4.10, AC-6/AC-13; D-38).
+ *
+ * The other half of the detail page's identity: a track the DJ **owns** may
+ * have no plays at all, and on a fresh account with a synced library that is
+ * every track. `.is("absent_at", null)`, server-side and with `.is` rather than
+ * `.eq` — `eq` renders `absent_at=eq.null`, a literal string comparison
+ * matching nothing (the same trap `getLibraryRoster` documents).
+ *
+ * `null` covers "not in the roster", "removed from the library", "not this
+ * DJ's" and "read failed" alike — RLS makes the last two indistinguishable by
+ * design, and the caller treats them identically (AC-6's honest absent state).
+ */
+export async function getTrackRosterEntry(trackId: string): Promise<LibraryRosterEntry | null> {
+  try {
+    const { createClient } = await import("@/lib/supabase/server");
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("library_roster")
+      .select("track_id, title, artist, added_at, is_baseline, absent_at")
+      .eq("track_id", trackId)
+      .is("absent_at", null)
+      .maybeSingle();
+
+    if (error && process.env.NODE_ENV !== "production") {
+      console.error("getTrackRosterEntry: Supabase read failed, rendering as not-in-roster", error);
+    }
+
+    if (error || !data) return null;
+    return data as LibraryRosterEntry;
+  } catch (err) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error("getTrackRosterEntry: unexpected failure, rendering as not-in-roster", err);
     }
     return null;
   }
@@ -630,3 +872,4 @@ export type { SetRecord } from "./types";
 export type { AgentStatusRow, AgentStatusSnapshot } from "./agentStatus";
 export type { LibraryAddEvent } from "./libraryConversion";
 export type { LibraryRosterEntry, LibraryRosterSnapshot } from "./libraryRoster";
+export type { MixNeighbourRow, TrackPlayRecord } from "./trackDetail";

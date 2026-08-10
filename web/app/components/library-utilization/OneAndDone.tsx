@@ -84,6 +84,8 @@ export function OneAndDone({ model }: { model: OneAndDoneModel }) {
               key: trackKey(row.title, row.artist),
               title: row.title,
               artist: row.artist,
+              // Story 4.10 AC-3/AC-4 (D-26) — see `Workhorses.tsx`'s note.
+              trackId: row.trackId,
               // `-Infinity` means no play carried a parseable time. An em dash
               // says "unknown" without inventing a date, which is the same
               // "never omitted, never guessed" contract AD-11 asks for.

@@ -26,6 +26,12 @@ const GATED_PREFIXES = [
   "/library-utilization",
   "/set",
   "/settings",
+  // Story 4.10's `/track/[track_id]`. Added WITH the route, not after it: the
+  // omission is invisible to every gate — lint, typecheck, tests and build all
+  // stay green while the new route silently bypasses the phone-on-file check
+  // (D-35). `/set` is the precedent immediately above; a prefix covers the
+  // dynamic segment because `isPhoneGatedPath` matches on `${prefix}/`.
+  "/track",
   "/link-agent",
 ];
 

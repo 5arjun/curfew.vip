@@ -723,3 +723,74 @@
     display: flex;
   }
 }
+
+/* ─── Track search (Story 4.10, AC-1/AC-2) ──────────────────────────────────
+   The field reuses `.spot-*` (dashboard.css:1208) verbatim; only its container
+   and its results chrome live here. No `.spot-goo`: that class exists to carry
+   the blob filter that merges the pill with `SpotlightSearch`'s sort chips, and
+   this field has no chips to merge with. */
+
+.lu-search {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lu-search-status {
+  margin: 0;
+  font-family: var(--font-inter);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--color-abyss-text-45);
+}
+
+/* The results' entrance, in CSS rather than framer-motion — this file's
+   `prefers-reduced-motion` guard is the same contract `<MotionConfig
+   reducedMotion="user">` provides, without pulling the library toward a page
+   that animates nothing else. */
+.lu-search .lu-row-list,
+.lu-search .lu-search-status {
+  animation: lu-search-in 180ms var(--motion-ease-liquid) both;
+}
+
+@keyframes lu-search-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lu-search .lu-row-list,
+  .lu-search .lu-search-status {
+    animation: none;
+  }
+}
+
+/* The row title becomes a link (AC-3). Inherits `.lu-row-title`'s type; the
+   underline is the non-colour cue, so colour is never the only signal that a
+   row opens (WCAG 1.4.1). Unlinked rows — the ~21% with no identity — keep
+   `.lu-row-title` alone and are visibly plain text rather than dead links. */
+.lu-row-link {
+  color: var(--color-abyss-accent);
+  text-decoration: none;
+  text-decoration-line: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--color-abyss-glint);
+}
+
+.lu-row-link:hover {
+  text-decoration-color: var(--color-abyss-accent);
+}
+
+.lu-row-link:focus-visible {
+  outline: none;
+  border-radius: var(--radius-xl);
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 6px var(--color-abyss-accent-glow);
+}

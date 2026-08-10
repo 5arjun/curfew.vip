@@ -88,6 +88,9 @@ function workhorses(rowCount: number): WorkhorsesModel {
       artist: `Artist ${i}`,
       setCount: rowCount - i,
       plays: rowCount - i,
+      // Story 4.10: every row in this factory is linkable, so the negative
+      // control below (a `null` id) is the one that proves the threading.
+      trackId: `id${i}`,
     })),
     totalRowCount: rowCount,
     truncated: false,
@@ -102,6 +105,7 @@ function oneAndDone(rowCount: number): OneAndDoneModel {
       title: `Once ${i}`,
       artist: `Artist ${i}`,
       lastPlayedMs: Date.UTC(2026, 5, 1) - i * 86_400_000,
+      trackId: `id${i}`,
     })),
     // Non-zero: this factory builds the POPULATED model, and the module picks
     // its empty-state copy off this field (0 identified tracks means "nothing
@@ -251,7 +255,7 @@ describe("Workhorses and OneAndDone thread their rows to the DOM (AC-5, AC-6)", 
       <OneAndDone
         model={{
           ...oneAndDone(1),
-          rows: [{ title: "No Time", artist: "Artist", lastPlayedMs: -Infinity }],
+          rows: [{ title: "No Time", artist: "Artist", lastPlayedMs: -Infinity, trackId: "id0" }],
         }}
       />,
     );
@@ -321,5 +325,63 @@ describe("ConversionRateMeter still renders its threaded disclosure (Story 4.11 
   it("renders nothing in its place when the prop is absent", () => {
     const html = renderToStaticMarkup(<ConversionRateMeter rates={RATES} window={60} />);
     expect(html).not.toContain("252 of 910");
+  });
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Story 4.10 — `trackId` threading (AC-3/AC-4, D-26)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+describe("trackId reaches the DOM as a link, and its absence reaches it as plain text", () => {
+  it("links a workhorse row's title to /track/[track_id]", () => {
+    const html = renderToStaticMarkup(<Workhorses model={workhorses(1)} />);
+    expect(html).toContain('href="/track/id0"');
+    expect(html).toContain("lu-row-link");
+  });
+
+  // NEGATIVE CONTROL — the whole point of D-26. Without this, the assertion
+  // above would pass against markup that linked every row unconditionally, and
+  // the ~21% of tracks with no identity would ship as links that 404.
+  it("renders an unlinkable workhorse row as plain text, not a dead link", () => {
+    const model = workhorses(1);
+    const html = renderToStaticMarkup(
+      <Workhorses model={{ ...model, rows: [{ ...model.rows[0], trackId: null }] }} />,
+    );
+    expect(html).toContain("Track 0");
+    expect(html).not.toContain("<a");
+    expect(html).not.toContain("/track/");
+  });
+
+  it("links a played-once row's title", () => {
+    const html = renderToStaticMarkup(<OneAndDone model={oneAndDone(1)} />);
+    expect(html).toContain('href="/track/id0"');
+  });
+
+  // NEGATIVE CONTROL.
+  it("renders an unlinkable played-once row as plain text", () => {
+    const model = oneAndDone(1);
+    const html = renderToStaticMarkup(
+      <OneAndDone model={{ ...model, rows: [{ ...model.rows[0], trackId: null }] }} />,
+    );
+    expect(html).toContain("Once 0");
+    expect(html).not.toContain("<a");
+  });
+
+  // A `track_id` is 16 hex characters, so this is belt-and-braces — but the id
+  // is untrusted text off the wire, and building a route from unescaped input
+  // is how a path separator becomes a different route.
+  it("escapes an id rather than letting it forge a path", () => {
+    const model = workhorses(1);
+    const html = renderToStaticMarkup(
+      <Workhorses model={{ ...model, rows: [{ ...model.rows[0], trackId: "a/../b" }] }} />,
+    );
+    expect(html).toContain('href="/track/a%2F..%2Fb"');
+  });
+
+  it("links rows hidden behind the <details> disclosure too", () => {
+    // `TRACK_LIST_MAX_ROWS`-independent: 8 rows exceeds the 6 visible, so the
+    // last two live inside the `<details>` and must link like the rest.
+    const html = renderToStaticMarkup(<Workhorses model={workhorses(8)} />);
+    expect(html).toContain('href="/track/id7"');
   });
 });
