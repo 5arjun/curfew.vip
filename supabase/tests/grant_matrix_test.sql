@@ -2,10 +2,14 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
--- 51 = four set-wide blocks of 7 tables (28) + 6 intended-write assertions
+-- 53 = two set-wide blocks of 8 tables (INSERT, DELETE -- 16) + two
+-- set-wide blocks of 7 tables (TRUNCATE x2 -- 14, unchanged: the
+-- catalog-driven generic TRUNCATE sweep at the bottom of this file already
+-- covers any new table automatically, so `segments` was deliberately not
+-- added to these two hardcoded arrays) + 6 intended-write assertions
 -- + 4 on deleted_sets + 6 function-revoke + 4 agent-write-path
 -- + 3 generic SECURITY DEFINER / trigger-function sweeps.
-select plan(51);
+select plan(53);
 
 -- Story 4.6 code review (2026-08-07): pins the ACL matrix the migration history
 -- has always described in prose but never asserted.
@@ -28,7 +32,7 @@ select plan(51);
 -- RLS on the read-only tables. TRUNCATE is called out individually because it
 -- is the one privilege no policy can restrain.
 select ok(not has_table_privilege('anon', 'public.' || t, 'INSERT'), 'anon cannot INSERT into ' || t)
-from unnest(array['sessions','sets','plays','library_track_events','library_roster','agent_status','djs']) t;
+from unnest(array['sessions','sets','plays','library_track_events','library_roster','agent_status','djs','segments']) t;
 
 select ok(not has_table_privilege('anon', 'public.' || t, 'TRUNCATE'), 'anon cannot TRUNCATE ' || t)
 from unnest(array['sessions','sets','plays','library_track_events','library_roster','agent_status','djs']) t;
@@ -37,7 +41,7 @@ select ok(not has_table_privilege('authenticated', 'public.' || t, 'TRUNCATE'), 
 from unnest(array['sessions','sets','plays','library_track_events','library_roster','agent_status','djs']) t;
 
 select ok(not has_table_privilege('anon', 'public.' || t, 'DELETE'), 'anon cannot DELETE from ' || t)
-from unnest(array['sessions','sets','plays','library_track_events','library_roster','agent_status','djs']) t;
+from unnest(array['sessions','sets','plays','library_track_events','library_roster','agent_status','djs','segments']) t;
 
 -- SELECT for both roles IS intended (20260726012050's note: an `anon` SELECT
 -- grant is what makes a signed-out read an RLS-filtered empty result rather

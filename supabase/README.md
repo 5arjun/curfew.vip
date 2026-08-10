@@ -11,9 +11,11 @@ supabase/
     20260721180917_init.sql                        # no-op seed (Story 1.1)
     20260726012050_create_djs_table.sql            # djs table + trigger + RLS (Story 2.1)
     20260730204057_create_sessions_sets_plays.sql  # sessions/sets/plays + visibility + RLS (Story 3.1)
+    20260810153813_create_segments.sql             # segments overlay table, select-only RLS (Story 5.1)
   tests/                             # pgTAP suites (`supabase test db`)
     djs_isolation_test.sql
     sessions_sets_plays_isolation_test.sql
+    segments_isolation_test.sql
   scripts/
     check-additive-only-migrations.sh    # CI guard, see below
   PROVISIONING.md                    # runbook for the real cloud project
