@@ -10,6 +10,8 @@ Every entry below this section that does **not** already carry an inline `[RESOL
 - [post-merge review of #20/#21/#22/#23 — agent-side] Reach high-water mark never shrinks; one drive swap permanently disables absent-marking, so sold/deleted tracks read "owned, never played".
 - [code review of 4-5-time-to-first-play] `getRecentSets`' 500-set cap silently reclassifies older debuts as "never played" in a lifetime metric.
 
+**Two entries tagged `[LAUNCH BLOCKER]` / `[PRODUCT — likely launch-affecting]` in the log below are very likely stale — verify before acting, don't re-investigate:** the 4.2-implementation entry flagging "nothing swaps `web/`'s read path from fixture to Supabase" was exactly Story 4.6's whole purpose, and 4.6 is `done`; the path-based-track-identity conversion-rate concern was superseded by 4.3's title+artist identity change (Decision E-2). Neither is re-marked resolved in the log itself — a 2-minute check and a `[RESOLVED]` stamp each.
+
 ### B. Pre-launch hardening — close before Epic 6 (first public-facing) or Epic 7 (billing) story-creation
 
 - [code review of 3-5-floating-pill-nav] `(authenticated)` route group still ships with no auth gating at all.

@@ -42,6 +42,14 @@
 
 generated: 2026-07-21
 last_updated: 2026-08-10
+# 2026-08-10: story 4-9 -- STATUS BOOKKEEPING CLOSED during the Epic 4
+# retrospective. review -> done. Same shape as the 4-5 gap below: the code
+# review (2026-08-08, 35 findings, all patched/ruled/deferred), the required
+# post-review browser pass (2026-08-10), and the merge of main (Stories 4.4 +
+# 4.8, 8 conflict hunks resolved) were all already complete and gate-clean
+# (596 tests / 28 files, lint/typecheck/build clean) -- the Status field and
+# this file simply never got flipped. No code change, bookkeeping only.
+# epic-4 unchanged (in-progress until this retro closes it below).
 # 2026-08-10: story 4-5 -- STATUS BOOKKEEPING CLOSED. review -> done. PR #22
 # merged to main on 2026-08-08 with all 5 review decisions ruled and all 11
 # patches applied; the pre-merge Playwright pass (1440/375) was clean. The
@@ -1016,7 +1024,7 @@ development_status:
   # library" refers only to the D-1 pre-install BASELINE, a different set.
   # Conversion is honest by construction because it only ever asks about
   # tracks added AFTER install, which is the go-forward set that is synced.
-  4-9-library-utilization-composition-play-side-stats: review
+  4-9-library-utilization-composition-play-side-stats: done
   # [2026-08-10] Implemented; the last unbuilt story in Epic 4. Two rulings
   # taken during the work rather than deferred: D-25 (search covers played u
   # owned, discharging 4-11's AC-9 and superseding 4-10's own pre-roster scope
@@ -1090,7 +1098,7 @@ development_status:
   # also silently shrinks the conversion denominator with no disclosed count.
   # 4-11 AC-6 closes it; measure the real-library percentage while there.
   4-11-library-roster-sync: done
-  epic-4-retrospective: optional
+  epic-4-retrospective: done
 
   # ---- Epic 5: Set Segments & Layer 2 Enrichment ----
   epic-5: in-progress
@@ -1205,10 +1213,10 @@ action_items:
     trigger: standing rule, every code review from Epic 4 on
     item: "PROCESS: make the Dev Notes/File List diff-check (git diff --stat vs. the story's self-reported claims) a literal line item in the code-review checklist, not a norm. ai-11 (Epic 2 retro) tried the norm approach and it recurred 3 more times in Epic 3 (3.6 FloatingNav 'untouched' claim, 3.8 Task 8.2 false keyboard-pass claim, 3.10 epics.md callout stale in its own introducing commit)."
   - id: ai-15
-    status: open
+    status: done
     source: epic-3-retro 2026-08-06
     trigger: whenever convenient, no fixing required in this pass
-    item: "TRIAGE: sort deferred-work.md's 44+ chronological, un-triaged entries into launch-blocking vs. not, using pre-launch-services-checklist.md's existing category scheme. Sorting only — reveals the real size of the pre-launch tail, which nobody currently knows."
+    item: "TRIAGE: sort deferred-work.md's 44+ chronological, un-triaged entries into launch-blocking vs. not, using pre-launch-services-checklist.md's existing category scheme. Sorting only — reveals the real size of the pre-launch tail, which nobody currently knows. [CLOSED 2026-08-10 at the Epic 4 retrospective: ledger had grown to 525 lines/231 entries (still un-triaged) by the time this ran — two full epics of drift. Sorted into A/B/C/D/E severity buckets — 175 still open (A: 3 launch-blocking, B: 27 pre-launch hardening, C: 17 real-gap-no-story, D: 6 need Arjun's ruling, E: 122 low-priority), 56 already closed inline — written as a new Triage section at the top of deferred-work.md. Sorting only, per the item's own scope — no fixes applied. NOTE: two concurrent sessions each produced a full triage of this ledger under the same heading; the itemized one (written in the 5.1 session, commit 5c802c6) survived the merge and is what the counts above describe, with the other session's unique stale-tag paragraph grafted into section A. Surfaced two probably-stale [LAUNCH BLOCKER]/[PRODUCT] tags predating Stories 4.3/4.6 that were never re-stamped resolved; see ai-20.]"
   - id: ai-16
     status: open
     source: epic-3-retro 2026-08-06
@@ -1219,3 +1227,31 @@ action_items:
     source: epic-3-retro 2026-08-06
     trigger: before further Epic 4 or sprint-status.yaml work
     item: "RECONCILE the concurrent Epic 4 Story 4.1 session discovered live mid-retrospective: sprint-status.yaml's epic-4 and 4-1-style-evolution-trend-view-excludes-low-confidence fields were found changed (backlog -> in-progress / ready-for-dev) by an edit this retro session did not make, while Epic 3's retro was still in progress. Confirm what that session did before Epic 4 work or further sprint-status.yaml edits proceed — third instance of the concurrent-session-collision pattern this project has hit (see 3.6/3.10 shared working tree, 3.4's stray concurrent commit). [CLOSED 2026-08-06: confirmed legitimate — a real create-story session with Arjun, 8 locked design decisions (D-1..D-8) resolving the PRD's own flagged genre-diversity/key-usage definition gap. No scope collision with deferred-work.md's dashboard low-confidence-exclusion entry (surfaced by 3.7): that entry covers the dashboard's SetListPanel, this story covers Style Evolution's trend view only — the story's own Context section already names the distinction and Task 9 leaves a pointer rather than closing the dashboard entry. Story file committed."]
+
+# Action items — carried into the Epic 4 retrospective / Epic 5 story creation.
+# Full rationale + decisions: implementation-artifacts/epic-4-retro-2026-08-10.md
+  - id: ai-18
+    status: open
+    source: epic-4-retro 2026-08-10
+    trigger: standing rule, every code review from Epic 5 on
+    item: "PROCESS: make aria/visible drift (accessible name states a figure or claim the visible UI withholds, or the two disagree) a literal review-checklist line, the same fix ai-14 applied to Dev Notes/File List staleness. It is the single most-recurring defect class of Epic 4 — hit at least 7 of 11 stories (4.3, 4.4, 4.5 x3, 4.7, 4.8, 4.9, 4.10) — and unlike Dev Notes/File List there is no dedicated catch net for it yet; it has only ever been caught by the three-layer adversarial review noticing it fresh each time."
+  - id: ai-19
+    status: open
+    source: epic-4-retro 2026-08-10
+    trigger: before Epic 6 story-creation (first public-facing epic)
+    item: "STORY OWED: local-time capture. Flagged [NEEDS A STORY] since Story 4.1's timezone ruling (2026-08-06) and still entirely unbuilt — the agent must capture the DJ's local time, the web app must bucket against it. Every server-rendered date/hour in the product is UTC today; a US DJ's 11pm Friday gig can file under the wrong day or cross a month boundary on the dashboard calendar and Style Evolution. Recurred as a hydration-mismatch symptom in at least 4 Epic 4 stories (4.1, 4.7, 4.8, 4.10) without the root cause ever being fixed. Marked launch-blocking (category A) in this retro's deferred-work.md triage."
+  - id: ai-20
+    status: open
+    source: epic-4-retro 2026-08-10
+    trigger: whenever convenient, verification only
+    item: "VERIFY AND CLOSE two probably-stale tags surfaced by this retro's deferred-work.md triage: the 4.2-implementation entry flagging '[LAUNCH BLOCKER] nothing swaps web/'s read path from fixture to Supabase' (Story 4.6, done, was exactly this), and the '[PRODUCT — likely launch-affecting] path-based track identity deflates conversion rate' entry (superseded by Story 4.3's title+artist identity change, Decision E-2). Neither is re-stamped resolved in deferred-work.md. Likely a 2-minute confirm-and-stamp, not a re-investigation."
+  - id: ai-21
+    status: open
+    source: epic-4-retro 2026-08-10
+    trigger: Arjun's own time, no code risk
+    item: "RULING NEEDED on the 6 category-D product/copy items in deferred-work.md's Triage section. The four beyond the two written up below: Story 4.10's D-36 placement clause contradicting its own Critical clause; TrackDetail's per-module 'no data' copy not distinguishing genuinely-nothing from hidden-by-reveal; Story 1.8's confidence tier having no density/rate ceiling (Open Question #1, explicitly Arjun's call — the 865-play/27.5-minute previewing session is the concrete input); and whether overlapping or duplicate segments within a set are permitted (5.1, blocks 5.2/5.3). The two written up at retro time: (1) Story 4.4's aging-shelf all-clear copy ('Everything you've bought is getting played.') and the recently-downloaded nudge ('N tracks added in the last 30 days haven't been played yet.') can render on screen at the same time and read as contradicting each other — suppress the nudge in the all-clear state, or scope the all-clear copy to the 90-day window. (2) Story 4.10's D-36 search-field placement deviated from its original spec (shipped at page level, not inside the Tracks group) for a documented reason — confirm the shipped placement is fine or say where it should move."
+  - id: ai-22
+    status: open
+    source: epic-4-retro 2026-08-10
+    trigger: whenever convenient, re-examination only
+    item: "RE-LOOK, don't just re-file: Story 4.11's single-machine-enforcement ruling (post-MVP, [NEEDS A STORY]) was reconfirmed post-MVP in this retro's triage, but the entry's own text describes library_roster oscillating destructively today under a two-install (e.g. laptop + studio) setup — a common configuration, not an edge case. Worth Arjun re-checking the post-MVP call against that specific failure mode before Epic 5 accrues more roster consumers on top of it."
