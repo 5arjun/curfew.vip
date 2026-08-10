@@ -230,7 +230,11 @@ export function buildTrackIdentity(
   for (const { play } of plays) {
     title = present(play.title) ?? title;
     artist = present(play.artist) ?? artist;
-    if (typeof play.bpm === "number" && Number.isFinite(play.bpm)) bpm = Math.round(play.bpm);
+    // `> 0`, not `Number.isFinite`: a BPM of exactly 0 is corrupted data, not a
+    // real reading — no track plays at 0 BPM — and treating it as one would
+    // render a fabricated "0" where the D-8 convention elsewhere on this page
+    // renders Unknown.
+    if (typeof play.bpm === "number" && play.bpm > 0) bpm = Math.round(play.bpm);
     camelotKey = present(play.camelot_key) ?? camelotKey;
     // `genre_raw`/`genre_normalized`/`taxonomy_version`/`subgenre` are written
     // as ONE group by `sync_set` and never collapsed (AD-12) — so the genre and

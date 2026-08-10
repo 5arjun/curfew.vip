@@ -1025,7 +1025,32 @@ development_status:
   # decisions flagged rather than silently resolved, both in deferred-work.md:
   # D-36's placement clause contradicts its own "Critical" clause, and
   # `.se-hidden-toggle` fails SC 2.5.8 but is Story 4.1's shipped component.
-  4-10-track-lookup-and-track-detail: review
+  4-10-track-lookup-and-track-detail: done
+  # [2026-08-10] CODE REVIEW CLOSED. review -> done. Three-layer review (Blind
+  # Hunter, Edge Case Hunter, Acceptance Auditor) against the diff and this
+  # story's own ACs/Non-negotiables/Decisions, each finding verified by reading
+  # the actual code before rating. 1 decision-needed (locale/timezone-dependent
+  # day rendering had reappeared in two new places, contradicting this diff's
+  # own "must not add a second" comment): ruled patch TrackDetail's four date
+  # fields (now client-rendered post-hydration via a new `ClientDayDate`,
+  # mirroring `ClockStrip`'s D-32 pattern), accept-and-disclose SetSimilarity's
+  # axis labels (its day label also feeds a Server Component's `aria-label`,
+  # which can't defer to post-hydration without converting the whole grid to a
+  # Client Component). 4 patches applied and gate-verified: search's "no
+  # results" copy silently claimed zero when a match was hidden by the
+  # confidence reveal (Non-negotiable 4 / Story 4.7 R-2 shape, reproduced
+  # unguarded in this new codepath); `ClockStrip`'s accessible summary used
+  # ranking language ("more than any other") that was also untestable as
+  # written (now exported and unit-tested); a duplicate axis link combined
+  # `aria-hidden` with a still-focusable anchor (`tabIndex={-1}` alone does not
+  # remove focusability); a corrupted/zero BPM rendered as a fabricated "0"
+  # instead of Unknown. 4 items deferred (2 already self-disclosed by the dev:
+  # D-36's placement deviation, the pre-existing `.se-hidden-toggle` 24x24 gap;
+  # 2 new: a D-28 identity-conflict edge in search dedup, currently 0 instances
+  # measured; per-module "no data" ambiguity in TrackDetail, matching an
+  # already-shipped Story 4.9 pattern). Gate re-run clean after patches: 732
+  # tests / 32 files (up from the story's own 596/28 baseline), lint/typecheck/
+  # build all clean.
   # [ADDED 2026-08-07] 4-11 STORIES THE ABOVE FINDING. Promoted from "a note
   # owned by 4-4" to its own story sequenced BEFORE 4-4, because it has THREE
   # consumers (4-3's meter, 4-4's shelf, 4-10's search) and a prerequisite

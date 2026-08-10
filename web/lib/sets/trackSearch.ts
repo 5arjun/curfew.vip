@@ -301,3 +301,28 @@ export function trackSearchCapDisclosure(matchCount: number): string | null {
   if (matchCount <= TRACK_SEARCH_MAX_ROWS) return null;
   return `Showing ${TRACK_SEARCH_MAX_ROWS} of ${matchCount} matches — tracks you've played come first, by play count, then the rest of your library.`;
 }
+
+/**
+ * The status line when a query returns no VISIBLE rows (Non-negotiable 4;
+ * Story 4.7's R-2 shape).
+ *
+ * `matchCount` and `visibleCount` come from the same `(matches, revealed)`
+ * pair `SearchResults` already has: `matches` is every haystack hit,
+ * `visibleCount` is what survives the page's short/low-confidence reveal.
+ * These can diverge — a query can hit a soundcheck-only track that
+ * `visibleTrackSearchRows` filters out — and "no match" is a different, false
+ * claim from "a match exists but is hidden": the first says Curfew has never
+ * seen the track, the second says the DJ's own reveal is closed. Conflating
+ * them is exactly the silently-collapsed-to-zero failure Non-negotiable 4
+ * exists to prevent. `null` when there IS a visible row — the caller renders
+ * the match count instead.
+ */
+export function trackSearchNoMatchCopy(matchCount: number, visibleCount: number): string | null {
+  if (visibleCount > 0) return null;
+  if (matchCount === 0) {
+    return "No track here matches that — Curfew has no play and no library entry under that name.";
+  }
+  const noun = matchCount === 1 ? "track matches" : "tracks match";
+  const pronoun = matchCount === 1 ? "it" : "them";
+  return `${matchCount} ${noun} that, but only in short or low-confidence sets — reveal to see ${pronoun}.`;
+}

@@ -207,6 +207,21 @@ describe("SetSimilarity threads its model to the DOM (AC-4, D-19, D-22)", () => 
     expect(html).not.toContain("most recent sets, of");
   });
 
+  it("hides the duplicate column-header dates from AT without leaving them focusable", () => {
+    // Regression: `aria-hidden="true"` combined with `tabIndex={-1}` on a real
+    // `<a href>` does not remove the element from the focus tree — only from
+    // sequential Tab order — reintroducing the exact "focusable content inside
+    // an aria-hidden subtree" trap this module's own doc comment describes
+    // fixing for the row axis. The column headers must render as plain,
+    // non-interactive markup instead.
+    const html = renderToStaticMarkup(<SetSimilarity model={similarity()} />);
+    expect(html).not.toMatch(/aria-hidden="true"[^>]*href=/);
+    expect(html).not.toMatch(/href="[^"]*"[^>]*aria-hidden="true"/);
+    expect(html).not.toContain("tabindex");
+    // The row axis is still the one real, announced link into `/set/[id]`.
+    expect(html).toContain('href="/set/set-902"');
+  });
+
   // NEGATIVE CONTROL for the whole module.
   it("renders no matrix and no figure below its gate", () => {
     const html = renderToStaticMarkup(

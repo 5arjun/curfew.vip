@@ -165,8 +165,15 @@ export function SetSimilarity({ model }: { model: SetSimilarityModel }) {
  * night it goes to and stays recognisable against `SetDetail`'s own header.
  *
  * `duplicate` marks the column headers — the same ten destinations as the row
- * axis. They stay mouse-clickable but leave the accessibility tree and the tab
- * order; see this module's doc comment.
+ * axis, and they render as **plain, non-interactive text**, not a link.
+ * `aria-hidden` on a focusable element (an `<a href>`, even with
+ * `tabIndex={-1}`) is a real WCAG trap — `tabIndex={-1}` only removes
+ * sequential Tab-key stops, the element is still focusable by other means, so
+ * it stays reachable while unannounced. A `<span>` has no such path, so
+ * `aria-hidden` on it is the safe, standard way to keep the row axis as the
+ * one screen-reader/keyboard route to these ten destinations without a second,
+ * silently-focusable one. The trade is real: the column headers lose the
+ * mouse-click affordance the row axis keeps.
  */
 function AxisLink({
   axis,
@@ -177,13 +184,18 @@ function AxisLink({
   className: string;
   duplicate?: boolean;
 }) {
+  if (duplicate) {
+    return (
+      <span className={`lu-sim-axis ${className}`} aria-hidden="true">
+        {axis.dayLabel}
+      </span>
+    );
+  }
   return (
     <Link
       className={`lu-sim-axis lu-sim-axis-link ${className}`}
       href={`/set/${encodeURIComponent(axis.setId)}`}
-      aria-label={duplicate ? undefined : `${axis.dayLabel}, ${axis.label}`}
-      aria-hidden={duplicate || undefined}
-      tabIndex={duplicate ? -1 : undefined}
+      aria-label={`${axis.dayLabel}, ${axis.label}`}
     >
       {axis.dayLabel}
     </Link>

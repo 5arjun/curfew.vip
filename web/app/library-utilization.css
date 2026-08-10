@@ -626,6 +626,13 @@
   font-size: 9px;
   letter-spacing: 0.04em;
   color: var(--color-abyss-text-45);
+  /* A date is longer than the bare session number the axis used to show, so
+     it must wrap rather than force the grid wider — moved here (off
+     `.lu-sim-axis-link`) so the non-interactive duplicate column headers
+     (plain `<span>`, no `-link` class as of the aria-hidden-focusable fix)
+     keep the same overflow protection the row axis link has. */
+  overflow-wrap: anywhere;
+  text-align: center;
 }
 
 .lu-sim-axis-row {
@@ -650,8 +657,6 @@
   text-decoration-style: dotted;
   text-underline-offset: 2px;
   text-decoration-color: var(--color-abyss-glint);
-  text-align: center;
-  overflow-wrap: anywhere;
   transition: color var(--motion-duration-fast) var(--motion-ease-liquid);
 }
 

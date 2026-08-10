@@ -155,6 +155,14 @@ describe("buildTrackIdentity (AC-5, AC-6)", () => {
     expect(identity.libraryAddedAtMs).toBeNull();
   });
 
+  it("treats a BPM of exactly 0 as corrupted, not a real reading (D-8)", () => {
+    // No track plays at 0 BPM — a 0 reading is bad data, and rendering it
+    // as "0" would be the fabricated zero D-8 bans everywhere else on this
+    // page.
+    const identity = buildTrackIdentity([record({ play: { position: 1, bpm: 0 } })], null);
+    expect(identity.bpm).toBeNull();
+  });
+
   it("treats an empty or whitespace-only title/artist as absent (Non-negotiable 9)", () => {
     const identity = buildTrackIdentity(
       [record({ play: { position: 1, title: "   ", artist: "" } })],

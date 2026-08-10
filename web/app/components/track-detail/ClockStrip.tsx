@@ -120,11 +120,15 @@ function formatHour(hour: number): string {
  * AC-12's text equivalent for the strip — built from the same `buckets` the
  * bars are, so the two cannot disagree.
  *
- * Names the busiest hour and how many plays landed there. Ordered, but with no
- * ranking vocabulary (`DESIGN.md:199`): "most often" describes a count, not a
- * competition, and there is no "top" or "peak" language on screen.
+ * Names the busiest hour and how many plays landed there, as a share of the
+ * total rather than a comparison against the other hours. "More than any
+ * other" reads as a superlative claim — the exact ranking vocabulary
+ * Non-negotiable 6 bans (`DESIGN.md:199`) — even though no individually banned
+ * word appears in it, so it is worded as a count-of-total instead. Exported so
+ * the bucket math and this string are unit-testable directly, rather than only
+ * reachable through the component's pre-hydration branch.
  */
-function clockSummary(buckets: number[], total: number): string {
+export function clockSummary(buckets: number[], total: number): string {
   let bestHour = 0;
   let best = 0;
   // Ties go to the earlier hour of the night — walked in NIGHT_START order so
@@ -138,5 +142,5 @@ function clockSummary(buckets: number[], total: number): string {
     }
   }
   if (best === 0) return "Clock";
-  return `Of ${total} timed ${total === 1 ? "play" : "plays"}, ${best} landed in the ${formatHour(bestHour)} hour, more than any other.`;
+  return `Of ${total} timed ${total === 1 ? "play" : "plays"}, ${best} landed in the ${formatHour(bestHour)} hour.`;
 }

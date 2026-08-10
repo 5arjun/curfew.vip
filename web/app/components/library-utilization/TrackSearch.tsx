@@ -8,6 +8,7 @@ import {
   isOwned,
   trackSearchCapDisclosure,
   trackSearchHaystacks,
+  trackSearchNoMatchCopy,
   visibleTrackSearchRows,
   hasSearchableTracks,
   TRACK_SEARCH_MAX_ROWS,
@@ -76,9 +77,6 @@ import { TrackRowList } from "./TrackRowList";
  */
 const TRACK_SEARCH_INSUFFICIENT_COPY =
   "Once a set is captured or your library syncs, every track Curfew knows about is searchable here.";
-
-/** AC-2's no-match state — plain, unapologetic, and not a claim about the library's completeness. */
-const NO_MATCH_COPY = "No track here matches that — Curfew has no play and no library entry under that name.";
 
 export function TrackSearch({
   index,
@@ -167,14 +165,15 @@ export function TrackSearch({
 function SearchResults({ matches, revealed }: { matches: TrackSearchRow[]; revealed: boolean }) {
   const rows = visibleTrackSearchRows(matches, revealed);
   const capNote = trackSearchCapDisclosure(rows.length);
+  const noMatchCopy = trackSearchNoMatchCopy(matches.length, rows.length);
 
-  if (rows.length === 0) {
+  if (noMatchCopy) {
     // `role="status"` so the live filter announces the miss rather than leaving
     // a screen-reader user typing into silence. ONE register: the sentence is
     // visible and announced, never duplicated into an `aria-label` too.
     return (
       <p className="lu-search-status" role="status">
-        {NO_MATCH_COPY}
+        {noMatchCopy}
       </p>
     );
   }
