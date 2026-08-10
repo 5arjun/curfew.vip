@@ -7,6 +7,7 @@ import {
   isOwned,
   trackSearchCapDisclosure,
   trackSearchHaystacks,
+  trackSearchNoMatchCopy,
   visibleTrackSearchRows,
   TRACK_SEARCH_MAX_ROWS,
   TS_ADDED_AT_MS,
@@ -311,5 +312,31 @@ describe("trackSearchCapDisclosure (Non-negotiable 5)", () => {
     expect(trackSearchCapDisclosure(312)?.toLowerCase()).not.toMatch(
       /\b(best|winner|top|rank|ranked)\b/,
     );
+  });
+});
+
+describe("trackSearchNoMatchCopy (Non-negotiable 4; Story 4.7 R-2 shape)", () => {
+  it("returns null when a visible row exists", () => {
+    expect(trackSearchNoMatchCopy(3, 1)).toBeNull();
+  });
+
+  it("states Curfew has no record when there is truly no match", () => {
+    expect(trackSearchNoMatchCopy(0, 0)).toBe(
+      "No track here matches that — Curfew has no play and no library entry under that name.",
+    );
+  });
+
+  it("never claims zero when a match exists but is hidden by the reveal", () => {
+    const note = trackSearchNoMatchCopy(1, 0);
+    expect(note).not.toBeNull();
+    expect(note).not.toMatch(/no play and no library entry/);
+    expect(note).toContain("1 track matches");
+    expect(note).toContain("reveal");
+  });
+
+  it("pluralizes for more than one hidden match", () => {
+    const note = trackSearchNoMatchCopy(2, 0);
+    expect(note).toContain("2 tracks match");
+    expect(note).toContain("them");
   });
 });

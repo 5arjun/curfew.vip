@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { formatDayDate } from "@/lib/sets/format";
 import type { LibraryRosterEntry } from "@/lib/sets/libraryRoster";
 import {
   buildClockStrip,
@@ -27,6 +26,7 @@ import { SilkBackdrop } from "@/app/components/dashboard/SilkBackdrop";
 import { InsufficientHistory } from "@/app/components/style-evolution/InsufficientHistory";
 import { LibraryUtilizationReveal } from "@/app/components/library-utilization/LibraryUtilizationReveal";
 import { ClockStrip } from "./ClockStrip";
+import { ClientDayDate } from "./ClientDayDate";
 
 // Track Detail's shell (Story 4.10, AC-5..AC-12).
 //
@@ -162,9 +162,11 @@ function TrackTags({ identity }: { identity: TrackIdentity }) {
             `library_added_at`. */}
         <dt>Added</dt>
         <dd>
-          {identity.libraryAddedAtMs === null
-            ? UNKNOWN
-            : formatDayDate(new Date(identity.libraryAddedAtMs).toISOString())}
+          {identity.libraryAddedAtMs === null ? (
+            UNKNOWN
+          ) : (
+            <ClientDayDate ms={identity.libraryAddedAtMs} />
+          )}
         </dd>
       </div>
     </dl>
@@ -231,15 +233,19 @@ function TrackBody({
             <p className="td-span">
               <span>
                 First played{" "}
-                {history.firstPlayedMs === null
-                  ? "—"
-                  : formatDayDate(new Date(history.firstPlayedMs).toISOString())}
+                {history.firstPlayedMs === null ? (
+                  "—"
+                ) : (
+                  <ClientDayDate ms={history.firstPlayedMs} />
+                )}
               </span>
               <span>
                 Last played{" "}
-                {history.lastPlayedMs === null
-                  ? "—"
-                  : formatDayDate(new Date(history.lastPlayedMs).toISOString())}
+                {history.lastPlayedMs === null ? (
+                  "—"
+                ) : (
+                  <ClientDayDate ms={history.lastPlayedMs} />
+                )}
               </span>
             </p>
             <ul className="td-set-list">
@@ -251,12 +257,14 @@ function TrackBody({
                     {row.label}
                   </Link>
                   <span className="td-set-meta">
-                    {row.startedAtMs === null
-                      ? // Never a guessed date (D-8). An em dash says "unknown"
-                        // without inventing one — the same treatment
-                        // `OneAndDone` gives an undated play.
-                        "—"
-                      : formatDayDate(new Date(row.startedAtMs).toISOString())}
+                    {row.startedAtMs === null ? (
+                      // Never a guessed date (D-8). An em dash says "unknown"
+                      // without inventing one — the same treatment
+                      // `OneAndDone` gives an undated play.
+                      "—"
+                    ) : (
+                      <ClientDayDate ms={row.startedAtMs} />
+                    )}
                     {row.playCount > 1 && ` · ${row.playCount} plays`}
                   </span>
                 </li>

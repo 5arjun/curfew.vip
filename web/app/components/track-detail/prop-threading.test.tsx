@@ -207,6 +207,27 @@ describe("the clock strip renders no hour server-side (D-32)", () => {
   });
 });
 
+describe("day labels render no locale/timezone-dependent date server-side", () => {
+  // Same reasoning as the clock strip above, generalized to day granularity:
+  // `ClientDayDate`'s SERVER snapshot is `false`, so first/last played, per-set
+  // dates and the library-added date all emit the placeholder rather than a
+  // server-computed (and possibly wrong-zone) day. If this regresses, the page
+  // has gone back to rendering `formatDayDate` directly in the Server
+  // Component.
+  it("emits the placeholder for the add date, never a formatted day", () => {
+    const html = renderToStaticMarkup(<TrackDetail plays={[]} roster={ROSTER} neighbourRows={[]} />);
+    expect(html).toContain(">–<");
+    expect(html).not.toMatch(/\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s/);
+  });
+
+  it("emits the placeholder for first/last played and per-set dates, never a formatted day", () => {
+    const html = renderToStaticMarkup(
+      <TrackDetail plays={[record({})]} roster={ROSTER} neighbourRows={[]} />,
+    );
+    expect(html).not.toMatch(/\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s/);
+  });
+});
+
 describe("the cold start is a designed state, not four empty modules (D-38)", () => {
   it("renders identity, the add date and one honest line for an owned, unplayed track", () => {
     const html = renderToStaticMarkup(<TrackDetail plays={[]} roster={ROSTER} neighbourRows={[]} />);
