@@ -42,6 +42,35 @@
 
 generated: 2026-07-21
 last_updated: 2026-08-10
+# 2026-08-10: story 5-2 create-story session. Story written against the
+# 2026-08-10 design doc (D-1..D-18 locked; the doc was RENAMED to
+# 5-2-segment-detection-algorithm-design.md so the story file could take the
+# canonical story-key path -- epics.md pointer updated). Creation-time rulings
+# D-19..D-26 close the gaps the design doc left: TRANSPORT (suggestions +
+# idle gaps ride SyncSetDerived additively; sync_set materializes
+# ('suggested', false) rows cloud-side; proposed explicitly as AD-23, which
+# deliberately deviates from AD-8's own-RPC/own-table template and requires
+# AD-16 rule-text amendments in the same pass); wire shape (1-based
+# positions, RPC-resolved, invalid entries skip-with-warning, never failing
+# content sync); all Section-5 numeric opens (window 600s kept, P60 floors,
+# w=n/(n+5) blend, smoothness prior 6.0, idle label >=600s / hard-break
+# >1200s TRUE silence, WHOLE_NIGHT_FRACTION dropped); calibration pool
+# (chronological predecessors-only for re-derive determinism, live-computed,
+# no persisted profile); v0 retirement mechanics; rollout via the existing
+# serato4 backfill re-queue. ONE REAL DISCOVERY on the record: sync_set's
+# delete+reinsert of plays (shipped since 3.2) cascade-wipes ALL segments
+# rows on every re-sync via 5.1's on-delete-cascade FKs -- 5.1's Dev Notes
+# premise "plays rows are not currently deleted by any shipped story" is
+# FALSE. Harmless for 5.2 (suggested rows recompute per sync, made explicit
+# in the RPC), destructive for 5.3's confirmed/manual rows (AD-16 violation
+# the moment one exists) -- assigned forward via a deferred-work entry, story
+# Task 6.2/6.3. Story validated in a fresh adversarial context; 5 findings
+# fixed, the substantive one being a drafted confidence-based calibration
+# filter STRUCK for misreading confidence.rs's explicitly symmetric value as
+# a practice signal (it would have excluded tight club sets and admitted
+# bedroom previewing -- the exact inverse of intent).
+# epic-5 unchanged (in-progress).
+# 5-2-segment-detection-algorithm: backlog -> ready-for-dev.
 # 2026-08-10: story 4-9 -- STATUS BOOKKEEPING CLOSED during the Epic 4
 # retrospective. review -> done. Same shape as the 4-5 gap below: the code
 # review (2026-08-08, 35 findings, all patched/ruled/deferred), the required
@@ -1108,7 +1137,7 @@ development_status:
   # (pre-existing patterns / explicitly out of scope, see deferred-work.md).
   # Gate re-run clean: Files=10, Tests=226, Result: PASS.
   5-1-segments-overlay-schema: done
-  5-2-segment-detection-algorithm: backlog
+  5-2-segment-detection-algorithm: ready-for-dev
   5-3-segment-editor: backlog
   5-4-segment-scoped-stats: backlog
   5-5-layer-2-enrichment-form: backlog
