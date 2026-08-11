@@ -181,6 +181,13 @@ describe("the sets+plays select string", () => {
     // `sessions` is to-one (an object) via `sets.session_id`.
     expect(select).toMatch(/plays\(/);
     expect(select).toMatch(/sessions\(\s*session_identity\s*\)/);
+    // Story 5.2: the dancefloor cut is fetched, not recomputed. `segments`
+    // carries TWO foreign keys to `plays`, so each boundary embed MUST name its
+    // FK constraint — without the hint PostgREST cannot disambiguate and errors,
+    // which this seam would swallow into a calm empty render.
+    expect(select).toMatch(/segments\(/);
+    expect(select).toMatch(/plays!segments_first_play_id_fkey\(\s*started_at\s*\)/);
+    expect(select).toMatch(/plays!segments_last_play_id_fkey\(\s*started_at\s*\)/);
     for (const column of REQUIRED_PLAY_COLUMNS) {
       expect(select).toMatch(new RegExp(`\\b${column}\\b`));
     }
@@ -298,6 +305,105 @@ describe("getRecentSets", () => {
     });
     // derived is a plain jsonb passthrough, no reassembly.
     expect(older.derived).toEqual(DERIVED);
+  });
+
+  // ---- Story 5.2: the fetched dancefloor segments -------------------------
+
+  /** One embedded `segments` row as PostgREST returns it. */
+  const segmentRow = (
+    type: string,
+    start: string | null,
+    end: string | null,
+    source = "suggested",
+    confirmed = false,
+  ) => ({
+    type,
+    source,
+    confirmed,
+    first_play: start === null ? null : { started_at: start },
+    last_play: end === null ? null : { started_at: end },
+  });
+
+  const setRowWithSegments = (segments: unknown[]) => ({
+    id: "set-seg",
+    started_at: "2026-08-05T00:00:00.000Z",
+    ended_at: "2026-08-05T04:00:00.000Z",
+    derived: DERIVED,
+    sessions: { session_identity: "serato4:975" },
+    plays: [],
+    segments,
+  });
+
+  it("resolves each segments row's boundary plays into ISO bounds, several per set", async () => {
+    mockSupabase({
+      data: [
+        setRowWithSegments([
+          segmentRow("dancefloor", "2026-08-05T00:30:00.000Z", "2026-08-05T01:00:00.000Z"),
+          segmentRow("dancefloor", "2026-08-05T02:00:00.000Z", "2026-08-05T03:30:00.000Z"),
+        ]),
+      ],
+      error: null,
+    });
+
+    const sets = await getRecentSets();
+    // Zero, one, or SEVERAL (FR-28/D-15) — the read model never collapses them.
+    expect(sets[0].segments).toEqual([
+      { start: "2026-08-05T00:30:00.000Z", end: "2026-08-05T01:00:00.000Z" },
+      { start: "2026-08-05T02:00:00.000Z", end: "2026-08-05T03:30:00.000Z" },
+    ]);
+  });
+
+  it("keeps a DJ-confirmed segment, not only the algorithm's own suggestions", async () => {
+    // The embed is deliberately unfiltered on `source`: once Story 5.3 lets a DJ
+    // confirm or draw a boundary, those rows are the truest answer available and
+    // must not be filtered out in favour of a stale suggestion.
+    mockSupabase({
+      data: [
+        setRowWithSegments([
+          segmentRow(
+            "dancefloor",
+            "2026-08-05T01:00:00.000Z",
+            "2026-08-05T02:00:00.000Z",
+            "manual",
+            true,
+          ),
+        ]),
+      ],
+      error: null,
+    });
+
+    const sets = await getRecentSets();
+    expect(sets[0].segments).toHaveLength(1);
+  });
+
+  it("drops non-dancefloor types and rows whose boundary play has no start time", async () => {
+    mockSupabase({
+      data: [
+        setRowWithSegments([
+          // Story 5.3's human labels have no consumer here yet, and silently
+          // rendering a dinner break as the dancefloor cut is worse than omitting it.
+          segmentRow("dinner", "2026-08-05T00:30:00.000Z", "2026-08-05T01:00:00.000Z"),
+          // No time bound to scope by — dropped rather than half-rendered (AD-11).
+          segmentRow("dancefloor", "2026-08-05T02:00:00.000Z", null),
+        ]),
+      ],
+      error: null,
+    });
+
+    const sets = await getRecentSets();
+    expect(sets[0].segments).toEqual([]);
+  });
+
+  it("a set with no segments reconstructs as segments: [] — the whole-set fallback source", async () => {
+    mockSupabase({ data: [setRowWithSegments([])], error: null });
+    const sets = await getRecentSets();
+    expect(sets[0].segments).toEqual([]);
+  });
+
+  it("a null segments embed (RLS-filtered) reconstructs as [] rather than throwing", async () => {
+    mockSupabase({ data: [{ ...setRowWithSegments([]), segments: null }], error: null });
+    const sets = await getRecentSets();
+    expect(sets[0].segments).toEqual([]);
   });
 
   it("a set with zero plays reconstructs as plays: [] (the embed's real empty shape)", async () => {

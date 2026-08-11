@@ -21,12 +21,13 @@ use crate::joiner::serato4::open_read_only;
 use crate::joiner::JoinedMetadata;
 use crate::parser::Play;
 use crate::stats::camelot::{CamelotKey, Letter};
+use crate::stats::segments::{self, CalibrationPool, DetectionPlay, Floors, PooledSession};
 use crate::stats::{self, EnrichedPlay, TrackIdentity};
 use crate::store::{
     CapturedArtistCount, CapturedBpmDistribution, CapturedCamelotMixingStats, CapturedConfidence,
     CapturedDerived, CapturedEnergyPoint, CapturedGenre, CapturedGenreBreakdown,
-    CapturedGenreBucket, CapturedPlay, CapturedSubgenreBreakdown, CapturedSubgenreBucket,
-    CapturedTrackCount,
+    CapturedGenreBucket, CapturedIdleGap, CapturedPlay, CapturedSubgenreBreakdown,
+    CapturedSubgenreBucket, CapturedSuggestedSegment, CapturedTrackCount,
 };
 
 /// Everything that can go wrong building a captured session from raw sources.
@@ -603,6 +604,7 @@ pub fn same_night(a: (i64, i64), b: (i64, i64)) -> bool {
 pub fn build_legacy(
     library_root: &Path,
     session_path: &Path,
+    pool: &CalibrationPool,
 ) -> Result<(Vec<CapturedPlay>, CapturedDerived), CaptureError> {
     let outcome =
         crate::parser::parse_session_file_partial(session_path).map_err(CaptureError::Parse)?;
@@ -627,9 +629,33 @@ pub fn build_legacy(
         })
         .collect();
 
+    // Story 5.2 (D-23): the floors this session is scored against come from the
+    // sessions that *precede* it, keyed on its own identity so a re-derivation
+    // of an old session reproduces byte-identical output rather than being
+    // recalibrated by everything captured since.
+    let floors = pool.floors_before(session_start_of(&pairs), &legacy_identity_of(&pairs));
+
     // Legacy has no session-level end-time record; a final play with no
     // field-45 duration honestly has no resolvable played length (AD-11).
-    Ok(assemble(&pairs, None))
+    Ok(assemble(&pairs, None, &floors))
+}
+
+/// This session's own start, from the same first-play `start_time`
+/// [`session_bounds`] reports — read off `pairs` because the floors have to be
+/// chosen before [`assemble`] builds the captured plays.
+fn session_start_of(pairs: &[(Play, JoinedMetadata)]) -> Option<i64> {
+    pairs.first().and_then(|(p, _)| p.start_time).map(i64::from)
+}
+
+/// The legacy dedup key for an already-parsed session — the identity
+/// [`crate::watcher`] will store this capture under, needed here so the
+/// calibration prefix is cut at exactly this session. An empty `pairs` is
+/// unreachable (both callers reject an empty session first) but must not panic.
+fn legacy_identity_of(pairs: &[(Play, JoinedMetadata)]) -> String {
+    pairs
+        .first()
+        .map(|(play, _)| legacy_session_identity(play))
+        .unwrap_or_default()
 }
 
 /// Builds one completed Serato4 session's captured plays + derived stats.
@@ -647,6 +673,7 @@ pub fn build_serato4(
     db_path: &Path,
     session_id: i64,
     dates: &DateAddedIndex,
+    pool: &CalibrationPool,
 ) -> Result<(Vec<CapturedPlay>, CapturedDerived), CaptureError> {
     let conn = open_read_only(root, db_path).map_err(CaptureError::Open)?;
     let plays = crate::parser::read_session(&conn, session_id).map_err(CaptureError::Sqlite)?;
@@ -710,7 +737,62 @@ pub fn build_serato4(
         return Err(CaptureError::AllPreviews);
     }
 
-    Ok(assemble(&pairs, set_end))
+    // Story 5.2 (D-23), same chronological-prefix rule as `build_legacy`.
+    let floors = pool.floors_before(
+        session_start_of(&pairs),
+        &serato4_session_identity(session_id),
+    );
+
+    Ok(assemble(&pairs, set_end, &floors))
+}
+
+/// Loads every captured session's window stats into one ordered
+/// [`CalibrationPool`] (Story 5.2, D-23) — the single effectful step of the whole
+/// calibration story, kept here at the edge so `stats::segments` stays pure.
+///
+/// Computed **live** from the `plays_json` the store already holds, never from a
+/// persisted per-DJ profile (D-16). A session whose `plays_json` is absent or
+/// unparseable contributes nothing rather than failing the capture: a broken
+/// historical row must not be able to stop tonight's set from being captured.
+///
+/// **Call this ONCE per sweep, not once per session.** `backfill_captured_serato4`
+/// re-derives ~491 rows on a cold upgrade, and re-reading the pool per row would
+/// make that pass O(n²) over the whole store.
+pub fn load_calibration_pool(conn: &rusqlite::Connection) -> CalibrationPool {
+    let Ok(rows) = crate::store::calibration_pool_rows(conn) else {
+        // No pool means every session calibrates against the prior — the same
+        // cold-start behavior a brand-new install has, which is a safe degrade
+        // rather than a reason to fail a capture.
+        return CalibrationPool::default();
+    };
+
+    let sessions = rows
+        .into_iter()
+        .filter_map(|row| {
+            let plays: Vec<CapturedPlay> = serde_json::from_str(row.plays_json.as_deref()?).ok()?;
+            Some(PooledSession {
+                started_at: row.started_at,
+                session_identity: row.session_identity,
+                windows: segments::window_stats(&detection_plays_from_captured(&plays)),
+            })
+        })
+        .collect();
+
+    CalibrationPool::new(sessions)
+}
+
+/// Replays stored plays into the shape `stats::segments` reads. Positions come
+/// from the stored `position` field rather than being renumbered, so a pooled
+/// session is windowed exactly as it was when it was captured.
+fn detection_plays_from_captured(plays: &[CapturedPlay]) -> Vec<DetectionPlay> {
+    plays
+        .iter()
+        .map(|p| DetectionPlay {
+            position: p.position,
+            start_time: p.started_at.map(i64::from),
+            bpm: p.bpm,
+        })
+        .collect()
 }
 
 /// The session's time bounds, from its captured plays' `started_at` — the
@@ -733,6 +815,7 @@ pub fn session_bounds(plays: &[CapturedPlay]) -> (Option<i64>, Option<i64>) {
 fn assemble(
     pairs: &[(Play, JoinedMetadata)],
     set_end: Option<i64>,
+    floors: &Floors,
 ) -> (Vec<CapturedPlay>, CapturedDerived) {
     let mut enriched = stats::enrich_session(pairs);
     stats::resolve_played_ms(&mut enriched, set_end);
@@ -773,6 +856,10 @@ fn assemble(
     let bpm_distribution = stats::bpm_distribution(&enriched);
     let camelot_mixing_stats = stats::camelot::mixing_stats(&enriched);
     let confidence = crate::confidence::classify(&enriched);
+    // Story 5.2: detection runs against floors the CALLER computed from the
+    // store (see `load_calibration_pool`) — `assemble` stays a pure function of
+    // its arguments, the same layering every other stat here holds to.
+    let detection = segments::detect(&segments::detection_plays(&enriched), floors);
 
     let derived = CapturedDerived {
         most_played_tracks: captured_most_played_tracks(&enriched),
@@ -826,6 +913,23 @@ fn assemble(
             track_count: confidence.track_count,
             long_gap_count: confidence.long_gap_count,
         },
+        suggested_segments: detection
+            .segments
+            .into_iter()
+            .map(|s| CapturedSuggestedSegment {
+                segment_type: segments::SEGMENT_TYPE_DANCEFLOOR.to_string(),
+                first_position: s.first_position,
+                last_position: s.last_position,
+            })
+            .collect(),
+        idle_gaps: detection
+            .idle_gaps
+            .into_iter()
+            .map(|g| CapturedIdleGap {
+                start: g.start_epoch_s,
+                end: g.end_epoch_s,
+            })
+            .collect(),
     };
 
     (captured_plays, derived)
@@ -896,6 +1000,13 @@ mod tests {
     /// tests that are not about the `database V2` lookup.
     fn no_dates() -> DateAddedIndex {
         DateAddedIndex::fixed(std::collections::HashMap::new())
+    }
+
+    /// An empty Story 5.2 calibration pool — a DJ's very first-ever session, so
+    /// detection runs on the pure cold-start prior (D-9). The default for capture
+    /// tests that are not about calibration.
+    fn cold_start_pool() -> CalibrationPool {
+        CalibrationPool::default()
     }
 
     // ---- Story 4.2: track identity + library add-detection -----------------
@@ -2184,7 +2295,8 @@ mod tests {
         let file = TempSessionFile::write(&data, "legacy-ok");
         let root = empty_legacy_library_root("ok");
 
-        let (plays, derived) = build_legacy(&root, &file.0).expect("synthetic session captures");
+        let (plays, derived) =
+            build_legacy(&root, &file.0, &cold_start_pool()).expect("synthetic session captures");
         let _ = std::fs::remove_dir_all(&root);
 
         assert_eq!(plays.len(), 2);
@@ -2202,7 +2314,7 @@ mod tests {
         let file = TempSessionFile::write(&[], "legacy-empty");
         let root = empty_legacy_library_root("empty");
 
-        let result = build_legacy(&root, &file.0);
+        let result = build_legacy(&root, &file.0, &cold_start_pool());
         let _ = std::fs::remove_dir_all(&root);
 
         assert!(matches!(result, Err(CaptureError::EmptySession)));
@@ -2334,8 +2446,8 @@ mod tests {
             insert_entry(&seed, 7, "Second", "A", "Techno", "4A", 140.0, 1_000, "2");
         }
 
-        let (plays, _derived) =
-            build_serato4(&dir, &db_path, 7, &no_dates()).expect("build_serato4 succeeds");
+        let (plays, _derived) = build_serato4(&dir, &db_path, 7, &no_dates(), &cold_start_pool())
+            .expect("build_serato4 succeeds");
         let _ = std::fs::remove_dir_all(&dir);
 
         let first = plays
@@ -2376,7 +2488,7 @@ mod tests {
             .unwrap();
         }
 
-        let result = build_serato4(&dir, &db_path, 999, &no_dates());
+        let result = build_serato4(&dir, &db_path, 999, &no_dates(), &cold_start_pool());
         let _ = std::fs::remove_dir_all(&dir);
 
         assert!(matches!(result, Err(CaptureError::EmptySession)));
@@ -2408,8 +2520,8 @@ mod tests {
             insert_entry(&seed, 7, "Once", "DJ B", "Techno", "2A", 128.0, 1_200, "1");
         }
 
-        let (_plays, derived) =
-            build_serato4(&dir, &db_path, 7, &no_dates()).expect("build_serato4 succeeds");
+        let (_plays, derived) = build_serato4(&dir, &db_path, 7, &no_dates(), &cold_start_pool())
+            .expect("build_serato4 succeeds");
         let _ = std::fs::remove_dir_all(&dir);
 
         assert_eq!(
@@ -2468,8 +2580,8 @@ mod tests {
             }
         }
 
-        let (plays, derived) =
-            build_serato4(&dir, &db_path, 7, &no_dates()).expect("build_serato4 succeeds");
+        let (plays, derived) = build_serato4(&dir, &db_path, 7, &no_dates(), &cold_start_pool())
+            .expect("build_serato4 succeeds");
         let _ = std::fs::remove_dir_all(&dir);
 
         let keys: Vec<Option<String>> = plays.iter().map(|p| p.camelot_key.clone()).collect();
@@ -2547,8 +2659,8 @@ mod tests {
             ("Users/arjun/Music/preview.mp3".to_string(), 1_650_000_000),
         ]));
 
-        let (plays, derived) =
-            build_serato4(&dir, &db_path, 7, &dates).expect("build_serato4 succeeds");
+        let (plays, derived) = build_serato4(&dir, &db_path, 7, &dates, &cold_start_pool())
+            .expect("build_serato4 succeeds");
         let _ = std::fs::remove_dir_all(&dir);
 
         let titles: Vec<Option<&str>> = plays.iter().map(|p| p.title.as_deref()).collect();
@@ -2610,7 +2722,7 @@ mod tests {
             .unwrap();
         }
 
-        let result = build_serato4(&dir, &db_path, 7, &no_dates());
+        let result = build_serato4(&dir, &db_path, 7, &no_dates(), &cold_start_pool());
         let _ = std::fs::remove_dir_all(&dir);
 
         assert!(matches!(result, Err(CaptureError::AllPreviews)));
@@ -2712,5 +2824,161 @@ mod tests {
              write volume Story 4.11 actually added (refresh_library_track_tags now runs on \
              every known row instead of being skipped), expected well under NFR-1's budget"
         );
+    }
+
+    // ---- Story 5.2: calibration pool wiring (Task 2, D-23) -----------------
+
+    /// A synthetic `master.sqlite` holding `sessions` dense nights, each one
+    /// hour apart, `plays` tracks 150 s apart at 128 BPM — the shape detection
+    /// confirms as a dancefloor at cold start.
+    fn seed_serato4_nights(dir: &Path, sessions: &[(i64, i64, usize)]) -> PathBuf {
+        let db_path = dir.join("master.sqlite");
+        let seed = Connection::open(&db_path).expect("seed db creates");
+        seed.execute_batch(
+            r#"CREATE TABLE history_entry (
+                   id INTEGER PRIMARY KEY, session_id INTEGER, name TEXT, artist TEXT,
+                   genre TEXT, key_value INTEGER, "key" TEXT, bpm REAL, start_time INTEGER, deck TEXT,
+                   end_time INTEGER, played INTEGER, length_ms INTEGER, length_sec INTEGER,
+                   portable_id TEXT
+               );"#,
+        )
+        .unwrap();
+        for &(session_id, start, plays) in sessions {
+            for i in 0..plays {
+                insert_entry(
+                    &seed,
+                    session_id,
+                    &format!("S{session_id}T{i}"),
+                    "Artist",
+                    "House",
+                    "1A",
+                    128.0,
+                    start + i as i64 * 150,
+                    "1",
+                );
+            }
+        }
+        db_path
+    }
+
+    /// Captures one synthetic night into `store_conn` exactly the way
+    /// `watcher::capture_and_store_serato4` does — pool loaded at the edge,
+    /// handed to the pure builder — and returns its serialized `derived_json`.
+    fn capture_night(
+        store_conn: &Connection,
+        dir: &Path,
+        db_path: &Path,
+        session_id: i64,
+    ) -> String {
+        let pool = load_calibration_pool(store_conn);
+        let (plays, derived) =
+            build_serato4(dir, db_path, session_id, &no_dates(), &pool).expect("night captures");
+        let (started_at, ended_at) = session_bounds(&plays);
+        crate::store::upsert_captured(
+            store_conn,
+            &serato4_session_identity(session_id),
+            crate::store::SessionSource::Serato4,
+            &serato4_raw_ref(db_path, session_id),
+            started_at,
+            ended_at,
+            &plays,
+            &derived,
+        )
+        .expect("store write");
+        serde_json::to_string(&derived).expect("derived serializes")
+    }
+
+    /// (Task 2.4, D-23 — the no-churn property, asserted rather than assumed.)
+    ///
+    /// Re-deriving an older session AFTER newer nights have been captured must
+    /// produce byte-identical `derived_json`. If it did not, every launch's
+    /// `backfill_captured_serato4` sweep would rewrite and re-queue the whole
+    /// local history forever, and suggestions the DJ has already seen would
+    /// silently move under them.
+    #[test]
+    fn re_deriving_an_old_session_after_new_captures_is_byte_identical() {
+        let dir = std::env::temp_dir().join(format!(
+            "curfew_capture_calibration_churn_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("temp dir creates");
+        let db_path = seed_serato4_nights(
+            &dir,
+            &[(1, 100_000, 20), (2, 200_000, 20), (3, 300_000, 60)],
+        );
+        let (_file, store) = TempStore::open("calibration-churn");
+
+        capture_night(&store, &dir, &db_path, 1);
+        let night_two_first_pass = capture_night(&store, &dir, &db_path, 2);
+
+        // A much bigger night lands afterwards — it WOULD move an "all history
+        // now" pool's percentiles, which is exactly what the chronological rule
+        // exists to prevent.
+        capture_night(&store, &dir, &db_path, 3);
+
+        let pool = load_calibration_pool(&store);
+        let (_, rederived) =
+            build_serato4(&dir, &db_path, 2, &no_dates(), &pool).expect("re-derivation succeeds");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(
+            serde_json::to_string(&rederived).expect("serializes"),
+            night_two_first_pass,
+            "a re-derivation after later captures must be byte-identical (D-23)"
+        );
+    }
+
+    /// (Task 2.4) A session below `MIN_PLAYS_FOR_DETECTION` — a two-track cue-up
+    /// — contributes no windows and is dropped from the pool entirely, so it can
+    /// neither drag the floors down nor count toward the blend weight.
+    #[test]
+    fn a_sub_min_plays_session_is_excluded_from_the_loaded_pool() {
+        let dir = std::env::temp_dir().join(format!(
+            "curfew_capture_calibration_cueup_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("temp dir creates");
+        let db_path = seed_serato4_nights(&dir, &[(1, 100_000, 20), (2, 200_000, 2)]);
+        let (_file, store) = TempStore::open("calibration-cueup");
+
+        capture_night(&store, &dir, &db_path, 1);
+        capture_night(&store, &dir, &db_path, 2);
+        let pool = load_calibration_pool(&store);
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(
+            pool.len(),
+            1,
+            "the 2-play cue-up must not be in the calibration pool"
+        );
+    }
+
+    /// (Task 2.4, D-9) A DJ's very first-ever session has no history to
+    /// calibrate against, so it runs on the pure prior — no cliff, no empty
+    /// state, and a real dancefloor suggestion on night one.
+    #[test]
+    fn the_first_ever_session_calibrates_against_the_pure_prior() {
+        let dir = std::env::temp_dir().join(format!(
+            "curfew_capture_calibration_cold_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("temp dir creates");
+        let db_path = seed_serato4_nights(&dir, &[(1, 100_000, 20)]);
+        let (_file, store) = TempStore::open("calibration-cold");
+
+        let pool = load_calibration_pool(&store);
+        assert!(pool.is_empty(), "a fresh install has no history");
+        assert_eq!(
+            pool.floors_before(Some(100_000), &serato4_session_identity(1)),
+            segments::Floors::prior()
+        );
+
+        let (_, derived) =
+            build_serato4(&dir, &db_path, 1, &no_dates(), &pool).expect("first night captures");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(derived.suggested_segments.len(), 1);
+        assert_eq!(derived.suggested_segments[0].segment_type, "dancefloor");
+        assert_eq!(derived.suggested_segments[0].first_position, 1);
     }
 }

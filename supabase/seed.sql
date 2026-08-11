@@ -24,6 +24,9 @@
 --   11 sets with confidence < 1.0
 --   7 sets under HERO_MIN_TRACKS (6) — the soundcheck case D-20 hides
 --   93 plays with a null title — the D-18 exclusion + disclosure
+--   54 dancefloor segments (Story 5.2): 26 sets with none,
+--   15 with several — the zero/one/several states FR-28 requires and the
+--   whole-set fallback the card/hero take when a set has no segment at all
 --   0 undated sets, and that is not an omission: `sets.started_at` is NOT
 --   NULL in the schema, so an undated set is unreachable through the cloud
 --   read path. The undated handling in libraryUtilization.ts is defensive
@@ -55,6 +58,7 @@ end $$;
 
 -- Idempotent: a second `db reset` (or a manual re-run) replaces rather than
 -- duplicates. `plays` and `sets` cascade from the deletes below.
+delete from public.segments where dj_id = '00000000-0000-4000-8000-00000000d15c';
 delete from public.library_roster where dj_id = '00000000-0000-4000-8000-00000000d15c';
 delete from public.library_track_events where dj_id = '00000000-0000-4000-8000-00000000d15c';
 delete from public.plays where dj_id = '00000000-0000-4000-8000-00000000d15c';
@@ -2563,6 +2567,72 @@ insert into public.plays (set_id, dj_id, position, title, artist, started_at, bp
   ('35924b50-3aa6-46fe-a92b-7b95f5e86ca9', '00000000-0000-4000-8000-00000000d15c', 11, 'Baby Ne Bournvita Pivdavu  New GUJARATI SUPERHIT SONG 2019  Raghav Digital  Umesh Barot', null, '2025-01-26T18:06:40.000Z', null, null, null, null, null, null, true, 1071000, '2025-01-26T18:06:40.000Z', null),
   ('35924b50-3aa6-46fe-a92b-7b95f5e86ca9', '00000000-0000-4000-8000-00000000d15c', 12, 'Taylor Swift - Shake It Off (Taylor''s Version) (Lyric Video)', null, '2025-01-26T18:24:31.000Z', null, null, null, null, null, null, true, 1931000, '2025-01-26T18:24:31.000Z', null),
   ('35924b50-3aa6-46fe-a92b-7b95f5e86ca9', '00000000-0000-4000-8000-00000000d15c', 13, 'JP_1_Talee Traditional - 2 Talee', 'JP Entertainment  || www.JP-Ent.com', '2025-01-26T18:56:42.000Z', null, null, null, null, null, '5A', true, 579000, null, 'dd2fbf4ee9bb6368');
+
+-- Dancefloor segments (Story 5.2, D-24) — what the agent's detector produced
+-- for these exact sets, so the local browser pass exercises the real read
+-- path (`segments` rows), not a client-side recomputation. Boundary
+-- positions are resolved to the plays rows above the same way sync_set does
+-- it, since seed.sql inserts plays directly and has no RPC to resolve them.
+insert into public.segments (set_id, dj_id, type, first_play_id, last_play_id, source, confirmed)
+select v.set_id, '00000000-0000-4000-8000-00000000d15c', 'dancefloor', fp.id, lp.id, 'suggested', false
+from (values
+  ('81afc087-f41d-4a00-b549-022eb5db3791'::uuid, 1, 17),
+  ('cf2e3dc3-f2ef-48e6-890d-9ccc57012675'::uuid, 4, 50),
+  ('cf2e3dc3-f2ef-48e6-890d-9ccc57012675'::uuid, 69, 79),
+  ('cf2e3dc3-f2ef-48e6-890d-9ccc57012675'::uuid, 96, 105),
+  ('1141e65b-86b0-45a1-a0b6-ae61dda13c57'::uuid, 56, 65),
+  ('1141e65b-86b0-45a1-a0b6-ae61dda13c57'::uuid, 73, 76),
+  ('85d6cbd7-e401-4831-9d02-1e8093971c7f'::uuid, 4, 6),
+  ('7dea3609-856d-4df7-987c-0d0796cb102a'::uuid, 1, 4),
+  ('7dea3609-856d-4df7-987c-0d0796cb102a'::uuid, 59, 80),
+  ('f74940ff-5caf-4b05-9ee8-20d045a352e9'::uuid, 14, 16),
+  ('6d083d54-0c0c-4272-ac20-624486140dad'::uuid, 74, 76),
+  ('e10ad870-6bf3-4be9-97b2-28f37a8d7966'::uuid, 1, 7),
+  ('e10ad870-6bf3-4be9-97b2-28f37a8d7966'::uuid, 24, 34),
+  ('c03d8c58-5eb3-408d-bc9c-9867b8ca90ae'::uuid, 43, 49),
+  ('6acba44b-8129-4c22-912f-83709a7abab3'::uuid, 27, 29),
+  ('6acba44b-8129-4c22-912f-83709a7abab3'::uuid, 41, 46),
+  ('6acba44b-8129-4c22-912f-83709a7abab3'::uuid, 68, 87),
+  ('a935eb04-a002-48e7-b6c7-026291b07e1f'::uuid, 7, 46),
+  ('20ba7122-539e-4bd9-9854-410963e25634'::uuid, 3, 7),
+  ('20ba7122-539e-4bd9-9854-410963e25634'::uuid, 25, 48),
+  ('20ba7122-539e-4bd9-9854-410963e25634'::uuid, 58, 69),
+  ('87b357fe-fbb8-4d32-ab9d-4f01c369ac19'::uuid, 4, 6),
+  ('87b357fe-fbb8-4d32-ab9d-4f01c369ac19'::uuid, 19, 21),
+  ('87b357fe-fbb8-4d32-ab9d-4f01c369ac19'::uuid, 45, 76),
+  ('92a564c7-c927-457d-bd55-80fb0849f241'::uuid, 57, 59),
+  ('92a564c7-c927-457d-bd55-80fb0849f241'::uuid, 72, 93),
+  ('c0ec5202-06da-4b7e-9050-c33b9971c138'::uuid, 2, 6),
+  ('c0ec5202-06da-4b7e-9050-c33b9971c138'::uuid, 8, 34),
+  ('597f71e5-3d40-41d5-8675-565c0e28ef21'::uuid, 1, 62),
+  ('55d06907-7e86-4314-bf7f-c71908ea9fe8'::uuid, 1, 22),
+  ('3cf2fa0a-2013-4515-b0c8-5a2038dbc042'::uuid, 44, 72),
+  ('ab3e4f37-3e11-4cfb-adcd-563e93714914'::uuid, 1, 51),
+  ('ab3e4f37-3e11-4cfb-adcd-563e93714914'::uuid, 63, 117),
+  ('2f49a8e6-1b99-448d-9fff-85fa406c6c1c'::uuid, 8, 25),
+  ('2f49a8e6-1b99-448d-9fff-85fa406c6c1c'::uuid, 54, 59),
+  ('8d8001f1-44b1-4d61-94fa-7db43b4dfaa8'::uuid, 1, 34),
+  ('89a20dec-7794-4872-9d70-bd372528a427'::uuid, 32, 39),
+  ('49dad6ff-3815-4ca9-b701-7122fe0b0fde'::uuid, 5, 20),
+  ('60f50e98-f41c-43f7-a2a7-94c5f10fe801'::uuid, 1, 4),
+  ('60f50e98-f41c-43f7-a2a7-94c5f10fe801'::uuid, 37, 40),
+  ('60f50e98-f41c-43f7-a2a7-94c5f10fe801'::uuid, 41, 46),
+  ('f01743d3-6943-4f83-bfaa-bff58ab985c9'::uuid, 10, 17),
+  ('f01743d3-6943-4f83-bfaa-bff58ab985c9'::uuid, 18, 23),
+  ('0bead0e4-0678-4066-9d77-0fcc27cc1631'::uuid, 33, 70),
+  ('33e3530a-dc0f-40a9-86b4-2b0ade4e0606'::uuid, 53, 54),
+  ('33e3530a-dc0f-40a9-86b4-2b0ade4e0606'::uuid, 57, 58),
+  ('33e3530a-dc0f-40a9-86b4-2b0ade4e0606'::uuid, 60, 64),
+  ('33e3530a-dc0f-40a9-86b4-2b0ade4e0606'::uuid, 85, 120),
+  ('ef73dc6a-22d3-4674-83fe-dd33da75c9af'::uuid, 72, 74),
+  ('ef73dc6a-22d3-4674-83fe-dd33da75c9af'::uuid, 75, 122),
+  ('3cae1ba4-1edd-4665-a09e-400f80270222'::uuid, 1, 12),
+  ('ecf7ae7d-f0ea-436c-b4fc-ea0aac916e43'::uuid, 1, 53),
+  ('32de1eeb-8a4d-4817-9cf5-e344e33bed59'::uuid, 2, 11),
+  ('3d912e43-430d-4964-9e70-0b317453c6a4'::uuid, 3, 5)
+) as v(set_id, first_position, last_position)
+join public.plays fp on fp.set_id = v.set_id and fp.position = v.first_position
+join public.plays lp on lp.set_id = v.set_id and lp.position = v.last_position;
 
 -- Library add-events — the conversion pair's denominator (Story 4.2).
 insert into public.library_track_events (dj_id, track_id, added_at, created_at) values

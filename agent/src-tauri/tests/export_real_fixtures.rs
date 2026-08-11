@@ -24,6 +24,7 @@ use std::path::Path;
 
 use agent_lib::capture::build_serato4;
 use agent_lib::joiner::date_added::DateAddedIndex;
+use agent_lib::stats::segments::{window_stats, CalibrationPool, DetectionPlay, PooledSession};
 use agent_lib::store::{CapturedDerived, CapturedPlay};
 use serde::Serialize;
 
@@ -154,6 +155,11 @@ fn export_real_sets_and_verify_camelot_recovery() {
     let dates = DateAddedIndex::live(Path::new(&home));
 
     let mut exported: Vec<ExportedSet> = Vec::new();
+    // Story 5.2 (D-23): each set is calibrated against the sets that PRECEDE it,
+    // so the pool grows as the (already chronological) list is walked. Exporting
+    // every set against an empty pool would bake cold-start floors into a fixture
+    // that is meant to look like a real DJ's accumulated history.
+    let mut pooled: Vec<PooledSession> = Vec::new();
     for &(serato_session_id, external_id) in SETS {
         // File-shaped root: `open_read_only` scopes a file-shaped root against
         // its own parent, so passing the db path as both root and path is in
@@ -164,7 +170,13 @@ fn export_real_sets_and_verify_camelot_recovery() {
         // to 3-play sessions so months with only a brief set still appear, and
         // one dud there should not cost the other fifty-seven. The reference
         // session keeps the hard failure — a regression on it is a real bug.
-        let built = build_serato4(master, master, serato_session_id, &dates);
+        let built = build_serato4(
+            master,
+            master,
+            serato_session_id,
+            &dates,
+            &CalibrationPool::new(pooled.clone()),
+        );
         let (plays, derived) = match built {
             Ok(v) => v,
             Err(e) if serato_session_id != REFERENCE_SESSION => {
@@ -216,6 +228,24 @@ fn export_real_sets_and_verify_camelot_recovery() {
                 plays.len()
             );
         }
+
+        // This set now becomes part of the history the NEXT one calibrates
+        // against (D-23), replaying its own plays through the same window
+        // rollup `capture::load_calibration_pool` uses at runtime.
+        pooled.push(PooledSession {
+            started_at,
+            session_identity: agent_lib::capture::serato4_session_identity(serato_session_id),
+            windows: window_stats(
+                &plays
+                    .iter()
+                    .map(|p| DetectionPlay {
+                        position: p.position,
+                        start_time: p.started_at.map(i64::from),
+                        bpm: p.bpm,
+                    })
+                    .collect::<Vec<_>>(),
+            ),
+        });
 
         exported.push(ExportedSet {
             external_id: external_id.to_string(),

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { detectDancefloor } from "@/lib/sets/dancefloor";
+import { primaryDancefloorSegment } from "@/lib/sets/dancefloor";
 import { arcPeakPosition, newTracks, scopedPlays, type NewTracksWindow, type Scope } from "@/lib/sets/setDetail";
 import type { SetRecord } from "@/lib/sets/types";
 import { SilkBackdrop } from "@/app/components/dashboard/SilkBackdrop";
@@ -23,9 +23,12 @@ import { Tracklist } from "./Tracklist";
 const INITIAL_ROWS = 50;
 
 export function SetDetail({ set }: { set: SetRecord }) {
-  // Detection runs client-side from plays[] on every open (D2) — v0 global
-  // heuristic, knowingly interim (5.2 calibrates it, no UI change).
-  const segment = useMemo(() => detectDancefloor(set.plays), [set.plays]);
+  // The dancefloor cut arrives ON the set row (Story 5.2) — detected agent-side
+  // against this DJ's own calibrated floors, stored as `segments` rows, fetched
+  // by the read seam. Nothing is computed here any more; when a set carries
+  // several segments the longest is the interim pick (D-24), and `null` still
+  // means "no dancefloor", which the scope toggle below already handles.
+  const segment = useMemo(() => primaryDancefloorSegment(set.segments), [set.segments]);
 
   const [scope, setScope] = useState<Scope>("dancefloor");
   const [focus, setFocusState] = useState<Focus | null>(null);

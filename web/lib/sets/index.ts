@@ -62,6 +62,7 @@ import type { LibraryRosterEntry, LibraryRosterSnapshot } from "./libraryRoster"
 // pure module with no server dependencies, so importing it here adds nothing.
 import { MIX_NEIGHBOUR_SET_LIMIT } from "./trackDetail";
 import type { MixNeighbourRow, TrackPlayRecord } from "./trackDetail";
+import type { DancefloorSegment } from "./dancefloor";
 import type { SetRecord, SyncPlay, SyncSetDerived } from "./types";
 
 /** Row shape of a single `plays` select, as the `sets` nested-select below returns it. */
@@ -102,7 +103,25 @@ type TrackPlayRow = PlayRow & {
   } | null;
 };
 
-/** Row shape of a single `sets` select, nested `plays` + parent `sessions` included. */
+/**
+ * Row shape of one embedded `segments` row (Story 5.2).
+ *
+ * `segments` carries TWO foreign keys to `plays`, so each boundary embed needs
+ * an explicit FK-constraint hint (`plays!segments_first_play_id_fkey`) —
+ * without it PostgREST cannot tell which relationship is meant and errors. Both
+ * are to-ONE embeds (the FKs are `not null`), so each returns an object; the
+ * type still admits `null` because an embed RLS filters out comes back as
+ * `null` rather than as a missing row.
+ */
+type SegmentRow = {
+  type: string;
+  source: string;
+  confirmed: boolean;
+  first_play: { started_at: string | null } | null;
+  last_play: { started_at: string | null } | null;
+};
+
+/** Row shape of a single `sets` select, nested `plays` + `segments` + parent `sessions` included. */
 type SetRow = {
   id: string;
   started_at: string;
@@ -111,6 +130,7 @@ type SetRow = {
   plays: PlayRow[];
   /** To-ONE embed (`sets.session_id → sessions.id`), so PostgREST returns an object, not an array. */
   sessions: { session_identity: string } | null;
+  segments: SegmentRow[] | null;
 };
 
 // Every column `getRecentSets`/`getSetById` need to reconstruct a `SetRecord`
@@ -124,8 +144,19 @@ type SetRow = {
 // `external_id` parameter at all, so the agent's Serato-facing id is never
 // stored — `session_identity` (`serato4:975`) is the only place that number
 // survives in the cloud. See `formatSessionLabel` for the parse.
+//
+// `segments(...)` (Story 5.2, D-24) is the dancefloor cut the dashboard and Set
+// Detail used to recompute client-side with `detectDancefloor`. It is fetched,
+// not derived: one algorithm, agent-side, per AR-13/D-1. The two nested
+// `plays!…_fkey` embeds resolve each segment's boundary rows to their
+// `started_at`, which is the ISO bound every consumer already spoke in — so the
+// swap needed no change to `playsInSegment`/`segmentStats` at all.
+//
+// Deliberately NOT filtered to `source = 'suggested'`: a DJ's confirmed and
+// manual segments (Story 5.3) are just as real, and the read model should show
+// what the DJ has, not only what the algorithm proposed.
 const SET_WITH_PLAYS_SELECT =
-  "id, started_at, ended_at, derived, sessions(session_identity), plays(position, title, artist, started_at, bpm, genre_raw, genre_normalized, subgenre, taxonomy_version, camelot_key, in_library, played_ms, library_added_at, track_id)";
+  "id, started_at, ended_at, derived, sessions(session_identity), segments(type, source, confirmed, first_play:plays!segments_first_play_id_fkey(started_at), last_play:plays!segments_last_play_id_fkey(started_at)), plays(position, title, artist, started_at, bpm, genre_raw, genre_normalized, subgenre, taxonomy_version, camelot_key, in_library, played_ms, library_added_at, track_id)";
 
 /**
  * Every column `/track/[track_id]` needs, in ONE indexed read (Story 4.10,
@@ -236,6 +267,26 @@ function toSyncPlay(row: PlayRow): SyncPlay {
   };
 }
 
+/**
+ * Dancefloor segments as ISO bounds (Story 5.2).
+ *
+ * Only `type = 'dancefloor'` rows reach the web's `DancefloorSegment` shape:
+ * `dinner`/`performance`/`custom` are Story 5.3's human labels and have no
+ * consumer here yet, and silently treating a dinner break as a dancefloor cut
+ * would be worse than omitting it. A row whose boundary play has no
+ * `started_at` is dropped rather than half-rendered — there is no time bound to
+ * scope by, and inventing one would be guessing (AD-11).
+ */
+function toSegments(rows: SegmentRow[] | null): DancefloorSegment[] {
+  return (rows ?? []).flatMap((row) => {
+    if (row.type !== "dancefloor") return [];
+    const start = row.first_play?.started_at;
+    const end = row.last_play?.started_at;
+    if (start == null || end == null) return [];
+    return [{ start, end }];
+  });
+}
+
 /** Plays are sorted by their own `position` — the stable ordering key independent of `started_at` (see `SyncPlay.position`'s own doc comment). */
 function toSetRecord(row: SetRow): SetRecord {
   return {
@@ -245,6 +296,7 @@ function toSetRecord(row: SetRow): SetRecord {
     plays: [...row.plays].sort((a, b) => a.position - b.position).map(toSyncPlay),
     derived: row.derived,
     session_label: row.sessions?.session_identity ?? null,
+    segments: toSegments(row.segments),
   };
 }
 

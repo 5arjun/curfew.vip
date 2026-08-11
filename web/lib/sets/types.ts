@@ -4,6 +4,7 @@
 // re-exports them from `@curfew/shared` so the fixture and the eventual Supabase
 // read path are provably the same wire shape.
 import type { SyncPayload, SyncPlay, SyncSetDerived } from "@curfew/shared";
+import type { DancefloorSegment } from "./dancefloor";
 
 /**
  * One set as the dashboard consumes it — `SyncPayload["set"]`
@@ -25,6 +26,23 @@ import type { SyncPayload, SyncPlay, SyncSetDerived } from "@curfew/shared";
 export type SetRecord = SyncPayload["set"] & {
   /** Raw `sessions.session_identity` (e.g. `serato4:975`), for display only. `null`/absent when unknown — render from `external_id` then. See `formatSessionLabel`. */
   session_label?: string | null;
+  /**
+   * This set's dancefloor segments, read from the `segments` **rows** (Story
+   * 5.2, D-19/D-24) and resolved to ISO bounds from their boundary plays. Zero,
+   * one, or several (FR-28/D-15); absent on a test input that predates the
+   * embed, which reads the same as "no segments" everywhere.
+   *
+   * A second optional additive augmentation, like `session_label` above — the
+   * frozen `@curfew/shared` contract is deliberately left alone, because these
+   * are cloud rows, not a wire field.
+   *
+   * **This is the sole read model.** `derived.suggested_segments` also carries
+   * the agent's original suggestion, and the web must never read it: once Story
+   * 5.3 lets a DJ confirm or drag a boundary, the rows diverge from that blob by
+   * design and reading it would render a suggestion the DJ already overruled
+   * (D-19's drift guard).
+   */
+  segments?: DancefloorSegment[];
 };
 
 export type { SyncPlay, SyncSetDerived };

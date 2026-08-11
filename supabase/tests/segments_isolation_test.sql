@@ -2,7 +2,14 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(15);
+select plan(19);
+
+-- Story 5.2 amendment: `segments.source` is `text not null` with NO DEFAULT
+-- (deliberately — every writer must state provenance, see the migration), so
+-- EVERY insert in this file now carries it explicitly. Without that, the
+-- pre-existing negative cases below would fail with 23502 (not-null violation)
+-- instead of the 23514 CHECK violation they are actually asserting, and would
+-- still "pass" while proving nothing.
 
 -- Seed two auth users; the AFTER INSERT trigger (handle_new_dj) creates the
 -- matching public.djs row for each, same as djs_isolation_test.sql.
@@ -30,14 +37,14 @@ insert into public.plays (id, set_id, dj_id, position, in_library) values
   ('22222222-cccc-cccc-cccc-111111111111', '22222222-bbbb-bbbb-bbbb-222222222222', '22222222-2222-2222-2222-222222222222', 1, true),
   ('22222222-cccc-cccc-cccc-222222222222', '22222222-bbbb-bbbb-bbbb-222222222222', '22222222-2222-2222-2222-222222222222', 2, true);
 
-insert into public.segments (id, set_id, dj_id, type, first_play_id, last_play_id) values
-  ('11111111-dddd-dddd-dddd-111111111111', '11111111-bbbb-bbbb-bbbb-111111111111', '11111111-1111-1111-1111-111111111111', 'dancefloor', '11111111-cccc-cccc-cccc-111111111111', '11111111-cccc-cccc-cccc-222222222222'),
-  ('22222222-dddd-dddd-dddd-222222222222', '22222222-bbbb-bbbb-bbbb-222222222222', '22222222-2222-2222-2222-222222222222', 'dinner', '22222222-cccc-cccc-cccc-111111111111', '22222222-cccc-cccc-cccc-222222222222');
+insert into public.segments (id, set_id, dj_id, type, first_play_id, last_play_id, source) values
+  ('11111111-dddd-dddd-dddd-111111111111', '11111111-bbbb-bbbb-bbbb-111111111111', '11111111-1111-1111-1111-111111111111', 'dancefloor', '11111111-cccc-cccc-cccc-111111111111', '11111111-cccc-cccc-cccc-222222222222', 'suggested'),
+  ('22222222-dddd-dddd-dddd-222222222222', '22222222-bbbb-bbbb-bbbb-222222222222', '22222222-2222-2222-2222-222222222222', 'dinner', '22222222-cccc-cccc-cccc-111111111111', '22222222-cccc-cccc-cccc-222222222222', 'suggested');
 
 -- Case 1c (AC-2): an out-of-enum type value is rejected by the CHECK
 -- constraint.
 select throws_ok(
-  $$ insert into public.segments (set_id, dj_id, type, first_play_id, last_play_id) values ('11111111-bbbb-bbbb-bbbb-111111111111', '11111111-1111-1111-1111-111111111111', 'bogus', '11111111-cccc-cccc-cccc-111111111111', '11111111-cccc-cccc-cccc-222222222222') $$,
+  $$ insert into public.segments (set_id, dj_id, type, first_play_id, last_play_id, source) values ('11111111-bbbb-bbbb-bbbb-111111111111', '11111111-1111-1111-1111-111111111111', 'bogus', '11111111-cccc-cccc-cccc-111111111111', '11111111-cccc-cccc-cccc-222222222222', 'suggested') $$,
   '23514'::char(5),
   NULL,
   'an out-of-enum segments.type value is rejected by the CHECK constraint'
@@ -46,7 +53,7 @@ select throws_ok(
 -- Case 1d: type='custom' with a null label is rejected by the CHECK
 -- constraint (AC-2's "custom requires a label" rule).
 select throws_ok(
-  $$ insert into public.segments (set_id, dj_id, type, first_play_id, last_play_id) values ('11111111-bbbb-bbbb-bbbb-111111111111', '11111111-1111-1111-1111-111111111111', 'custom', '11111111-cccc-cccc-cccc-111111111111', '11111111-cccc-cccc-cccc-222222222222') $$,
+  $$ insert into public.segments (set_id, dj_id, type, first_play_id, last_play_id, source) values ('11111111-bbbb-bbbb-bbbb-111111111111', '11111111-1111-1111-1111-111111111111', 'custom', '11111111-cccc-cccc-cccc-111111111111', '11111111-cccc-cccc-cccc-222222222222', 'suggested') $$,
   '23514'::char(5),
   NULL,
   'a segments row with type=custom and a null label is rejected by the CHECK constraint'
@@ -57,7 +64,7 @@ select throws_ok(
 -- `is not null` on its own, so the CHECK's `label <> ''` clause is what
 -- actually closes this off.
 select throws_ok(
-  $$ insert into public.segments (set_id, dj_id, type, label, first_play_id, last_play_id) values ('11111111-bbbb-bbbb-bbbb-111111111111', '11111111-1111-1111-1111-111111111111', 'custom', '', '11111111-cccc-cccc-cccc-111111111111', '11111111-cccc-cccc-cccc-222222222222') $$,
+  $$ insert into public.segments (set_id, dj_id, type, label, first_play_id, last_play_id, source) values ('11111111-bbbb-bbbb-bbbb-111111111111', '11111111-1111-1111-1111-111111111111', 'custom', '', '11111111-cccc-cccc-cccc-111111111111', '11111111-cccc-cccc-cccc-222222222222', 'suggested') $$,
   '23514'::char(5),
   NULL,
   'a segments row with type=custom and an empty-string label is rejected by the CHECK constraint'
@@ -66,8 +73,8 @@ select throws_ok(
 -- Case 1e: type='custom' WITH a label is accepted (the CHECK constraint's
 -- positive branch actually admits a row, not just rejects the negative
 -- one).
-insert into public.segments (id, set_id, dj_id, type, label, first_play_id, last_play_id) values
-  ('11111111-eeee-eeee-eeee-111111111111', '11111111-bbbb-bbbb-bbbb-111111111111', '11111111-1111-1111-1111-111111111111', 'custom', 'Opening 20', '11111111-cccc-cccc-cccc-111111111111', '11111111-cccc-cccc-cccc-222222222222');
+insert into public.segments (id, set_id, dj_id, type, label, first_play_id, last_play_id, source) values
+  ('11111111-eeee-eeee-eeee-111111111111', '11111111-bbbb-bbbb-bbbb-111111111111', '11111111-1111-1111-1111-111111111111', 'custom', 'Opening 20', '11111111-cccc-cccc-cccc-111111111111', '11111111-cccc-cccc-cccc-222222222222', 'suggested');
 
 select is(
   (select label from public.segments where id = '11111111-eeee-eeee-eeee-111111111111'),
@@ -78,7 +85,7 @@ select is(
 -- Case 1h: `segments.first_play_id` actually enforces referential
 -- integrity -- a dangling reference to a nonexistent play is rejected.
 select throws_ok(
-  $$ insert into public.segments (set_id, dj_id, type, first_play_id, last_play_id) values ('11111111-bbbb-bbbb-bbbb-111111111111', '11111111-1111-1111-1111-111111111111', 'dancefloor', '99999999-9999-9999-9999-999999999999', '11111111-cccc-cccc-cccc-222222222222') $$,
+  $$ insert into public.segments (set_id, dj_id, type, first_play_id, last_play_id, source) values ('11111111-bbbb-bbbb-bbbb-111111111111', '11111111-1111-1111-1111-111111111111', 'dancefloor', '99999999-9999-9999-9999-999999999999', '11111111-cccc-cccc-cccc-222222222222', 'suggested') $$,
   '23503'::char(5),
   NULL,
   'a segments row referencing a nonexistent first_play_id is rejected (FK violation)'
@@ -87,10 +94,51 @@ select throws_ok(
 -- Case 1i: `segments.last_play_id` actually enforces referential
 -- integrity -- a dangling reference to a nonexistent play is rejected.
 select throws_ok(
-  $$ insert into public.segments (set_id, dj_id, type, first_play_id, last_play_id) values ('11111111-bbbb-bbbb-bbbb-111111111111', '11111111-1111-1111-1111-111111111111', 'dancefloor', '11111111-cccc-cccc-cccc-111111111111', '99999999-9999-9999-9999-999999999999') $$,
+  $$ insert into public.segments (set_id, dj_id, type, first_play_id, last_play_id, source) values ('11111111-bbbb-bbbb-bbbb-111111111111', '11111111-1111-1111-1111-111111111111', 'dancefloor', '11111111-cccc-cccc-cccc-111111111111', '99999999-9999-9999-9999-999999999999', 'suggested') $$,
   '23503'::char(5),
   NULL,
   'a segments row referencing a nonexistent last_play_id is rejected (FK violation)'
+);
+
+-- Case 1j (Story 5.2, D-18): an out-of-enum `source` value is rejected by the
+-- NAMED `segments_source_check` constraint.
+select throws_ok(
+  $$ insert into public.segments (set_id, dj_id, type, first_play_id, last_play_id, source) values ('11111111-bbbb-bbbb-bbbb-111111111111', '11111111-1111-1111-1111-111111111111', 'dancefloor', '11111111-cccc-cccc-cccc-111111111111', '11111111-cccc-cccc-cccc-222222222222', 'guessed') $$,
+  '23514'::char(5),
+  NULL,
+  'an out-of-enum segments.source value is rejected by segments_source_check'
+);
+
+-- Case 1k (Story 5.2, D-18): the one impossible cell. A `manual` row is
+-- confirmed by construction — a DJ drawing their own boundary IS the
+-- confirmation — so ('manual', false) is ruled out by
+-- `segments_manual_confirmed_check`, the same CHECK move 5.1 used for
+-- "type='custom' requires a label".
+select throws_ok(
+  $$ insert into public.segments (set_id, dj_id, type, first_play_id, last_play_id, source, confirmed) values ('11111111-bbbb-bbbb-bbbb-111111111111', '11111111-1111-1111-1111-111111111111', 'dancefloor', '11111111-cccc-cccc-cccc-111111111111', '11111111-cccc-cccc-cccc-222222222222', 'manual', false) $$,
+  '23514'::char(5),
+  NULL,
+  'a (manual, false) segments row is rejected by segments_manual_confirmed_check'
+);
+
+-- Case 1l (Story 5.2): the positive branches actually admit rows — this
+-- story's own ('suggested', false) write, and 5.3's future ('manual', true)
+-- one. A pair of constraints that only ever rejects is not proof they permit
+-- the cells the design depends on.
+insert into public.segments (id, set_id, dj_id, type, first_play_id, last_play_id, source, confirmed) values
+  ('11111111-ffff-ffff-ffff-111111111111', '11111111-bbbb-bbbb-bbbb-111111111111', '11111111-1111-1111-1111-111111111111', 'dancefloor', '11111111-cccc-cccc-cccc-111111111111', '11111111-cccc-cccc-cccc-222222222222', 'suggested', false),
+  ('11111111-ffff-ffff-ffff-222222222222', '11111111-bbbb-bbbb-bbbb-111111111111', '11111111-1111-1111-1111-111111111111', 'dancefloor', '11111111-cccc-cccc-cccc-111111111111', '11111111-cccc-cccc-cccc-222222222222', 'manual', true);
+
+select is(
+  (select (source, confirmed)::text from public.segments where id = '11111111-ffff-ffff-ffff-111111111111'),
+  '(suggested,f)',
+  'a (suggested, false) segments row -- this story''s only write -- is accepted and round-trips'
+);
+
+select is(
+  (select (source, confirmed)::text from public.segments where id = '11111111-ffff-ffff-ffff-222222222222'),
+  '(manual,t)',
+  'a (manual, true) segments row -- Story 5.3''s future DJ-drawn boundary -- is accepted'
 );
 
 -- Case 2 (AC-1/AC-3): cross-DJ SELECT isolation on segments, both
@@ -100,7 +148,9 @@ set local request.jwt.claims to '{"sub":"11111111-1111-1111-1111-111111111111","
 
 select results_eq(
   $$ select id from public.segments order by id $$,
-  $$ values ('11111111-dddd-dddd-dddd-111111111111'::uuid), ('11111111-eeee-eeee-eeee-111111111111'::uuid) $$,
+  -- The two `ffff` rows are Case 1l's above (Story 5.2's source/confirmed
+  -- positive branches); DJ A now owns four rows, DJ B still exactly one.
+  $$ values ('11111111-dddd-dddd-dddd-111111111111'::uuid), ('11111111-eeee-eeee-eeee-111111111111'::uuid), ('11111111-ffff-ffff-ffff-111111111111'::uuid), ('11111111-ffff-ffff-ffff-222222222222'::uuid) $$,
   'authenticated DJ A sees only their own segments rows, not DJ B''s'
 );
 
@@ -126,7 +176,7 @@ set local role authenticated;
 set local request.jwt.claims to '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
 
 select throws_ok(
-  $$ insert into public.segments (set_id, dj_id, type, first_play_id, last_play_id) values ('11111111-bbbb-bbbb-bbbb-111111111111', '11111111-1111-1111-1111-111111111111', 'dancefloor', '11111111-cccc-cccc-cccc-111111111111', '11111111-cccc-cccc-cccc-222222222222') $$,
+  $$ insert into public.segments (set_id, dj_id, type, first_play_id, last_play_id, source) values ('11111111-bbbb-bbbb-bbbb-111111111111', '11111111-1111-1111-1111-111111111111', 'dancefloor', '11111111-cccc-cccc-cccc-111111111111', '11111111-cccc-cccc-cccc-222222222222', 'suggested') $$,
   '42501'::char(5),
   NULL,
   'authenticated cannot insert into segments (no insert grant)'
@@ -177,8 +227,8 @@ insert into public.plays (id, set_id, dj_id, position, in_library) values
   ('55555555-cccc-cccc-cccc-111111111111', '55555555-bbbb-bbbb-bbbb-555555555555', '55555555-5555-5555-5555-555555555555', 1, true),
   ('55555555-cccc-cccc-cccc-222222222222', '55555555-bbbb-bbbb-bbbb-555555555555', '55555555-5555-5555-5555-555555555555', 2, true);
 
-insert into public.segments (id, set_id, dj_id, type, first_play_id, last_play_id) values
-  ('55555555-dddd-dddd-dddd-555555555555', '55555555-bbbb-bbbb-bbbb-555555555555', '55555555-5555-5555-5555-555555555555', 'dancefloor', '55555555-cccc-cccc-cccc-111111111111', '55555555-cccc-cccc-cccc-222222222222');
+insert into public.segments (id, set_id, dj_id, type, first_play_id, last_play_id, source) values
+  ('55555555-dddd-dddd-dddd-555555555555', '55555555-bbbb-bbbb-bbbb-555555555555', '55555555-5555-5555-5555-555555555555', 'dancefloor', '55555555-cccc-cccc-cccc-111111111111', '55555555-cccc-cccc-cccc-222222222222', 'suggested');
 
 delete from auth.users where id = '55555555-5555-5555-5555-555555555555';
 
@@ -206,8 +256,8 @@ insert into public.plays (id, set_id, dj_id, position, in_library) values
   ('66666666-cccc-cccc-cccc-111111111111', '66666666-bbbb-bbbb-bbbb-666666666666', '66666666-6666-6666-6666-666666666666', 1, true),
   ('66666666-cccc-cccc-cccc-222222222222', '66666666-bbbb-bbbb-bbbb-666666666666', '66666666-6666-6666-6666-666666666666', 2, true);
 
-insert into public.segments (id, set_id, dj_id, type, first_play_id, last_play_id) values
-  ('66666666-dddd-dddd-dddd-666666666666', '66666666-bbbb-bbbb-bbbb-666666666666', '66666666-6666-6666-6666-666666666666', 'dancefloor', '66666666-cccc-cccc-cccc-111111111111', '66666666-cccc-cccc-cccc-222222222222');
+insert into public.segments (id, set_id, dj_id, type, first_play_id, last_play_id, source) values
+  ('66666666-dddd-dddd-dddd-666666666666', '66666666-bbbb-bbbb-bbbb-666666666666', '66666666-6666-6666-6666-666666666666', 'dancefloor', '66666666-cccc-cccc-cccc-111111111111', '66666666-cccc-cccc-cccc-222222222222', 'suggested');
 
 delete from public.plays where id = '66666666-cccc-cccc-cccc-111111111111';
 
@@ -234,8 +284,8 @@ insert into public.plays (id, set_id, dj_id, position, in_library) values
   ('77777777-cccc-cccc-cccc-111111111111', '77777777-bbbb-bbbb-bbbb-777777777777', '77777777-7777-7777-7777-777777777777', 1, true),
   ('77777777-cccc-cccc-cccc-222222222222', '77777777-bbbb-bbbb-bbbb-777777777777', '77777777-7777-7777-7777-777777777777', 2, true);
 
-insert into public.segments (id, set_id, dj_id, type, first_play_id, last_play_id) values
-  ('77777777-dddd-dddd-dddd-777777777777', '77777777-bbbb-bbbb-bbbb-777777777777', '77777777-7777-7777-7777-777777777777', 'dancefloor', '77777777-cccc-cccc-cccc-111111111111', '77777777-cccc-cccc-cccc-222222222222');
+insert into public.segments (id, set_id, dj_id, type, first_play_id, last_play_id, source) values
+  ('77777777-dddd-dddd-dddd-777777777777', '77777777-bbbb-bbbb-bbbb-777777777777', '77777777-7777-7777-7777-777777777777', 'dancefloor', '77777777-cccc-cccc-cccc-111111111111', '77777777-cccc-cccc-cccc-222222222222', 'suggested');
 
 delete from public.plays where id = '77777777-cccc-cccc-cccc-222222222222';
 

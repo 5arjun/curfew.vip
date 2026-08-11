@@ -113,9 +113,15 @@ describe("@curfew/shared frozen contract", () => {
       "energy_arc",
       "confidence",
     ];
-    // subgenre_breakdown was added post-freeze (taxonomy v2) and is optional per
-    // AD-15 — present in `properties` but deliberately absent from `required`.
-    const allProperties = [...requiredProperties, "subgenre_breakdown"];
+    // subgenre_breakdown (taxonomy v2) and, from Story 5.2, suggested_segments /
+    // idle_gaps were added post-freeze and are optional per AD-15 — present in
+    // `properties` but deliberately absent from `required`.
+    const allProperties = [
+      ...requiredProperties,
+      "subgenre_breakdown",
+      "suggested_segments",
+      "idle_gaps",
+    ];
     const derivedSchema = schema.$defs.derived;
     expect(Object.keys(derivedSchema.properties).sort()).toEqual([...allProperties].sort());
     expect(derivedSchema.required.slice().sort()).toEqual([...requiredProperties].sort());

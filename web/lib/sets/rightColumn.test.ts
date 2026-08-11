@@ -27,7 +27,14 @@ function play(position: number, title: string, minutes: number, bpm: number): Sy
   } as SyncPlay;
 }
 
-function set(overrides: { external_id: string; dayOffset: number; confidence?: number; plays: SyncPlay[] }): SetRecord {
+function set(overrides: {
+  external_id: string;
+  dayOffset: number;
+  confidence?: number;
+  plays: SyncPlay[];
+  /** Story 5.2: the dancefloor cut now ARRIVES on the set row, from the `segments` table. */
+  segments?: Array<{ start: string; end: string }>;
+}): SetRecord {
   const { plays } = overrides;
   const started = new Date(BASE + overrides.dayOffset * 86_400_000).toISOString();
   return {
@@ -35,6 +42,7 @@ function set(overrides: { external_id: string; dayOffset: number; confidence?: n
     started_at: started,
     ended_at: started,
     plays,
+    segments: overrides.segments ?? [],
     derived: {
       most_played_tracks: [],
       most_played_artists: [],
@@ -50,9 +58,12 @@ function set(overrides: { external_id: string; dayOffset: number; confidence?: n
 }
 
 /**
- * A real gig: a slow, sparse warm-up that detection rejects (median BPM under
- * the 118 floor), then a dense 128-BPM run that clears it. `detectDancefloor`
- * should cut the warm-up off, so only the floor tracks are tallied.
+ * A real gig: a slow, sparse warm-up, then a dense 128-BPM run.
+ *
+ * Story 5.2: the cut is no longer recomputed here from the plays — it arrives as
+ * a `segments` row covering the floor stretch only, exactly the shape the agent's
+ * detector produces and the read seam resolves. The assertion the tests make is
+ * unchanged: warm-up plays sit outside the segment and must not be tallied.
  */
 function gigWithWarmup(externalId: string, dayOffset: number): SetRecord {
   const plays: SyncPlay[] = [];
@@ -61,7 +72,12 @@ function gigWithWarmup(externalId: string, dayOffset: number): SetRecord {
   for (const m of [20, 22, 24, 26, 30, 32, 34, 36, 40, 42, 44, 46]) {
     plays.push(play(position++, "Floor", m, 128));
   }
-  return set({ external_id: externalId, dayOffset, plays });
+  return set({
+    external_id: externalId,
+    dayOffset,
+    plays,
+    segments: [{ start: at(20), end: at(46) }],
+  });
 }
 
 describe("most-played counts only dancefloor time", () => {
