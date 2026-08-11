@@ -1,5 +1,5 @@
 # generated: 2026-07-21
-# last_updated: 2026-08-11 (5-4-segment-scoped-stats: ready-for-dev -> review)
+# last_updated: 2026-08-11 (5-4-segment-scoped-stats: review -> in-progress, code review: 11 patches + 5 deferred)
 # 2026-08-11: story 5-4 dev-story session (segment-scoped stats): all 5 tasks
 # landed. Task 1: SetDetail.tsx's `primaryDancefloorSegment` pick replaced with
 # DJ-selectable state (`resolveViewSegment`, new pure fn in setDetail.ts) that
@@ -1251,7 +1251,7 @@ development_status:
   # types. Refinement note added to epics.md Story 5.4. Read-only/web-only:
   # depends on Story 5.3 Task 1's read-model extension (already landed) but
   # not on 5.3's remaining write-path/editor tasks.
-  5-4-segment-scoped-stats: review
+  5-4-segment-scoped-stats: in-progress
   5-5-layer-2-enrichment-form: backlog
   5-6-enrichment-driven-comparisons: backlog
   5-7-opt-in-location-venue-suggestion: backlog
