@@ -13,7 +13,7 @@
 // exact domain math; the band comes from the segment's TIME BOUNDS, not play
 // overlap (the D-4 fix — a window with no BPM-carrying plays must still band
 // honestly instead of silently un-zooming).
-import type { DancefloorSegment } from "./dancefloor";
+import type { SegmentBounds } from "./dancefloor";
 import { createMonotoneYAt, monotonePath, type ArcPoint } from "./energyArc";
 
 export interface HeroArcView {
@@ -97,7 +97,7 @@ function smoothPoints(points: ArcPoint[]): Array<{ t: number; bpm: number }> {
 
 export function heroArcGeometry(
   points: ArcPoint[],
-  segment: DancefloorSegment | null,
+  segment: SegmentBounds | null,
   view: HeroArcView,
 ): HeroArcGeometry {
   const { width, height, padding } = view;

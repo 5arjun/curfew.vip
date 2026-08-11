@@ -63,10 +63,23 @@ import type { LibraryRosterEntry, LibraryRosterSnapshot } from "./libraryRoster"
 import { MIX_NEIGHBOUR_SET_LIMIT } from "./trackDetail";
 import type { MixNeighbourRow, TrackPlayRecord } from "./trackDetail";
 import type { DancefloorSegment } from "./dancefloor";
-import type { SetRecord, SyncPlay, SyncSetDerived } from "./types";
+import type { SetPlay, SetRecord, SyncPlay, SyncSetDerived } from "./types";
 
 /** Row shape of a single `plays` select, as the `sets` nested-select below returns it. */
 type PlayRow = {
+  /**
+   * `plays.id` — the row's own uuid, carried since Story 5.3.
+   *
+   * Not display data and not a stable key across syncs: `sync_set` deletes and
+   * reinserts every play on each re-sync, so this id is only valid for the
+   * lifetime of the fetch that produced it. It is here because the segment
+   * write path has to name a boundary play by id (`first_play_id`/
+   * `last_play_id`) and `position` is not a foreign key. Anything that needs a
+   * play's identity to SURVIVE a re-sync must use `position` instead — that is
+   * the whole reason `sync_set` rebinds segments by position (D-27), and the
+   * reason `key={play.position}` in the tracklist was never this.
+   */
+  id: string;
   position: number;
   title: string | null;
   artist: string | null;
@@ -92,7 +105,7 @@ type PlayRow = {
  * as a missing row, and dereferencing it would throw inside the caller — after
  * this module's try/catch has already returned.
  */
-type TrackPlayRow = PlayRow & {
+type TrackPlayRow = Omit<PlayRow, "id"> & {
   set_id: string;
   sets: {
     id: string;
@@ -112,11 +125,20 @@ type TrackPlayRow = PlayRow & {
  * are to-ONE embeds (the FKs are `not null`), so each returns an object; the
  * type still admits `null` because an embed RLS filters out comes back as
  * `null` rather than as a missing row.
+ *
+ * Story 5.3 added the three plain identity columns ALONGSIDE those embeds, not
+ * instead of them. The embeds answer "when did this floor run", which every
+ * display consumer already reads; the ids answer "which row is this, and which
+ * two plays does it point at", which is the only thing an edit can act on.
+ * Both are needed and neither derives the other.
  */
 type SegmentRow = {
+  id: string;
   type: string;
   source: string;
   confirmed: boolean;
+  first_play_id: string;
+  last_play_id: string;
   first_play: { started_at: string | null } | null;
   last_play: { started_at: string | null } | null;
 };
@@ -155,8 +177,14 @@ type SetRow = {
 // Deliberately NOT filtered to `source = 'suggested'`: a DJ's confirmed and
 // manual segments (Story 5.3) are just as real, and the read model should show
 // what the DJ has, not only what the algorithm proposed.
+//
+// Story 5.3 added `segments.id`/`first_play_id`/`last_play_id` and `plays.id`.
+// They are pure identity — no display consumer reads one — and they are what
+// turned this from a read model into an editable one: the two boundary embeds
+// say WHEN a floor ran, these say WHICH row and which two plays to rewrite when
+// the DJ moves it. Neither half derives the other, so both are fetched.
 const SET_WITH_PLAYS_SELECT =
-  "id, started_at, ended_at, derived, sessions(session_identity), segments(type, source, confirmed, first_play:plays!segments_first_play_id_fkey(started_at), last_play:plays!segments_last_play_id_fkey(started_at)), plays(position, title, artist, started_at, bpm, genre_raw, genre_normalized, subgenre, taxonomy_version, camelot_key, in_library, played_ms, library_added_at, track_id)";
+  "id, started_at, ended_at, derived, sessions(session_identity), segments(id, type, source, confirmed, first_play_id, last_play_id, first_play:plays!segments_first_play_id_fkey(started_at), last_play:plays!segments_last_play_id_fkey(started_at)), plays(id, position, title, artist, started_at, bpm, genre_raw, genre_normalized, subgenre, taxonomy_version, camelot_key, in_library, played_ms, library_added_at, track_id)";
 
 /**
  * Every column `/track/[track_id]` needs, in ONE indexed read (Story 4.10,
@@ -241,7 +269,7 @@ function hasRenderableDerived(blob: SyncSetDerived | null | undefined): boolean 
  * case; the `?? ""`/`?? 0` fallbacks below only matter for a row that
  * violates that write-time invariant, never on the normal path.
  */
-function reconstructGenre(row: PlayRow): SyncPlay["genre"] {
+function reconstructGenre(row: Omit<PlayRow, "id">): SyncPlay["genre"] {
   if (row.genre_raw == null) return null;
   return {
     raw: row.genre_raw,
@@ -251,7 +279,15 @@ function reconstructGenre(row: PlayRow): SyncPlay["genre"] {
   };
 }
 
-function toSyncPlay(row: PlayRow): SyncPlay {
+/**
+ * The wire-shaped play, with no cloud identity.
+ *
+ * Takes the id-less row shape on purpose: `TRACK_PLAYS_SELECT` does not ask for
+ * `plays.id` (the track detail page has nothing to write), and typing this
+ * parameter as the full {@link PlayRow} would let that query's rows claim an id
+ * the select never fetched.
+ */
+function toSyncPlay(row: Omit<PlayRow, "id">): SyncPlay {
   return {
     position: row.position,
     title: row.title,
@@ -267,8 +303,13 @@ function toSyncPlay(row: PlayRow): SyncPlay {
   };
 }
 
+/** The same play, plus the cloud row id the segment write path names it by (Story 5.3). */
+function toSetPlay(row: PlayRow): SetPlay {
+  return { ...toSyncPlay(row), id: row.id };
+}
+
 /**
- * Dancefloor segments as ISO bounds (Story 5.2).
+ * Dancefloor segments as ISO bounds and row identity (Story 5.2, 5.3).
  *
  * Only `type = 'dancefloor'` rows reach the web's `DancefloorSegment` shape:
  * `dinner`/`performance`/`custom` are Story 5.3's human labels and have no
@@ -276,6 +317,12 @@ function toSyncPlay(row: PlayRow): SyncPlay {
  * would be worse than omitting it. A row whose boundary play has no
  * `started_at` is dropped rather than half-rendered — there is no time bound to
  * scope by, and inventing one would be guessing (AD-11).
+ *
+ * A dropped row is dropped for the EDITOR too, and that is the honest outcome
+ * rather than a lost edit: a segment whose boundary play RLS filtered out, or
+ * whose boundary has no clock, has no window to draw handles at either. The ids
+ * ride along only for rows that survive that filter, so nothing can be
+ * addressed for writing that the DJ cannot also see.
  */
 function toSegments(rows: SegmentRow[] | null): DancefloorSegment[] {
   return (rows ?? []).flatMap((row) => {
@@ -283,7 +330,16 @@ function toSegments(rows: SegmentRow[] | null): DancefloorSegment[] {
     const start = row.first_play?.started_at;
     const end = row.last_play?.started_at;
     if (start == null || end == null) return [];
-    return [{ start, end }];
+    return [
+      {
+        id: row.id,
+        firstPlayId: row.first_play_id,
+        lastPlayId: row.last_play_id,
+        confirmed: row.confirmed,
+        start,
+        end,
+      },
+    ];
   });
 }
 
@@ -293,7 +349,7 @@ function toSetRecord(row: SetRow): SetRecord {
     external_id: row.id,
     started_at: row.started_at,
     ended_at: row.ended_at,
-    plays: [...row.plays].sort((a, b) => a.position - b.position).map(toSyncPlay),
+    plays: [...row.plays].sort((a, b) => a.position - b.position).map(toSetPlay),
     derived: row.derived,
     session_label: row.sessions?.session_identity ?? null,
     segments: toSegments(row.segments),
@@ -920,7 +976,20 @@ export async function getAgentStatus(): Promise<AgentStatusSnapshot> {
   }
 }
 
-export type { SetRecord } from "./types";
+// Story 5.3's DJ write path lives in its own module (one cohesive concern with
+// its own failure taxonomy) but is re-exported here so this file stays the one
+// seam components import from — never a Supabase client directly.
+export {
+  adjustSegmentBoundary,
+  confirmSegment,
+  createManualSegment,
+  deleteSegment,
+  SegmentWriteError,
+} from "./segmentWrites";
+export { playIdAtPosition } from "./segmentEditor";
+export type { SegmentWriteReason } from "./segmentWrites";
+
+export type { SetPlay, SetRecord } from "./types";
 export type { AgentStatusRow, AgentStatusSnapshot } from "./agentStatus";
 export type { LibraryAddEvent } from "./libraryConversion";
 export type { LibraryRosterEntry, LibraryRosterSnapshot } from "./libraryRoster";

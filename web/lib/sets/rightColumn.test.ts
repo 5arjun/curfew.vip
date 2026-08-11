@@ -42,7 +42,17 @@ function set(overrides: {
     started_at: started,
     ended_at: started,
     plays,
-    segments: overrides.segments ?? [],
+    // Story 5.3 added row identity to the read shape for the editor's sake.
+    // The right column reads a segment only as a time window, so these cases
+    // still state only the window and the identity is filled in from it —
+    // rather than minting uuids that would suggest a database row behind them.
+    segments: (overrides.segments ?? []).map((s) => ({
+      ...s,
+      id: `seg:${overrides.external_id}:${s.start}`,
+      firstPlayId: `first:${overrides.external_id}:${s.start}`,
+      lastPlayId: `last:${overrides.external_id}:${s.end}`,
+      confirmed: false,
+    })),
     derived: {
       most_played_tracks: [],
       most_played_artists: [],

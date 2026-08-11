@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(28);
+select plan(36);
 
 -- Seed two auth users; the AFTER INSERT trigger (handle_new_dj) creates the
 -- matching public.djs row for each, same as djs_isolation_test.sql /
@@ -455,6 +455,217 @@ select is(
    where ss.session_identity = 'serato4:non-array-suggestions'),
   0,
   'a non-array suggested_segments value is skipped entirely, not raised'
+);
+
+-- ── Story 5.3 (D-27): DJ-authored segments survive a re-sync ────────────────
+--
+-- The guarantee this whole task exists to prove, and the one Story 5.2 recorded
+-- as a KNOWN HAZARD assigned forward: `delete from public.plays` cascades
+-- through `segments.first_play_id`/`last_play_id`'s `on delete cascade` and
+-- destroys every segments row for the set. Harmless while only recomputable
+-- suggestions existed; real, silent data loss the moment a DJ confirms one.
+--
+-- Note what these cases assert about IDENTITY, because it is the difference
+-- between a fix and a fresh bug: a re-synced DJ-authored segment keeps its
+-- ORIGINAL `segments.id`, while its two `plays` foreign keys necessarily point
+-- at newly-minted rows. Re-creating the segment under a new id would look
+-- identical on screen and would silently break 5.4's segment-scoped stats and
+-- D-17's active-learning signal, both of which need one segment to stay one
+-- segment across syncs.
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
+
+select public.sync_set(
+  'serato4:confirmed-survives',
+  13000,
+  13600,
+  '{"track_count":6,"suggested_segments":[{"type":"dancefloor","first_position":1,"last_position":3}]}'::jsonb,
+  '[{"position":1,"title":"A","artist":null,"started_at":13000,"bpm":128.0,"genre":null,"camelot_key":null,"in_library":true},
+    {"position":2,"title":"B","artist":null,"started_at":13100,"bpm":128.0,"genre":null,"camelot_key":null,"in_library":true},
+    {"position":3,"title":"C","artist":null,"started_at":13200,"bpm":128.0,"genre":null,"camelot_key":null,"in_library":true},
+    {"position":4,"title":"D","artist":null,"started_at":13300,"bpm":128.0,"genre":null,"camelot_key":null,"in_library":true},
+    {"position":5,"title":"E","artist":null,"started_at":13400,"bpm":128.0,"genre":null,"camelot_key":null,"in_library":true},
+    {"position":6,"title":"F","artist":null,"started_at":13500,"bpm":128.0,"genre":null,"camelot_key":null,"in_library":true}]'::jsonb
+);
+
+-- The DJ confirms the suggestion (AC-3) and adds a manual floor of their own
+-- (AC-1), through the real Story 5.3 write path -- grants, policies and the
+-- D-29 trigger all apply, exactly as they would from the editor.
+update public.segments se set confirmed = true
+  from public.sessions ss
+ where ss.id = se.set_id and ss.session_identity = 'serato4:confirmed-survives';
+
+insert into public.segments (set_id, dj_id, type, first_play_id, last_play_id, source, confirmed)
+select pl5.set_id, pl5.dj_id, 'dancefloor', pl5.id, pl6.id, 'manual', true
+  from public.plays pl5
+  join public.plays pl6 on pl6.set_id = pl5.set_id and pl6.position = 6
+  join public.sessions ss on ss.id = pl5.set_id
+ where ss.session_identity = 'serato4:confirmed-survives' and pl5.position = 5;
+
+reset role;
+reset request.jwt.claims;
+
+create temporary table dj_authored_before as
+  select se.id, se.first_play_id, se.last_play_id, se.source, se.confirmed, se.created_at,
+         fp.position as first_position, lp.position as last_position
+    from public.segments se
+    join public.plays fp on fp.id = se.first_play_id
+    join public.plays lp on lp.id = se.last_play_id
+    join public.sessions ss on ss.id = se.set_id
+   where ss.session_identity = 'serato4:confirmed-survives';
+
+-- Re-sync with the SAME six plays -- the ordinary case, an agent re-uploading a
+-- night it has already sent.
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
+
+select public.sync_set(
+  'serato4:confirmed-survives',
+  13000,
+  13600,
+  '{"track_count":6,"suggested_segments":[{"type":"dancefloor","first_position":1,"last_position":3}]}'::jsonb,
+  '[{"position":1,"title":"A","artist":null,"started_at":13000,"bpm":128.0,"genre":null,"camelot_key":null,"in_library":true},
+    {"position":2,"title":"B","artist":null,"started_at":13100,"bpm":128.0,"genre":null,"camelot_key":null,"in_library":true},
+    {"position":3,"title":"C","artist":null,"started_at":13200,"bpm":128.0,"genre":null,"camelot_key":null,"in_library":true},
+    {"position":4,"title":"D","artist":null,"started_at":13300,"bpm":128.0,"genre":null,"camelot_key":null,"in_library":true},
+    {"position":5,"title":"E","artist":null,"started_at":13400,"bpm":128.0,"genre":null,"camelot_key":null,"in_library":true},
+    {"position":6,"title":"F","artist":null,"started_at":13500,"bpm":128.0,"genre":null,"camelot_key":null,"in_library":true}]'::jsonb
+);
+
+reset role;
+reset request.jwt.claims;
+
+select is(
+  (select count(*)::int from public.segments se
+   where se.id in (select id from dj_authored_before)),
+  2,
+  'D-27: both DJ-authored segments (a confirmed suggestion and a manual floor) survive a re-sync, under their ORIGINAL ids'
+);
+
+select is(
+  (select count(*)::int from public.segments se
+   where se.id in (select id from dj_authored_before)
+     and (se.first_play_id in (select first_play_id from dj_authored_before)
+          or se.last_play_id in (select last_play_id from dj_authored_before))),
+  0,
+  'D-27: every boundary was REBOUND -- no surviving segment still points at a pre-sync plays row'
+);
+
+select results_eq(
+  $$ select b.first_position, b.last_position, fp.position, lp.position
+       from dj_authored_before b
+       join public.segments se on se.id = b.id
+       join public.plays fp on fp.id = se.first_play_id
+       join public.plays lp on lp.id = se.last_play_id
+      order by b.first_position $$,
+  $$ values (1, 3, 1, 3), (5, 6, 5, 6) $$,
+  'D-27: each boundary rebound to the play at its ORIGINAL position -- position, not uuid, is the domain''s real boundary identity'
+);
+
+select is(
+  (select count(*)::int from public.segments se
+   join dj_authored_before b on b.id = se.id
+   where se.source is distinct from b.source
+      or se.confirmed is distinct from b.confirmed
+      or se.created_at is distinct from b.created_at),
+  0,
+  'D-27: provenance, confirmation and creation time all survive the rebind unchanged (D-18: provenance must survive)'
+);
+
+-- Code review finding, 2026-08-11: this re-sync's own payload above proposed a
+-- suggested segment at 1..3 -- the EXACT range the confirmed dj-authored floor
+-- already occupies. Before the fix, the suggested-segment loop had no overlap
+-- check against rows the D-27 rebind had just restored, so this would have
+-- inserted a second, invisible-but-real ('suggested', false) row duplicating
+-- the confirmed one -- an inert, unconfirmable segment a DJ could never clean
+-- up through the editor (any attempt to touch it hits the same overlap rule
+-- via D-29). The loop now warns and skips it, matching every other validity
+-- check in that same loop.
+select is(
+  (select count(*)::int from public.segments se
+   join public.sessions ss on ss.id = se.set_id
+   where ss.session_identity = 'serato4:confirmed-survives'
+     -- `source = 'suggested'` alone would also match the ORIGINAL suggestion,
+     -- confirmed above -- `source` is provenance and never changes on
+     -- confirmation (D-18), so it still reads 'suggested' long after it
+     -- stopped being one. The phantom duplicate this re-sync's payload would
+     -- otherwise have inserted is `('suggested', false)` specifically.
+     and se.source = 'suggested'
+     and not se.confirmed),
+  0,
+  'D-29.3 (applied manually, since sync_set is exempt from the trigger): a suggested segment overlapping the just-rebound confirmed floor is skipped, not inserted as a phantom duplicate'
+);
+
+-- ── The shrink path (D-27's escalated-then-closed ruling) ───────────────────
+--
+-- The DJ's Serato history genuinely changed and the set is now four tracks, so
+-- the manual floor's 5..6 no longer exists. The ruling is explicit: clamp to the
+-- nearest remaining position and warn server-side; NEVER delete the row.
+-- Delete-on-failure was rejected outright -- destroying a DJ-authored row on
+-- re-sync is the exact disaster this whole block exists to prevent, so it can
+-- never be the fallback.
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
+
+select public.sync_set(
+  'serato4:confirmed-survives',
+  13000,
+  13300,
+  '{"track_count":4}'::jsonb,
+  '[{"position":1,"title":"A","artist":null,"started_at":13000,"bpm":128.0,"genre":null,"camelot_key":null,"in_library":true},
+    {"position":2,"title":"B","artist":null,"started_at":13100,"bpm":128.0,"genre":null,"camelot_key":null,"in_library":true},
+    {"position":3,"title":"C","artist":null,"started_at":13200,"bpm":128.0,"genre":null,"camelot_key":null,"in_library":true},
+    {"position":4,"title":"D","artist":null,"started_at":13300,"bpm":128.0,"genre":null,"camelot_key":null,"in_library":true}]'::jsonb
+);
+
+reset role;
+reset request.jwt.claims;
+
+select is(
+  (select count(*)::int from public.segments se
+   where se.id in (select id from dj_authored_before)),
+  2,
+  'D-27 shrink: a re-sync past a DJ-authored boundary still DELETES NOTHING -- both rows are intact'
+);
+
+select results_eq(
+  $$ select b.first_position, b.last_position, fp.position, lp.position
+       from dj_authored_before b
+       join public.segments se on se.id = b.id
+       join public.plays fp on fp.id = se.first_play_id
+       join public.plays lp on lp.id = se.last_play_id
+      order by b.first_position $$,
+  -- 1..3 is untouched: it still fits. 5..6 collapses onto position 4, the
+  -- nearest remaining -- and it collapses PER BOUNDARY, which is the whole
+  -- point of resolving the two independently rather than asking "does this
+  -- segment still fit" as a unit.
+  $$ values (1, 3, 1, 3), (5, 6, 4, 4) $$,
+  'D-27 shrink: the out-of-range segment CLAMPS to the nearest remaining position while the in-range one is untouched'
+);
+
+-- The one genuinely lossy path, asserted so it is a recorded limit rather than
+-- a surprise: a set re-synced with no plays at all has no timeline left to
+-- point at, so there is no position any clamp could resolve to. Warned about
+-- loudly in the function.
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
+
+select public.sync_set(
+  'serato4:confirmed-survives',
+  13000,
+  13000,
+  '{"track_count":0}'::jsonb,
+  '[]'::jsonb
+);
+
+reset role;
+reset request.jwt.claims;
+
+select is(
+  (select count(*)::int from public.segments se
+   where se.id in (select id from dj_authored_before)),
+  0,
+  'D-27: a re-sync that leaves the set with ZERO plays is the one unrecoverable case -- there is no position left to clamp to'
 );
 
 -- Case 4: anon cannot execute the function at all (no execute grant).

@@ -17,14 +17,92 @@
 import type { SyncPlay } from "./types";
 
 /**
- * One segment as the web consumes it: ISO time bounds, resolved from the
- * `segments` row's boundary plays (`first_play_id`/`last_play_id` →
- * `plays.started_at`). `null` at a call site means "no segment" — the honest
- * whole-set fallback, exactly as v0's `null` meant.
+ * The two ISO bounds a segment SCOPES by.
+ *
+ * Split out of `DancefloorSegment` in Story 5.3 for the functions below that
+ * genuinely only need bounds — `playsInSegment`, `segmentStats`, and the arc
+ * geometry. Those answer "which plays fall inside this window", a question that
+ * has nothing to do with which row the window came from, and widening them to
+ * demand a row identity they never read would force every synthetic test
+ * timeline to mint uuids that assert nothing.
  */
-export interface DancefloorSegment {
+export interface SegmentBounds {
   start: string;
   end: string;
+}
+
+/**
+ * One segment as the web consumes it: the row's own identity, plus ISO time
+ * bounds resolved from its boundary plays (`first_play_id`/`last_play_id` →
+ * `plays.started_at`). `null` at a call site means "no segment" — the honest
+ * whole-set fallback, exactly as v0's `null` meant.
+ *
+ * **The three ids arrived in Story 5.3 and are what makes this row editable.**
+ * Before it, the web only ever read a segment as a time window, because that
+ * was all it could do with one; `id` is what an UPDATE/DELETE addresses,
+ * and `firstPlayId`/`lastPlayId` are what a boundary adjust rewrites. The
+ * bounds are still derived from those two plays, so the two halves can never
+ * describe different windows — but only the ids survive a re-sync (D-27), which
+ * is why the write path speaks in ids and never in timestamps.
+ */
+export interface DancefloorSegment extends SegmentBounds {
+  /** `segments.id` — the row an edit addresses. */
+  id: string;
+  /** `segments.first_play_id` — the play the DJ pointed at as "the floor starts here". */
+  firstPlayId: string;
+  /** `segments.last_play_id` — likewise for where it ends. */
+  lastPlayId: string;
+  /**
+   * `segments.confirmed` — whether the DJ has settled this floor, or it is
+   * still the algorithm's unanswered proposal (D-18).
+   *
+   * The editor's whole visual language turns on this one boolean (D-35):
+   * unconfirmed floors render dashed and lower-opacity with a confirm
+   * affordance, confirmed ones solid. `source` is deliberately NOT carried
+   * into this shape alongside it — a confirmed suggestion and a hand-drawn
+   * boundary look and behave identically to a DJ, and the provenance that
+   * still separates them in the database exists for a future active-learning
+   * loop rather than for anything on screen.
+   */
+  confirmed: boolean;
+}
+
+/**
+ * The comparator both helpers below rank by: longest elapsed first, ties broken
+ * on the earlier start then the earlier end.
+ *
+ * Shared rather than duplicated so `dancefloorSegments(...)[0]` and
+ * `primaryDancefloorSegment(...)` cannot drift into disagreeing about which
+ * segment is "the" dancefloor — the selector defaults to the same one the card
+ * and hero already show, and a DJ never sees those two surfaces contradict.
+ */
+function byPrimaryRank(a: SegmentBounds, b: SegmentBounds): number {
+  const elapsed = (s: SegmentBounds) => {
+    const ms = new Date(s.end).getTime() - new Date(s.start).getTime();
+    return Number.isNaN(ms) ? -1 : ms;
+  };
+  return (
+    elapsed(b) - elapsed(a) || a.start.localeCompare(b.start) || a.end.localeCompare(b.end)
+  );
+}
+
+/**
+ * EVERY dancefloor segment on a set, ranked (Story 5.3, D-30).
+ *
+ * The singular pick below is a rendering shortcut that was harmless while the
+ * web could only read segments: showing the longest floor and staying quiet
+ * about a second one costs a DJ nothing they could have acted on. The moment
+ * editing ships, that silence becomes actively misleading — a DJ could adjust
+ * "the" dancefloor while a real second one sits invisible and untouched. This
+ * is what the editor's selector renders so the count is never hidden.
+ *
+ * Returns a new array; the caller's is never sorted in place.
+ */
+export function dancefloorSegments(
+  segments: DancefloorSegment[] | null | undefined,
+): DancefloorSegment[] {
+  if (!segments || segments.length === 0) return [];
+  return [...segments].sort(byPrimaryRank);
 }
 
 /**
@@ -44,14 +122,7 @@ export interface DancefloorSegment {
 export function primaryDancefloorSegment(
   segments: DancefloorSegment[] | null | undefined,
 ): DancefloorSegment | null {
-  if (!segments || segments.length === 0) return null;
-  const elapsed = (s: DancefloorSegment) => {
-    const ms = new Date(s.end).getTime() - new Date(s.start).getTime();
-    return Number.isNaN(ms) ? -1 : ms;
-  };
-  return [...segments].sort(
-    (a, b) => elapsed(b) - elapsed(a) || a.start.localeCompare(b.start) || a.end.localeCompare(b.end),
-  )[0];
+  return dancefloorSegments(segments)[0] ?? null;
 }
 
 /** Card-facing stats recomputed over a segment (AC-7). Same shape/semantics as the whole-set derived stats, but scoped. */
@@ -79,12 +150,12 @@ export interface SegmentStats {
  * Exported so anything scoping to the dancefloor — segment stats, the
  * most-played card — applies the identical bound rather than re-deriving it.
  */
-export function playsInSegment(plays: SyncPlay[], segment: DancefloorSegment | null): SyncPlay[] {
+export function playsInSegment(plays: SyncPlay[], segment: SegmentBounds | null): SyncPlay[] {
   if (!segment) return plays;
   return plays.filter((p) => p.started_at != null && p.started_at >= segment.start && p.started_at <= segment.end);
 }
 
-export function segmentStats(plays: SyncPlay[], segment: DancefloorSegment | null): SegmentStats {
+export function segmentStats(plays: SyncPlay[], segment: SegmentBounds | null): SegmentStats {
   const inSegment = playsInSegment(plays, segment);
 
   const order: string[] = [];

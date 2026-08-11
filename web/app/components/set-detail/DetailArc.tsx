@@ -156,6 +156,28 @@ function DetailArcChart({
   );
 
   const band = geo.band;
+
+  // Story 5.3 (D-34): the band mirrors the boundary being edited, live.
+  //
+  // The arc is a REFLECTION, never a second drag target — one source of truth
+  // (the tracklist), one mirror (this). Reusing `heroArcGeometry` rather than
+  // deriving x-positions here is the same discipline: the mirrored band and the
+  // committed one are laid out by identical math, so they cannot disagree about
+  // where a given moment sits on the arc.
+  //
+  // The ZOOM deliberately stays on the committed band. Letting the viewport
+  // follow the draft would make the whole arc lurch on every arrow press, which
+  // is harder to read the boundary against, not easier.
+  const editGeo = useMemo(
+    () =>
+      frame.editingBounds
+        ? heroArcGeometry(set.derived.energy_arc, frame.editingBounds, VIEW)
+        : null,
+    [set.derived.energy_arc, frame.editingBounds],
+  );
+  const liveBand = editGeo?.band ?? band;
+  const bandEditing = editGeo?.band != null;
+
   const zoomed = frame.scope === "dancefloor" && band != null;
   const targetX = zoomed ? band.x : 0;
   const targetWidth = zoomed ? band.width : VIEW.width;
@@ -496,27 +518,27 @@ function DetailArcChart({
             {/* The dancefloor-window highlight: a quiet wash + soft edge
                 lines, in viewBox space so it morphs with the zoom. CSS fades
                 it out under data-scope="dancefloor" (the window IS the view). */}
-            {band && (
-              <g className="sd-arc-band" aria-hidden="true">
+            {liveBand && (
+              <g className="sd-arc-band" data-editing={bandEditing || undefined} aria-hidden="true">
                 <rect
-                  x={band.x.toFixed(2)}
+                  x={liveBand.x.toFixed(2)}
                   y={0}
-                  width={band.width.toFixed(2)}
+                  width={liveBand.width.toFixed(2)}
                   height={VIEW.height}
                   className="sd-arc-band-wash"
                 />
                 <line
-                  x1={band.x.toFixed(2)}
+                  x1={liveBand.x.toFixed(2)}
                   y1={0}
-                  x2={band.x.toFixed(2)}
+                  x2={liveBand.x.toFixed(2)}
                   y2={VIEW.height}
                   className="sd-arc-band-edge"
                   vectorEffect="non-scaling-stroke"
                 />
                 <line
-                  x1={(band.x + band.width).toFixed(2)}
+                  x1={(liveBand.x + liveBand.width).toFixed(2)}
                   y1={0}
-                  x2={(band.x + band.width).toFixed(2)}
+                  x2={(liveBand.x + liveBand.width).toFixed(2)}
                   y2={VIEW.height}
                   className="sd-arc-band-edge"
                   vectorEffect="non-scaling-stroke"

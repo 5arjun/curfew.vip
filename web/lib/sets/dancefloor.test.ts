@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SyncPlay } from "./types";
-import { primaryDancefloorSegment, segmentStats } from "./dancefloor";
+import type { DancefloorSegment } from "./dancefloor";
+import { dancefloorSegments, primaryDancefloorSegment, segmentStats } from "./dancefloor";
 import { fixtureSegments } from "./fixtureSegments";
 import fixture from "./recent-sets.fixture.json";
 
@@ -37,6 +38,16 @@ function play(startSec: number, bpm: number | null, genre?: string): SyncPlay {
 // same scenarios plus the ones v0 could not express (per-DJ floors, several
 // segments, idle hard-breaks, DST). What remains here is what `web/` still owns:
 // picking one segment to render, and scoping stats to it.
+/**
+ * A segment in the shape the read seam now produces (Story 5.3 Task 1.3):
+ * ISO bounds plus the three ids an edit addresses the row by. The ids are
+ * derived from the bounds purely so each case below stays one line — nothing in
+ * the read path relates an id to a timestamp.
+ */
+function seg(start: string, end: string): DancefloorSegment {
+  return { id: `seg-${start}`, firstPlayId: `first-${start}`, lastPlayId: `last-${end}`, confirmed: false, start, end };
+}
+
 describe("primaryDancefloorSegment", () => {
   it("returns null when a set has no segments at all — the whole-set fallback source", () => {
     expect(primaryDancefloorSegment([])).toBeNull();
@@ -45,13 +56,13 @@ describe("primaryDancefloorSegment", () => {
   });
 
   it("returns the only segment when a set has exactly one", () => {
-    const only = { start: "2026-06-21T23:00:00.000Z", end: "2026-06-22T00:00:00.000Z" };
+    const only = seg("2026-06-21T23:00:00.000Z", "2026-06-22T00:00:00.000Z");
     expect(primaryDancefloorSegment([only])).toEqual(only);
   });
 
   it("takes the LONGEST by elapsed time when a set has several (D-24's interim pick)", () => {
-    const short = { start: "2026-06-21T22:00:00.000Z", end: "2026-06-21T22:20:00.000Z" };
-    const long = { start: "2026-06-22T00:00:00.000Z", end: "2026-06-22T02:00:00.000Z" };
+    const short = seg("2026-06-21T22:00:00.000Z", "2026-06-21T22:20:00.000Z");
+    const long = seg("2026-06-22T00:00:00.000Z", "2026-06-22T02:00:00.000Z");
     // Deliberately out of chronological order: the pick is by duration, and must
     // not depend on the order PostgREST happened to return the rows in.
     expect(primaryDancefloorSegment([long, short])).toEqual(long);
@@ -59,10 +70,85 @@ describe("primaryDancefloorSegment", () => {
   });
 
   it("breaks a duration tie on the earlier start, so the choice is total and stable", () => {
-    const earlier = { start: "2026-06-21T22:00:00.000Z", end: "2026-06-21T23:00:00.000Z" };
-    const later = { start: "2026-06-22T01:00:00.000Z", end: "2026-06-22T02:00:00.000Z" };
+    const earlier = seg("2026-06-21T22:00:00.000Z", "2026-06-21T23:00:00.000Z");
+    const later = seg("2026-06-22T01:00:00.000Z", "2026-06-22T02:00:00.000Z");
     expect(primaryDancefloorSegment([later, earlier])).toEqual(earlier);
     expect(primaryDancefloorSegment([earlier, later])).toEqual(earlier);
+  });
+
+  it("carries the row's identity through untouched — it picks a segment, it does not reshape one", () => {
+    const only = seg("2026-06-21T23:00:00.000Z", "2026-06-22T00:00:00.000Z");
+    const picked = primaryDancefloorSegment([only])!;
+    expect(picked.id).toBe(only.id);
+    expect(picked.firstPlayId).toBe(only.firstPlayId);
+    expect(picked.lastPlayId).toBe(only.lastPlayId);
+  });
+});
+
+// Story 5.3 Task 1.4 (D-30). The singular helper above stays exactly as it was:
+// every existing consumer (dashboard card, hero, right column) still shows ONE
+// dancefloor. This plural one exists so the editor's selector can show the DJ
+// that a second real floor exists at all, rather than silently editing "the"
+// dancefloor while another sits invisible.
+describe("dancefloorSegments", () => {
+  it("returns [] for a set with no segments, matching the singular helper's null", () => {
+    expect(dancefloorSegments([])).toEqual([]);
+    expect(dancefloorSegments(undefined)).toEqual([]);
+    expect(dancefloorSegments(null)).toEqual([]);
+  });
+
+  it("returns the single segment as a one-element list", () => {
+    const only = seg("2026-06-21T23:00:00.000Z", "2026-06-22T00:00:00.000Z");
+    expect(dancefloorSegments([only])).toEqual([only]);
+  });
+
+  it("returns EVERY segment, ordered exactly as the singular helper ranks them", () => {
+    const short = seg("2026-06-21T22:00:00.000Z", "2026-06-21T22:20:00.000Z");
+    const long = seg("2026-06-22T00:00:00.000Z", "2026-06-22T02:00:00.000Z");
+    const middle = seg("2026-06-21T23:00:00.000Z", "2026-06-21T23:50:00.000Z");
+    // Same total order as `primaryDancefloorSegment`, so the selector's default
+    // chip and the card's "the dancefloor" can never disagree about which
+    // segment that is — the invariant asserted directly below.
+    expect(dancefloorSegments([short, long, middle])).toEqual([long, middle, short]);
+    expect(dancefloorSegments([middle, short, long])).toEqual([long, middle, short]);
+  });
+
+  it("its head IS primaryDancefloorSegment, for any input", () => {
+    const cases: DancefloorSegment[][] = [
+      [],
+      [seg("2026-06-21T23:00:00.000Z", "2026-06-22T00:00:00.000Z")],
+      [
+        seg("2026-06-21T22:00:00.000Z", "2026-06-21T22:20:00.000Z"),
+        seg("2026-06-22T00:00:00.000Z", "2026-06-22T02:00:00.000Z"),
+      ],
+      // A duration tie, where the tie-break is the only thing deciding the head.
+      [
+        seg("2026-06-22T01:00:00.000Z", "2026-06-22T02:00:00.000Z"),
+        seg("2026-06-21T22:00:00.000Z", "2026-06-21T23:00:00.000Z"),
+      ],
+    ];
+    for (const input of cases) {
+      expect(dancefloorSegments(input)[0] ?? null).toEqual(primaryDancefloorSegment(input));
+    }
+  });
+
+  it("does not mutate the caller's array — it is a read helper over a fetched row set", () => {
+    const short = seg("2026-06-21T22:00:00.000Z", "2026-06-21T22:20:00.000Z");
+    const long = seg("2026-06-22T00:00:00.000Z", "2026-06-22T02:00:00.000Z");
+    const input = [short, long];
+    dancefloorSegments(input);
+    expect(input).toEqual([short, long]);
+  });
+
+  it("returns the real several-segment fixture set's floors, all of them", () => {
+    // `fixtureSegments` resolves the Rust detector's own committed output, so
+    // this asserts against genuine algorithm output rather than a hand-picked
+    // shape — the same discipline the scoping cases below follow.
+    const several = sets.find((s) => fixtureSegments(s).length > 1);
+    expect(several, "no committed fixture set carries several segments").toBeDefined();
+    const all = dancefloorSegments(fixtureSegments(several!));
+    expect(all.length).toBeGreaterThan(1);
+    expect(all).toContainEqual(primaryDancefloorSegment(fixtureSegments(several!)));
   });
 });
 

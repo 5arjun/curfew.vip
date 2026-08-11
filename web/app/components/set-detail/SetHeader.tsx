@@ -13,8 +13,13 @@ import { MetalRim } from "./MetalRim";
 // Identity: mono `date · SET 975` (dashboard card continuity — same
 // formatters), `length · track count` beneath, scope-reactive (AC-31).
 // The [⋯] overflow is delete's calm home (never a prominent button).
-// D3/D4: the scope line only STATES the detected window — no edit affordance
-// anywhere (5.3 ships it with the drag that makes it real).
+// D3/D4: the scope line only STATES the detected window, and still does — the
+// edit affordance this comment used to promise "5.3 will ship with the drag"
+// landed in Story 5.3, but in the TRACKLIST rather than here (D-34): a boundary
+// is a handle between two rows, because "point at the first and last track that
+// count" is the DJ's own mental model of it. This line's `formatTimeRange`
+// display is unchanged, and deliberately so — the window it states is now
+// editable one component down, not in the header.
 
 /** Low-confidence display rule (AC-38): the note shows for the ambiguous
  * dense-continuous classification (value ≤ 0.5) and for a session too sparse
