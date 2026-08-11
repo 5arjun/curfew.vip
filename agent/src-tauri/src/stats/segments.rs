@@ -52,6 +52,17 @@ use super::EnrichedPlay;
 /// Window size the night is bucketed into. Carried from v0 unchanged (D-22).
 pub const WINDOW_SEC: i64 = 600;
 
+/// A defensive ceiling on how many windows a single session can bucket into
+/// (~139 days at [`WINDOW_SEC`]) — far beyond any real DJ session. `start_time`
+/// is a plain `u32` with no upper-bound validation upstream, so a single
+/// corrupted timestamp could otherwise span decades and allocate a
+/// correspondingly enormous `Vec` on every capture/backfill pass over that
+/// session — unlike v0, which ran client-side in a browser tab rather than the
+/// always-on agent process. A session whose span would exceed this declines
+/// detection the same way a non-positive span already does (code review
+/// finding, 2026-08-10) — never a guess, just a decline (AD-11).
+pub const MAX_WINDOW_COUNT: usize = 20_000;
+
 /// Below this many *timed* plays, detection is not worth attempting: zero
 /// segments, zero idle gaps. Carried from v0 (D-22).
 ///
@@ -268,6 +279,9 @@ fn analyze(plays: &[DetectionPlay]) -> Option<Analysis> {
     // that is an exact multiple of the window size puts the final play one index
     // past the end.
     let window_count = (((span_sec + WINDOW_SEC - 1) / WINDOW_SEC).max(1)) as usize;
+    if window_count > MAX_WINDOW_COUNT {
+        return None;
+    }
     let mut buckets: Vec<Vec<usize>> = vec![Vec::new(); window_count];
     let mut window_of = Vec::with_capacity(timed.len());
     for (i, play) in timed.iter().enumerate() {
@@ -279,8 +293,20 @@ fn analyze(plays: &[DetectionPlay]) -> Option<Analysis> {
     // Smoothness pair convention (D-22, within D-6's intent): a delta needs BOTH
     // plays' BPM, and each pair is attributed to the window holding the SECOND
     // play's start — counted exactly once, no boundary double-count.
+    //
+    // A pair straddling a true silence gap of IDLE_LABEL_MIN_SEC or more is
+    // skipped entirely (code review finding, 2026-08-10): nobody was dancing
+    // between the two tracks, so the delta between them isn't a real mixing
+    // transition, and folding it into the post-gap window's own median could
+    // tip an otherwise-smooth bridged run below its floor for reasons unrelated
+    // to actual mixing quality — a distinct failure mode from D-13's tolerated
+    // in-window outlier. Reuses the already-locked idle threshold rather than
+    // inventing a new number.
     let mut deltas: Vec<Vec<f64>> = vec![Vec::new(); window_count];
     for i in 1..timed.len() {
+        if timed[i].epoch - timed[i - 1].epoch >= IDLE_LABEL_MIN_SEC {
+            continue;
+        }
         if let (Some(prev), Some(curr)) = (timed[i - 1].bpm, timed[i].bpm) {
             deltas[window_of[i]].push((curr - prev).abs());
         }
@@ -724,6 +750,27 @@ mod tests {
         assert!(window_stats(&plays(&spec)).is_empty());
     }
 
+    /// (Code review finding, 2026-08-10) A session whose span would bucket into
+    /// more than [`MAX_WINDOW_COUNT`] windows declines detection entirely rather
+    /// than allocating a correspondingly enormous `Vec` — the same "decline, not
+    /// guess" shape as a non-positive span or too few plays.
+    #[test]
+    fn a_span_beyond_the_window_count_ceiling_declines_detection() {
+        let far_future = MAX_WINDOW_COUNT as i64 * WINDOW_SEC + WINDOW_SEC;
+        let spec: Vec<(i64, Option<f64>)> = vec![
+            (0, Some(124.0)),
+            (150, Some(124.0)),
+            (300, Some(124.0)),
+            (far_future, Some(124.0)),
+            (far_future + 150, Some(124.0)),
+            (far_future + 300, Some(124.0)),
+        ];
+        let detection = detect(&plays(&spec), &Floors::prior());
+        assert!(detection.segments.is_empty());
+        assert!(detection.idle_gaps.is_empty());
+        assert!(window_stats(&plays(&spec)).is_empty());
+    }
+
     // ---- Domain edge cases ----------------------------------------------------
 
     /// (D-13) A single off-tempo request drop mid-floor must not break the run —
@@ -901,6 +948,42 @@ mod tests {
     }
 
     // ---- Confirmation gate (D-5, D-6, D-7) ------------------------------------
+
+    /// (Code review finding, 2026-08-10) A BPM delta manufactured by resuming
+    /// after a true silence gap must not count against smoothness — nobody was
+    /// dancing between the two tracks, so it is not a real mixing transition.
+    /// Without excluding it, the huge jump either side of a bridged gap can
+    /// dominate the run's median-of-medians and fail an otherwise dead-smooth
+    /// run; excluding gap-spanning pairs from delta computation (reusing the
+    /// already-locked `IDLE_LABEL_MIN_SEC` threshold) fixes it. A minimal custom
+    /// `Floors` (density/BPM floor of zero) isolates the smoothness gate from the
+    /// candidacy gate, which is not what this test is about.
+    #[test]
+    fn a_cross_gap_bpm_delta_does_not_contaminate_smoothness() {
+        let floors = Floors {
+            density: 1.0,
+            median_bpm: 0.0,
+            smoothness: 6.0,
+        };
+        let spec: Vec<(i64, Option<f64>)> = vec![
+            (0, Some(124.0)),     // window 0, alone
+            (650, Some(300.0)),   // window 1 -- 650s true silence before it
+            (1_300, Some(124.0)), // window 2 -- 650s true silence before it
+            (1_850, Some(124.0)), // window 3 -- ordinary 550s transition
+            (2_000, Some(124.0)), // window 3 -- ordinary 150s transition
+            (2_150, Some(124.0)), // window 3 -- ordinary 150s transition
+        ];
+
+        let detection = detect(&plays(&spec), &floors);
+        assert_eq!(
+            detection.segments.len(),
+            1,
+            "the two 176-BPM cross-gap deltas must not fail a run whose real \
+             transitions are all 0"
+        );
+        assert_eq!(detection.segments[0].first_position, 1);
+        assert_eq!(detection.segments[0].last_position, 6);
+    }
 
     /// (D-5) A run that clears density and BPM can still fail on smoothness, and a
     /// failing candidate is discarded — never emitted as a rougher segment.

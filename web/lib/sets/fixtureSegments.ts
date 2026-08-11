@@ -46,6 +46,12 @@ export function fixtureSegments(set: {
   if (!entry) return [];
   const startedAt = new Map(set.plays.map((p) => [p.position, p.started_at]));
   return entry.segments.flatMap((s) => {
+    // Mirrors production `toSegments()` (`web/lib/sets/index.ts`): only
+    // `dancefloor` rows reach this shape. The generator can currently only ever
+    // emit `dancefloor` (D-26), so this is unreachable today, but keeping the
+    // filter here too closes a latent divergence between the test helper and
+    // the read path it stands in for (code review finding, 2026-08-10).
+    if (s.type !== "dancefloor") return [];
     const start = startedAt.get(s.first_position);
     const end = startedAt.get(s.last_position);
     if (start == null || end == null) return [];

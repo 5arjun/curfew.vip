@@ -205,67 +205,85 @@ begin
     from public.plays
    where set_id = computed_set_id and dj_id = caller_dj_id;
 
-  for one_segment in
-    select * from jsonb_array_elements(coalesce(derived -> 'suggested_segments', '[]'::jsonb))
-  loop
-    -- Detection only ever claims 'dancefloor' (D-26). Anything else is either a
-    -- malformed payload or a future writer that has not been designed yet;
-    -- hardcoding the accepted value keeps a stray 'custom' from hitting Story
-    -- 5.1's "custom requires a label" CHECK and aborting the whole sync.
-    if (one_segment ->> 'type') is distinct from 'dancefloor' then
-      raise warning 'sync_set: skipping suggested segment with unsupported type %',
-        one_segment ->> 'type';
-      continue;
-    end if;
+  -- `suggested_segments` must itself be a JSON array before `jsonb_array_elements`
+  -- can iterate it — a scalar/object value there raises ("cannot extract elements
+  -- from a scalar") before the loop body's own per-entry validation ever runs,
+  -- which would silently violate the same "never poison a content sync" promise
+  -- the loop below is built to keep. Code review finding, 2026-08-10.
+  if jsonb_typeof(coalesce(derived -> 'suggested_segments', '[]'::jsonb)) is distinct from 'array'
+  then
+    raise warning 'sync_set: suggested_segments is not an array, skipping all suggestions: %',
+      derived -> 'suggested_segments';
+  else
+    for one_segment in
+      select * from jsonb_array_elements(derived -> 'suggested_segments')
+    loop
+      -- Detection only ever claims 'dancefloor' (D-26). Anything else is either a
+      -- malformed payload or a future writer that has not been designed yet;
+      -- hardcoding the accepted value keeps a stray 'custom' from hitting Story
+      -- 5.1's "custom requires a label" CHECK and aborting the whole sync.
+      if (one_segment ->> 'type') is distinct from 'dancefloor' then
+        raise warning 'sync_set: skipping suggested segment with unsupported type %',
+          one_segment ->> 'type';
+        continue;
+      end if;
 
-    -- Integer-shaped check before the cast: a non-numeric or fractional value
-    -- would otherwise raise inside the cast and take the whole call down.
-    if jsonb_typeof(one_segment -> 'first_position') is distinct from 'number'
-       or jsonb_typeof(one_segment -> 'last_position') is distinct from 'number'
-       or (one_segment ->> 'first_position') !~ '^[0-9]+$'
-       or (one_segment ->> 'last_position') !~ '^[0-9]+$'
-    then
-      raise warning 'sync_set: skipping suggested segment with non-integer positions %',
-        one_segment;
-      continue;
-    end if;
+      -- Integer-shaped check before the cast: a non-numeric or fractional value
+      -- would otherwise raise inside the cast and take the whole call down. The
+      -- magnitude check matters too — an all-digit string that overflows `int4`
+      -- (e.g. "99999999999") passes the regex but still raises "value out of
+      -- range for type integer" on the `::int` cast below; comparing as `numeric`
+      -- first (unbounded precision, no overflow) catches it before the cast can.
+      -- Code review finding, 2026-08-10.
+      if jsonb_typeof(one_segment -> 'first_position') is distinct from 'number'
+         or jsonb_typeof(one_segment -> 'last_position') is distinct from 'number'
+         or (one_segment ->> 'first_position') !~ '^[0-9]+$'
+         or (one_segment ->> 'last_position') !~ '^[0-9]+$'
+         or (one_segment ->> 'first_position')::numeric > 2147483647
+         or (one_segment ->> 'last_position')::numeric > 2147483647
+      then
+        raise warning 'sync_set: skipping suggested segment with non-integer positions %',
+          one_segment;
+        continue;
+      end if;
 
-    first_pos := (one_segment ->> 'first_position')::int;
-    last_pos := (one_segment ->> 'last_position')::int;
+      first_pos := (one_segment ->> 'first_position')::int;
+      last_pos := (one_segment ->> 'last_position')::int;
 
-    if max_position is null
-       or first_pos < 1
-       or first_pos > last_pos
-       or last_pos > max_position
-    then
-      raise warning 'sync_set: skipping out-of-range suggested segment %..% (max position %)',
-        first_pos, last_pos, max_position;
-      continue;
-    end if;
+      if max_position is null
+         or first_pos < 1
+         or first_pos > last_pos
+         or last_pos > max_position
+      then
+        raise warning 'sync_set: skipping out-of-range suggested segment %..% (max position %)',
+          first_pos, last_pos, max_position;
+        continue;
+      end if;
 
-    select id into first_id from public.plays
-     where set_id = computed_set_id and dj_id = caller_dj_id and position = first_pos;
-    select id into last_id from public.plays
-     where set_id = computed_set_id and dj_id = caller_dj_id and position = last_pos;
+      select id into first_id from public.plays
+       where set_id = computed_set_id and dj_id = caller_dj_id and position = first_pos;
+      select id into last_id from public.plays
+       where set_id = computed_set_id and dj_id = caller_dj_id and position = last_pos;
 
-    if first_id is null or last_id is null then
-      raise warning 'sync_set: suggested segment %..% did not resolve to plays rows',
-        first_pos, last_pos;
-      continue;
-    end if;
+      if first_id is null or last_id is null then
+        raise warning 'sync_set: suggested segment %..% did not resolve to plays rows',
+          first_pos, last_pos;
+        continue;
+      end if;
 
-    -- `dj_id` and `set_id` are DERIVED here, never taken from the payload —
-    -- discharging, for this write path, Story 5.1's deferred "derive rather than
-    -- trust" review item. `first_pos <= last_pos` was checked directly above,
-    -- which discharges its "no ordering constraint" item for this path too. The
-    -- cross-row ordering trigger and the set_id-consistency constraint 5.1
-    -- deferred are still not built — they stay with Story 5.3's write path.
-    insert into public.segments (
-      set_id, dj_id, type, first_play_id, last_play_id, source, confirmed
-    ) values (
-      computed_set_id, caller_dj_id, 'dancefloor', first_id, last_id, 'suggested', false
-    );
-  end loop;
+      -- `dj_id` and `set_id` are DERIVED here, never taken from the payload —
+      -- discharging, for this write path, Story 5.1's deferred "derive rather than
+      -- trust" review item. `first_pos <= last_pos` was checked directly above,
+      -- which discharges its "no ordering constraint" item for this path too. The
+      -- cross-row ordering trigger and the set_id-consistency constraint 5.1
+      -- deferred are still not built — they stay with Story 5.3's write path.
+      insert into public.segments (
+        set_id, dj_id, type, first_play_id, last_play_id, source, confirmed
+      ) values (
+        computed_set_id, caller_dj_id, 'dancefloor', first_id, last_id, 'suggested', false
+      );
+    end loop;
+  end if;
 
   return computed_set_id;
 end;

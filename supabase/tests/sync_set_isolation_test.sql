@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(24);
+select plan(28);
 
 -- Seed two auth users; the AFTER INSERT trigger (handle_new_dj) creates the
 -- matching public.djs row for each, same as djs_isolation_test.sql /
@@ -386,6 +386,75 @@ select is(
    where ss.session_identity = 'serato4:old-agent-no-segments'),
   0,
   'a pre-5.2 payload with no suggested_segments key inserts zero segments rows and does not error'
+);
+
+-- Code review finding (2026-08-10): an all-digit position string that overflows
+-- `int4` passed the old `^[0-9]+$`-only guard and then raised on the `::int`
+-- cast, aborting the whole transaction -- the exact failure the skip-never-raise
+-- design exists to prevent. `first_position` here is 10 digits, past int4's
+-- ~2.1 billion ceiling.
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
+
+select public.sync_set(
+  'serato4:oversized-position',
+  13000,
+  13600,
+  '{"track_count":2,"suggested_segments":[{"type":"dancefloor","first_position":9999999999,"last_position":2}]}'::jsonb,
+  '[{"position":1,"title":"A","artist":null,"started_at":13000,"bpm":128.0,"genre":null,"camelot_key":null,"in_library":true},
+    {"position":2,"title":"B","artist":null,"started_at":13100,"bpm":128.0,"genre":null,"camelot_key":null,"in_library":true}]'::jsonb
+);
+
+reset role;
+reset request.jwt.claims;
+
+select is(
+  (select count(*)::int from public.plays pl
+   join public.sessions ss on ss.id = pl.set_id
+   where ss.session_identity = 'serato4:oversized-position'),
+  2,
+  'an int4-overflowing position never blocks the content sync -- both plays still landed'
+);
+
+select is(
+  (select count(*)::int from public.segments se
+   join public.sessions ss on ss.id = se.set_id
+   where ss.session_identity = 'serato4:oversized-position'),
+  0,
+  'the int4-overflowing suggestion is skipped, not raised'
+);
+
+-- Code review finding (2026-08-10): `suggested_segments` present but not a JSON
+-- array (a bare string here) raised inside `jsonb_array_elements` before the
+-- per-entry loop ever ran, aborting the whole transaction the same way.
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
+
+select public.sync_set(
+  'serato4:non-array-suggestions',
+  14000,
+  14600,
+  '{"track_count":1,"suggested_segments":"not-an-array"}'::jsonb,
+  '[{"position":1,"title":"A","artist":null,"started_at":14000,"bpm":null,"genre":null,"camelot_key":null,"in_library":true}]'::jsonb
+);
+
+reset role;
+reset request.jwt.claims;
+
+select is(
+  (select count(*)::int from public.plays pl
+   join public.sessions ss on ss.id = pl.set_id
+   where ss.session_identity = 'serato4:non-array-suggestions'),
+  1,
+  'a non-array suggested_segments value never blocks the content sync -- the play still landed'
+);
+
+select is(
+  (select count(*)::int from public.segments se
+   join public.sessions ss on ss.id = se.set_id
+   where ss.session_identity = 'serato4:non-array-suggestions'),
+  0,
+  'a non-array suggested_segments value is skipped entirely, not raised'
 );
 
 -- Case 4: anon cannot execute the function at all (no execute grant).

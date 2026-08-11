@@ -18,10 +18,13 @@
 //! node supabase/scripts/generate-seed.mjs
 //! ```
 //!
-//! Sets are fed to the detector in the fixture's own chronological order, each
-//! calibrated against the ones before it (D-23) — the same prefix rule the agent
-//! applies at runtime, so a fixture segment is what that set would really have
-//! been given.
+//! Sets are fed to the detector in TRUE chronological order (sorted by
+//! `started_at`, not the committed file's own order — see `build_fixture`'s
+//! comment), each calibrated against the ones before it (D-23) — the same
+//! prefix rule the agent applies at runtime, so a fixture segment is what that
+//! set would really have been given. Output stays in the committed file's own
+//! order; only the internal processing order changed (code review finding,
+//! 2026-08-10).
 
 use std::path::{Path, PathBuf};
 
@@ -93,10 +96,43 @@ fn detection_plays(plays: &[Value]) -> Vec<DetectionPlay> {
 
 /// Recomputes the whole fixture's segments, chronologically calibrated.
 fn build_fixture(sets: &[Value]) -> Value {
-    let mut pooled: Vec<PooledSession> = Vec::new();
-    let mut out = Vec::new();
+    // Code review finding (2026-08-10): `recent-sets.fixture.json` is committed
+    // in REVERSE-chronological order (newest first — it's a "recent sets" list),
+    // not chronological. Feeding it to the detector in file order while `pooled`
+    // only ever holds previously-iterated entries meant every set except the one
+    // processed last saw a `pooled` slice containing exclusively sessions that
+    // are chronologically LATER than it — which `floors_before`'s strict-earlier
+    // filter then always empties, regardless of `CalibrationPool::new`'s own
+    // correct internal sort. The result was cold-start/pure-prior floors for
+    // nearly every set. Fix: compute a chronological processing order up front,
+    // walk the sets in THAT order, and only reorder the output back afterward so
+    // downstream `external_id` lookups (`fixtureSegments.ts`, `generate-seed.mjs`)
+    // are unaffected. Production code (`load_calibration_pool` in
+    // `watcher/mod.rs`/`backfill.rs`) was independently verified NOT to have this
+    // bug — it loads and sorts the whole pool in one call, with no progressive
+    // per-item accumulation loop like this test harness had.
+    let mut order: Vec<usize> = (0..sets.len()).collect();
+    order.sort_by_key(|&i| {
+        let started_at = sets[i]
+            .get("started_at")
+            .and_then(Value::as_str)
+            .and_then(iso_to_epoch);
+        let external_id = sets[i]
+            .get("external_id")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        (
+            started_at.unwrap_or(i64::MIN),
+            format!("serato4:{external_id}"),
+        )
+    });
 
-    for set in sets {
+    let mut pooled: Vec<PooledSession> = Vec::new();
+    let mut out: Vec<Option<Value>> = vec![None; sets.len()];
+
+    for i in order {
+        let set = &sets[i];
         let external_id = set
             .get("external_id")
             .and_then(Value::as_str)
@@ -118,7 +154,7 @@ fn build_fixture(sets: &[Value]) -> Value {
         let floors = CalibrationPool::new(pooled.clone()).floors_before(started_at, &identity);
         let detection = detect(&plays, &floors);
 
-        out.push(json!({
+        out[i] = Some(json!({
             "external_id": external_id,
             "segments": detection.segments.iter().map(|s| json!({
                 "type": "dancefloor",
@@ -138,7 +174,11 @@ fn build_fixture(sets: &[Value]) -> Value {
         });
     }
 
-    Value::Array(out)
+    Value::Array(
+        out.into_iter()
+            .map(|entry| entry.expect("every set index is filled exactly once"))
+            .collect(),
+    )
 }
 
 #[test]

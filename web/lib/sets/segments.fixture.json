@@ -64,7 +64,7 @@
         "type": "dancefloor"
       },
       {
-        "first_position": 66,
+        "first_position": 69,
         "last_position": 79,
         "type": "dancefloor"
       },
@@ -178,13 +178,7 @@
         "start": 1777670043
       }
     ],
-    "segments": [
-      {
-        "first_position": 1,
-        "last_position": 5,
-        "type": "dancefloor"
-      }
-    ]
+    "segments": []
   },
   {
     "external_id": "963",
@@ -200,12 +194,7 @@
     ],
     "segments": [
       {
-        "first_position": 3,
-        "last_position": 5,
-        "type": "dancefloor"
-      },
-      {
-        "first_position": 8,
+        "first_position": 14,
         "last_position": 16,
         "type": "dancefloor"
       }
@@ -233,11 +222,6 @@
       }
     ],
     "segments": [
-      {
-        "first_position": 18,
-        "last_position": 20,
-        "type": "dancefloor"
-      },
       {
         "first_position": 74,
         "last_position": 76,
@@ -298,7 +282,7 @@
     "idle_gaps": [],
     "segments": [
       {
-        "first_position": 32,
+        "first_position": 43,
         "last_position": 49,
         "type": "dancefloor"
       }
@@ -327,11 +311,16 @@
     "segments": [
       {
         "first_position": 27,
-        "last_position": 32,
+        "last_position": 29,
         "type": "dancefloor"
       },
       {
         "first_position": 41,
+        "last_position": 46,
+        "type": "dancefloor"
+      },
+      {
+        "first_position": 68,
         "last_position": 87,
         "type": "dancefloor"
       }
@@ -352,13 +341,8 @@
     ],
     "segments": [
       {
-        "first_position": 1,
+        "first_position": 7,
         "last_position": 46,
-        "type": "dancefloor"
-      },
-      {
-        "first_position": 47,
-        "last_position": 63,
         "type": "dancefloor"
       }
     ]
@@ -395,7 +379,17 @@
     "segments": [
       {
         "first_position": 3,
-        "last_position": 72,
+        "last_position": 7,
+        "type": "dancefloor"
+      },
+      {
+        "first_position": 25,
+        "last_position": 48,
+        "type": "dancefloor"
+      },
+      {
+        "first_position": 58,
+        "last_position": 69,
         "type": "dancefloor"
       }
     ]
@@ -423,13 +417,13 @@
         "type": "dancefloor"
       },
       {
-        "first_position": 16,
+        "first_position": 19,
         "last_position": 21,
         "type": "dancefloor"
       },
       {
         "first_position": 45,
-        "last_position": 79,
+        "last_position": 76,
         "type": "dancefloor"
       }
     ]
@@ -448,13 +442,8 @@
     ],
     "segments": [
       {
-        "first_position": 26,
-        "last_position": 29,
-        "type": "dancefloor"
-      },
-      {
         "first_position": 57,
-        "last_position": 63,
+        "last_position": 59,
         "type": "dancefloor"
       },
       {
@@ -586,13 +575,7 @@
         "start": 1754939711
       }
     ],
-    "segments": [
-      {
-        "first_position": 7,
-        "last_position": 12,
-        "type": "dancefloor"
-      }
-    ]
+    "segments": []
   },
   {
     "external_id": "895",
@@ -956,12 +939,22 @@
     ],
     "segments": [
       {
-        "first_position": 60,
-        "last_position": 62,
+        "first_position": 53,
+        "last_position": 54,
         "type": "dancefloor"
       },
       {
-        "first_position": 69,
+        "first_position": 57,
+        "last_position": 58,
+        "type": "dancefloor"
+      },
+      {
+        "first_position": 60,
+        "last_position": 64,
+        "type": "dancefloor"
+      },
+      {
+        "first_position": 85,
         "last_position": 120,
         "type": "dancefloor"
       }
