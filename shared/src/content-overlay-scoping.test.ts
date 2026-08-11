@@ -18,6 +18,19 @@ const schema = JSON.parse(
  * below, the day a second overlay column ships (e.g. Epic 5's segment
  * edits) — the two assertions in this file automatically re-check the new
  * entry against both the wire schema and the write-path migration.
+ *
+ * **Story 5.2 deliberately did NOT add `segments.source`/`segments.confirmed`
+ * here, and that is the correct call, not an oversight.** Under D-19/AD-23 the
+ * agent's detector produces suggestions, `SyncSetDerived.suggested_segments`
+ * carries them, and `sync_set` writes them as `('suggested', false)` rows — so
+ * both columns legitimately appear in the wire shape and in the RPC body, which
+ * is exactly what the assertions below forbid for a real overlay column. What
+ * stays overlay is the *state* Story 5.3 authors: `confirmed = true` and
+ * `source = 'manual'` rows, which no sync path may create or destroy. That is a
+ * row-scoped invariant, not a column-name one, so it cannot be expressed in this
+ * map; AD-23 states it in the Spine and `sync_set`'s own scoped delete enforces
+ * it. Adding either column here would fail CI against a design the architecture
+ * has already sanctioned.
  */
 const OVERLAY_COLUMNS: Record<string, string[]> = {
   sets: ["visibility"],

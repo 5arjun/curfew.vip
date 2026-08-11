@@ -2,7 +2,7 @@
 // track/artist over week/month windows, latest-set dancefloor confidence, and
 // the lifetime archive odometer. Built server-side from the frozen seam into
 // serialisable props; formatting follows the DJ's locale/timezone (format.ts).
-import { detectDancefloor, playsInSegment } from "./dancefloor";
+import { playsInSegment, primaryDancefloorSegment } from "./dancefloor";
 import { formatClock, formatDuration } from "./format";
 import { isLowConfidenceSet, localDayKey } from "./listModel";
 import type { SetRecord } from "./types";
@@ -71,8 +71,8 @@ export interface RightColumnModel {
  * owns rather than inventing a private definition of "real":
  *   1. the window is drawn from dancefloor sets only (`isLowConfidenceSet`,
  *      the same rule the set list hides by — spec §3g), and
- *   2. within each, only plays inside the detected dancefloor segment count
- *      (`detectDancefloor` + `playsInSegment`).
+ *   2. within each, only plays inside the dancefloor segment count
+ *      (`primaryDancefloorSegment` + `playsInSegment`).
  * A track has to have actually filled a floor to win.
  */
 // 10 and 30 (2026-08-06, Arjun). Raised from 5/25 once the dancefloor filters
@@ -106,8 +106,12 @@ function mostPlayedInRecentSets(newestFirst: SetRecord[], count: number): MostPl
     // already restricted to dancefloor sets by the caller, and each set is
     // scoped here to its detected segment, so tracks spun while the room was
     // still empty never enter the tally. A `null` segment is the honest
-    // whole-set fallback — detection declined, or the run WAS the night.
-    const floorPlays = playsInSegment(set.plays, detectDancefloor(set.plays));
+    // whole-set fallback — this set carries no dancefloor segment at all.
+    //
+    // Story 5.2: the segment is fetched off the set row now, not recomputed
+    // here; when a set has several, the longest is the interim pick until 5.4
+    // ships a real picker (D-24).
+    const floorPlays = playsInSegment(set.plays, primaryDancefloorSegment(set.segments));
     for (const play of floorPlays) {
       const title = play.title;
       const artist = play.artist;

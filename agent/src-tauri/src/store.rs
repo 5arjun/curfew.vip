@@ -1001,6 +1001,41 @@ pub struct CapturedEnergyPoint {
     pub bpm: f64,
 }
 
+/// One detected dancefloor span (Story 5.2), mirroring
+/// `stats::segments::SuggestedSegment` plus the `type` the cloud row needs.
+///
+/// **Positions, not ids.** The agent can never know a cloud `plays.id` —
+/// `sync_set` mints them inside its own transaction — so the wire carries
+/// 1-based positions into the same payload's `plays[]` and the RPC resolves them
+/// after its own insert (D-20). `type` is always `"dancefloor"`: this algorithm
+/// detects exactly that signal, and `dinner`/`performance`/`custom` are human
+/// labels Story 5.3 owns (D-26).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CapturedSuggestedSegment {
+    #[serde(rename = "type")]
+    pub segment_type: String,
+    pub first_position: usize,
+    pub last_position: usize,
+}
+
+/// One labeled stretch of silence (Story 5.2, D-10/D-26), mirroring
+/// `stats::segments::IdleGap`.
+///
+/// **Unix epoch seconds, not ISO.** The story's Task 3.1 called for ISO "matching
+/// `energy_arc`'s precedent", but that premise does not hold: `sync.rs` ships
+/// `derived_json` to the RPC verbatim, so `energy_arc[].started_at` already
+/// crosses this seam as an epoch integer despite the contract's prose, exactly
+/// like `plays[].started_at` (which `sync_set` reads with `to_timestamp`). Epoch
+/// on the wire is this seam's real convention and the Consistency table's stated
+/// rule ("RPC arguments stay epoch; ISO only on read-model render strings"), and
+/// the agent has no date formatter to produce ISO with. Documented as a
+/// deferred-work item rather than quietly diverging.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CapturedIdleGap {
+    pub start: i64,
+    pub end: i64,
+}
+
 /// Mirrors `confidence::SessionConfidence`. Field names mirror it exactly,
 /// except `confidence` -> `value` (same rename `shared/src/index.ts`'s
 /// `SyncSetDerived.confidence` already applies, avoiding a `derived.confidence
@@ -1344,6 +1379,65 @@ pub struct CapturedDerived {
     pub track_count: usize,
     pub energy_arc: Vec<CapturedEnergyPoint>,
     pub confidence: CapturedConfidence,
+    /// From `stats::segments::detect` (Story 5.2). Zero, one, or several — never
+    /// assume exactly one (D-15). `#[serde(default)]` for the same pre-5.2-row
+    /// round-trip reason as `CapturedPlay::played_ms`: a stored `derived_json`
+    /// written before this story never carried the key at all.
+    #[serde(default)]
+    pub suggested_segments: Vec<CapturedSuggestedSegment>,
+    /// From `stats::segments::detect` (Story 5.2, D-10). Descriptive only —
+    /// nothing gates on these, and they are deliberately NOT `segments` rows
+    /// (there is no `idle` value in the type enum, D-26).
+    #[serde(default)]
+    pub idle_gaps: Vec<CapturedIdleGap>,
+}
+
+/// One captured session's raw material for Story 5.2's calibration pool — the
+/// narrow read [`calibration_pool_rows`] returns, deliberately not a whole
+/// [`CapturedSessionRow`] (the pool never needs `raw_ref`, `derived_json`, or
+/// any of the sync bookkeeping, and a 491-row sweep should not carry them).
+#[derive(Debug, Clone, PartialEq)]
+pub struct CalibrationPoolRow {
+    /// The session's own start, Unix epoch seconds. `NULL` in the store is
+    /// possible (an all-untimed capture), and the pool orders those first.
+    pub started_at: Option<i64>,
+    /// The dedup key, and the deterministic tiebreak for a `started_at` tie.
+    pub session_identity: String,
+    /// Serialized `Vec<CapturedPlay>`; the window stats are recomputed from it
+    /// rather than persisted (D-16 — live rollup, no durable profile).
+    pub plays_json: Option<String>,
+}
+
+/// Every `captured` session's `(started_at, session_identity, plays_json)`, in
+/// pool order (Story 5.2, D-23).
+///
+/// Deliberately no `source` filter and no confidence filter. Both halves matter:
+/// a legacy-source night is still this DJ's own playing and belongs in their
+/// calibration history; and `confidence.rs`'s value is *symmetric
+/// classifiability*, "not a live/practice probability", so filtering on it would
+/// have excluded tight club sets (0.2) while admitting sparse bedroom previewing
+/// (1.0) — the exact inverse of the intent. See
+/// [`crate::stats::segments::CalibrationPool::new`] for the full ruling; the only
+/// exclusion applied is "produced no windows", which that constructor makes.
+///
+/// `superseded`/`incomplete`/`watching` rows are excluded by the status filter:
+/// a superseded row is the losing half of a same-night duplicate and would
+/// double-count that night in the pool.
+pub fn calibration_pool_rows(conn: &Connection) -> Result<Vec<CalibrationPoolRow>, StoreError> {
+    let mut stmt = conn.prepare(
+        "SELECT started_at, session_identity, plays_json FROM captured_sessions
+         WHERE status = 'captured'
+         ORDER BY started_at ASC, session_identity ASC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(CalibrationPoolRow {
+            started_at: row.get(0)?,
+            session_identity: row.get(1)?,
+            plays_json: row.get(2)?,
+        })
+    })?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(StoreError::from)
 }
 
 #[cfg(test)]
@@ -1486,6 +1580,8 @@ mod tests {
                 track_count: 2,
                 long_gap_count: 0,
             },
+            suggested_segments: vec![],
+            idle_gaps: vec![],
         }
     }
 

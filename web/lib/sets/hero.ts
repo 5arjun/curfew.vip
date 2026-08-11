@@ -4,11 +4,18 @@
 // take the hero slot just because it was captured last. Everything else falls
 // to the archive, order preserved (getRecentSets already sorts newest-first).
 import type { SetRecord } from "./types";
-import { MIN_PLAYS_FOR_DETECTION } from "./dancefloor";
 
-// A set needs at least this many tracks to earn the hero. Shares dancefloor
-// detection's MIN_PLAYS_FOR_DETECTION — below it there is no night to narrate.
-export const HERO_MIN_TRACKS = MIN_PLAYS_FOR_DETECTION;
+// A set needs at least this many tracks to earn the hero — below it there is no
+// night to narrate.
+//
+// This used to be an alias of v0's `MIN_PLAYS_FOR_DETECTION`. Story 5.2 retired
+// v0 detection from `web/` entirely (the detector is Rust now), and rather than
+// reach across the seam for a number, the coupling is cut: this is a
+// hero-*display* threshold and that is a *detection* floor. They happened to
+// share a value; they were never the same decision, and either is now free to
+// move without dragging the other. The Rust-side constant is
+// `stats::segments::MIN_PLAYS_FOR_DETECTION`.
+export const HERO_MIN_TRACKS = 6;
 
 function trackCount(set: SetRecord): number {
   return set.derived.track_count ?? set.plays.length;

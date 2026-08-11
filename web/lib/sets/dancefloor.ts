@@ -1,137 +1,57 @@
-// Dancefloor detection v0 + segment-scoped stat recomputation (Story 3.6 Task 5,
-// AC-6/7/8).
+// Segment-scoped stat recomputation (Story 3.6 Task 5, AC-7/8) + the interim
+// "which segment is THE dancefloor" pick.
 //
 // ┌─────────────────────────────────────────────────────────────────────────┐
-// │ INTERIM — global-heuristic v0. AR-13 mandates PER-DJ-CALIBRATED floors    │
-// │ ("never a global constant"); that calibrated detector is Story 5.2 and    │
-// │ SUPERSEDES everything in this file. The constants below are deliberately   │
-// │ global and deliberately temporary — shipped knowingly so the dashboard    │
-// │ has a real (if rough) dancefloor cut from day one, NOT presented as the    │
-// │ final AR-13 answer. Do not treat these numbers as tuned.                   │
+// │ v0 DETECTION IS RETIRED (Story 5.2, D-1/D-24). `detectDancefloor` and its │
+// │ five global constants used to live here, knowingly interim, because AR-13 │
+// │ mandates PER-DJ-CALIBRATED floors ("never a global constant"). That       │
+// │ calibrated detector now exists — ONE algorithm, in the agent stat engine   │
+// │ (`agent/src-tauri/src/stats/segments.rs`) — and the web reads its output   │
+// │ as `segments` rows off the set row instead of recomputing anything. v0's   │
+// │ constants live on as that detector's cold-start prior, not as a second     │
+// │ system running in parallel.                                                │
+// │                                                                            │
+// │ What stayed: the SCOPING utilities below. They are consumers of a segment, │
+// │ not detectors of one, and Story 5.4 builds segment-scoped stats on them.   │
 // └─────────────────────────────────────────────────────────────────────────┘
-//
-// Everything here is pure and recomputed from `plays[]` (each `SyncPlay` carries
-// its own `started_at` + `bpm`), which is what makes segment-scoped stats — and
-// the future pointer editor (Story 5.1) — buildable with no schema change.
 import type { SyncPlay } from "./types";
 
-/** Window size the night is bucketed into. ~10 min (AR-13 shape). INTERIM/global. */
-const WINDOW_SEC = 600;
-/** Below this many *timed* plays, detection is not worth attempting — whole set. INTERIM/global. */
-export const MIN_PLAYS_FOR_DETECTION = 6;
-/** A window "clears the floor" only with at least this many plays in it. INTERIM/global. */
-const DENSITY_FLOOR = 3;
-/** …and, when BPM is known for the window, a median at least this fast (excludes a slow warm-up/dinner). INTERIM/global. */
-const BPM_FLOOR = 118;
-/** A single sub-floor window between two clearing windows is bridged (a brief lull is not a new set). INTERIM/global. */
-const GAP_MERGE_WINDOWS = 1;
-/** If the qualifying run covers this fraction (or more) of the night, it IS the night → whole-set fallback, never force a cut. INTERIM/global. */
-const WHOLE_NIGHT_FRACTION = 0.9;
-
-/** A detected dancefloor segment as ISO time bounds (matches the future AR-15 `segments` time-bound shape), or `null` → the honest whole-set fallback. */
+/**
+ * One segment as the web consumes it: ISO time bounds, resolved from the
+ * `segments` row's boundary plays (`first_play_id`/`last_play_id` →
+ * `plays.started_at`). `null` at a call site means "no segment" — the honest
+ * whole-set fallback, exactly as v0's `null` meant.
+ */
 export interface DancefloorSegment {
   start: string;
   end: string;
 }
 
-interface TimedPlay {
-  index: number;
-  epochMs: number;
-  bpm: number | null;
-}
-
-function timedPlays(plays: SyncPlay[]): TimedPlay[] {
-  return plays.flatMap((p, index) => {
-    if (p.started_at == null) return [];
-    const epochMs = new Date(p.started_at).getTime();
-    if (Number.isNaN(epochMs)) return [];
-    return [{ index, epochMs, bpm: p.bpm ?? null }];
-  });
-}
-
-function median(values: number[]): number | null {
-  if (values.length === 0) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-}
-
 /**
- * Suggests the dancefloor segment for a set (AC-6), computed at render from
- * `plays[]`:
- *   1. bucket the night into ~10-min windows,
- *   2. a window clears the floor on play-density + (when known) median BPM,
- *   3. take the LONGEST contiguous run of clearing windows, bridging single-window gaps,
- *   4. fall back to the whole set (`null`) when nothing qualifies OR the run spans
- *      essentially the whole night — never force exactly one segment.
+ * The single segment a card/hero shows when it can only show one.
  *
- * Returns `null` for the whole-set fallback; otherwise the ISO time bounds of the run.
+ * A set can legitimately carry zero, one, or several dancefloor segments (FR-28,
+ * D-15) — a wedding with a cocktail-hour floor and a post-dinner peak is two,
+ * not one. Every consumer below still has exactly one "the dancefloor" slot, so
+ * until Story 5.4 ships a real segment picker this takes the **longest by
+ * elapsed time**. That is an interim rendering pick recorded as such (D-24), not
+ * a product decision about which floor matters — do not build on it as if the
+ * longest floor is semantically the main one.
+ *
+ * Ties break on the earlier start, then on the earlier end, so the choice is
+ * total and stable rather than dependent on row order from PostgREST.
  */
-export function detectDancefloor(plays: SyncPlay[]): DancefloorSegment | null {
-  const timed = timedPlays(plays);
-  if (timed.length < MIN_PLAYS_FOR_DETECTION) return null;
-
-  const firstMs = timed[0].epochMs;
-  const lastMs = timed[timed.length - 1].epochMs;
-  const spanSec = (lastMs - firstMs) / 1000;
-  if (spanSec <= 0) return null;
-
-  const windowCount = Math.max(1, Math.ceil(spanSec / WINDOW_SEC));
-  const windows: TimedPlay[][] = Array.from({ length: windowCount }, () => []);
-  for (const p of timed) {
-    // `plays[]` is not guaranteed pre-sorted, so a play before `firstMs` is
-    // possible — clamp both ends or an out-of-order play produces a negative
-    // index and crashes the whole render.
-    const w = Math.max(
-      0,
-      Math.min(windowCount - 1, Math.floor((p.epochMs - firstMs) / 1000 / WINDOW_SEC)),
-    );
-    windows[w].push(p);
-  }
-
-  const clears = windows.map((w) => {
-    if (w.length < DENSITY_FLOOR) return false;
-    const bpms = w.map((p) => p.bpm).filter((b): b is number => b != null);
-    const med = median(bpms);
-    // BPM gates only when the window actually has BPM data; a window dense enough
-    // but with no BPM still counts (never guess a tempo it doesn't have — AD-11).
-    return med == null || med >= BPM_FLOOR;
-  });
-
-  // Longest contiguous run of clearing windows, bridging gaps up to GAP_MERGE_WINDOWS.
-  let bestStart = -1;
-  let bestEnd = -1;
-  let runStart = -1;
-  let gap = 0;
-  for (let i = 0; i < clears.length; i++) {
-    if (clears[i]) {
-      if (runStart === -1) runStart = i;
-      gap = 0;
-      if (bestStart === -1 || i - runStart > bestEnd - bestStart) {
-        bestStart = runStart;
-        bestEnd = i;
-      }
-    } else if (runStart !== -1) {
-      gap++;
-      if (gap > GAP_MERGE_WINDOWS) {
-        runStart = -1;
-        gap = 0;
-      }
-    }
-  }
-
-  if (bestStart === -1) return null; // nothing qualified → whole set
-
-  const runWindows = bestEnd - bestStart + 1;
-  if (runWindows >= windowCount * WHOLE_NIGHT_FRACTION) return null; // it IS the night
-
-  // Time bounds = first play of the first run window .. last play of the last run window.
-  const runPlays = windows.slice(bestStart, bestEnd + 1).flat();
-  if (runPlays.length === 0) return null;
-  const startIso = plays[runPlays[0].index].started_at;
-  const endIso = plays[runPlays[runPlays.length - 1].index].started_at;
-  if (startIso == null || endIso == null) return null;
-  return { start: startIso, end: endIso };
+export function primaryDancefloorSegment(
+  segments: DancefloorSegment[] | null | undefined,
+): DancefloorSegment | null {
+  if (!segments || segments.length === 0) return null;
+  const elapsed = (s: DancefloorSegment) => {
+    const ms = new Date(s.end).getTime() - new Date(s.start).getTime();
+    return Number.isNaN(ms) ? -1 : ms;
+  };
+  return [...segments].sort(
+    (a, b) => elapsed(b) - elapsed(a) || a.start.localeCompare(b.start) || a.end.localeCompare(b.end),
+  )[0];
 }
 
 /** Card-facing stats recomputed over a segment (AC-7). Same shape/semantics as the whole-set derived stats, but scoped. */
@@ -152,9 +72,9 @@ export interface SegmentStats {
  * bucket, first-seen order, an explicit `no_genre_count` (never folded away).
  */
 /**
- * The plays that actually fall inside a detected segment. `segment === null`
- * is the honest whole-set fallback (detection declined, or the run WAS the
- * night), in which case every play counts.
+ * The plays that actually fall inside a segment. `segment === null` is the
+ * honest whole-set fallback (this set carries no suggested segment at all), in
+ * which case every play counts.
  *
  * Exported so anything scoping to the dancefloor — segment stats, the
  * most-played card — applies the identical bound rather than re-deriving it.

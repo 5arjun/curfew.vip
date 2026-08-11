@@ -202,6 +202,19 @@ pub fn backfill_captured_serato4(
         }
     };
 
+    // Story 5.2 (D-23/D-25): the calibration pool, computed ONCE for the whole
+    // sweep and sliced per session into a chronological prefix. Re-reading it per
+    // row would make a 491-session cold upgrade O(n²) over the entire store, for
+    // an answer that cannot change during the pass — every row here re-derives
+    // from the same retained raw, and the pool is built from `plays_json`, which
+    // this loop only ever rewrites to an equal or corrected value.
+    //
+    // This story's new derived fields also change `derived_json` for every
+    // captured row, so the changed-row comparison below re-queues the whole local
+    // history for sync on the next launch. That IS the rollout mechanism (D-25) —
+    // there is deliberately no second one.
+    let pool = crate::capture::load_calibration_pool(store_conn);
+
     let mut changed = 0;
     for row in rows {
         if row.source != SessionSource::Serato4 {
@@ -217,28 +230,33 @@ pub fn backfill_captured_serato4(
         // db_path to sit under the configured root, which the live source
         // guarantees. Any error (source gone, session pruned, corrupt row) leaves
         // the existing row untouched.
-        let (mut plays, derived) =
-            match crate::capture::build_serato4(&source.root, &source.db_path, session_id, dates) {
-                Ok(built) => built,
-                // Distinct from every other re-derivation error (Story 3.7 code
-                // review): this session re-derived successfully but the played-flag
-                // filter dropped every row, so it is genuinely different from
-                // "source gone / corrupt row" — worth a signal if it ever fires,
-                // even though the row is left untouched the same way either way.
-                Err(crate::capture::CaptureError::AllPreviews) => {
-                    reporter.report(
-                        "serato4 backfill: session re-derived to zero real plays",
-                        crate::config::AGENT_VERSION,
-                        &format!(
-                            "session_identity={} re-derived with every row now a preview \
+        let (mut plays, derived) = match crate::capture::build_serato4(
+            &source.root,
+            &source.db_path,
+            session_id,
+            dates,
+            &pool,
+        ) {
+            Ok(built) => built,
+            // Distinct from every other re-derivation error (Story 3.7 code
+            // review): this session re-derived successfully but the played-flag
+            // filter dropped every row, so it is genuinely different from
+            // "source gone / corrupt row" — worth a signal if it ever fires,
+            // even though the row is left untouched the same way either way.
+            Err(crate::capture::CaptureError::AllPreviews) => {
+                reporter.report(
+                    "serato4 backfill: session re-derived to zero real plays",
+                    crate::config::AGENT_VERSION,
+                    &format!(
+                        "session_identity={} re-derived with every row now a preview \
                          (Story 3.7 played-flag filter) — left as-is",
-                            row.session_identity
-                        ),
-                    );
-                    continue;
-                }
-                Err(_) => continue,
-            };
+                        row.session_identity
+                    ),
+                );
+                continue;
+            }
+            Err(_) => continue,
+        };
 
         // Story 3.7 carry-forward guard: `library_added_at` coverage depends on
         // which volumes are mounted right now (`date_added`'s module doc), so a
@@ -663,9 +681,14 @@ mod tests {
 
         let identity = crate::capture::serato4_session_identity(42);
         // Store the row with the EXACT data the backfill would derive, then flag it synced.
-        let (plays, derived) =
-            crate::capture::build_serato4(&serato4_dir.0, &db_path, 42, &no_dates())
-                .expect("derive");
+        let (plays, derived) = crate::capture::build_serato4(
+            &serato4_dir.0,
+            &db_path,
+            42,
+            &no_dates(),
+            &crate::stats::segments::CalibrationPool::default(),
+        )
+        .expect("derive");
         let (started_at, ended_at) = crate::capture::session_bounds(&plays);
         crate::store::upsert_captured(
             &store_conn,
@@ -765,9 +788,14 @@ mod tests {
                 1_644_628_114,
             )]));
         let identity = crate::capture::serato4_session_identity(42);
-        let (plays, derived) =
-            crate::capture::build_serato4(&serato4_dir.0, &db_path, 42, &with_dates)
-                .expect("derive with dates");
+        let (plays, derived) = crate::capture::build_serato4(
+            &serato4_dir.0,
+            &db_path,
+            42,
+            &with_dates,
+            &crate::stats::segments::CalibrationPool::default(),
+        )
+        .expect("derive with dates");
         assert_eq!(plays[0].library_added_at, Some(1_644_628_114));
         let (started_at, ended_at) = crate::capture::session_bounds(&plays);
         crate::store::upsert_captured(
@@ -835,9 +863,14 @@ mod tests {
 
         // First derivation with nothing reachable — no date stored.
         let identity = crate::capture::serato4_session_identity(42);
-        let (plays, derived) =
-            crate::capture::build_serato4(&serato4_dir.0, &db_path, 42, &no_dates())
-                .expect("derive without dates");
+        let (plays, derived) = crate::capture::build_serato4(
+            &serato4_dir.0,
+            &db_path,
+            42,
+            &no_dates(),
+            &crate::stats::segments::CalibrationPool::default(),
+        )
+        .expect("derive without dates");
         assert_eq!(plays[0].library_added_at, None);
         let (started_at, ended_at) = crate::capture::session_bounds(&plays);
         crate::store::upsert_captured(

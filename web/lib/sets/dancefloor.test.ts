@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SyncPlay } from "./types";
-import { detectDancefloor, segmentStats } from "./dancefloor";
+import { primaryDancefloorSegment, segmentStats } from "./dancefloor";
+import { fixtureSegments } from "./fixtureSegments";
 import fixture from "./recent-sets.fixture.json";
 
 const sets = fixture as unknown as Array<{
@@ -12,10 +13,9 @@ const sets = fixture as unknown as Array<{
 }>;
 
 const set975 = sets.find((s) => s.external_id === "975")!;
-const soundcheck = sets.find((s) => s.external_id === "17577")!;
 
 // Minimal SyncPlay factory for synthetic timelines. `startSec`/`bpm` are the
-// only fields the detector reads; the rest satisfy the type.
+// only fields the scoping utilities read; the rest satisfy the type.
 function play(startSec: number, bpm: number | null, genre?: string): SyncPlay {
   return {
     position: 0,
@@ -29,51 +29,61 @@ function play(startSec: number, bpm: number | null, genre?: string): SyncPlay {
   };
 }
 
-describe("detectDancefloor (v0)", () => {
-  it("returns null for a sparse set below the detection floor (the soundcheck)", () => {
-    expect(soundcheck.plays.length).toBe(1);
-    expect(detectDancefloor(soundcheck.plays)).toBeNull();
+// v0's detection cases used to live here (`detectDancefloor`: the sparse
+// soundcheck, the untimed set, the warm-up-then-peak cut, the whole-night
+// fallback). Story 5.2 retired that function — detection is ONE algorithm in the
+// agent's Rust stat engine now (D-1/D-24) — so those behaviors are asserted
+// there, in `agent/src-tauri/src/stats/segments.rs`'s own suite, against the
+// same scenarios plus the ones v0 could not express (per-DJ floors, several
+// segments, idle hard-breaks, DST). What remains here is what `web/` still owns:
+// picking one segment to render, and scoping stats to it.
+describe("primaryDancefloorSegment", () => {
+  it("returns null when a set has no segments at all — the whole-set fallback source", () => {
+    expect(primaryDancefloorSegment([])).toBeNull();
+    expect(primaryDancefloorSegment(undefined)).toBeNull();
+    expect(primaryDancefloorSegment(null)).toBeNull();
   });
 
-  it("returns null (whole-set fallback) when no plays are timed", () => {
-    const untimed = [play(0, 128), play(0, 128)].map((p) => ({ ...p, started_at: null }));
-    expect(detectDancefloor(untimed)).toBeNull();
+  it("returns the only segment when a set has exactly one", () => {
+    const only = { start: "2026-06-21T23:00:00.000Z", end: "2026-06-22T00:00:00.000Z" };
+    expect(primaryDancefloorSegment([only])).toEqual(only);
   });
 
-  it("detects a real segment on set 975, bounded within the night and shorter than the whole set", () => {
-    const seg = detectDancefloor(set975.plays);
+  it("takes the LONGEST by elapsed time when a set has several (D-24's interim pick)", () => {
+    const short = { start: "2026-06-21T22:00:00.000Z", end: "2026-06-21T22:20:00.000Z" };
+    const long = { start: "2026-06-22T00:00:00.000Z", end: "2026-06-22T02:00:00.000Z" };
+    // Deliberately out of chronological order: the pick is by duration, and must
+    // not depend on the order PostgREST happened to return the rows in.
+    expect(primaryDancefloorSegment([long, short])).toEqual(long);
+    expect(primaryDancefloorSegment([short, long])).toEqual(long);
+  });
+
+  it("breaks a duration tie on the earlier start, so the choice is total and stable", () => {
+    const earlier = { start: "2026-06-21T22:00:00.000Z", end: "2026-06-21T23:00:00.000Z" };
+    const later = { start: "2026-06-22T01:00:00.000Z", end: "2026-06-22T02:00:00.000Z" };
+    expect(primaryDancefloorSegment([later, earlier])).toEqual(earlier);
+    expect(primaryDancefloorSegment([earlier, later])).toEqual(earlier);
+  });
+});
+
+describe("the fetched segment scopes set 975 to a real cut", () => {
+  it("is a strict subset of the night, bounded inside it", () => {
+    // The segment the Rust detector actually produces for this set, committed at
+    // `segments.fixture.json` and seeded into the local stack — read here
+    // through the same positions→ISO resolution the read seam performs.
+    const seg = primaryDancefloorSegment(fixtureSegments(set975));
     expect(seg).not.toBeNull();
-    // Bounds fall inside the set's own start/end.
     expect(seg!.start >= set975.started_at!).toBe(true);
     expect(seg!.end <= set975.ended_at!).toBe(true);
-    // The scoped set is a strict subset of the full 178 plays (a real cut, not the night).
+
     const scoped = segmentStats(set975.plays, seg);
     expect(scoped.track_count).toBeGreaterThan(0);
     expect(scoped.track_count).toBeLessThan(set975.derived.track_count);
   });
 
-  it("excludes a slow, sparse warm-up and cuts to the busy peak", () => {
-    const plays: SyncPlay[] = [];
-    // Warm-up: 40 min, downtempo, sparse (1 play / 10-min window → below density floor).
-    for (let i = 0; i < 4; i++) plays.push(play(i * 600, 96));
-    // Peak: 40 min, four-to-the-floor, dense (5 plays / 10-min window).
-    const peakStart = 4 * 600;
-    for (let w = 0; w < 4; w++) for (let n = 0; n < 5; n++) plays.push(play(peakStart + w * 600 + n * 110, 128));
-    // Cool-down: sparse again.
-    const coolStart = 8 * 600;
-    for (let i = 0; i < 3; i++) plays.push(play(coolStart + i * 600, 100));
-
-    const seg = detectDancefloor(plays);
-    expect(seg).not.toBeNull();
-    // The segment starts at or after the peak, never in the warm-up.
-    expect(new Date(seg!.start).getTime() / 1000).toBeGreaterThanOrEqual(peakStart);
-  });
-
-  it("falls back to the whole set (null) when a dense run spans essentially the whole night", () => {
-    // Uniformly dense + fast for ~2 hours: every window clears, so the run is the night.
-    const plays: SyncPlay[] = [];
-    for (let i = 0; i < 60; i++) plays.push(play(i * 120, 128));
-    expect(detectDancefloor(plays)).toBeNull();
+  it("renders exactly the whole set when there is no segment (the null fallback path)", () => {
+    const whole = segmentStats(set975.plays, null);
+    expect(whole.track_count).toBe(set975.derived.track_count);
   });
 });
 

@@ -129,13 +129,20 @@ check (source <> 'manual' or confirmed)
 - [x] Domain edge cases — request drops vs. announcement tails. (D-13, D-14)
 - [x] Scope split — passive (this story) vs. active/edit-feedback (deferred). (D-17)
 - [x] `segments.source`/`status` column shape — two columns (`source` + `confirmed`), not a collapsed enum, provenance-after-confirm was the deciding factor. (D-18)
-- [ ] Window size — confirm ~10 min carries over unchanged, or revisit.
-- [ ] Exact percentile value for the floors (illustrative ~60th floated, never locked).
-- [ ] Exact idle definition — zero-play window vs. elapsed-time multiplier of this DJ's typical inter-track gap.
-- [ ] Exact idle-vs-regular bridge tolerance numbers (how short is "short," how long forces a hard break).
-- [ ] Whether the *regular* (non-idle) single-window bridge tolerance stays a v0-style constant or also becomes per-DJ calibrated — not discussed in this session.
-- [ ] Live-recompute vs. materialized per-DJ historical stat pool — ties directly to D-16's storage-ownership question.
-- [ ] `N ≈ 5` sessions — a proposed starting default, not a confirmed number.
+- [x] Window size — confirm ~10 min carries over unchanged, or revisit. *(→ D-22, story file: `WINDOW_SEC = 600`, carried from v0 unchanged; not to be revisited without corpus evidence.)*
+- [x] Exact percentile value for the floors (illustrative ~60th floated, never locked). *(→ D-22, story file: `FLOOR_PERCENTILE = 60` adopted as the starting default, one shared value for all three signals — a lower bound for density/BPM, an upper bound for smoothness.)*
+- [x] Exact idle definition — zero-play window vs. elapsed-time multiplier of this DJ's typical inter-track gap. *(→ D-22, story file: neither — **true inter-play silence** `>= IDLE_LABEL_MIN_SEC = 600`, a plain elapsed-time rule. A per-DJ multiplier was not taken; the label is descriptive only, so it does not need calibrating.)*
+- [x] Exact idle-vs-regular bridge tolerance numbers (how short is "short," how long forces a hard break). *(→ D-22, story file: an ordinary sub-floor gap of ≤ 1 window bridges; any gap whose true silence exceeds `IDLE_HARD_BREAK_SEC = 1200` hard-breaks **regardless of window count**. Expressing the break in real seconds is what makes idle's threshold genuinely shorter than the window-count bridge — a 1-window gap can hide ~30 min of dead air.)*
+- [x] Whether the *regular* (non-idle) single-window bridge tolerance stays a v0-style constant or also becomes per-DJ calibrated — not discussed in this session. *(→ D-22, story file: **stays a global constant** (`GAP_MERGE_WINDOWS = 1`). Explicitly not taken this round; the elapsed-time hard-break above covers the case that motivated the question.)*
+- [x] Live-recompute vs. materialized per-DJ historical stat pool — ties directly to D-16's storage-ownership question. *(→ D-23, story file: **live rollup, no persisted profile** — D-16 honored. The pool is recomputed from the `plays_json` the local store already holds; a durable/versioned profile stays a future concern. The pool is also **chronological** (predecessor-only), which is what makes a re-derivation byte-stable.)*
+- [x] `N ≈ 5` sessions — a proposed starting default, not a confirmed number. *(→ D-22, story file: realized as the half-weight point of a smooth shrinkage, `w = n/(n + 5)` — session 1 → 17% personal, session 5 → 50%, session 20 → 80%, no cliff anywhere.)*
 - [x] Fold a ⚑ pointer into `epics.md` §Story 5.2 (done alongside this doc).
 - [x] Write the dev-ready story file (`bmad-create-story`) when 5.2 goes to build. *(Done 2026-08-10 — `5-2-segment-detection-algorithm.md`; this doc renamed to `-design.md` so the story file could take the canonical story-key path. The story's D-19..D-26 close this section's remaining opens; tick the boxes above when the dev branch lands them.)*
-- [x] Commit these docs on a `story/5-2-segment-detection-algorithm` branch. *(Done 2026-08-10, alongside the story file.)*
+- [x] Commit these docs on a `story/5-2-segment-detection-algorithm` branch. *(Done 2026-08-10, alongside the story file; the implementation landed on the same branch — every box above is now ticked against shipped code in `agent/src-tauri/src/stats/segments.rs`, not against a plan.)*
+
+### Two things the build changed about this doc's own text
+
+Recorded here rather than silently diverging:
+
+- **§3f's smoothness metric.** D-6 left "median vs. a percentile-of-deltas" as a dev-time choice within its intent; it shipped as a **window-level median absolute consecutive-pair BPM delta**, with a run confirmed on the median of its windows' values. AD-17's original "fraction of pairs with a small BPM delta" wording was not taken, because "small" would itself have been a hardcoded global constant — the exact thing AR-13 forbids for the other two signals. AD-17 carries a dated refinement note saying so.
+- **§4's DST bullet says "epoch-ms".** The agent works in **epoch seconds** end to end (`EnrichedPlay.start_time` is a `u32` of seconds, and the Consistency table's dates rule is epoch seconds on the wire); the ms was carried over from 3.8's web-side energy arc. The property the bullet asserts is unaffected — a UTC-based monotonic timeline — and AC-5 is tested against it.

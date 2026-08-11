@@ -3,7 +3,7 @@
 // its rows, expanded cards, and live search need — never the full 178-play
 // wire records. Pure + deterministic aside from locale/timezone formatting
 // (a gig's date/clock are the DJ's local ones, same rule as format.ts).
-import { detectDancefloor, segmentStats } from "./dancefloor";
+import { primaryDancefloorSegment, segmentStats } from "./dancefloor";
 import {
   formatBpm,
   formatClock,
@@ -75,8 +75,15 @@ function setTracklist(plays: SyncPlay[]): SetTrack[] {
 
 /**
  * The product-wide "this set isn't a real gig" rule (spec §3g): a rehearsal-
- * grade confidence signal, OR too few tracks for dancefloor detection to have
- * anything to work with (`HERO_MIN_TRACKS` === `MIN_PLAYS_FOR_DETECTION`).
+ * grade confidence signal, OR too few tracks to be worth narrating
+ * (`HERO_MIN_TRACKS`).
+ *
+ * That second clause used to be phrased as "too few tracks for dancefloor
+ * detection to have anything to work with (`HERO_MIN_TRACKS` ===
+ * `MIN_PLAYS_FOR_DETECTION`)". Story 5.2 moved detection to the agent and cut
+ * the alias, so the identity no longer holds by construction — `HERO_MIN_TRACKS`
+ * is its own literal now (see `hero.ts`). The threshold's value is unchanged;
+ * only the justification is, and it is a display bar, not a detection one.
  *
  * Exported so the set list and the most-played card share ONE definition.
  * They used to diverge: the list hid these sets while the card beside it
@@ -103,7 +110,11 @@ export function isLowConfidenceSet(set: SetRecord): boolean {
 
 export function buildSetRows(sets: SetRecord[]): SetRowModel[] {
   return sets.map((set) => {
-    const segment = detectDancefloor(set.plays);
+    // Story 5.2: the cut is FETCHED (`set.segments`, from the `segments` rows),
+    // not recomputed here. A set with no segments yields `null` and every
+    // consumer below falls back to whole-set stats — the same code path v0's
+    // `null` took, just with a new source.
+    const segment = primaryDancefloorSegment(set.segments);
     const floor = segmentStats(set.plays, segment);
     const bpm = set.derived.bpm_distribution;
     const dateLabel = formatDayDate(set.started_at);

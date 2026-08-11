@@ -131,7 +131,42 @@
           "type": "array",
           "items": { "$ref": "#/$defs/energy_arc_point" }
         },
-        "confidence": { "$ref": "#/$defs/confidence" }
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "suggested_segments": {
+          "description": "Dancefloor segments the agent's detector suggested (Story 5.2, AD-17/FR-28). Zero, one, or several -- never assume exactly one. Added post-freeze, optional per AD-15. Addressed by 1-based play position, never by cloud play id: sync_set mints those inside its own transaction and resolves these after its own plays insert (D-20). The web must never read this field -- the segments rows are the sole read model (D-19).",
+          "type": "array",
+          "items": { "$ref": "#/$defs/suggested_segment" }
+        },
+        "idle_gaps": {
+          "description": "Labeled stretches of silence (Story 5.2, D-10). Descriptive only, never a gate, and deliberately not segments rows (no 'idle' value in the type enum, D-26). Added post-freeze, optional per AD-15.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/idle_gap" }
+        }
+      }
+    },
+    "suggested_segment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "first_position", "last_position"],
+      "properties": {
+        "type": {
+          "description": "Always 'dancefloor' from this detector (D-26); the other SEGMENT_TYPE values are human labels Story 5.3 owns.",
+          "enum": ["dancefloor", "dinner", "performance", "custom"]
+        },
+        "first_position": { "type": "integer", "minimum": 1 },
+        "last_position": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "idle_gap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": {
+          "description": "Unix epoch SECONDS, not ISO -- derived_json crosses this seam verbatim, so epoch is this wire's real convention (see SyncSetDerived.idle_gaps in shared/src/index.ts for the full note).",
+          "type": "integer"
+        },
+        "end": { "type": "integer" }
       }
     },
     "most_played_track": {

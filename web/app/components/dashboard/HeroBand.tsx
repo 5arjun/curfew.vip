@@ -1,4 +1,4 @@
-import { detectDancefloor, segmentStats } from "@/lib/sets/dancefloor";
+import { primaryDancefloorSegment, segmentStats } from "@/lib/sets/dancefloor";
 import { arcTextEquivalent } from "@/lib/sets/energyArc";
 import { formatBpm, formatDayDate, formatTimeRange } from "@/lib/sets/format";
 import { heroArcGeometry } from "@/lib/sets/heroArc";
@@ -14,7 +14,10 @@ import { MetalButton } from "@/app/components/dashboard/MetalButton";
 const VIEW = { width: 1000, height: 300, padding: 18 };
 
 export function HeroBand({ set }: { set: SetRecord }) {
-  const segment = detectDancefloor(set.plays);
+  // Story 5.2: the dancefloor window is fetched off the set row (`segments`
+  // rows, detected agent-side against this DJ's own floors), not recomputed
+  // here. Several → the longest, as the interim pick (D-24).
+  const segment = primaryDancefloorSegment(set.segments);
   const floor = segmentStats(set.plays, segment);
   // Item 5 (Arjun: "dancefloor only"): the hero plots ONLY the detected
   // dancefloor window — one continuous smooth chrome line — so the warm-up /

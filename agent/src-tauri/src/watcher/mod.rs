@@ -742,7 +742,13 @@ pub(crate) fn capture_and_store_serato4(
 ) -> bool {
     let identity = crate::capture::serato4_session_identity(session_id);
     let raw_ref = crate::capture::serato4_raw_ref(db_path, session_id);
-    match crate::capture::build_serato4(root, db_path, session_id, dates) {
+    // Story 5.2: this session's detection floors come from the DJ's own earlier
+    // sessions (D-23), so the pool is loaded here — at the store edge — and
+    // handed to the pure builder. One load per capture is the right cost at this
+    // call site (a capture is a once-per-set event); the ~491-row backfill sweep
+    // loads it once for the whole pass instead, see `backfill_captured_serato4`.
+    let pool = crate::capture::load_calibration_pool(store_conn);
+    match crate::capture::build_serato4(root, db_path, session_id, dates, &pool) {
         Ok((plays, derived)) => {
             let (started_at, ended_at) = crate::capture::session_bounds(&plays);
             if let Err(_e) = crate::store::upsert_captured(
@@ -956,7 +962,9 @@ pub(crate) fn capture_and_store_legacy(
     reporter: &dyn crate::error_reporting::ErrorReporter,
 ) -> bool {
     let raw_ref = session_path.to_string_lossy().into_owned();
-    match crate::capture::build_legacy(library_root, session_path) {
+    // Story 5.2 (D-23) — same per-capture pool load as the serato4 sibling.
+    let pool = crate::capture::load_calibration_pool(store_conn);
+    match crate::capture::build_legacy(library_root, session_path, &pool) {
         Ok((plays, derived)) => {
             let (started_at, ended_at) = crate::capture::session_bounds(&plays);
             if let Err(_e) = crate::store::upsert_captured(

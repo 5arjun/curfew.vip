@@ -817,6 +817,8 @@ mod tests {
                 track_count: 1,
                 long_gap_count: 0,
             },
+            suggested_segments: vec![],
+            idle_gaps: vec![],
         }
     }
 

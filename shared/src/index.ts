@@ -44,10 +44,24 @@ export const VISIBILITY = ["public", "friends_only", "private"] as const;
 export type Visibility = (typeof VISIBILITY)[number];
 
 /**
- * Kind of a set segment. Cloud-side only: this enum backs the future
- * cloud-side `segments` table (Epic 5). It does NOT appear in `SyncPayload` —
- * segment detection is Epic 5's job and segment edits are a web-authored
- * overlay (AD-6/AD-16), never written by the agent. See Story 1.10 Task 1.
+ * Kind of a set segment. Cloud-side: this enum backs the `segments` table
+ * (Story 5.1).
+ *
+ * **Amended by Story 5.2 (D-19 / AD-23).** The original text here said segments
+ * "do NOT appear in `SyncPayload` — segment detection is Epic 5's job and
+ * segment edits are a web-authored overlay (AD-6/AD-16), never written by the
+ * agent." Half of that still holds and half no longer does:
+ *
+ * - Segment **edits** (`confirmed = true`, and `source = 'manual'` rows) remain
+ *   web-authored overlay, never written by any sync path. Unchanged.
+ * - Segment **detection** runs agent-side in the Rust stat engine (D-2), exactly
+ *   where AD-17 always said it would, and its output rides
+ *   {@link SyncSetDerived.suggested_segments} on the per-set payload. `sync_set`
+ *   materializes those as `('suggested', false)` rows.
+ *
+ * So this enum's values now *do* reach the wire — as the `type` on a suggestion,
+ * which is always `"dancefloor"` (D-26; the other three are human labels Story
+ * 5.3 owns). See Story 1.10 Task 1 for the original freeze.
  */
 export const SEGMENT_TYPE = ["dancefloor", "dinner", "performance", "custom"] as const;
 export type SegmentType = (typeof SEGMENT_TYPE)[number];
@@ -203,6 +217,52 @@ export interface SyncSetDerived {
    * `confidence` -> `value` to avoid a `derived.confidence.confidence` stutter.
    */
   confidence: { value: number; track_count: number; long_gap_count: number };
+  /**
+   * Dancefloor segments the agent's detector suggested for this set, from
+   * `stats::segments::detect` (Story 5.2, AD-17/AR-13/FR-28). Zero, one, or
+   * several — **never assume exactly one** (FR-28, D-15).
+   *
+   * Added post-freeze (Story 5.2), optional per AD-15's additive-only rule:
+   * absent on every frozen-baseline payload and on any pre-5.2 agent's.
+   *
+   * **Positions, not play ids.** The agent can never know a cloud `plays.id` —
+   * `sync_set` mints them inside its own transaction, and re-mints them on every
+   * re-sync — so a suggestion addresses the same payload's `plays[]` by 1-based
+   * `position` and the RPC resolves both ends after its own plays insert (D-20).
+   * An entry that does not resolve (`first > last`, out of range, non-integer) is
+   * warned about and skipped by the RPC; it never fails the set's content sync.
+   *
+   * **The web must NEVER read this field.** The `segments` rows are the sole read
+   * model (D-19's drift guard). This copy is inert provenance: once Story 5.3
+   * lets a DJ confirm or drag a boundary, the rows diverge from what the agent
+   * originally suggested and this blob goes stale by design. Reading it would
+   * render a suggestion the DJ has already overruled.
+   */
+  suggested_segments?: Array<{
+    type: SegmentType;
+    first_position: number;
+    last_position: number;
+  }>;
+  /**
+   * Stretches of the night with no plays, labeled (Story 5.2, D-10). Descriptive
+   * only — nothing gates on them, and they are deliberately **not** `segments`
+   * rows: there is no `idle` value in {@link SEGMENT_TYPE}, on purpose (D-26).
+   * Carried for future UI ("idle 11:45–12:05"); no consumer reads them yet.
+   *
+   * Added post-freeze (Story 5.2), optional per AD-15.
+   *
+   * **Unix epoch seconds, not ISO strings.** This is deliberate and it is worth
+   * knowing why, because the prose elsewhere in this file would suggest
+   * otherwise. `agent/src-tauri/src/sync.rs` sends `derived_json` to `sync_set`
+   * **verbatim**, so `energy_arc[].started_at` and `plays[].started_at` already
+   * cross this seam as epoch integers today (which is why `sync_set` reads plays
+   * with `to_timestamp(...)`); the ISO wording on those fields describes the
+   * read model, not the wire. The Consistency Conventions table's rule is the
+   * binding one — RPC arguments stay epoch, ISO only on read-model render
+   * strings — and the agent has no date formatter to produce ISO with. Matching
+   * the wire's real convention here rather than its documentation.
+   */
+  idle_gaps?: Array<{ start: number; end: number }>;
 }
 
 /** The derived, per-set payload the agent sends and the cloud ingests. Frozen (Story 1.10, AD-15). */

@@ -29,17 +29,25 @@
 //! - **Never guessed** (AD-11). A field absent on the input stays absent in the
 //!   output; nothing here fabricates a track identity, a genre, or a key.
 //!
-//! What this filter deliberately does *not* do: segment detection (AD-17/FR-28 —
-//! Epic 5's job against this module later, even though AD-17 already names this
-//! module as where it will eventually live); the FR-27 live/practice confidence
+//! What this filter deliberately does *not* do: the FR-27 live/practice confidence
 //! signal (Story 1.8, the very next story — a session-level classification, not a
 //! per-set stat, so no confidence field is added to any type here); persistence (no
 //! local store yet — Epic 2 Story 2.8; no `shared/` sync-contract field yet — Story
 //! 1.10). This module's job ends at producing typed in-memory stat values from a
 //! `Vec<EnrichedPlay>`.
+//!
+//! Segment detection (AD-17/FR-28) used to be on that list as "Epic 5's job against
+//! this module later". **Story 5.2 is that story** — it lives in [`segments`] now,
+//! as AD-17 always said it would, and is the one sub-concern here that is not purely
+//! per-set: its floors are percentiles over the DJ's *other* sessions, so
+//! [`crate::capture`] loads that pool at the edge and hands it in. The functions
+//! themselves stay as pure and deterministic as everything else in this module.
 
 /// Camelot-wheel key parsing and harmonic-mixing compatibility (Task 3).
 pub mod camelot;
+/// Per-DJ-calibrated dancefloor segment detection (Story 5.2, AD-17). See
+/// [`segments`].
+pub mod segments;
 
 use crate::genre::{self, NormalizedGenre};
 use crate::joiner::JoinedMetadata;

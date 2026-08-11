@@ -3,7 +3,8 @@
 // derived.camelot_mixing_stats on the real fixture (set 975).
 import { describe, expect, it } from "vitest";
 import fixture from "./recent-sets.fixture.json";
-import { detectDancefloor } from "./dancefloor";
+import { primaryDancefloorSegment } from "./dancefloor";
+import { fixtureSegments } from "./fixtureSegments";
 import type { SetRecord } from "./types";
 import {
   arcPeakPosition,
@@ -94,8 +95,8 @@ describe("scopedPlays", () => {
     expect(scopedPlays(plays, null, "dancefloor")).toHaveLength(4);
   });
 
-  it("the fixture's detected dancefloor on 975 scopes to a real subset", () => {
-    const segment = detectDancefloor(set975.plays);
+  it("the fixture's FETCHED dancefloor segment on 975 scopes to a real subset", () => {
+    const segment = primaryDancefloorSegment(fixtureSegments(set975));
     expect(segment).not.toBeNull();
     const scoped = scopedPlays(set975.plays, segment, "dancefloor");
     expect(scoped.length).toBeGreaterThan(0);
@@ -346,7 +347,7 @@ describe("arcPeakPosition (AC-20, 3.8 D-14 moving time-window)", () => {
   });
 
   it("is deterministic on the real fixture and lands inside the scope", () => {
-    const segment = detectDancefloor(set975.plays);
+    const segment = primaryDancefloorSegment(fixtureSegments(set975));
     const scoped = scopedPlays(set975.plays, segment, "dancefloor");
     const peak = arcPeakPosition(scoped);
     expect(peak).not.toBeNull();
@@ -358,7 +359,7 @@ describe("arcPeakPosition (AC-20, 3.8 D-14 moving time-window)", () => {
     // Both consumers read frame.peakPosition = arcPeakPosition(scopedPlays)
     // — one function, one value. This pins the shared value's stability per
     // scope so neither consumer can drift without failing here.
-    const segment = detectDancefloor(set975.plays);
+    const segment = primaryDancefloorSegment(fixtureSegments(set975));
     for (const scope of ["dancefloor", "whole"] as const) {
       const scoped = scopedPlays(set975.plays, segment, scope);
       const shared = arcPeakPosition(scoped);
