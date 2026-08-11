@@ -1,5 +1,27 @@
 # generated: 2026-07-21
-# last_updated: 2026-08-11 (5-4-segment-scoped-stats: backlog -> ready-for-dev)
+# last_updated: 2026-08-11 (5-4-segment-scoped-stats: ready-for-dev -> review)
+# 2026-08-11: story 5-4 dev-story session (segment-scoped stats): all 5 tasks
+# landed. Task 1: SetDetail.tsx's `primaryDancefloorSegment` pick replaced with
+# DJ-selectable state (`resolveViewSegment`, new pure fn in setDetail.ts) that
+# defaults to index 0 -- byte-identical to the old pick for 0/1-segment sets --
+# and falls back the same way if a selected segment gets edited away. Left
+# `editor`/`editor.activeId` untouched per the story's explicit instruction.
+# Task 2: new `SegmentViewSelector.tsx`, independent of Story 5.3's
+# `SegmentSelector` (editing-target), reusing its chip markup only -- shipped
+# as its own visually distinct control, not merged, per Dev Notes. Task 3:
+# `floorSegmentCount`/`floorDisclosureLabel` added to listModel.ts, wired into
+# SetListPanel.tsx (row, sheet header, sheet stats) and HeroBand.tsx.
+# rightColumn.ts deliberately left untouched -- it aggregates across many sets
+# with no single per-set stat to disclose beside (documented in the
+# deferred-work.md closure note, not silently dropped). Task 4: deferred-work.md
+# line-759 entry closed. Gate: lint/typecheck/build/842 tests all green.
+# Browser pass at 1440 only -- picker, cross-scope recompute, view/edit
+# independence, and all three dashboard disclosures directly verified live,
+# zero console errors; 375px live pass blocked by a compounding tooling
+# failure (Chrome's real window floor ~500px, Playwright locked by a
+# concurrent session, then the extension itself erroring) -- Arjun opted to
+# accept CSS-based reasoning (flex-wrap/no-fixed-width, same as existing
+# SegmentSelector/dz-row-meta) in its place rather than block. -> review
 # 2026-08-11: story 5-3 CODE REVIEW (bmad-code-review). review -> in-progress.
 # Adversarial + edge-case + acceptance-auditor layers run in parallel against
 # the full diff, findings verified by direct code read before triage. 2
@@ -1229,7 +1251,7 @@ development_status:
   # types. Refinement note added to epics.md Story 5.4. Read-only/web-only:
   # depends on Story 5.3 Task 1's read-model extension (already landed) but
   # not on 5.3's remaining write-path/editor tasks.
-  5-4-segment-scoped-stats: ready-for-dev
+  5-4-segment-scoped-stats: review
   5-5-layer-2-enrichment-form: backlog
   5-6-enrichment-driven-comparisons: backlog
   5-7-opt-in-location-venue-suggestion: backlog

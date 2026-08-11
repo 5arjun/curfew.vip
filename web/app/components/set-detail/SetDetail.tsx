@@ -1,8 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { primaryDancefloorSegment } from "@/lib/sets/dancefloor";
-import { arcPeakPosition, newTracks, scopedPlays, type NewTracksWindow, type Scope } from "@/lib/sets/setDetail";
+import { dancefloorSegments } from "@/lib/sets/dancefloor";
+import {
+  arcPeakPosition,
+  newTracks,
+  resolveViewSegment,
+  scopedPlays,
+  type NewTracksWindow,
+  type Scope,
+} from "@/lib/sets/setDetail";
 import type { SetRecord } from "@/lib/sets/types";
 import { SilkBackdrop } from "@/app/components/dashboard/SilkBackdrop";
 import type { Focus, OverlayKind, ScopeFrame } from "./model";
@@ -11,6 +18,7 @@ import { DetailArc } from "./DetailArc";
 import { StatsColumn } from "./StatsColumn";
 import { Tracklist } from "./Tracklist";
 import { SegmentSelector } from "./SegmentSelector";
+import { SegmentViewSelector } from "./SegmentViewSelector";
 import { useSegmentEditor } from "./useSegmentEditor";
 
 // Set Detail shell (Story 3.7) — owns the three pieces of view state the whole
@@ -27,10 +35,21 @@ const INITIAL_ROWS = 50;
 export function SetDetail({ set }: { set: SetRecord }) {
   // The dancefloor cut arrives ON the set row (Story 5.2) — detected agent-side
   // against this DJ's own calibrated floors, stored as `segments` rows, fetched
-  // by the read seam. Nothing is computed here any more; when a set carries
-  // several segments the longest is the interim pick (D-24), and `null` still
-  // means "no dancefloor", which the scope toggle below already handles.
-  const segment = useMemo(() => primaryDancefloorSegment(set.segments), [set.segments]);
+  // by the read seam. `null` still means "no dancefloor", which the scope
+  // toggle below already handles.
+  const segments = useMemo(() => dancefloorSegments(set.segments), [set.segments]);
+
+  // Story 5.4: which dancefloor the DJ is VIEWING, independent of `editor`'s
+  // editing-target selection below (model.ts's `activeSegmentId` doc comment
+  // names this split explicitly). `null` means "no explicit pick yet", which
+  // resolves to `segments[0]` — the same longest-first pick
+  // `primaryDancefloorSegment` used to hand back, so a 0/1-segment set (and a
+  // freshly opened 2+-segment one) renders byte-identical to before.
+  const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
+  const segment = useMemo(
+    () => resolveViewSegment(segments, selectedSegmentId),
+    [segments, selectedSegmentId],
+  );
 
   // A set whose plays carry no cloud id cannot be edited: there is no row for a
   // boundary to point at. True of fixture-backed data by construction, and
@@ -160,6 +179,14 @@ export function SetDetail({ set }: { set: SetRecord }) {
     setFocusState(null);
   }, []);
 
+  // Same precedent, for the same reason (Task 1.2): switching which dancefloor
+  // is being VIEWED swaps the frame just as switching dancefloor/whole does, so
+  // a focus computed under the old segment clears rather than mixing two frames.
+  const selectViewSegment = useCallback((id: string) => {
+    setSelectedSegmentId(id);
+    setFocusState(null);
+  }, []);
+
   return (
     <main className="sd" data-scope={frame.scope}>
       {/* Same Silk ground as the dashboard (post-review parity ruling). */}
@@ -173,6 +200,15 @@ export function SetDetail({ set }: { set: SetRecord }) {
 
       <div className="sd-body">
         <div className="sd-spine" ref={listRef}>
+          {/* Story 5.4: which dancefloor the stats are SCOPED to — independent of,
+              and rendered alongside, the editing-target selector below so both
+              are visible together (Dev Notes: a later merge call is Arjun's,
+              not preempted here). */}
+          <SegmentViewSelector
+            segments={segments}
+            selectedId={segment?.id ?? null}
+            onSelect={selectViewSegment}
+          />
           {/* D-30: the count of real dancefloors is never hidden, and which one
               an edit is aimed at is always stated. Above the tracklist because
               the tracklist is the editing surface it governs. */}

@@ -3,7 +3,7 @@
 // no test file at all, which is how the swap from a computed cut to a fetched
 // one could have changed every card's numbers without anything failing.
 import { describe, expect, it } from "vitest";
-import { buildSetRows } from "./listModel";
+import { buildSetRows, floorDisclosureLabel } from "./listModel";
 import { segmentStats } from "./dancefloor";
 import type { DancefloorSegment } from "./dancefloor";
 import type { SetRecord, SyncPlay } from "./types";
@@ -103,7 +103,7 @@ describe("buildSetRows reads the FETCHED segment (Story 5.2, D-24)", () => {
     expect(row.genreChips).toEqual(["Techno"]);
   });
 
-  it("takes the longest of several segments as the card's one dancefloor (interim, D-24)", () => {
+  it("takes the longest of several segments as the card's one dancefloor stat (D-24)", () => {
     const [row] = buildSetRows([
       set([
         { start: at(0), end: at(20) },
@@ -111,10 +111,45 @@ describe("buildSetRows reads the FETCHED segment (Story 5.2, D-24)", () => {
       ]),
     ]);
 
-    // The 50-minute Techno run wins over the 20-minute House one. This is a
-    // rendering pick until Story 5.4 ships a segment picker, not a claim that
-    // the longest floor is the important one.
+    // The 50-minute Techno run wins over the 20-minute House one. The single
+    // floorCount/genreChips stat still makes this pick (Set Detail's picker,
+    // not the card, is where a DJ chooses a different one) — but
+    // floorSegmentCount (below) is what stops that pick from being silent.
     expect(row.floorCount).toBe(6);
     expect(row.genreChips).toEqual(["Techno"]);
+  });
+});
+
+describe("floorDisclosureLabel (Story 5.4, AC #4)", () => {
+  it("says nothing at 0 or 1 segments — no disclosure owed for the common case", () => {
+    expect(floorDisclosureLabel(0)).toBeNull();
+    expect(floorDisclosureLabel(1)).toBeNull();
+  });
+
+  it("discloses the rest, correctly pluralized", () => {
+    expect(floorDisclosureLabel(2)).toBe("+1 more floor");
+    expect(floorDisclosureLabel(3)).toBe("+2 more floors");
+  });
+});
+
+describe("floorSegmentCount (Story 5.4, AC #4)", () => {
+  it("is 0 for a set with no dancefloor segments", () => {
+    const [row] = buildSetRows([set([])]);
+    expect(row.floorSegmentCount).toBe(0);
+  });
+
+  it("is 1 for a set with exactly one dancefloor segment — the common case, no disclosure owed", () => {
+    const [row] = buildSetRows([set([{ start: at(60), end: at(110) }])]);
+    expect(row.floorSegmentCount).toBe(1);
+  });
+
+  it("counts every real segment on a several-dancefloor set, not just the one the card picks", () => {
+    const [row] = buildSetRows([
+      set([
+        { start: at(0), end: at(20) },
+        { start: at(60), end: at(110) },
+      ]),
+    ]);
+    expect(row.floorSegmentCount).toBe(2);
   });
 });

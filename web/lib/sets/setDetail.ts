@@ -6,11 +6,27 @@
 // can never mix two frames. `derived` stays the whole-set default/cache; the
 // client recompute must agree with it on the whole set (cross-checked in
 // setDetail.test.ts against fixture set 975).
-import type { SegmentBounds } from "./dancefloor";
+import type { DancefloorSegment, SegmentBounds } from "./dancefloor";
 import type { SyncPlay } from "./types";
 
 /** The D1 scope: the detected dancefloor window, or the whole night. */
 export type Scope = "dancefloor" | "whole";
+
+/**
+ * The DJ-selectable dancefloor (Story 5.4, AC #2): `segments` is already
+ * ranked longest-first (`dancefloorSegments`), so `selectedId === null` — the
+ * initial state, and the byte-identical fallback for a 0/1-segment set —
+ * resolves to the same segment `primaryDancefloorSegment` used to hand back.
+ * A `selectedId` that no longer matches any segment (the DJ's pick got
+ * edited away) falls back the same way, rather than resolving to nothing.
+ */
+export function resolveViewSegment(
+  segments: DancefloorSegment[],
+  selectedId: string | null,
+): DancefloorSegment | null {
+  if (segments.length === 0) return null;
+  return segments.find((s) => s.id === selectedId) ?? segments[0];
+}
 
 const EPOCH = (iso: string) => new Date(iso).getTime();
 

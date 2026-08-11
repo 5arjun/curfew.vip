@@ -749,6 +749,13 @@
   line-height: 1.5;
 }
 
+/* Story 5.4, AC #4: "+2 more floors" — never silently pick the longest
+   dancefloor and stay quiet about the rest. Inherits its parent's (already
+   muted) color; this exists as its own hook rather than to change the look. */
+.dz-floor-disclosure {
+  text-wrap: nowrap;
+}
+
 .dz-list-hidden-toggle {
   background: none;
   border: none;

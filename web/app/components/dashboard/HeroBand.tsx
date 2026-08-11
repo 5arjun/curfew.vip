@@ -1,7 +1,8 @@
-import { primaryDancefloorSegment, segmentStats } from "@/lib/sets/dancefloor";
+import { dancefloorSegments, primaryDancefloorSegment, segmentStats } from "@/lib/sets/dancefloor";
 import { arcTextEquivalent } from "@/lib/sets/energyArc";
 import { formatBpm, formatDayDate, formatTimeRange } from "@/lib/sets/format";
 import { heroArcGeometry } from "@/lib/sets/heroArc";
+import { floorDisclosureLabel } from "@/lib/sets/listModel";
 import type { SetRecord } from "@/lib/sets/types";
 import { MetalButton } from "@/app/components/dashboard/MetalButton";
 
@@ -19,6 +20,10 @@ export function HeroBand({ set }: { set: SetRecord }) {
   // here. Several → the longest, as the interim pick (D-24).
   const segment = primaryDancefloorSegment(set.segments);
   const floor = segmentStats(set.plays, segment);
+  // Story 5.4, AC #4: the hero band used to silently pick the longest floor
+  // and stay quiet about the rest — this discloses when there's more.
+  const floorSegmentCount = dancefloorSegments(set.segments).length;
+  const floorDisclosure = floorDisclosureLabel(floorSegmentCount);
   // Item 5 (Arjun: "dancefloor only"): the hero plots ONLY the detected
   // dancefloor window — one continuous smooth chrome line — so the warm-up /
   // wind-down playback gaps (15–35 min pauses) can't manufacture false slopes
@@ -37,7 +42,10 @@ export function HeroBand({ set }: { set: SetRecord }) {
   const bpm = set.derived.bpm_distribution;
 
   const stats: Array<{ label: string; value: string }> = [
-    { label: "Dancefloor tracks", value: `${floor.track_count}` },
+    {
+      label: floorDisclosure ? `Dancefloor tracks · ${floorDisclosure}` : "Dancefloor tracks",
+      value: `${floor.track_count}`,
+    },
     { label: "Median BPM", value: formatBpm(bpm.count > 0 ? bpm.median : null) },
     { label: "Average BPM", value: formatBpm(bpm.count > 0 ? bpm.mean : null) },
   ];

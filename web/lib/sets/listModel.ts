@@ -3,7 +3,7 @@
 // its rows, expanded cards, and live search need — never the full 178-play
 // wire records. Pure + deterministic aside from locale/timezone formatting
 // (a gig's date/clock are the DJ's local ones, same rule as format.ts).
-import { primaryDancefloorSegment, segmentStats } from "./dancefloor";
+import { dancefloorSegments, primaryDancefloorSegment, segmentStats } from "./dancefloor";
 import {
   formatBpm,
   formatClock,
@@ -32,6 +32,15 @@ export interface SetRowModel {
   floorCount: number;
   /** "2h 12m" — dancefloor-scoped duration (AC-7), paired with floorCount. */
   durationLabel: string;
+  /**
+   * How many real dancefloor segments this set carries (Story 5.4, AC #4).
+   * `floorCount`/`durationLabel` above still describe only the longest
+   * (`primaryDancefloorSegment`) — this is what lets the row DISCLOSE that
+   * more exist rather than silently staying quiet about them, closing
+   * `deferred-work.md`'s line-759 gap. `1` for the common single-floor case,
+   * `0` when the set carries no dancefloor at all.
+   */
+  floorSegmentCount: number;
   avgBpm: string;
   medianBpm: string;
   /** 2–3 top genre chips (AC-1/AC-5), dancefloor-scoped like floorCount/durationLabel. */
@@ -52,6 +61,19 @@ export interface SetRowModel {
   lengthSec: number;
   /** Lowercased searchable surface: date labels + EVERY play's title/artist (D12). */
   haystack: string;
+}
+
+/**
+ * "+2 more floors" — the quiet disclosure text for a `floorSegmentCount`
+ * (Story 5.4, AC #4), shared so the set-list row and the hero band can't
+ * word the same fact two different ways. `null` at 0 or 1 segments: the
+ * disclosure exists to say "there's more here than the one stat shows," and
+ * at 0/1 there isn't.
+ */
+export function floorDisclosureLabel(floorSegmentCount: number): string | null {
+  if (floorSegmentCount <= 1) return null;
+  const extra = floorSegmentCount - 1;
+  return `+${extra} more floor${extra === 1 ? "" : "s"}`;
 }
 
 /** Local-date key for calendar linking; "" when the set has no timestamp. */
@@ -116,6 +138,7 @@ export function buildSetRows(sets: SetRecord[]): SetRowModel[] {
     // `null` took, just with a new source.
     const segment = primaryDancefloorSegment(set.segments);
     const floor = segmentStats(set.plays, segment);
+    const floorSegmentCount = dancefloorSegments(set.segments).length;
     const bpm = set.derived.bpm_distribution;
     const dateLabel = formatDayDate(set.started_at);
     const startedAtMs = set.started_at ? new Date(set.started_at).getTime() : 0;
@@ -143,6 +166,7 @@ export function buildSetRows(sets: SetRecord[]): SetRowModel[] {
       timeRange: formatTimeRange(set.started_at, set.ended_at),
       floorCount: floor.track_count,
       durationLabel: formatDuration(floor.set_length_sec),
+      floorSegmentCount,
       avgBpm: formatBpm(bpm.count > 0 ? bpm.mean : null),
       medianBpm: formatBpm(bpm.count > 0 ? bpm.median : null),
       genreChips: topGenres(floor.genre_breakdown),
