@@ -23,7 +23,30 @@ import type { DancefloorSegment } from "./dancefloor";
  * from `sessions.session_identity` through this field instead. Optional so the
  * fixture-shaped test inputs still satisfy the type.
  */
-export type SetRecord = SyncPayload["set"] & {
+/**
+ * One play as the dashboard consumes it — the frozen wire `SyncPlay`, plus the
+ * cloud row's own uuid (Story 5.3).
+ *
+ * **Optional, and that is not defensiveness.** `id` exists on every play the
+ * Supabase read path returns, but a play reconstructed from
+ * `recent-sets.fixture.json` genuinely has none: those sets were never inserted
+ * into a database, so there is no row to have an id. Modelling it as required
+ * would force the fixture-backed tests to mint uuids that stand for nothing.
+ * The third optional additive augmentation on this type, for the same reason as
+ * the two below it — the frozen `@curfew/shared` contract stays untouched,
+ * because this is a cloud row's identity, not a wire field.
+ *
+ * A caller that needs to WRITE a segment boundary must therefore check for it
+ * (see `web/lib/sets/segmentWrites.ts`): absent means this play cannot be a
+ * boundary, which for fixture data is the literal truth, not a degraded state.
+ * See `PlayRow.id` in `./index` for why it must never be treated as stable
+ * across re-syncs.
+ */
+export type SetPlay = SyncPlay & { id?: string };
+
+export type SetRecord = Omit<SyncPayload["set"], "plays"> & {
+  /** This set's plays, each carrying its cloud row id where one exists. See {@link SetPlay}. */
+  plays: SetPlay[];
   /** Raw `sessions.session_identity` (e.g. `serato4:975`), for display only. `null`/absent when unknown — render from `external_id` then. See `formatSessionLabel`. */
   session_label?: string | null;
   /**

@@ -6,7 +6,7 @@
 // can never mix two frames. `derived` stays the whole-set default/cache; the
 // client recompute must agree with it on the whole set (cross-checked in
 // setDetail.test.ts against fixture set 975).
-import type { DancefloorSegment } from "./dancefloor";
+import type { SegmentBounds } from "./dancefloor";
 import type { SyncPlay } from "./types";
 
 /** The D1 scope: the detected dancefloor window, or the whole night. */
@@ -21,7 +21,7 @@ const EPOCH = (iso: string) => new Date(iso).getTime();
  */
 export function scopedPlays(
   plays: SyncPlay[],
-  segment: DancefloorSegment | null,
+  segment: SegmentBounds | null,
   scope: Scope,
 ): SyncPlay[] {
   if (scope === "whole" || !segment) return plays;

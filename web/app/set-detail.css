@@ -732,6 +732,390 @@
   border-color: var(--color-abyss-glint);
 }
 
+/* ─── Segment editor (Story 5.3, D-34/D-35/D-36/D-37) ──────────────────── */
+
+/* The selector strip: which dancefloor an edit is aimed at (D-30). Sits above
+   the tracklist because the tracklist is the surface it governs. */
+.sd-segment-selector {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin: 0 0 14px;
+  padding: 0 10px;
+}
+
+/* Pinned while editing: a floor can run eighty rows, so dragging its far
+   boundary would otherwise scroll the controls out of reach. The glass fill and
+   hairline only appear in this state — unpinned it should read as part of the
+   page, not as a bar. */
+.sd-segment-selector[data-editing] {
+  position: sticky;
+  top: 8px;
+  z-index: 4;
+  padding: 10px;
+  border-radius: 14px;
+  border: 1px solid var(--color-abyss-hairline);
+  background: var(--color-abyss-shell-glass);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 28px var(--color-abyss-scrim-fade);
+}
+
+.sd-segment-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sd-segment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--color-abyss-text-72);
+  border: 1px solid var(--color-abyss-hairline);
+  border-radius: var(--radius-full);
+  background: var(--color-abyss-shell);
+  transition:
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    border-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sd-segment-chip:hover {
+  color: var(--color-abyss-text);
+  border-color: var(--color-abyss-glint);
+}
+
+.sd-segment-chip[data-selected] {
+  color: var(--color-abyss-text);
+  border-color: var(--color-abyss-accent);
+  box-shadow: 0 0 12px var(--color-abyss-accent-glow);
+}
+
+.sd-segment-chip-count {
+  font-family: var(--font-geist-mono);
+  font-size: 11px;
+  color: var(--color-abyss-text-45);
+}
+
+/* Hover swaps the chip's name for what it DOES. Two faces stacked in a clipped
+   box, sliding as one: the name rides up and out, "Edit" rides in beneath it.
+   Grid-stacked rather than absolutely positioned so the chip's width is the
+   wider of the two and never reflows mid-transition. */
+.sd-segment-chip-swap {
+  display: grid;
+  overflow: hidden;
+  height: 1.2em;
+  align-items: center;
+}
+
+.sd-segment-chip-face {
+  grid-area: 1 / 1;
+  display: inline-flex;
+  align-items: center;
+  text-wrap: nowrap;
+  transition:
+    transform var(--motion-duration-base) var(--motion-ease-emphasized),
+    opacity var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sd-segment-chip-edit {
+  transform: translateY(115%);
+  opacity: 0;
+  color: var(--color-abyss-accent);
+  justify-content: center;
+}
+
+.sd-segment-chip:hover .sd-segment-chip-face:not(.sd-segment-chip-edit),
+.sd-segment-chip:focus-visible .sd-segment-chip-face:not(.sd-segment-chip-edit) {
+  transform: translateY(-115%);
+  opacity: 0;
+}
+
+.sd-segment-chip:hover .sd-segment-chip-edit,
+.sd-segment-chip:focus-visible .sd-segment-chip-edit {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+/* The unconfirmed marker: a quiet dot, never an alarm (D-35, UX-DR18). A
+   suggestion the DJ has not answered is not an error. */
+.sd-segment-chip-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-full);
+  background: var(--color-abyss-accent-soft);
+}
+
+.sd-segment-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sd-segment-action {
+  min-height: 32px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--color-abyss-text-72);
+  border: 1px solid var(--color-abyss-hairline);
+  border-radius: 10px;
+  background: var(--color-abyss-shell);
+  transition:
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    border-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sd-segment-action[data-primary] {
+  color: var(--color-abyss-accent);
+  border-color: var(--color-abyss-accent);
+}
+
+.sd-segment-action:hover:not(:disabled) {
+  color: var(--color-abyss-text);
+  border-color: var(--color-abyss-glint);
+}
+
+.sd-segment-action:disabled {
+  opacity: 0.45;
+}
+
+.sd-segment-hint,
+.sd-segment-error {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--color-abyss-text-45);
+}
+
+.sd-segment-error:empty {
+  display: none;
+}
+
+/* Bracketed rows carry a left-edge rail, so a floor's extent reads at a glance
+   with no interaction at all (D-34). */
+.sd-row[data-in-segment] {
+  box-shadow: inset 2px 0 0 var(--color-abyss-accent-soft);
+}
+
+/* D-35: the algorithm's open proposal reads dashed and quieter than the DJ's
+   settled answer. A confirmed suggestion and a hand-drawn boundary look
+   identical — the provenance that still separates them exists for a future
+   active-learning loop, not for the DJ. */
+.sd-row[data-in-segment="suggested"] {
+  box-shadow: inset 2px 0 0 var(--color-abyss-text-22);
+}
+
+/* The selected floor's rows get a tint at ~4%, deliberately WEAKER than the ~9%
+   hover. Using the hover token here (as this first did) made the two identical,
+   so hovering a row inside the selected segment produced no visible change at
+   all — 46 rows with dead hover feedback. The rail is what states the extent;
+   this is only a wash behind it. */
+.sd-row[data-segment-active] {
+  background: var(--color-abyss-row-line);
+}
+
+.sd-row[data-segment-active]:hover {
+  background: var(--color-abyss-row-hover);
+}
+
+/* In edit mode the rest of the night steps back, so the floor's extent is what
+   you read (Arjun, 2026-08-11). Lighter than the DR-2 focus dim (0.25) on
+   purpose: those tracks are context you are deciding ABOUT, not matches you
+   have filtered away. */
+.sd-tracklist[data-editing] .sd-row[data-outside-segment] {
+  opacity: 0.42;
+}
+
+.sd-tracklist[data-editing] .sd-row[data-outside-segment]:hover {
+  opacity: 0.75;
+}
+
+/* While a boundary is armed, every row is a target — the cursor says so before
+   the DJ commits to a tap (D-37). */
+.sd-row[data-taptarget] {
+  cursor: pointer;
+}
+
+.sd-row[data-taptarget]:hover {
+  box-shadow: inset 2px 0 0 var(--color-abyss-accent);
+}
+
+/* The boundary itself: a handle BETWEEN two rows, mirroring `.sd-connector`'s
+   between-rows anatomy and its rail alignment. */
+.sd-boundary {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 18px;
+  margin-left: 79px;
+}
+
+.sd-boundary-line {
+  flex: 1;
+  height: 0;
+  border-top: 2px solid var(--color-abyss-accent);
+  box-shadow: 0 0 14px var(--color-abyss-accent-glow);
+}
+
+.sd-boundary[data-state="suggested"] .sd-boundary-line {
+  border-top-style: dashed;
+  border-top-color: var(--color-abyss-text-22);
+  box-shadow: none;
+}
+
+/* 44px of pointer target around a 14px visual grip: the handle is the one thing
+   on this page a DJ drags on a phone, and a hairline is not a touch target. The
+   target is padding on the button and the dot is a child, so the visual weight
+   stays quiet without the hit area shrinking to match it. */
+.sd-boundary-grip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 15px;
+  box-sizing: content-box;
+  margin: -15px;
+  background: none;
+  cursor: grab;
+}
+
+/* The grip was too quiet to find (Arjun, 2026-08-11). It now carries a ring and
+   a real glow, so it reads as a thing you grab rather than a dot on a line. The
+   44px touch target is unchanged — only the visible dot grew. */
+.sd-boundary-grip-dot {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--color-abyss-accent);
+  box-shadow:
+    0 0 0 3px var(--color-abyss-shell),
+    0 0 0 4px var(--color-abyss-accent),
+    0 0 14px var(--color-abyss-accent-glow);
+  transition:
+    transform var(--motion-duration-fast) var(--motion-ease-standard),
+    box-shadow var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+/* An unanswered suggestion stays quieter than a settled floor — but no longer
+   invisible, which is what "hard to see" was really about. */
+.sd-boundary[data-state="suggested"] .sd-boundary-grip-dot {
+  background: var(--color-abyss-accent-soft);
+  box-shadow:
+    0 0 0 3px var(--color-abyss-shell),
+    0 0 0 4px var(--color-abyss-accent-soft),
+    0 0 10px var(--color-abyss-accent-glow);
+}
+
+.sd-boundary[data-active] .sd-boundary-grip-dot {
+  transform: scale(1.15);
+}
+
+.sd-boundary-grip:hover .sd-boundary-grip-dot {
+  transform: scale(1.25);
+}
+
+/* The settle after a drag. During the drag the transform is written straight to
+   the element every frame and must NOT be eased — that would lag the pointer.
+   The transition lives on the resting state only, so releasing hands the last
+   few pixels to CSS. */
+.sd-boundary-grip {
+  transition: transform var(--motion-duration-base) var(--motion-ease-emphasized);
+}
+
+.sd-boundary-grip[data-dragging] {
+  transition: none;
+  cursor: grabbing;
+  z-index: 3;
+}
+
+.sd-boundary-grip[data-dragging] .sd-boundary-grip-dot {
+  transform: scale(1.3);
+}
+
+/* Armed and waiting for a row tap — the one moment the editor is modal. */
+.sd-boundary-grip[data-placing] {
+  cursor: crosshair;
+}
+
+.sd-boundary-grip[data-placing] .sd-boundary-grip-dot {
+  box-shadow: 0 0 10px var(--color-abyss-accent);
+}
+
+/* The "+" gutter affordance (AC #1's fallback path). Hover-revealed so it never
+   competes with the tracklist's own content, but focus-visible brings it back
+   for anyone arriving by keyboard — a hover-only control is unreachable. */
+.sd-add-boundary {
+  height: 14px;
+  margin-left: 79px;
+  display: flex;
+  align-items: center;
+}
+
+/* The border and fill used to sit on the BUTTON, so its whole 44px touch target
+   painted as a large bordered circle floating off the rail (Arjun's screenshot,
+   2026-08-11). The target is now invisible padding and only the inner 18px chip
+   is drawn — the same grip/target split the boundary handle uses. */
+.sd-add-boundary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 13px;
+  box-sizing: content-box;
+  margin: -13px;
+  background: none;
+  color: var(--color-abyss-text-45);
+  /* Visible from the moment they exist, not hover-revealed. These only render
+     once the DJ has pressed "+ New" and been told "pick where it starts" —
+     making them hunt for an invisible target at that point would be perverse.
+     Quiet at rest, full on hover. */
+  opacity: 0.55;
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sd-add-boundary-button > svg {
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-abyss-hairline);
+  background: var(--color-abyss-shell);
+  box-sizing: content-box;
+  padding: 3px;
+}
+
+.sd-row-item:hover .sd-add-boundary-button,
+.sd-add-boundary-button:hover,
+.sd-add-boundary-button:focus-visible {
+  opacity: 1;
+}
+
+.sd-add-boundary-button:hover {
+  color: var(--color-abyss-accent);
+}
+
+.sd-add-boundary-button:hover > svg {
+  border-color: var(--color-abyss-accent);
+}
+
+/* The arc's mirror of the boundary being edited (D-34). Brighter than the
+   committed band so the two are distinguishable while a drag is in flight, and
+   still not interactive — the tracklist stays the only surface you can grab. */
+.sd-arc-band[data-editing] .sd-arc-band-edge {
+  stroke: var(--color-abyss-accent);
+  stroke-width: 2;
+}
+
 /* ─── Right column stats ───────────────────────────────────────────────── */
 
 .sd-stats {
@@ -1538,6 +1922,21 @@
 
   .sd-connector {
     margin-left: 58px;
+  }
+
+  /* The boundary handle and the "+" ride the same rail column as the
+     connector, so they follow it in on narrow viewports rather than floating
+     off the timeline. */
+  .sd-boundary,
+  .sd-add-boundary {
+    margin-left: 58px;
+  }
+
+  /* Touch is the primary interaction here (D-37) and there is no hover at all,
+     so the gutter targets sit at full strength rather than the desktop's
+     quieter resting state. */
+  .sd-add-boundary-button {
+    opacity: 1;
   }
 
   .sd-row-peak {

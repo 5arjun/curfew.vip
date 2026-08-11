@@ -1,5 +1,23 @@
 # generated: 2026-07-21
-# last_updated: 2026-08-11
+# last_updated: 2026-08-11 (5-4-segment-scoped-stats: backlog -> ready-for-dev)
+# 2026-08-11: story 5-3 CODE REVIEW (bmad-code-review). review -> in-progress.
+# Adversarial + edge-case + acceptance-auditor layers run in parallel against
+# the full diff, findings verified by direct code read before triage. 2
+# decisions ruled (Arjun: accept the segments_validate() security-definer
+# exemption as documented; SegmentSelector's active-chip re-click now no-ops
+# while dirty instead of silently discarding an unsaved edit) and 8 patches
+# applied same-session -- the two substantive ones: boundary handles were
+# wired to global editor state rather than per-segment identity (AC #2
+# violation on any multi-segment set), and handles remounted on every row
+# crossed, quietly defeating the shipped "continuous drag" fix and dropping
+# keyboard focus after one arrow-key nudge. Doc closures (AD-24, AD-16/AD-23,
+# deferred-work.md) and every Dev Agent Record deviation claim verified
+# accurate -- no overclaiming found. Gate re-run clean (275/275 pgTAP,
+# 828/828 vitest, lint/typecheck/build across 3 workspaces). Story is
+# in-progress, not done: Task 10.3's 375px browser pass remains outstanding,
+# unrelated to this review, same Chrome-maximized/Playwright-profile
+# environment block noted at handoff.
+# epic-5 unchanged (in-progress).
 # project: name-pending
 # project_key: NOKEY
 # tracking_system: file-system
@@ -1202,8 +1220,16 @@ development_status:
   # 781 tests unchanged, lint/typecheck/build clean; browser pass re-verified
   # at 1440/375, zero console errors.
   5-2-segment-detection-algorithm: done
-  5-3-segment-editor: backlog
-  5-4-segment-scoped-stats: backlog
+  5-3-segment-editor: in-progress
+  # [2026-08-11] STORY CREATED. backlog -> ready-for-dev. MVP scope narrowed
+  # to dancefloor-only (Story 5.3's D-32/D-33 precedent): AC #1 reinterpreted
+  # as cross-dancefloor-segment comparison within one set (a set can carry
+  # zero/one/several dancefloor segments, AR-13), not cross-type (dinner vs.
+  # dancefloor) comparison -- deferred until a later story unlocks those
+  # types. Refinement note added to epics.md Story 5.4. Read-only/web-only:
+  # depends on Story 5.3 Task 1's read-model extension (already landed) but
+  # not on 5.3's remaining write-path/editor tasks.
+  5-4-segment-scoped-stats: ready-for-dev
   5-5-layer-2-enrichment-form: backlog
   5-6-enrichment-driven-comparisons: backlog
   5-7-opt-in-location-venue-suggestion: backlog

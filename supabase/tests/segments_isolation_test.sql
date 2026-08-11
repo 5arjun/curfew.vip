@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(19);
+select plan(27);
 
 -- Story 5.2 amendment: `segments.source` is `text not null` with NO DEFAULT
 -- (deliberately — every writer must state provenance, see the migration), so
@@ -169,35 +169,154 @@ select results_eq(
 reset role;
 reset request.jwt.claims;
 
--- Case 5 (AC-1): this story adds no INSERT/UPDATE/DELETE grant or policy
--- on segments -- prove authenticated has no write access at all, matching
--- Case 5's shape in the 3.1 suite.
+-- ── Case 5 (Story 5.3, D-28): the write path ────────────────────────────────
+--
+-- This case asserted the OPPOSITE until Story 5.3 -- "authenticated cannot
+-- insert/update/delete, no grant" -- and that assertion was correct for 5.1 and
+-- 5.2, which shipped a deliberately read-only table. 5.3 is the story that
+-- grants those writes, so the old assertion is REWRITTEN rather than added to:
+-- leaving it would mean asserting the absence of the feature this story exists
+-- to ship, and it would fail.
+--
+-- A dedicated set with no segments on it yet, because DJ A's original set now
+-- carries four overlapping rows from the cases above (seeded as the elevated
+-- role, which the D-29 trigger deliberately exempts). Every DJ-direct write
+-- below is subject to the overlap rule, so they need a clean timeline.
+insert into public.sets (id, session_id, dj_id, started_at, ended_at) values
+  ('11111111-bbbb-bbbb-bbbb-cccccccccccc', '11111111-aaaa-aaaa-aaaa-111111111111', '11111111-1111-1111-1111-111111111111', now(), now());
+
+insert into public.plays (id, set_id, dj_id, position, in_library) values
+  ('11111111-cccc-cccc-cccc-aaaa00000001', '11111111-bbbb-bbbb-bbbb-cccccccccccc', '11111111-1111-1111-1111-111111111111', 1, true),
+  ('11111111-cccc-cccc-cccc-aaaa00000002', '11111111-bbbb-bbbb-bbbb-cccccccccccc', '11111111-1111-1111-1111-111111111111', 2, true),
+  ('11111111-cccc-cccc-cccc-aaaa00000003', '11111111-bbbb-bbbb-bbbb-cccccccccccc', '11111111-1111-1111-1111-111111111111', 3, true),
+  ('11111111-cccc-cccc-cccc-aaaa00000004', '11111111-bbbb-bbbb-bbbb-cccccccccccc', '11111111-1111-1111-1111-111111111111', 4, true);
+
 set local role authenticated;
 set local request.jwt.claims to '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
 
+-- Case 5a: a DJ can now INSERT their own segment -- the manual "+" boundary
+-- (AC-1), ('manual', true) by construction (D-18).
+insert into public.segments (id, set_id, dj_id, type, first_play_id, last_play_id, source, confirmed) values
+  ('11111111-9999-9999-9999-999999999999', '11111111-bbbb-bbbb-bbbb-cccccccccccc', '11111111-1111-1111-1111-111111111111', 'dancefloor', '11111111-cccc-cccc-cccc-aaaa00000001', '11111111-cccc-cccc-cccc-aaaa00000002', 'manual', true);
+
+select is(
+  (select count(*)::int from public.segments where id = '11111111-9999-9999-9999-999999999999'),
+  1,
+  'authenticated DJ can INSERT their own segments row (Story 5.3 write grant + segments_insert_own)'
+);
+
+-- Case 5b: confirming a suggestion (AC-3) -- the single most common write this
+-- whole story exists for.
+update public.segments set confirmed = true
+ where id = '11111111-9999-9999-9999-999999999999';
+
+select is(
+  (select confirmed from public.segments where id = '11111111-9999-9999-9999-999999999999'),
+  true,
+  'authenticated DJ can UPDATE confirmed on their own segments row'
+);
+
+-- Case 5c: adjusting a boundary (AC-1) -- the drag/tap/keyboard write.
+update public.segments set last_play_id = '11111111-cccc-cccc-cccc-aaaa00000003'
+ where id = '11111111-9999-9999-9999-999999999999';
+
+select is(
+  (select last_play_id from public.segments where id = '11111111-9999-9999-9999-999999999999'),
+  '11111111-cccc-cccc-cccc-aaaa00000003'::uuid,
+  'authenticated DJ can UPDATE a boundary play id on their own segments row'
+);
+
+-- ── Cases 5d-5g: the COLUMN grant, not the row policy ───────────────────────
+--
+-- These four columns are absent from `grant update (...)`, so they are
+-- unreachable regardless of row ownership -- the DJ owns this row outright and
+-- still cannot touch them. 42501 is a privilege error raised before RLS is ever
+-- consulted, which is exactly the point of scoping the grant by column rather
+-- than writing a policy that tries to inspect which columns changed.
 select throws_ok(
-  $$ insert into public.segments (set_id, dj_id, type, first_play_id, last_play_id, source) values ('11111111-bbbb-bbbb-bbbb-111111111111', '11111111-1111-1111-1111-111111111111', 'dancefloor', '11111111-cccc-cccc-cccc-111111111111', '11111111-cccc-cccc-cccc-222222222222', 'suggested') $$,
+  $$ update public.segments set set_id = '11111111-bbbb-bbbb-bbbb-111111111111' where id = '11111111-9999-9999-9999-999999999999' $$,
   '42501'::char(5),
   NULL,
-  'authenticated cannot insert into segments (no insert grant)'
+  'a DJ cannot UPDATE segments.set_id even on their own row (column not in the grant) -- a segment cannot be moved between sets'
 );
 
 select throws_ok(
-  $$ update public.segments set label = 'renamed' where id = '11111111-dddd-dddd-dddd-111111111111' $$,
+  $$ update public.segments set dj_id = '22222222-2222-2222-2222-222222222222' where id = '11111111-9999-9999-9999-999999999999' $$,
   '42501'::char(5),
   NULL,
-  'authenticated cannot update segments (no update grant)'
+  'a DJ cannot UPDATE segments.dj_id even on their own row (column not in the grant) -- a segment cannot be reassigned'
 );
 
 select throws_ok(
-  $$ delete from public.segments where id = '11111111-dddd-dddd-dddd-111111111111' $$,
+  $$ update public.segments set source = 'suggested' where id = '11111111-9999-9999-9999-999999999999' $$,
   '42501'::char(5),
   NULL,
-  'authenticated cannot delete from segments (no delete grant)'
+  'a DJ cannot UPDATE segments.source even on their own row (D-18: provenance must survive confirmation)'
 );
+
+select throws_ok(
+  $$ update public.segments set created_at = now() where id = '11111111-9999-9999-9999-999999999999' $$,
+  '42501'::char(5),
+  NULL,
+  'a DJ cannot UPDATE segments.created_at even on their own row (column not in the grant)'
+);
+
+-- ── Cases 5h-5j: cross-DJ, the row policy rather than the column grant ──────
+--
+-- An INSERT naming another DJ fails loudly (the WITH CHECK has something to
+-- reject). An UPDATE or DELETE of another DJ's row instead matches ZERO rows
+-- and raises nothing at all -- RLS filters it out before the write is
+-- considered, so "denied" and "no such row" are indistinguishable by design.
+-- Asserted by counting, because `throws_ok` would pass here for the wrong
+-- reason and a silent no-op is the actual contract.
+-- Deliberately built on DJ A's OWN set and plays, with only `dj_id` naming DJ
+-- B. Pointing it at DJ B's actual plays instead would be rejected a step
+-- earlier, by the D-29 trigger -- RLS hides those plays from DJ A, so the
+-- boundary resolves to nothing and the trigger raises "outside its own set"
+-- before the policy is ever consulted. That is correct behaviour (and is
+-- asserted in segments_write_path_test.sql), but it would make this case pass
+-- while proving nothing about `segments_insert_own`. Position 4 for both
+-- boundaries, for the same reason: Case 5a-5c left a segment across 1..3, and
+-- an overlap rejection would likewise pre-empt the policy under test.
+select throws_ok(
+  $$ insert into public.segments (set_id, dj_id, type, first_play_id, last_play_id, source, confirmed) values ('11111111-bbbb-bbbb-bbbb-cccccccccccc', '22222222-2222-2222-2222-222222222222', 'dancefloor', '11111111-cccc-cccc-cccc-aaaa00000004', '11111111-cccc-cccc-cccc-aaaa00000004', 'manual', true) $$,
+  '42501'::char(5),
+  NULL,
+  'a DJ cannot INSERT a segments row owned by another DJ (segments_insert_own WITH CHECK)'
+);
+
+update public.segments set confirmed = true
+ where id = '22222222-dddd-dddd-dddd-222222222222';
+
+delete from public.segments where id = '22222222-dddd-dddd-dddd-222222222222';
+
+-- Case 5k: and a DJ CAN delete their own row -- removing a segment (D-28).
+delete from public.segments where id = '11111111-9999-9999-9999-999999999999';
 
 reset role;
 reset request.jwt.claims;
+
+-- The three assertions for the writes above run as the ELEVATED role, not as
+-- DJ A: RLS would hide DJ B's row from DJ A entirely, so asking DJ A whether
+-- their cross-DJ write landed returns NULL either way and would pass whether
+-- the policy worked or not.
+select is(
+  (select confirmed from public.segments where id = '22222222-dddd-dddd-dddd-222222222222'),
+  false,
+  'a DJ UPDATE aimed at another DJ''s segments row matches nothing and leaves it untouched'
+);
+
+select is(
+  (select count(*)::int from public.segments where id = '22222222-dddd-dddd-dddd-222222222222'),
+  1,
+  'a DJ DELETE aimed at another DJ''s segments row matches nothing and leaves it in place'
+);
+
+select is(
+  (select count(*)::int from public.segments where id = '11111111-9999-9999-9999-999999999999'),
+  0,
+  'authenticated DJ can DELETE their own segments row'
+);
 
 -- Case 6: as anon with no JWT, a select on segments returns zero rows --
 -- not a permission error (RLS + the base GRANT together).

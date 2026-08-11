@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { buildSetRows } from "./listModel";
 import { segmentStats } from "./dancefloor";
+import type { DancefloorSegment } from "./dancefloor";
 import type { SetRecord, SyncPlay } from "./types";
 
 const BASE = Date.UTC(2026, 7, 5, 22, 0, 0);
@@ -29,13 +30,23 @@ const PLAYS: SyncPlay[] = [
   ...[60, 70, 80, 90, 100, 110].map((m, i) => play(i + 7, m, "Techno")),
 ];
 
+/**
+ * The card reads a segment purely as a time window, so these cases still state
+ * only the window. Story 5.3 added row identity to the read shape for the
+ * EDITOR's sake; it is filled in here from the bounds so the type is satisfied
+ * without pretending these synthetic segments correspond to database rows.
+ */
+function withIdentity(s: { start: string; end: string }): DancefloorSegment {
+  return { ...s, id: `seg:${s.start}`, firstPlayId: `first:${s.start}`, lastPlayId: `last:${s.end}`, confirmed: false };
+}
+
 function set(segments: Array<{ start: string; end: string }>): SetRecord {
   return {
     external_id: "set-1",
     started_at: at(0),
     ended_at: at(110),
     plays: PLAYS,
-    segments,
+    segments: segments.map(withIdentity),
     derived: {
       most_played_tracks: [],
       most_played_artists: [],

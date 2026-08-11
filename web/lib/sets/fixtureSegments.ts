@@ -55,6 +55,25 @@ export function fixtureSegments(set: {
     const start = startedAt.get(s.first_position);
     const end = startedAt.get(s.last_position);
     if (start == null || end == null) return [];
-    return [{ start, end }];
+    // Story 5.3: the read shape carries row identity now. A fixture set has no
+    // database behind it and therefore no real uuids, so these are synthesized
+    // from the coordinates that DO identify the segment here — the set and its
+    // two boundary positions. Deterministic and distinct, which is all any test
+    // asserting "the same segment stayed selected" needs; they are deliberately
+    // NOT uuid-shaped, so a test that quietly depends on one reaching a real
+    // write path fails visibly rather than writing to a plausible-looking id.
+    return [
+      {
+        id: `fixture-segment:${set.external_id}:${s.first_position}-${s.last_position}`,
+        firstPlayId: `fixture-play:${set.external_id}:${s.first_position}`,
+        lastPlayId: `fixture-play:${set.external_id}:${s.last_position}`,
+        // The fixture IS the detector's raw output (see this file's header), so
+        // every entry is an unconfirmed suggestion by construction -- no DJ has
+        // ever seen these sets, let alone settled a floor on one.
+        confirmed: false,
+        start,
+        end,
+      },
+    ];
   });
 }

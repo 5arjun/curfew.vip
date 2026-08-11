@@ -10,6 +10,8 @@ import { SetHeader } from "./SetHeader";
 import { DetailArc } from "./DetailArc";
 import { StatsColumn } from "./StatsColumn";
 import { Tracklist } from "./Tracklist";
+import { SegmentSelector } from "./SegmentSelector";
+import { useSegmentEditor } from "./useSegmentEditor";
 
 // Set Detail shell (Story 3.7) — owns the three pieces of view state the whole
 // screen shares and nothing else persists (D5: view-only):
@@ -30,6 +32,12 @@ export function SetDetail({ set }: { set: SetRecord }) {
   // means "no dancefloor", which the scope toggle below already handles.
   const segment = useMemo(() => primaryDancefloorSegment(set.segments), [set.segments]);
 
+  // A set whose plays carry no cloud id cannot be edited: there is no row for a
+  // boundary to point at. True of fixture-backed data by construction, and
+  // never of a real synced set — so this reads as "nothing to edit here" rather
+  // than as a disabled feature.
+  const editable = useMemo(() => set.plays.some((play) => play.id != null), [set.plays]);
+
   const [scope, setScope] = useState<Scope>("dancefloor");
   const [focus, setFocusState] = useState<Focus | null>(null);
   const [overlay, setOverlay] = useState<OverlayKind>(null);
@@ -37,20 +45,58 @@ export function SetDetail({ set }: { set: SetRecord }) {
   // The New-tracks Week/Month toggle lives on its module (AC-30) but the
   // tracklist's ·new· markers react to it too (AC-18), so it lives here.
   const [newWindow, setNewWindow] = useState<NewTracksWindow>("week");
+  // Object-wrapped rather than a bare number so selecting the SAME floor twice
+  // still scrolls — a plain `position` would compare equal and the effect
+  // would not re-run.
+  const [scrollTarget, setScrollTarget] = useState<{ position: number } | null>(null);
+
+  // "Load more" pages of 50 stay the only row-count mechanism (see `setFocus`
+  // below, which has needed this since 3.7). Shared by both callers rather than
+  // reimplemented, so a boundary and a focus target page identically.
+  const revealPosition = useCallback(
+    (position: number, scrollIntoView = false) => {
+      const index = set.plays.findIndex((p) => p.position === position);
+      if (index < 0) return;
+      setVisibleRows((v) => (index < v ? v : Math.ceil((index + 1) / INITIAL_ROWS) * INITIAL_ROWS));
+      // Selecting a floor scrolls to where it actually starts (Arjun,
+      // 2026-08-11): the boundary can be eighty rows down, and an editor whose
+      // subject is off-screen makes the DJ hunt for what they just picked.
+      if (scrollIntoView) setScrollTarget({ position });
+    },
+    [set.plays],
+  );
+
+  // Story 5.3: the editor's state, owned here because three surfaces read it —
+  // the tracklist draws the handles, the arc mirrors the live boundary (D-34),
+  // and the selector says which floor is being edited (D-30).
+  const editor = useSegmentEditor(set, revealPosition);
 
   // No detected dancefloor → the toggle hides and the whole set is the one
   // honest frame (AC-35/36).
   const effectiveScope: Scope = segment ? scope : "whole";
+
+  // The live draft as ISO bounds, for the arc's mirror (D-34). Resolved from
+  // the same `set.plays` the handles are indexed against, so the band and the
+  // handles can never describe different boundaries.
+  const editingBounds = useMemo(() => {
+    if (editor.draft == null) return null;
+    const start = set.plays.find((p) => p.position === editor.draft!.firstPosition)?.started_at;
+    const end = set.plays.find((p) => p.position === editor.draft!.lastPosition)?.started_at;
+    if (start == null || end == null) return null;
+    return { start, end };
+  }, [editor.draft, set.plays]);
 
   const frame: ScopeFrame = useMemo(() => {
     const plays = scopedPlays(set.plays, segment, effectiveScope);
     return {
       scope: effectiveScope,
       segment,
+      activeSegmentId: editor.activeId,
+      editingBounds,
       plays,
       peakPosition: arcPeakPosition(plays),
     };
-  }, [set.plays, segment, effectiveScope]);
+  }, [set.plays, segment, effectiveScope, editor.activeId, editingBounds]);
 
   // AC-18: the ·new· row markers share the module's computation exactly.
   const newTrackRows = useMemo(
@@ -72,16 +118,13 @@ export function SetDetail({ set }: { set: SetRecord }) {
           const first = next.positions[0];
           // Ensure the first match is rendered before scrolling to it —
           // "Load more" pages of 50 stay the only row-count mechanism.
-          const index = set.plays.findIndex((p) => p.position === first);
-          if (index >= 0) {
-            setVisibleRows((v) => (index < v ? v : Math.ceil((index + 1) / INITIAL_ROWS) * INITIAL_ROWS));
-          }
+          revealPosition(first);
           pendingScrollTo.current = first;
         }
         return next;
       });
     },
-    [set.plays],
+    [revealPosition],
   );
 
   useEffect(() => {
@@ -94,6 +137,21 @@ export function SetDetail({ set }: { set: SetRecord }) {
     const top = row.getBoundingClientRect().top + window.scrollY - window.innerHeight / 3;
     window.scrollTo({ top: Math.max(0, top), behavior: reduced ? "auto" : "smooth" });
   }, [focus]);
+
+  // Scrolls to a boundary the editor just made active. Separate from the focus
+  // effect above because it fires on selection rather than on a focus change,
+  // but it lands the row in the same upper third and honours the same
+  // reduced-motion check.
+  useEffect(() => {
+    if (scrollTarget == null) return;
+    const row = listRef.current?.querySelector<HTMLElement>(
+      `[data-position="${scrollTarget.position}"]`,
+    );
+    if (!row) return;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const top = row.getBoundingClientRect().top + window.scrollY - window.innerHeight / 3;
+    window.scrollTo({ top: Math.max(0, top), behavior: reduced ? "auto" : "smooth" });
+  }, [scrollTarget]);
 
   // D1: the flip changes every pane to one frame at once — a focus computed
   // under the previous frame would mix two frames, so it clears.
@@ -115,6 +173,10 @@ export function SetDetail({ set }: { set: SetRecord }) {
 
       <div className="sd-body">
         <div className="sd-spine" ref={listRef}>
+          {/* D-30: the count of real dancefloors is never hidden, and which one
+              an edit is aimed at is always stated. Above the tracklist because
+              the tracklist is the editing surface it governs. */}
+          <SegmentSelector editor={editor} editable={editable} />
           <Tracklist
             set={set}
             frame={frame}
@@ -123,6 +185,8 @@ export function SetDetail({ set }: { set: SetRecord }) {
             newTrackRows={newTrackRows}
             visibleRows={visibleRows}
             onLoadMore={() => setVisibleRows((v) => v + INITIAL_ROWS)}
+            editor={editor}
+            editable={editable}
           />
         </div>
 

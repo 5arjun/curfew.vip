@@ -147,6 +147,11 @@ const DERIVED = {
  * be tautological and could not catch a column being dropped from it. */
 const REQUIRED_SET_COLUMNS = ["id", "started_at", "ended_at", "derived"];
 const REQUIRED_PLAY_COLUMNS = [
+  // Story 5.3 Task 1.1: a play's OWN uuid. The segment write path builds
+  // `first_play_id`/`last_play_id` out of it, so an editor that cannot read it
+  // cannot write a boundary at all — and its absence degrades to a calm empty
+  // render, exactly the silence the rest of this list exists to catch.
+  "id",
   "position",
   "title",
   "artist",
@@ -188,6 +193,16 @@ describe("the sets+plays select string", () => {
     expect(select).toMatch(/segments\(/);
     expect(select).toMatch(/plays!segments_first_play_id_fkey\(\s*started_at\s*\)/);
     expect(select).toMatch(/plays!segments_last_play_id_fkey\(\s*started_at\s*\)/);
+    // Story 5.3 Task 1.2: the segment's own identity, as PLAIN columns
+    // alongside those two embeds — not instead of them. The embeds resolve the
+    // ISO bounds every existing consumer reads; these three are what an UPDATE
+    // or DELETE addresses the row by, and what a boundary adjust writes into.
+    // Scoped to the `segments(...)` embed so a same-named column on `sets` or
+    // `plays` cannot satisfy this assertion by accident.
+    const segmentsEmbed = select.match(/segments\(([^)]*(?:\([^)]*\)[^)]*)*)\)/)?.[1] ?? "";
+    for (const column of ["id", "first_play_id", "last_play_id", "type", "source", "confirmed"]) {
+      expect(segmentsEmbed).toMatch(new RegExp(`\\b${column}\\b`));
+    }
     for (const column of REQUIRED_PLAY_COLUMNS) {
       expect(select).toMatch(new RegExp(`\\b${column}\\b`));
     }
@@ -236,6 +251,7 @@ describe("getRecentSets", () => {
           sessions: { session_identity: "serato4:975" },
           plays: [
             {
+              id: "play-uuid-2",
               position: 2,
               title: "Second",
               artist: "Artist B",
@@ -252,6 +268,7 @@ describe("getRecentSets", () => {
               track_id: null,
             },
             {
+              id: "play-uuid-1",
               position: 1,
               title: "First",
               artist: "Artist A",
@@ -293,6 +310,11 @@ describe("getRecentSets", () => {
     expect(older.session_label).toBe("serato4:975");
     // Plays reordered by `position`, not left in query order.
     expect(older.plays.map((p) => p.position)).toEqual([1, 2]);
+    // Story 5.3 Task 1.1/1.5: each play's own uuid survives reconstruction, and
+    // rides the SAME reorder — the write path pairs an id with the row the DJ
+    // pointed at, so an id that stayed in query order while its play moved
+    // would write the wrong boundary with no error anywhere.
+    expect(older.plays.map((p) => p.id)).toEqual(["play-uuid-1", "play-uuid-2"]);
     expect(older.plays[0].title).toBe("First");
     // A play with no genre columns reconstructs as genre: null, not a partial object.
     expect(older.plays[1].genre).toBeNull();
@@ -309,17 +331,28 @@ describe("getRecentSets", () => {
 
   // ---- Story 5.2: the fetched dancefloor segments -------------------------
 
-  /** One embedded `segments` row as PostgREST returns it. */
+  /**
+   * One embedded `segments` row as PostgREST returns it.
+   *
+   * Story 5.3 Task 1.2 added the three plain identity columns alongside the two
+   * boundary embeds. They are derived from `start`/`end` here only so the
+   * helper stays a one-liner at each call site; nothing about the read path
+   * relates an id to a timestamp.
+   */
   const segmentRow = (
     type: string,
     start: string | null,
     end: string | null,
     source = "suggested",
     confirmed = false,
+    id = `seg-${start ?? "none"}`,
   ) => ({
+    id,
     type,
     source,
     confirmed,
+    first_play_id: `play-first-${start ?? "none"}`,
+    last_play_id: `play-last-${end ?? "none"}`,
     first_play: start === null ? null : { started_at: start },
     last_play: end === null ? null : { started_at: end },
   });
@@ -347,9 +380,26 @@ describe("getRecentSets", () => {
 
     const sets = await getRecentSets();
     // Zero, one, or SEVERAL (FR-28/D-15) — the read model never collapses them.
+    // Each carries its own identity as of Story 5.3 (Task 1.2/1.3): the ISO
+    // bounds are what the arc and the stats scope by, the three ids are what an
+    // edit addresses and rewrites.
     expect(sets[0].segments).toEqual([
-      { start: "2026-08-05T00:30:00.000Z", end: "2026-08-05T01:00:00.000Z" },
-      { start: "2026-08-05T02:00:00.000Z", end: "2026-08-05T03:30:00.000Z" },
+      {
+        id: "seg-2026-08-05T00:30:00.000Z",
+        firstPlayId: "play-first-2026-08-05T00:30:00.000Z",
+        lastPlayId: "play-last-2026-08-05T01:00:00.000Z",
+        confirmed: false,
+        start: "2026-08-05T00:30:00.000Z",
+        end: "2026-08-05T01:00:00.000Z",
+      },
+      {
+        id: "seg-2026-08-05T02:00:00.000Z",
+        firstPlayId: "play-first-2026-08-05T02:00:00.000Z",
+        lastPlayId: "play-last-2026-08-05T03:30:00.000Z",
+        confirmed: false,
+        start: "2026-08-05T02:00:00.000Z",
+        end: "2026-08-05T03:30:00.000Z",
+      },
     ]);
   });
 
