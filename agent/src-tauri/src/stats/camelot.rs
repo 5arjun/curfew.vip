@@ -277,7 +277,11 @@ mod tests {
         assert_eq!(parse_musical("C#"), parse_musical("Db"));
         assert_eq!(parse_musical("G#m"), parse_musical("Abm"));
         assert_eq!(parse_musical("Gbm"), parse_musical("F#m"));
-        assert_eq!(parse_musical("Cb"), Some(key(1, Letter::B)), "Cb is B major");
+        assert_eq!(
+            parse_musical("Cb"),
+            Some(key(1, Letter::B)),
+            "Cb is B major"
+        );
         assert_eq!(parse_musical("E#m"), Some(key(4, Letter::A)), "E#m is Fm");
     }
 

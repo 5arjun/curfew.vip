@@ -68,7 +68,10 @@ fn main() {
     let mut path_to_crates: HashMap<PathBuf, Vec<String>> = HashMap::new();
     for (name, paths) in &crates {
         for p in paths {
-            path_to_crates.entry(p.clone()).or_default().push(name.clone());
+            path_to_crates
+                .entry(p.clone())
+                .or_default()
+                .push(name.clone());
         }
     }
     eprintln!(
@@ -274,7 +277,13 @@ fn merge_copies(id: &str, copies: &[&FileRow]) -> CatalogRow {
     let first = |f: fn(&FileRow) -> Option<String>| copies.iter().find_map(|r| f(r));
     let mut conflicts = Vec::new();
     for (field, values) in [
-        ("bpm", copies.iter().map(|r| r.bpm.map(|b| format!("{b}"))).collect::<Vec<_>>()),
+        (
+            "bpm",
+            copies
+                .iter()
+                .map(|r| r.bpm.map(|b| format!("{b}")))
+                .collect::<Vec<_>>(),
+        ),
         ("key", copies.iter().map(|r| r.key.clone()).collect()),
         ("genre", copies.iter().map(|r| r.genre.clone()).collect()),
     ] {
@@ -290,14 +299,19 @@ fn merge_copies(id: &str, copies: &[&FileRow]) -> CatalogRow {
     let key_raw = first(|r| r.key.clone());
     let (key_camelot, key_notation) = match key_raw.as_deref() {
         None => (None, None),
-        Some(raw) => match camelot::parse(raw).map(|k| (k, "camelot")).or_else(|| {
-            camelot::parse_musical(raw).map(|k| (k, "musical"))
-        }) {
+        Some(raw) => match camelot::parse(raw)
+            .map(|k| (k, "camelot"))
+            .or_else(|| camelot::parse_musical(raw).map(|k| (k, "musical")))
+        {
             Some((k, notation)) => (
-                Some(format!("{}{}", k.number, match k.letter {
-                    camelot::Letter::A => 'A',
-                    camelot::Letter::B => 'B',
-                })),
+                Some(format!(
+                    "{}{}",
+                    k.number,
+                    match k.letter {
+                        camelot::Letter::A => 'A',
+                        camelot::Letter::B => 'B',
+                    }
+                )),
                 Some(notation),
             ),
             None => (None, Some("unparsed")),
@@ -376,7 +390,16 @@ fn loose_fold(value: &str) -> String {
     // Cut a featuring clause and everything after it — "a feat. b" and plain
     // "a" must land on the same key whichever field carried the guests.
     let mut cut = lower.as_str();
-    for marker in [" feat ", " feat. ", " featuring ", " ft ", " ft. ", " with ", " w/ ", " x "] {
+    for marker in [
+        " feat ",
+        " feat. ",
+        " featuring ",
+        " ft ",
+        " ft. ",
+        " with ",
+        " w/ ",
+        " x ",
+    ] {
         if let Some(i) = cut.find(marker) {
             cut = &cut[..i];
         }
@@ -430,7 +453,11 @@ struct DuplicateMember {
 fn near_miss_clusters(catalog: &[CatalogRow]) -> Vec<DuplicateCluster> {
     let mut by_loose: BTreeMap<String, Vec<&CatalogRow>> = BTreeMap::new();
     for row in catalog {
-        let key = format!("{}\u{1e}{}", loose_fold(&row.title), loose_fold(&row.artist));
+        let key = format!(
+            "{}\u{1e}{}",
+            loose_fold(&row.title),
+            loose_fold(&row.artist)
+        );
         by_loose.entry(key).or_default().push(row);
     }
 
@@ -438,7 +465,10 @@ fn near_miss_clusters(catalog: &[CatalogRow]) -> Vec<DuplicateCluster> {
     // the remixer-in-title-vs-artist-field and collab-ordering splits.
     let mut by_title: BTreeMap<String, Vec<&CatalogRow>> = BTreeMap::new();
     for row in catalog {
-        by_title.entry(loose_fold(&row.title)).or_default().push(row);
+        by_title
+            .entry(loose_fold(&row.title))
+            .or_default()
+            .push(row);
     }
 
     let mut clusters = Vec::new();
@@ -465,10 +495,12 @@ fn near_miss_clusters(catalog: &[CatalogRow]) -> Vec<DuplicateCluster> {
         let artists: Vec<String> = candidates.iter().map(|r| loose_fold(&r.artist)).collect();
         let related = candidates.len() == artists.len()
             && artists.iter().enumerate().any(|(i, a)| {
-                artists
-                    .iter()
-                    .enumerate()
-                    .any(|(j, b)| i != j && !a.is_empty() && !b.is_empty() && (a.contains(b.as_str()) || b.contains(a.as_str())))
+                artists.iter().enumerate().any(|(j, b)| {
+                    i != j
+                        && !a.is_empty()
+                        && !b.is_empty()
+                        && (a.contains(b.as_str()) || b.contains(a.as_str()))
+                })
             });
         if related {
             clusters.push(cluster_from(
@@ -516,13 +548,17 @@ fn write_unmapped_genres(out: &Path, catalog: &[CatalogRow]) {
     ranked.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
 
     write_json(&out.join("unmapped-genres.json"), &ranked);
-    let mut md = String::from("# Unmapped genres\n\nRaw genre strings normalizing to the default \
+    let mut md = String::from(
+        "# Unmapped genres\n\nRaw genre strings normalizing to the default \
         bucket, ranked by deduped track count. Taxonomy patches (if any) go to `genre.rs` after \
-        Arjun's ruling — never mass-filled.\n\n| raw genre | tracks |\n| --- | ---: |\n");
+        Arjun's ruling — never mass-filled.\n\n| raw genre | tracks |\n| --- | ---: |\n",
+    );
     for (raw, n) in &ranked {
         md.push_str(&format!("| `{raw}` | {n} |\n"));
     }
-    md.push_str(&format!("\nTracks with no genre at all (catalogue + tag fallback both empty): **{missing}**\n"));
+    md.push_str(&format!(
+        "\nTracks with no genre at all (catalogue + tag fallback both empty): **{missing}**\n"
+    ));
     std::fs::write(out.join("unmapped-genres.md"), md).expect("unmapped-genres.md writes");
 }
 
@@ -575,7 +611,11 @@ fn write_duplicates(out: &Path, catalog: &[CatalogRow], no_identity: &[&FileRow]
                 m.artist,
                 m.copies,
                 if m.copies == 1 { "y" } else { "ies" },
-                if m.crates.is_empty() { "—".to_string() } else { m.crates.join(", ") },
+                if m.crates.is_empty() {
+                    "—".to_string()
+                } else {
+                    m.crates.join(", ")
+                },
             ));
         }
         md.push('\n');
@@ -613,13 +653,20 @@ fn write_add_dates(out: &Path, files: &[FileRow]) {
         *day_counts.entry(iso_date(d)).or_default() += 1;
     }
     let mut top_days: Vec<(String, usize)> = day_counts.into_iter().collect();
-    top_days.sort_by(|a, b| b.1.cmp(&a.1));
+    // Count descending, then date ascending. The date tiebreak is not cosmetic:
+    // the source is a `HashMap`, so without a total order two days with equal
+    // counts swap places between runs and `add-dates.md` stops being
+    // reproducible. (Also what `clippy::unnecessary_sort_by` was flagging —
+    // its suggested `sort_by_key(Reverse(..))` would have kept the tie.)
+    top_days.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     top_days.truncate(10);
 
     let total = files.len();
-    let mut md = String::from("# Add-date histogram\n\nPer-file (pre-dedup) so copy volume is \
+    let mut md = String::from(
+        "# Add-date histogram\n\nPer-file (pre-dedup) so copy volume is \
         visible. `tadd`/`uadd` is Serato's own add-date; file mtime is the spec §11 risk-1 \
-        fallback.\n\n## Serato tadd/uadd by month\n\n| month | tracks |\n| --- | ---: |\n");
+        fallback.\n\n## Serato tadd/uadd by month\n\n| month | tracks |\n| --- | ---: |\n",
+    );
     for (m, n) in &added {
         md.push_str(&format!("| {m} | {n} |\n"));
     }
@@ -630,7 +677,9 @@ fn write_add_dates(out: &Path, files: &[FileRow]) {
             *n as f64 * 100.0 / total as f64
         ));
     }
-    md.push_str("\n## File mtime by month (fallback candidate)\n\n| month | tracks |\n| --- | ---: |\n");
+    md.push_str(
+        "\n## File mtime by month (fallback candidate)\n\n| month | tracks |\n| --- | ---: |\n",
+    );
     for (m, n) in &mtimes {
         md.push_str(&format!("| {m} | {n} |\n"));
     }
@@ -700,7 +749,12 @@ fn write_overlay_draft(out: &Path, no_identity: &[&FileRow]) -> usize {
     count
 }
 
-fn print_summary(catalog: &[CatalogRow], files: &[FileRow], no_identity: &[&FileRow], proposed: usize) {
+fn print_summary(
+    catalog: &[CatalogRow],
+    files: &[FileRow],
+    no_identity: &[&FileRow],
+    proposed: usize,
+) {
     let n = catalog.len();
     let pct = |k: usize| format!("{k} ({:.1}%)", k as f64 * 100.0 / n as f64);
     println!("── extraction summary ──────────────────────────");
@@ -708,24 +762,69 @@ fn print_summary(catalog: &[CatalogRow], files: &[FileRow], no_identity: &[&File
     println!("deduped tracks (catalog rows): {n}");
     println!("no derivable identity:         {}", no_identity.len());
     println!("  … with a proposed A-T split: {proposed}");
-    println!("bpm coverage:                  {}", pct(catalog.iter().filter(|r| r.bpm.is_some()).count()));
-    println!("key present (raw):             {}", pct(catalog.iter().filter(|r| r.key_raw.is_some()).count()));
-    println!("key resolves to Camelot:       {}", pct(catalog.iter().filter(|r| r.key_camelot.is_some()).count()));
-    println!("  … native Camelot notation:   {}", pct(catalog.iter().filter(|r| r.key_notation == Some("camelot")).count()));
-    println!("  … converted from musical:    {}", pct(catalog.iter().filter(|r| r.key_notation == Some("musical")).count()));
-    println!("  … unparsed junk:             {}", pct(catalog.iter().filter(|r| r.key_notation == Some("unparsed")).count()));
-    println!("genre present (raw):           {}", pct(catalog.iter().filter(|r| r.genre_raw.is_some()).count()));
+    println!(
+        "bpm coverage:                  {}",
+        pct(catalog.iter().filter(|r| r.bpm.is_some()).count())
+    );
+    println!(
+        "key present (raw):             {}",
+        pct(catalog.iter().filter(|r| r.key_raw.is_some()).count())
+    );
+    println!(
+        "key resolves to Camelot:       {}",
+        pct(catalog.iter().filter(|r| r.key_camelot.is_some()).count())
+    );
+    println!(
+        "  … native Camelot notation:   {}",
+        pct(catalog
+            .iter()
+            .filter(|r| r.key_notation == Some("camelot"))
+            .count())
+    );
+    println!(
+        "  … converted from musical:    {}",
+        pct(catalog
+            .iter()
+            .filter(|r| r.key_notation == Some("musical"))
+            .count())
+    );
+    println!(
+        "  … unparsed junk:             {}",
+        pct(catalog
+            .iter()
+            .filter(|r| r.key_notation == Some("unparsed"))
+            .count())
+    );
+    println!(
+        "genre present (raw):           {}",
+        pct(catalog.iter().filter(|r| r.genre_raw.is_some()).count())
+    );
     println!(
         "genre in a real bucket:        {}",
         pct(catalog
             .iter()
-            .filter(|r| r.genre_normalized.as_deref().is_some_and(|g| g != genre::DEFAULT_BUCKET))
+            .filter(|r| r
+                .genre_normalized
+                .as_deref()
+                .is_some_and(|g| g != genre::DEFAULT_BUCKET))
             .count())
     );
-    println!("date-added present:            {}", pct(catalog.iter().filter(|r| r.date_added.is_some()).count()));
-    println!("file mtime present:            {}", pct(catalog.iter().filter(|r| r.file_mtime.is_some()).count()));
-    println!("in ≥1 crate:                   {}", pct(catalog.iter().filter(|r| !r.crates.is_empty()).count()));
-    println!("copy-conflicted fields:        {}", catalog.iter().filter(|r| !r.conflicts.is_empty()).count());
+    println!(
+        "date-added present:            {}",
+        pct(catalog.iter().filter(|r| r.date_added.is_some()).count())
+    );
+    println!(
+        "file mtime present:            {}",
+        pct(catalog.iter().filter(|r| r.file_mtime.is_some()).count())
+    );
+    println!(
+        "in ≥1 crate:                   {}",
+        pct(catalog.iter().filter(|r| !r.crates.is_empty()).count())
+    );
+    println!(
+        "copy-conflicted fields:        {}",
+        catalog.iter().filter(|r| !r.conflicts.is_empty()).count()
+    );
 }
 
 // ---------------------------------------------------------------------------

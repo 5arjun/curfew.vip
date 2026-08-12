@@ -267,7 +267,9 @@ impl LegacyLibrary {
     /// (path, date_added, title, artist) projection, which stays `pub(crate)`.
     /// Read-only: hands out borrows, never mutates the table.
     pub fn tracks(&self) -> impl Iterator<Item = (&Path, &LibraryTrack)> {
-        self.tracks.iter().map(|(path, track)| (path.as_path(), track))
+        self.tracks
+            .iter()
+            .map(|(path, track)| (path.as_path(), track))
     }
 }
 
