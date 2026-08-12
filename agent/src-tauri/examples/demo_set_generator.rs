@@ -918,9 +918,9 @@ fn wedding_phases(rng: &mut Rng) -> Vec<Phase> {
             Bias::BollyCocktail,
             rng.range(1400.0, 1750.0) as i64,
         ),
-        phase(64.0, 124.0, 124.0, 130.0, Bias::Bolly, 0),
-        phase(30.0, 108.0, 135.0, 141.0, Bias::Bolly, 0),
-        phase(18.0, 165.0, 128.0, 118.0, Bias::Bolly, 0),
+        phase(62.0, 124.0, 124.0, 131.0, Bias::Bolly, 0),
+        phase(34.0, 108.0, 133.0, 140.0, Bias::Bolly, 0),
+        phase(16.0, 165.0, 134.0, 126.0, Bias::Bolly, 0),
     ]
 }
 
@@ -1391,7 +1391,11 @@ fn build_calendar(seed: u64, shift_days: i64) -> Vec<SetPlan> {
             zero.insert(early[rng.below(early.len())]);
         }
         let mut pick = 0usize;
-        while two.len() < 14 && pick < 4000 {
+        // Fewer *designed* two-segment nights than §8 wants, because the
+        // detector reliably finds extra ones on its own: a club night whose
+        // dancefloor dips under the density or BPM floor for two consecutive
+        // windows splits without being asked to. Designing 14 landed 21.
+        while two.len() < 9 && pick < 4000 {
             pick += 1;
             let i = candidates[rng.below(candidates.len())];
             if !zero.contains(&i) && !wedding_days.contains(&slots[i].day) {
@@ -1859,135 +1863,163 @@ fn pick_track(
         .sum::<usize>()
         .max(1);
 
-    let mut scored: Vec<(usize, f64)> = Vec::with_capacity(256);
-    for (i, t) in pool.iter().enumerate() {
-        if base_weight[i] <= 0.0 && palette_weight(&t.crates, bias) <= 0.0 {
-            continue;
-        }
-        if used_ids.contains(&i) {
-            continue;
-        }
-        if let Some(c) = t.cluster {
-            if used_clusters.contains(&c) {
+    // Two passes over the pool: the first refuses anything more than
+    // `BPM_WINDOW` from the phase's target tempo, the second drops that guard
+    // so a slot is never left unfilled.
+    //
+    // Without the guard, a Gaussian tempo term with a non-zero floor will
+    // eventually seat a wildly off-tempo record — and it happens exactly where
+    // it hurts most, at the tail of a set whose crate has been picked clean.
+    // One 110bpm play landed in a 128bpm phase of the June wedding, and because
+    // `GAP_MERGE_WINDOWS` bridges a single rough window, its 21.5-BPM
+    // consecutive delta was pulled *inside* the dancefloor run and dragged the
+    // run's median smoothness over the floor — turning a seven-window
+    // dancefloor into no detected segment at all.
+    // Tighter on a wedding. The detector's smoothness floor is this DJ's own
+    // P60 consecutive-BPM delta, and by June that is ~3.3 BPM — calibrated on
+    // house sets that beatmatch. A bimodal wedding is structurally the roughest
+    // set in the account, so the only way its dancefloor clears a floor set by
+    // everything else is to keep the scatter *inside* each tempo block small,
+    // which is also how the cutting actually works: crowd-pleaser to
+    // crowd-pleaser at a matched tempo, with the mode change made once.
+    let bpm_window: f64 = if kind == Kind::Wedding { 7.0 } else { 13.0 };
+    for pass in 0..2 {
+        let strict = pass == 0;
+        let mut scored: Vec<(usize, f64)> = Vec::with_capacity(256);
+        for (i, t) in pool.iter().enumerate() {
+            if strict && (t.bpm - target_bpm).abs() > bpm_window {
                 continue;
             }
+            if base_weight[i] <= 0.0 && palette_weight(&t.crates, bias) <= 0.0 {
+                continue;
+            }
+            if used_ids.contains(&i) {
+                continue;
+            }
+            if let Some(c) = t.cluster {
+                if used_clusters.contains(&c) {
+                    continue;
+                }
+            }
+            // The hard invariant: nothing is ever played before the library had it.
+            // The hour of slack absorbs the ET-vs-UTC-day difference between a
+            // day-granular add-date and a wall-clock play time under a re-anchor.
+            if t.added_at > now - 3600 {
+                continue;
+            }
+
+            let mut score = base_weight[i].max(0.05) + palette_weight(&t.crates, bias);
+
+            // Tempo fit — the energy arc is drawn from BPM (§7.2), so this is the
+            // term that has to dominate.
+            let d = (t.bpm - target_bpm) / 3.8;
+            score *= (-0.5 * d * d).exp() + 0.004;
+
+            // §7.3 harmonic intent.
+            if let Some(pk) = prev_key {
+                let compat = camelot::compatible(pk, t.camelot);
+                score *= if compat == want_compatible { 1.0 } else { 0.16 };
+            }
+
+            // §6 steering. Ratio-based, not difference-based: the first version of
+            // this was `1 + k·(want − have)`, and with `want = 0.12` the entire
+            // correction a starved genre could earn was a factor of 1.2 — nowhere
+            // near enough to pull R&B off 3% when its 45 eligible records are
+            // competing against Pop's 408. A ratio says "you are at a third of
+            // where you should be" and corrects by that much.
+            //
+            // Genres the period has no target for take a flat drag, so the broad
+            // Electronica/Dance bucket cannot quietly eat the share §6 assigned to
+            // named parents.
+            if kind == Kind::Wedding {
+                // §6's arc is a statement about June's *club* year, and applying it
+                // to a wedding actively fought §7.4: Bollywood is in none of the
+                // three period target lists, so it took the non-target drag while
+                // House and Hip-Hop took a lift, and the first pass produced a
+                // "wedding dancefloor" of Avicii, Showtek and Chief Keef. A wedding
+                // is booked for the opposite reason, so it opts out of the arc and
+                // steers on parentage instead — Bollywood as the spine, with the
+                // Hip-Hop/Afrobeats/Reggaeton/House crossover §7.4 asks for left at
+                // full weight around it.
+                if t.genre_norm == "Bollywood" {
+                    score *= 4.0;
+                }
+            } else {
+                if let Some((_, want)) = targets.iter().find(|(g, _)| *g == t.genre_norm) {
+                    let have = period_counts
+                        .get(&(period_key.to_string(), t.genre_norm.clone()))
+                        .copied()
+                        .unwrap_or(0) as f64
+                        / period_total as f64;
+                    score *= (want / have.max(0.004)).powf(2.0).clamp(0.06, 10.0);
+                } else {
+                    score *= 0.55;
+                }
+
+                // §6's Jun–Aug line is specifically "House 38 (Afro House + Tech
+                // House top subgenres)" — a statement about *subgenres*, which the
+                // parent target alone cannot express: the generic `House` crate is
+                // deep enough to satisfy House 38% without either ever surfacing.
+                if period_key == "Jun-Aug"
+                    && matches!(t.subgenre.as_str(), "Afro House" | "Tech House")
+                {
+                    score *= 1.7;
+                }
+            }
+
+            // §9's rule, applied at the point it can still be obeyed: a bare
+            // acapella or instrumental is a working tool, not a performance, and
+            // three of them on the dashboard hero's tracklist reads like someone's
+            // Serato folder rather than a night out. They stay in the archive,
+            // where they are honest, and stay off the sets that get screenshotted.
+            if tier == 1 && is_dj_tool(&t.title) {
+                score *= 0.02;
+            }
+
+            score *= t.affinity;
+
+            // Rotation cooldown.
+            if let Some(last) = state.last_played.get(&i) {
+                let days = (now - last) as f64 / 86_400.0;
+                score *= match days {
+                    d if d < 4.0 => 0.04,
+                    d if d < 11.0 => 0.30,
+                    d if d < 26.0 => 0.72,
+                    _ => 1.0,
+                };
+            }
+
+            // A new record gets hammered for a few weeks — the behaviour
+            // `/library-utilization`'s conversion cohorts exist to measure.
+            let age_days = (now - t.added_at) as f64 / 86_400.0;
+            if age_days < 45.0 {
+                score *= 2.6;
+            }
+
+            if score > 0.0 {
+                scored.push((i, score));
+            }
         }
-        // The hard invariant: nothing is ever played before the library had it.
-        // The hour of slack absorbs the ET-vs-UTC-day difference between a
-        // day-granular add-date and a wall-clock play time under a re-anchor.
-        if t.added_at > now - 3600 {
+        if scored.is_empty() {
             continue;
         }
-
-        let mut score = base_weight[i].max(0.05) + palette_weight(&t.crates, bias);
-
-        // Tempo fit — the energy arc is drawn from BPM (§7.2), so this is the
-        // term that has to dominate.
-        let d = (t.bpm - target_bpm) / 3.8;
-        score *= (-0.5 * d * d).exp() + 0.004;
-
-        // §7.3 harmonic intent.
-        if let Some(pk) = prev_key {
-            let compat = camelot::compatible(pk, t.camelot);
-            score *= if compat == want_compatible { 1.0 } else { 0.16 };
-        }
-
-        // §6 steering. Ratio-based, not difference-based: the first version of
-        // this was `1 + k·(want − have)`, and with `want = 0.12` the entire
-        // correction a starved genre could earn was a factor of 1.2 — nowhere
-        // near enough to pull R&B off 3% when its 45 eligible records are
-        // competing against Pop's 408. A ratio says "you are at a third of
-        // where you should be" and corrects by that much.
-        //
-        // Genres the period has no target for take a flat drag, so the broad
-        // Electronica/Dance bucket cannot quietly eat the share §6 assigned to
-        // named parents.
-        if kind == Kind::Wedding {
-            // §6's arc is a statement about June's *club* year, and applying it
-            // to a wedding actively fought §7.4: Bollywood is in none of the
-            // three period target lists, so it took the non-target drag while
-            // House and Hip-Hop took a lift, and the first pass produced a
-            // "wedding dancefloor" of Avicii, Showtek and Chief Keef. A wedding
-            // is booked for the opposite reason, so it opts out of the arc and
-            // steers on parentage instead — Bollywood as the spine, with the
-            // Hip-Hop/Afrobeats/Reggaeton/House crossover §7.4 asks for left at
-            // full weight around it.
-            if t.genre_norm == "Bollywood" {
-                score *= 4.0;
-            }
-        } else {
-            if let Some((_, want)) = targets.iter().find(|(g, _)| *g == t.genre_norm) {
-                let have = period_counts
-                    .get(&(period_key.to_string(), t.genre_norm.clone()))
-                    .copied()
-                    .unwrap_or(0) as f64
-                    / period_total as f64;
-                score *= (want / have.max(0.004)).powf(2.0).clamp(0.06, 10.0);
-            } else {
-                score *= 0.55;
-            }
-
-            // §6's Jun–Aug line is specifically "House 38 (Afro House + Tech
-            // House top subgenres)" — a statement about *subgenres*, which the
-            // parent target alone cannot express: the generic `House` crate is
-            // deep enough to satisfy House 38% without either ever surfacing.
-            if period_key == "Jun-Aug" && matches!(t.subgenre.as_str(), "Afro House" | "Tech House")
-            {
-                score *= 1.7;
+        // Total order (score desc, then id) so the shortlist is deterministic.
+        scored.sort_by(|a, b| {
+            b.1.total_cmp(&a.1)
+                .then_with(|| pool[a.0].id.cmp(&pool[b.0].id))
+        });
+        scored.truncate(40);
+        let total: f64 = scored.iter().map(|(_, s)| s).sum();
+        let mut r = rng.unit() * total;
+        for (i, s) in &scored {
+            r -= s;
+            if r <= 0.0 {
+                return Some(*i);
             }
         }
-
-        // §9's rule, applied at the point it can still be obeyed: a bare
-        // acapella or instrumental is a working tool, not a performance, and
-        // three of them on the dashboard hero's tracklist reads like someone's
-        // Serato folder rather than a night out. They stay in the archive,
-        // where they are honest, and stay off the sets that get screenshotted.
-        if tier == 1 && is_dj_tool(&t.title) {
-            score *= 0.02;
-        }
-
-        score *= t.affinity;
-
-        // Rotation cooldown.
-        if let Some(last) = state.last_played.get(&i) {
-            let days = (now - last) as f64 / 86_400.0;
-            score *= match days {
-                d if d < 4.0 => 0.04,
-                d if d < 11.0 => 0.30,
-                d if d < 26.0 => 0.72,
-                _ => 1.0,
-            };
-        }
-
-        // A new record gets hammered for a few weeks — the behaviour
-        // `/library-utilization`'s conversion cohorts exist to measure.
-        let age_days = (now - t.added_at) as f64 / 86_400.0;
-        if age_days < 45.0 {
-            score *= 2.6;
-        }
-
-        if score > 0.0 {
-            scored.push((i, score));
-        }
+        return Some(scored[0].0);
     }
-    if scored.is_empty() {
-        return None;
-    }
-    // Total order (score desc, then id) so the shortlist is deterministic.
-    scored.sort_by(|a, b| {
-        b.1.total_cmp(&a.1)
-            .then_with(|| pool[a.0].id.cmp(&pool[b.0].id))
-    });
-    scored.truncate(40);
-    let total: f64 = scored.iter().map(|(_, s)| s).sum();
-    let mut r = rng.unit() * total;
-    for (i, s) in &scored {
-        r -= s;
-        if r <= 0.0 {
-            return Some(*i);
-        }
-    }
-    Some(scored[0].0)
+    None
 }
 
 /// §12: the signature track lands at the same time of night every time, next to
