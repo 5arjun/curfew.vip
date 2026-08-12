@@ -7,6 +7,7 @@ import {
   newTracks,
   resolveViewSegment,
   scopedPlays,
+  viewSegmentFirstPosition,
   type NewTracksWindow,
   type Scope,
 } from "@/lib/sets/setDetail";
@@ -182,10 +183,32 @@ export function SetDetail({ set }: { set: SetRecord }) {
   // Same precedent, for the same reason (Task 1.2): switching which dancefloor
   // is being VIEWED swaps the frame just as switching dancefloor/whole does, so
   // a focus computed under the old segment clears rather than mixing two frames.
-  const selectViewSegment = useCallback((id: string) => {
-    setSelectedSegmentId(id);
-    setFocusState(null);
-  }, []);
+  //
+  // The reveal below is the OTHER precedent in this file, and it belongs here
+  // for exactly the reason `revealPosition`'s own doc comment gives ("Required,
+  // not a nicety"): the tracklist pages at 50 rows and a set's second or third
+  // dancefloor routinely starts past that — fixture 975's start at positions 69
+  // and 96. Without it, picking "Dancefloor 2" rescoped the stats, the arc and
+  // the header onto rows that were neither rendered nor on screen, and
+  // `frame.peakPosition` moved to a row behind "Load more", so the ★ peak marker
+  // vanished from the list instead of moving. Story 5.3 hit and fixed this same
+  // bug for the editing selector; the view selector reintroduced it.
+  // (Code review 2026-08-11 — invisible to lint/typecheck/build/test.)
+  const selectViewSegment = useCallback(
+    (id: string) => {
+      setSelectedSegmentId(id);
+      setFocusState(null);
+      // Derived from `set.plays` rather than `editor.positionsFor`, which is
+      // draft-aware: a live boundary drag on ANOTHER floor must not decide
+      // where the view jumps. View-scope stays independent of edit state.
+      const firstPosition = viewSegmentFirstPosition(
+        set.plays,
+        segments.find((s) => s.id === id) ?? null,
+      );
+      if (firstPosition != null) revealPosition(firstPosition, true);
+    },
+    [segments, set.plays, revealPosition],
+  );
 
   return (
     <main className="sd" data-scope={frame.scope}>

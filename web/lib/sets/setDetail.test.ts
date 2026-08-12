@@ -3,7 +3,7 @@
 // derived.camelot_mixing_stats on the real fixture (set 975).
 import { describe, expect, it } from "vitest";
 import fixture from "./recent-sets.fixture.json";
-import { primaryDancefloorSegment } from "./dancefloor";
+import { dancefloorSegments, primaryDancefloorSegment } from "./dancefloor";
 import type { DancefloorSegment } from "./dancefloor";
 import { fixtureSegments } from "./fixtureSegments";
 import type { SetRecord } from "./types";
@@ -21,6 +21,7 @@ import {
   replayedTracks,
   resolveViewSegment,
   scopedPlays,
+  viewSegmentFirstPosition,
   setShape,
   subgenreRanking,
   transitions,
@@ -146,6 +147,41 @@ describe("resolveViewSegment (Story 5.4, AC #1/#2/#3)", () => {
     const first = seg("first", "2026-06-21T22:00:00.000Z", "2026-06-22T01:00:00.000Z");
     const second = seg("second", "2026-06-22T02:00:00.000Z", "2026-06-22T02:30:00.000Z");
     expect(resolveViewSegment([first, second], "removed")).toEqual(first);
+  });
+});
+
+describe("viewSegmentFirstPosition (Story 5.4 code review — the reveal seam)", () => {
+  it("null for no segment — the whole-set frame has nothing to page to", () => {
+    expect(viewSegmentFirstPosition(set975.plays, null)).toBeNull();
+  });
+
+  it("returns the FIRST play position inside the segment, not the segment's rank", () => {
+    const floors = dancefloorSegments(fixtureSegments(set975));
+    expect(floors.length).toBeGreaterThanOrEqual(3);
+    expect(viewSegmentFirstPosition(set975.plays, floors[0])).toBe(4);
+    expect(viewSegmentFirstPosition(set975.plays, floors[1])).toBe(69);
+    expect(viewSegmentFirstPosition(set975.plays, floors[2])).toBe(96);
+  });
+
+  // The whole reason the reveal exists. If this ever stops being true the
+  // regression it guards has become unreachable and the guard can go — but
+  // silently dropping the reveal while it IS true is the 5.4 bug returning.
+  it("fixture 975's 2nd and 3rd floors start PAST the tracklist's first page of 50", () => {
+    const floors = dancefloorSegments(fixtureSegments(set975));
+    expect(viewSegmentFirstPosition(set975.plays, floors[1])!).toBeGreaterThan(50);
+    expect(viewSegmentFirstPosition(set975.plays, floors[2])!).toBeGreaterThan(50);
+  });
+
+  it("null when the segment's window catches no play in the fetched set", () => {
+    const orphan = {
+      id: "orphan",
+      firstPlayId: "x",
+      lastPlayId: "y",
+      confirmed: true,
+      start: "1999-01-01T00:00:00.000Z",
+      end: "1999-01-01T01:00:00.000Z",
+    };
+    expect(viewSegmentFirstPosition(set975.plays, orphan)).toBeNull();
   });
 });
 
