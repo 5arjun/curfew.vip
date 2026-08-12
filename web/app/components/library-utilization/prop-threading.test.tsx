@@ -8,6 +8,7 @@ import { RotationSize } from "./RotationSize";
 import { SetSimilarity } from "./SetSimilarity";
 import { Workhorses } from "./Workhorses";
 import type { ConversionWindow, LiveConversionRate } from "@/lib/sets/libraryConversion";
+import { WORKHORSES_VISIBLE_ROWS } from "@/lib/sets/libraryUtilization";
 import type {
   OneAndDoneModel,
   RepeatTrackRateModel,
@@ -228,7 +229,12 @@ describe("SetSimilarity threads its model to the DOM (AC-4, D-19, D-22)", () => 
       <SetSimilarity model={similarity({ ranked: [], matrix: [], axes: [], shownSetCount: 0 })} />,
     );
     expect(html).not.toContain("lu-sim-grid");
-    expect(html).not.toContain("%");
+    // No percentage ABOUT THIS DJ's sets. Scoped to the elements that carry
+    // one, rather than to the bare "%" character: the 2026-08-12 explainer
+    // tooltip defines the scale with "two identical sets read 100%", which is
+    // documentation of the formula and is true of a DJ with no sets at all.
+    expect(html).not.toContain("lu-sim-cell-value");
+    expect(html).not.toContain("lu-sim-ranked-row");
     expect(html).toContain('aria-label="Set similarity"');
   });
 });
@@ -241,19 +247,31 @@ describe("Workhorses and OneAndDone thread their rows to the DOM (AC-5, AC-6)", 
     expect(html).toContain("3 sets");
   });
 
-  it("hides the overflow behind a load-more rather than dropping it (EXPERIENCE.md:108)", () => {
-    const html = renderToStaticMarkup(<Workhorses model={workhorses(10)} />);
-    // 6 visible, 4 behind the disclosure — and the hidden four are still in the
-    // markup, which is what makes this a "load more" and not a truncation.
-    expect(html).toContain("Show the other 4");
-    expect(html).toContain("Track 9");
-    expect(html).toContain("<details");
+  // The "Show the other N" `<details>` became a bounded scroll region on
+  // 2026-08-12 (Arjun). What has to stay true is the property EXPERIENCE.md:108
+  // is actually about — nothing is dropped — so that is what this asserts, and
+  // the affordance it is reached by is now an implementation detail.
+  // Sized off the constant, never a literal: the visible-row count moved 6 → 10
+  // on 2026-08-12 and these assertions were the only thing that noticed.
+  const OVERFLOWING = WORKHORSES_VISIBLE_ROWS + 4;
+
+  it("keeps the overflow in the markup rather than dropping it (EXPERIENCE.md:108)", () => {
+    const html = renderToStaticMarkup(<Workhorses model={workhorses(OVERFLOWING)} />);
+    // Every row is in the DOM, including the ones past the visible height.
+    expect(html).toContain(`Track ${OVERFLOWING - 1}`);
+    expect(html).not.toContain("<details");
+    // The box is bounded to the visible-row count and made focusable, so a
+    // keyboard-only user can reach the rows below the fold.
+    expect(html).toContain(`--lu-rows-visible:${WORKHORSES_VISIBLE_ROWS}`);
+    expect(html).toContain('tabindex="0"');
   });
 
-  // NEGATIVE CONTROL.
-  it("renders no load-more when everything fits", () => {
+  // NEGATIVE CONTROL — a list that fits neither reserves the full height nor
+  // takes a tab stop that would do nothing.
+  it("does not bound or focus a list that already fits", () => {
     const html = renderToStaticMarkup(<Workhorses model={workhorses(4)} />);
-    expect(html).not.toContain("Show the other");
+    expect(html).toContain("--lu-rows-visible:4");
+    expect(html).not.toContain('tabindex="0"');
     expect(html).not.toContain("<details");
   });
 
@@ -396,9 +414,9 @@ describe("trackId reaches the DOM as a link, and its absence reaches it as plain
     expect(html).toContain('href="/track/a%2F..%2Fb"');
   });
 
-  it("links rows hidden behind the <details> disclosure too", () => {
-    // `TRACK_LIST_MAX_ROWS`-independent: 8 rows exceeds the 6 visible, so the
-    // last two live inside the `<details>` and must link like the rest.
+  it("links rows below the visible fold too", () => {
+    // 8 rows exceeds the 6 the box is sized for, so the last two are only
+    // reachable by scrolling — and must link like the rest.
     const html = renderToStaticMarkup(<Workhorses model={workhorses(8)} />);
     expect(html).toContain('href="/track/id7"');
   });

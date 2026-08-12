@@ -51,14 +51,14 @@ export function LowConfidenceReveal({
         <>
           Showing {hiddenCount} {descriptor} {sessions} —{" "}
           <button type="button" className="se-hidden-toggle" onClick={onHide}>
-            hide them
+            hide
           </button>
         </>
       ) : (
         <>
           {hiddenCount} {descriptor} {sessions} hidden —{" "}
           <button type="button" className="se-hidden-toggle" onClick={onReveal}>
-            show them
+            show
           </button>
         </>
       )}

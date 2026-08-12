@@ -18,8 +18,6 @@ import { SetHeader } from "./SetHeader";
 import { DetailArc } from "./DetailArc";
 import { StatsColumn } from "./StatsColumn";
 import { Tracklist } from "./Tracklist";
-import { SegmentSelector } from "./SegmentSelector";
-import { SegmentViewSelector } from "./SegmentViewSelector";
 import { useSegmentEditor } from "./useSegmentEditor";
 
 // Set Detail shell (Story 3.7) — owns the three pieces of view state the whole
@@ -223,19 +221,11 @@ export function SetDetail({ set }: { set: SetRecord }) {
 
       <div className="sd-body">
         <div className="sd-spine" ref={listRef}>
-          {/* Story 5.4: which dancefloor the stats are SCOPED to — independent of,
-              and rendered alongside, the editing-target selector below so both
-              are visible together (Dev Notes: a later merge call is Arjun's,
-              not preempted here). */}
-          <SegmentViewSelector
-            segments={segments}
-            selectedId={segment?.id ?? null}
-            onSelect={selectViewSegment}
-          />
-          {/* D-30: the count of real dancefloors is never hidden, and which one
-              an edit is aimed at is always stated. Above the tracklist because
-              the tracklist is the editing surface it governs. */}
-          <SegmentSelector editor={editor} editable={editable} />
+          {/* The dancefloor strip — view scope (Story 5.4 AC #2) and edit target
+              (D-30) on ONE chip list — now renders inside the tracklist card
+              itself (Arjun's 2026-08-12 merge call). Two stacked strips of
+              same-named chips read as four buttons for two dancefloors, and the
+              stack pushed the card out of line with the stats rail. */}
           <Tracklist
             set={set}
             frame={frame}
@@ -246,6 +236,8 @@ export function SetDetail({ set }: { set: SetRecord }) {
             onLoadMore={() => setVisibleRows((v) => v + INITIAL_ROWS)}
             editor={editor}
             editable={editable}
+            viewSelectedId={segment?.id ?? null}
+            onSelectView={selectViewSegment}
           />
         </div>
 

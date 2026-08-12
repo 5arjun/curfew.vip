@@ -734,43 +734,43 @@
 
 /* ─── Segment editor (Story 5.3, D-34/D-35/D-36/D-37) ──────────────────── */
 
-/* The selector strip: which dancefloor an edit is aimed at (D-30). Sits above
-   the tracklist because the tracklist is the surface it governs. */
+/* The dancefloor strip: which floor is being read, and which one an edit is
+   aimed at (D-30 + Story 5.4 AC #2, merged 2026-08-12).
+   It is the tracklist card's HEADER now, not a floating row above the card —
+   the negative side margins bleed it back out to the card's own padding edge so
+   the divider spans the full width, the way a card header rule should. */
 .sd-segment-selector {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px 14px;
-  margin: 0 0 14px;
-  padding: 0 10px;
+  margin: 0 -18px 10px;
+  padding: 6px 18px 12px;
+  border-bottom: 1px solid var(--color-abyss-hairline);
 }
 
-/* Story 5.4: the view-scope selector, stacked above the editing-target one
-   (`.sd-segment-selector`) so the two are visibly related — same chip markup,
-   no sticky/editing behaviour of its own since nothing here is an edit. */
-.sd-view-segment-selector {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px 14px;
-  margin: 0 0 10px;
-  padding: 0 10px;
+/* Nothing to head up: on a set with neither a floor nor the ability to draw one
+   the strip renders as null, but an empty-but-present strip (all chips
+   suppressed) would still leave a stray rule under the card's top edge. */
+.sd-segment-selector:empty {
+  display: none;
 }
 
 /* Pinned while editing: a floor can run eighty rows, so dragging its far
-   boundary would otherwise scroll the controls out of reach. The glass fill and
-   hairline only appear in this state — unpinned it should read as part of the
-   page, not as a bar. */
+   boundary would otherwise scroll the controls out of reach. The glass fill
+   only appears in this state — unpinned it should read as part of the card, not
+   as a bar. Full-bleed still, so the pinned bar covers the rows sliding under
+   it rather than letting them show through at the card's inner padding. */
 .sd-segment-selector[data-editing] {
   position: sticky;
   top: 8px;
   z-index: 4;
-  padding: 10px;
+  padding: 10px 18px;
   border-radius: 14px;
   border: 1px solid var(--color-abyss-hairline);
   background: var(--color-abyss-shell-glass);
   backdrop-filter: blur(12px);
-  box-shadow: 0 8px 28px var(--color-abyss-scrim-fade);
+  box-shadow: 0 8px 28px var(--shadow-ink-40);
 }
 
 .sd-segment-chips {
@@ -804,10 +804,24 @@
   border-color: var(--color-abyss-glint);
 }
 
+/* Step 1 — the floor being READ: what the stats, the arc and this list are
+   scoped to. */
 .sd-segment-chip[data-selected] {
   color: var(--color-abyss-text);
   border-color: var(--color-abyss-accent);
   box-shadow: 0 0 12px var(--color-abyss-accent-glow);
+}
+
+/* Step 2 — the floor being EDITED, which is always also the one being read. It
+   has to look like MORE than viewed rather than merely different, so it doubles
+   the ring and lifts onto the raised surface. Not a filled accent pill: the
+   chip carries a text-45 track count and an accent-coloured hover face, both of
+   which would lose their contrast on an accent ground. */
+.sd-segment-chip[data-editing] {
+  background: var(--color-abyss-raised);
+  box-shadow:
+    0 0 0 1px var(--color-abyss-accent),
+    0 0 16px var(--color-abyss-accent-glow);
 }
 
 .sd-segment-chip-count {
@@ -1451,11 +1465,38 @@
   right: 0;
   bottom: 0;
   z-index: 50;
-  /* Confined to the right-column footprint so the tracklist (key chips) never
-     catches the ramp; the left ~28% stays a pure blur-ramp zone. */
-  width: min(470px, 34vw);
+  /* Reaches exactly the stats rail's left edge, and no further (Arjun,
+     2026-08-12, in two passes).
+     It used to be `min(470px, 34vw)` — "confined to the right-column footprint
+     so the tracklist key chips never catch the ramp". That confinement was a
+     bug: the rail is `33fr` of a viewport-derived grid track and so grows
+     without bound, while a 470px cap does not. Past ~1380px the veil stopped
+     keeping up and the rail sat half-outside the veil, legible through the
+     "blur".
+     The first fix over-corrected (`34vw + 130px`, 114px ramp) and swallowed
+     ~120px of the tracklist — the BPM, length and key columns went hazy, which
+     is what the original confinement had been protecting. So the width is now
+     derived rather than guessed: it is the rail's own footprint plus exactly
+     one ramp.
+       rail's right-offset = gutter + 33fr of (100vw − rail inset − nav − 2×gutter − grid gap)
+                           ≈ 0.33vw − 27px
+       width               = that + RAMP(36px) ≈ 33vw + 9px
+     The 360px floor is the same expression evaluated where the rail hits its
+     own `minmax(300px, …)` minimum (below ~1063px viewport), where it stops
+     tracking vw and becomes constant.
+     THIRD pass on the ramp: 114px → 60px → 36px (Arjun: "the blur is still a
+     bit much from the side component"). At 60 the veil still reached ~42px over
+     the tracklist card. At 36 it lands inside the card's own 18px padding and
+     touches no row content at all, while still finishing exactly at the rail.
+     The panel does NOT move or resize in any of these passes — see
+     `.sd-veil-content`. */
+  width: max(360px, calc(33vw + 9px));
   display: flex;
   flex-direction: column;
+  /* Now that the veil overhangs the tracklist, its unpainted ramp zone must
+     not swallow clicks meant for the rows underneath it. Only the panel is
+     interactive; the frosted approach to it is scenery. */
+  pointer-events: none;
 }
 
 .sd-veil-blur {
@@ -1470,55 +1511,62 @@
   inset: 0;
 }
 
+/* The ramp stops are in PX, not %, because the veil is now much wider than the
+   panel it fronts (see `.sd-veil`): as percentages the ramp stretched with the
+   extra width, so widening the veil would have widened the soft, still-legible
+   head of the ramp by the same amount and bought nothing. In px the band is a
+   fixed ~114px approach regardless of viewport, and every pixel of the veil
+   past it — which is now the whole stats-rail footprint — is at full strength. */
 .sd-veil-blur span:nth-child(1) {
   -webkit-backdrop-filter: blur(3px);
   backdrop-filter: blur(3px);
-  -webkit-mask-image: linear-gradient(to right, var(--shadow-ink-0) 0%, var(--color-surface-void) 4%);
-  mask-image: linear-gradient(to right, var(--shadow-ink-0) 0%, var(--color-surface-void) 4%);
+  -webkit-mask-image: linear-gradient(to right, var(--shadow-ink-0) 0px, var(--color-surface-void) 8px);
+  mask-image: linear-gradient(to right, var(--shadow-ink-0) 0px, var(--color-surface-void) 8px);
 }
 
 .sd-veil-blur span:nth-child(2) {
   -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
-  -webkit-mask-image: linear-gradient(to right, var(--shadow-ink-0) 3%, var(--color-surface-void) 7%);
-  mask-image: linear-gradient(to right, var(--shadow-ink-0) 3%, var(--color-surface-void) 7%);
+  -webkit-mask-image: linear-gradient(to right, var(--shadow-ink-0) 5px, var(--color-surface-void) 13px);
+  mask-image: linear-gradient(to right, var(--shadow-ink-0) 5px, var(--color-surface-void) 13px);
 }
 
 .sd-veil-blur span:nth-child(3) {
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
-  -webkit-mask-image: linear-gradient(to right, var(--shadow-ink-0) 6%, var(--color-surface-void) 10%);
-  mask-image: linear-gradient(to right, var(--shadow-ink-0) 6%, var(--color-surface-void) 10%);
+  -webkit-mask-image: linear-gradient(to right, var(--shadow-ink-0) 11px, var(--color-surface-void) 19px);
+  mask-image: linear-gradient(to right, var(--shadow-ink-0) 11px, var(--color-surface-void) 19px);
 }
 
 .sd-veil-blur span:nth-child(4) {
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
-  -webkit-mask-image: linear-gradient(to right, var(--shadow-ink-0) 9%, var(--color-surface-void) 13%);
-  mask-image: linear-gradient(to right, var(--shadow-ink-0) 9%, var(--color-surface-void) 13%);
+  -webkit-backdrop-filter: blur(22px);
+  backdrop-filter: blur(22px);
+  -webkit-mask-image: linear-gradient(to right, var(--shadow-ink-0) 17px, var(--color-surface-void) 25px);
+  mask-image: linear-gradient(to right, var(--shadow-ink-0) 17px, var(--color-surface-void) 25px);
 }
 
 .sd-veil-blur span:nth-child(5) {
   -webkit-backdrop-filter: blur(32px);
   backdrop-filter: blur(32px);
-  -webkit-mask-image: linear-gradient(to right, var(--shadow-ink-0) 12%, var(--color-surface-void) 16%);
-  mask-image: linear-gradient(to right, var(--shadow-ink-0) 12%, var(--color-surface-void) 16%);
+  -webkit-mask-image: linear-gradient(to right, var(--shadow-ink-0) 23px, var(--color-surface-void) 31px);
+  mask-image: linear-gradient(to right, var(--shadow-ink-0) 23px, var(--color-surface-void) 31px);
 }
 
 .sd-veil-blur span:nth-child(6) {
-  -webkit-backdrop-filter: blur(46px);
-  backdrop-filter: blur(46px);
-  -webkit-mask-image: linear-gradient(to right, var(--shadow-ink-0) 15%, var(--color-surface-void) 19%);
-  mask-image: linear-gradient(to right, var(--shadow-ink-0) 15%, var(--color-surface-void) 19%);
+  -webkit-backdrop-filter: blur(44px);
+  backdrop-filter: blur(44px);
+  -webkit-mask-image: linear-gradient(to right, var(--shadow-ink-0) 29px, var(--color-surface-void) 36px);
+  mask-image: linear-gradient(to right, var(--shadow-ink-0) 29px, var(--color-surface-void) 36px);
 }
 
 /* Translucent tint (NOT a blackout — the blur carries the frosting): a soft
-   dark wash for text contrast… */
+   dark wash for text contrast… Keyed to the same 36px ramp so the wash lands
+   with the blur rather than a fifth of the way across a much wider veil. */
 .sd-veil-blur span:nth-child(7) {
   background: linear-gradient(
     to right,
-    var(--color-abyss-scrim-fade) 0%,
-    var(--shadow-ink-40) 16%,
+    var(--color-abyss-scrim-fade) 0px,
+    var(--shadow-ink-40) 36px,
     var(--shadow-ink-50) 100%
   );
 }
@@ -1530,7 +1578,7 @@
 .sd-veil-blur span:nth-child(8) {
   background: linear-gradient(
     to right,
-    var(--color-abyss-scrim-fade) 16%,
+    var(--color-abyss-scrim-fade) 36px,
     var(--color-nav-chip-hover) 55%,
     var(--color-nav-rim) 100%
   );
@@ -1541,6 +1589,16 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  /* The panel keeps EXACTLY the width it had before the veil was widened —
+     `min(470px, 34vw)` is the veil's own former width, verbatim — pinned to the
+     right edge. Widening the blur field was the ask; widening the reading
+     column was not, and a drill-in that changes size because its backdrop
+     changed size would be a different component. */
+  width: min(470px, 34vw);
+  align-self: flex-end;
+  /* Re-armed against `.sd-veil`'s pointer-events: none, which exists so the
+     overhang stops swallowing clicks on the tracklist beneath it. */
+  pointer-events: auto;
   /* Content clears the ramp zone entirely (left ~34% is transition only). */
   padding: 22px 26px calc(18px + env(safe-area-inset-bottom)) clamp(92px, 21%, 110px);
 }
@@ -1908,6 +1966,9 @@
     backdrop-filter: blur(18px);
     border: 1px solid var(--color-abyss-hairline);
     border-bottom: none;
+    /* The sheet IS the surface here — there is no ramp overhang to click
+       through, and the sheet itself paints, so it takes its own events back. */
+    pointer-events: auto;
   }
 
   .sd-veil-blur {
@@ -1915,6 +1976,8 @@
   }
 
   .sd-veil-content {
+    width: auto;
+    align-self: stretch;
     padding: 14px 16px calc(16px + env(safe-area-inset-bottom));
   }
 

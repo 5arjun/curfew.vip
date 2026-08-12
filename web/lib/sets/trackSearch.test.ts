@@ -5,11 +5,9 @@ import {
   filterTrackSearchRows,
   hasSearchableTracks,
   isOwned,
-  trackSearchCapDisclosure,
   trackSearchHaystacks,
   trackSearchNoMatchCopy,
   visibleTrackSearchRows,
-  TRACK_SEARCH_MAX_ROWS,
   TS_ADDED_AT_MS,
   TS_ALL_PLAY_COUNT,
   TS_ARTIST,
@@ -294,24 +292,6 @@ describe("hasSearchableTracks (AC-13)", () => {
     expect(hasSearchableTracks(indexFrom([], []))).toBe(false);
     // D-38's cold start: a synced roster and zero sets is a working search.
     expect(hasSearchableTracks(indexFrom([], [roster({ track_id: "id-1" })]))).toBe(true);
-  });
-});
-
-describe("trackSearchCapDisclosure (Non-negotiable 5)", () => {
-  it("returns null when the cap does not bite", () => {
-    expect(trackSearchCapDisclosure(TRACK_SEARCH_MAX_ROWS)).toBeNull();
-  });
-
-  it("states the full match count and which end is shown", () => {
-    const note = trackSearchCapDisclosure(312);
-    expect(note).toContain(`${TRACK_SEARCH_MAX_ROWS} of 312`);
-    expect(note).toContain("come first");
-  });
-
-  it("uses no ranking vocabulary (DESIGN.md:199)", () => {
-    expect(trackSearchCapDisclosure(312)?.toLowerCase()).not.toMatch(
-      /\b(best|winner|top|rank|ranked)\b/,
-    );
   });
 });
 

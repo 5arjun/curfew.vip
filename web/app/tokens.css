@@ -412,6 +412,8 @@
   --shadow-ink-30: #0000004d;
   --shadow-ink-40: #00000066;
   --shadow-ink-50: #00000080;
+  --shadow-ink-60: #00000099;
+  --shadow-ink-80: #000000cc;
 
 
   /* Camelot wheel key colors (Story 3.7 post-review, Arjun 2026-08-03):
@@ -497,4 +499,33 @@
      deliberately outside the categorical order so it never impersonates a
      real category. */
   --chart-cat-other: #868a8d;
+
+  /* Long-tail genre ramp (Arjun, 2026-08-12): the Genre Mix stream can now
+     break its folded "Everything else" band into one band per genre. Those
+     genres deliberately do NOT get categorical hues — the 8 slots above are a
+     CVD-validated set and stretching it to an unbounded tail would wreck the
+     adjacent-ΔE guarantees the block above documents, and would also make a
+     22nd-ranked genre look as important as House.
+     So the tail separates by LIGHTNESS within the fold neutral's own family:
+     the same grey-blue hue as --chart-cat-other, stepped light → dark. Reads
+     as "the tail, itemized" rather than as nine new categories, stays legible
+     against the named hues, and survives every CVD simulation by construction
+     (a lightness ramp has no hue to confuse). Cycled by rank when a library
+     has more tail genres than steps — the hover legend carries the names, so
+     a repeated shade is a shade, never an ambiguous identity claim.
+
+     The ramp runs from --chart-cat-other's own luminance UPWARD, never down.
+     Validated on the same 0.7 composite against `#0a0e13` the block above
+     uses: 3.26:1 at the dark end (level with the fold neutral it replaces) up
+     to 7.69:1 at the light end, so every step clears the 3:1 non-text floor.
+     One-sided on purpose — the fold neutral already sits within 0.03 of that
+     floor, so a step BELOW it fails outright (a first pass at this ramp did,
+     at 1.95:1). Re-run the check against the COMPOSITE, not the hex, if the
+     band alpha ever moves. */
+  --chart-tail-1: #dfe4e9;
+  --chart-tail-2: #ccd2d9;
+  --chart-tail-3: #b9c0c8;
+  --chart-tail-4: #a6aeb7;
+  --chart-tail-5: #939ca6;
+  --chart-tail-6: #808a95;
 }

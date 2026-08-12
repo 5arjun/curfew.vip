@@ -3,7 +3,8 @@
 import type { SegmentWriteReason } from "@/lib/sets/segmentWrites";
 import type { SegmentEditor } from "./useSegmentEditor";
 
-// Which dancefloor is being edited (Story 5.3, D-30).
+// The dancefloor strip — ONE chip per floor, doing both jobs (Story 5.3 D-30
+// for editing, Story 5.4 AC #2 for view scope).
 //
 // WHY THIS EXISTS AT ALL, since a full comparison view is Story 5.4's:
 // `primaryDancefloorSegment`'s longest-wins pick was a harmless rendering
@@ -16,6 +17,33 @@ import type { SegmentEditor } from "./useSegmentEditor";
 // Chip order is `dancefloorSegments`' ranking, whose head is by construction the
 // same segment `primaryDancefloorSegment` hands the card and the hero — so
 // "Dancefloor 1" here and "the dancefloor" everywhere else can never disagree.
+//
+// MERGED FROM TWO STRIPS (Arjun, 2026-08-12 — the consolidation call Story
+// 5.4's Dev Notes deliberately left open). 5.4 shipped a second, parallel chip
+// list (`SegmentViewSelector`) stacked directly above this one: identical
+// labels, identical shape, different meaning. On a two-floor set that read as
+// four dancefloor buttons for two dancefloors, and nothing on screen said which
+// row did what. One floor is one chip.
+//
+// The two meanings survive as two STEPS on the same chip rather than as two
+// controls, which is also why the merge does not reintroduce the coupling
+// model.ts's `ScopeFrame.activeSegmentId` comment warns about:
+//
+//   click an unviewed chip  → it becomes the viewed floor (stats/arc/tracklist
+//                             rescope). No edit mode: reading a second floor's
+//                             median BPM must not grow boundary handles and a
+//                             Confirm bar.
+//   click the viewed chip   → it becomes the edit target as well.
+//   click it again          → edit mode ends; it stays the viewed floor.
+//
+// On the overwhelmingly common one-floor set the first step is already
+// satisfied on mount (`resolveViewSegment` falls back to segments[0]), so the
+// first click still opens the editor exactly as it did in 5.3.
+//
+// View scope keys off the segment's STORED bounds throughout; only the arc's
+// mirror reads the live draft (D-34). A boundary drag therefore still cannot
+// rewrite the right column on every arrow press, which was the whole reason the
+// two selectors were kept apart in the first place.
 
 /**
  * Developer-facing rejection text.
@@ -48,6 +76,8 @@ function reasonText(reason: SegmentWriteReason): string {
 export function SegmentSelector({
   editor,
   editable,
+  viewSelectedId,
+  onSelectView,
 }: {
   editor: SegmentEditor;
   /**
@@ -57,6 +87,13 @@ export function SegmentSelector({
    * perform.
    */
   editable: boolean;
+  /**
+   * Which floor the stats/arc/tracklist are currently scoped to. Never `null`
+   * once a segment exists — `resolveViewSegment` resolves an unmade pick to the
+   * ranked head — so exactly one chip always carries the viewed state.
+   */
+  viewSelectedId: string | null;
+  onSelectView: (id: string) => void;
 }) {
   const { segments, activeId, isNew, isEditing, adding, pending, error } = editor;
 
@@ -74,7 +111,7 @@ export function SegmentSelector({
     <div
       className="sd-segment-selector"
       role="group"
-      aria-label="Dancefloor segments"
+      aria-label="Dancefloors"
       data-editing={isEditing || undefined}
     >
       <ul className="sd-segment-chips">
@@ -82,22 +119,36 @@ export function SegmentSelector({
           const positions = editor.positionsFor(segment);
           const trackCount =
             positions == null ? null : positions.lastPosition - positions.firstPosition + 1;
-          const selected = segment.id === activeId;
+          const viewing = segment.id === viewSelectedId;
+          const editing = segment.id === activeId;
+          // The two-step above, as one handler. Reading a floor never arms an
+          // edit; the second click on the floor you are already reading does.
+          const onClick = () => {
+            if (!viewing) {
+              onSelectView(segment.id);
+              return;
+            }
+            if (!editable) return;
+            editor.selectSegment(editing ? null : segment.id);
+          };
           return (
             <li key={segment.id}>
               <button
                 type="button"
                 className="sd-segment-chip"
-                data-selected={selected || undefined}
+                data-selected={viewing || undefined}
+                data-editing={editing || undefined}
                 data-state={segment.confirmed ? "confirmed" : "suggested"}
-                aria-pressed={selected}
-                onClick={() => editor.selectSegment(selected ? null : segment.id)}
+                aria-pressed={viewing}
+                onClick={onClick}
               >
                 {/* Two stacked labels in a clipped box: the name rides up and
-                    out while "Edit" rides in beneath it, so hovering says what
+                    out while the verb rides in beneath it, so hovering says what
                     the chip DOES rather than only what it is. `aria-hidden` on
                     the second — a screen reader should hear one name, and the
-                    button's own text is the first. */}
+                    button's own text is the first. The verb is the step this
+                    particular chip is on, so the hover never promises an edit
+                    on a chip whose click will only rescope the page. */}
                 <span className="sd-segment-chip-swap">
                   <span className="sd-segment-chip-face">
                     Dancefloor {index + 1}
@@ -106,11 +157,12 @@ export function SegmentSelector({
                     )}
                   </span>
                   <span className="sd-segment-chip-face sd-segment-chip-edit" aria-hidden="true">
-                    {selected ? "Editing" : "Edit"}
+                    {!viewing ? "View" : !editable ? "Viewing" : editing ? "Editing" : "Edit"}
                   </span>
                 </span>
                 {!segment.confirmed && <span className="sd-segment-chip-dot" aria-hidden="true" />}
                 {!segment.confirmed && <span className="sr-only"> — suggested, not yet confirmed</span>}
+                {editing && <span className="sr-only"> — editing this dancefloor</span>}
               </button>
             </li>
           );

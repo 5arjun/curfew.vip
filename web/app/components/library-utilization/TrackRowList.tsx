@@ -6,13 +6,23 @@ import type { ReactNode } from "react";
  * two "which tracks" modules on this page, which are a pair and should read as
  * one pattern rather than two.
  *
- * **"Load more" is a native `<details>`, and that is deliberate.**
- * `EXPERIENCE.md:108` bans infinite scroll on track lists and names
- * "paginate / 'load more'" as the required alternative. A `<details>` gives
- * exactly that with no client JavaScript, so both modules stay SERVER
- * components — the same cost `page.tsx`'s render block argues against paying
- * for `TimeToFirstPlay`. It is also keyboard-operable and correctly announced
- * for free, which a hand-rolled button+state would have to re-earn.
+ * **The list SCROLLS IN PLACE; it used to hide its tail behind a `<details>`
+ * "Show the other N"** (Arjun, 2026-08-12: "let's also make them scrolling in
+ * place so you don't have to click a button to show the rest of it").
+ *
+ * This is not the thing `EXPERIENCE.md:108` bans. That rule is about INFINITE
+ * scroll — a list that keeps fetching and appending, where the DJ can never see
+ * how much there is or reach the end. What renders here is the opposite: a
+ * fixed, already-complete, already-capped set of rows inside a bounded box that
+ * has a real bottom. The module also stops growing the page, which the
+ * `<details>` did not: expanding one added ~40 rows of height and pushed its
+ * paired sibling's module off screen.
+ *
+ * Same shape `AgingShelf` already uses on this page (`.lu-shelf-list`), down to
+ * the `tabIndex={0}`: a scroll container whose rows may be non-interactive has
+ * to be focusable itself, or a keyboard-only user with no trackpad cannot reach
+ * anything past the first screenful. Still SERVER components either way — a
+ * scroll region needs no client JavaScript, same as the `<details>` did not.
  *
  * **No ranking vocabulary anywhere** — no "top", no "best", no "#1", no medals,
  * no badges (`DESIGN.md:199`: *"There is a total absence of competitive social
@@ -35,7 +45,6 @@ import type { ReactNode } from "react";
 export function TrackRowList({
   rows,
   visibleRows,
-  moreLabel,
 }: {
   rows: {
     title: string;
@@ -45,45 +54,37 @@ export function TrackRowList({
     /** `/track/[track_id]` identity, or `null` for an unlinkable row (D-26). */
     trackId?: string | null;
   }[];
-  /** How many rows show before the disclosure. */
+  /**
+   * How many rows fit before the box starts scrolling. Not a slice any more —
+   * every row is in the DOM and reachable — just the height the container is
+   * bounded to, so the two paired modules stay the same size as each other
+   * regardless of how many rows each one happens to hold.
+   */
   visibleRows: number;
-  /** The `<summary>` copy, e.g. "Show the other 14". */
-  moreLabel: (hiddenCount: number) => string;
 }) {
-  const visible = rows.slice(0, visibleRows);
-  const hidden = rows.slice(visibleRows);
+  // A list shorter than the cap must not reserve the cap's height — an
+  // three-row module with seven rows of empty box below it reads as a broken
+  // list, not a short one.
+  const boundedRows = Math.min(visibleRows, rows.length);
 
   return (
-    <>
-      <ul className="lu-row-list">
-        {visible.map((row) => (
-          <TrackRow
-            key={row.key}
-            title={row.title}
-            artist={row.artist}
-            value={row.value}
-            trackId={row.trackId}
-          />
-        ))}
-      </ul>
-
-      {hidden.length > 0 && (
-        <details className="lu-row-more">
-          <summary className="lu-row-more-toggle">{moreLabel(hidden.length)}</summary>
-          <ul className="lu-row-list">
-            {hidden.map((row) => (
-              <TrackRow
-            key={row.key}
-            title={row.title}
-            artist={row.artist}
-            value={row.value}
-            trackId={row.trackId}
-          />
-            ))}
-          </ul>
-        </details>
-      )}
-    </>
+    <ul
+      className="lu-row-list"
+      // Only focusable when it can actually scroll: a `tabIndex={0}` on a box
+      // with nothing hidden is a tab stop that does nothing.
+      tabIndex={rows.length > visibleRows ? 0 : undefined}
+      style={{ "--lu-rows-visible": boundedRows } as React.CSSProperties}
+    >
+      {rows.map((row) => (
+        <TrackRow
+          key={row.key}
+          title={row.title}
+          artist={row.artist}
+          value={row.value}
+          trackId={row.trackId}
+        />
+      ))}
+    </ul>
   );
 }
 

@@ -727,21 +727,24 @@ export function setSimilaritySummary(model: SetSimilarityModel): string {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /**
- * Visible rows before the "load more" (`EXPERIENCE.md:108` bans infinite
- * scroll on track lists). Named rather than left inline, the same treatment
- * D-19 gives the matrix cap.
+ * How many rows the list is TALL — it scrolls in place past that (Arjun,
+ * 2026-08-12, replacing the "load more" `<details>` this used to size).
+ *
+ * Raised 6 → 10 in the same pass. At six, fifty rows sat in a 264px box:
+ * ~2,900px of content behind an 11:1 scroll ratio, which reads as a bottomless
+ * pit rather than as a list you can get to the end of. Ten rows makes the
+ * internal scroll about five screens, which a flick actually completes.
  */
-export const WORKHORSES_VISIBLE_ROWS = 6;
+export const WORKHORSES_VISIBLE_ROWS = 10;
 
 /**
  * The most rows either track list will BUILD (not merely show).
  *
- * `WORKHORSES_VISIBLE_ROWS` governs what is visible before the "load more";
- * this governs what exists at all. The distinction matters because the
- * "load more" is a native `<details>`, so every row past the visible six is
- * already in the DOM rather than fetched on demand — on real data that was
- * ~396 workhorse rows and ~835 played-once rows, per prerendered subtree, to
- * display six of each.
+ * `WORKHORSES_VISIBLE_ROWS` governs how tall the list renders; this governs
+ * what exists at all. The distinction matters because the list scrolls in
+ * place, so every row past the visible ones is already in the DOM rather than
+ * fetched on demand — on real data that was ~396 workhorse rows and ~835
+ * played-once rows, per prerendered subtree, to display ten of each.
  *
  * Capped and STATED, the same treatment D-19 gives the similarity matrix: a
  * silent truncation of a list the DJ reads as "everything" is the failure, not
@@ -870,8 +873,8 @@ export function workhorsesSummary(model: WorkhorsesModel): string {
    AC-6 — one-and-done
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/** Visible rows before the "load more". See {@link WORKHORSES_VISIBLE_ROWS}. */
-export const ONE_AND_DONE_VISIBLE_ROWS = 6;
+/** How many rows tall the list is before it scrolls. See {@link WORKHORSES_VISIBLE_ROWS}. */
+export const ONE_AND_DONE_VISIBLE_ROWS = 10;
 
 export interface OneAndDoneRow {
   title: string;
@@ -1064,8 +1067,8 @@ export function rotationSizeSummary(model: RotationSizeModel): string {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /**
- * The two things this page's play-side stats leave out, said once at page level
- * rather than repeated under five modules (the dedup Story 4.5's review ruled,
+ * What this page's play-side stats leave out, said once at page level rather
+ * than repeated under five modules (the dedup Story 4.5's review ruled,
  * applied to the same class of clause).
  *
  * `null` when there is nothing to disclose — and deliberately NOT `"0 plays
@@ -1075,18 +1078,10 @@ export function rotationSizeSummary(model: RotationSizeModel): string {
 export function utilizationDisclosure(index: UtilizationIndex): string | null {
   const clauses: string[] = [];
 
-  // The two exclusions have DIFFERENT SCOPES, so they cannot share one "not
-  // counted in the stats above" tail. Saying "above" also over-claims against
-  // the meter, the trend and time-to-first-play, which sit above this line and
-  // exclude neither — the exact over-claim Story 4.11's review revised
-  // `unidentifiableTracksDisclosure` for. Each clause now names its own reach.
-  if (index.nullTitlePlayCount > 0) {
-    clauses.push(
-      `${index.nullTitlePlayCount} ${plural(index.nullTitlePlayCount, "play has", "plays have")} ` +
-        `no track name, so ${plural(index.nullTitlePlayCount, "it is", "they are")} absent from every ` +
-        `utilization figure here`,
-    );
-  }
+  // Saying "above" over-claims against the meter, the trend and
+  // time-to-first-play, which sit above this line and exclude neither — the
+  // exact over-claim Story 4.11's review revised `unidentifiableTracksDisclosure`
+  // for. This clause names its own reach instead.
   if (index.undatedSetCount > 0) {
     // Deliberately NOT "every figure": `buildUtilizationIndex` populates
     // `setsByTrack`/`playsByKey` from ALL surviving sets including undated

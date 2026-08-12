@@ -81,9 +81,17 @@ export function ConversionRateMeter({
     // but as one of eight modules on the page it must not also be a landmark.
     // Eight landmarks makes the landmark list useless for navigating; a real
     // `<h2>`/`<h3>` outline is what serves that, and now exists.
-    <div className="lu-module dz-shell" role="group" aria-label={summary}>
-      <span className="dz-dots" aria-hidden="true" />
+    // The `<h3>` sits ABOVE the card, not inside it (Arjun, 2026-08-12).
+    // `LibraryConversionTrend` beside it has always rendered its heading above
+    // its chart card — it has no way not to, since the chart is `TrendChart`'s
+    // own shell — so with this one's heading INSIDE, the two cards in the pair
+    // started at different heights and the columns visibly disagreed about
+    // where the section's content began. Matching the shape that could not
+    // change is what aligns them; `.lu-conversion-cell` is the shared wrapper.
+    <div className="lu-conversion-cell">
       <h3 className="lu-stat-label">Conversion rate</h3>
+      <div className="lu-module dz-shell" role="group" aria-label={summary}>
+      <span className="dz-dots" aria-hidden="true" />
       {rate.added > 0 ? (
         <>
           <LedPips litCount={litPips} totalCount={PIP_COUNT} />
@@ -106,6 +114,7 @@ export function ConversionRateMeter({
         </p>
       )}
       {unidentifiableDisclosure && <p className="lu-disclosure">{unidentifiableDisclosure}</p>}
+      </div>
     </div>
   );
 }

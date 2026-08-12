@@ -109,6 +109,19 @@
   color: var(--color-abyss-text);
 }
 
+/* The key wears its own Camelot hue (Arjun, 2026-08-12) — the same
+   `--camelot-*` token the wheel and the tracklist key chips use, set inline
+   from the parsed key. The fallback is the neutral every other tag reads in, so
+   an unparseable key is plain rather than invisible.
+   Selector qualified as `.td-tag dd.td-tag-key`, not the bare class: `.td-tag
+   dd` above is (0,1,1) and a lone class is (0,1,0), so the generic rule won and
+   the key rendered in the plain text colour with the custom property set
+   correctly and doing nothing. Caught in the browser pass — computed `color`
+   was the only place it showed. */
+.td-tag dd.td-tag-key {
+  color: var(--td-key-color, var(--color-abyss-text));
+}
+
 /* ─── Modules ───────────────────────────────────────────────────────────── */
 
 .td-body {
@@ -331,6 +344,53 @@
   color: var(--color-abyss-text-45);
 }
 
+/* Per-hour hover readout. Anchored to the SLOT (full column height), so the
+   whole 24th of the strip is the target rather than a bar that may be 2px tall.
+   `left: 50%` + `translateX(-50%)` centres it on its column; the two clamps stop
+   the first and last hours' tips from hanging off the card. */
+.td-clock-tip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  translate: -50% 0;
+  z-index: 3;
+  width: max-content;
+  padding: 5px 9px;
+  border-radius: 9px;
+  background: var(--color-abyss-raised);
+  box-shadow:
+    0 0 0 1px var(--color-abyss-hairline),
+    0 10px 24px var(--shadow-ink-40);
+  font-family: var(--font-geist-mono);
+  font-size: 10.5px;
+  color: var(--color-abyss-text-72);
+  text-wrap: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-standard),
+    visibility var(--motion-duration-fast);
+}
+
+.td-clock-slot:hover .td-clock-tip,
+.td-clock-slot:focus-within .td-clock-tip {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* The hovered column lifts out of the row so the pointer has something to
+   confirm it is on the hour the tip is describing. */
+.td-clock-slot:hover .td-clock-bar {
+  background: var(--color-abyss-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .td-clock-tip {
+    transition: none;
+  }
+}
+
 /* The tick labels sit below the bars, so the module needs the room. */
 .td-clock {
   margin-bottom: 18px;
@@ -338,10 +398,20 @@
 
 /* ─── Mix neighbours (AC-10) ────────────────────────────────────────────── */
 
+/* Two columns of full-bleed rows separated by nothing but an 18px grid gap put
+   "Played before it"'s play count directly against "Played after it"'s track
+   title, at the same baseline and in the same type — so a row read left to
+   right ran straight through the seam into the other list (Arjun, 2026-08-12:
+   "the tracks are edge to edge with each other on the left and right, which
+   makes it slightly difficult to understand at first glance").
+   Each column becomes its own inset panel: its own ground, its own hairline,
+   its own padding. The gap between them then reads as a boundary rather than as
+   whitespace that happens to be there, and each list's own row hairlines stop
+   lining up with a neighbour's across the seam. */
 .td-neighbours {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 18px;
+  gap: 14px;
 }
 
 @media (max-width: 640px) {
@@ -352,10 +422,18 @@
 
 .td-neighbour-col {
   min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--color-abyss-hairline);
+  border-radius: 16px;
+  background: var(--color-abyss-raised);
 }
 
 .td-neighbour-head {
-  margin: 0 0 4px;
+  /* Its own rule under the heading, so the column reads as heading-then-list
+     rather than as one undifferentiated stack. */
+  margin: 0 0 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-abyss-hairline);
   font-family: var(--font-inter);
   font-size: 12px;
   font-weight: 550;

@@ -9,6 +9,7 @@ import type { SetRecord } from "@/lib/sets/types";
 import { CursorChip, useCursorChipTarget } from "@/app/components/ui/CursorChip";
 import type { Focus, ScopeFrame } from "./model";
 import { SegmentBoundaryHandle } from "./SegmentBoundaryHandle";
+import { SegmentSelector } from "./SegmentSelector";
 import { NEW_SEGMENT_ID, type SegmentEditor } from "./useSegmentEditor";
 
 /** Transition copy — descriptive, never a judgement of the mixing
@@ -54,6 +55,8 @@ export function Tracklist({
   onLoadMore,
   editor,
   editable,
+  viewSelectedId,
+  onSelectView,
 }: {
   set: SetRecord;
   frame: ScopeFrame;
@@ -65,6 +68,9 @@ export function Tracklist({
   editor: SegmentEditor;
   /** `false` for fixture-backed sets, whose plays have no cloud row to point at. */
   editable: boolean;
+  /** Threaded straight through to the dancefloor strip in this card's header. */
+  viewSelectedId: string | null;
+  onSelectView: (id: string) => void;
 }) {
   // Connectors are between adjacent rows of the full list (the timeline),
   // keyed by the upper row's position — the same rule, and on the whole set
@@ -148,6 +154,18 @@ export function Tracklist({
       data-editing={editor.isEditing || undefined}
     >
       <span className="dz-dots" aria-hidden="true" />
+      {/* The dancefloor strip lives INSIDE this card (Arjun, 2026-08-12).
+          Stacked above it in `.sd-spine` it pushed the tracklist down by its
+          own height, so the card no longer topped out level with the stats rail
+          beside it — the two columns visibly disagreed about where the page's
+          content started, and the offset moved with the number of floors. It
+          governs this list, so it belongs to this list's container. */}
+      <SegmentSelector
+        editor={editor}
+        editable={editable}
+        viewSelectedId={viewSelectedId}
+        onSelectView={onSelectView}
+      />
       {focus && (
         <div className="sd-focus-pill-row">
           <button type="button" className="sd-focus-pill" onClick={onDismissFocus}>

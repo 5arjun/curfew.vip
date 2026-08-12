@@ -48,13 +48,12 @@ export function Workhorses({ model }: { model: WorkhorsesModel }) {
         <InsufficientHistory copy={WORKHORSES_INSUFFICIENT_COPY} />
       ) : (
         <>
-          {/* aria-hidden: the section's `aria-label` already states the count
-              and names the lead track, and leaving this exposed announced the
-              same figure twice in two registers (Story 4.5's review, twice).
-              Every other module on this page already does it this way. */}
-          <p className="lu-stat-empty" aria-hidden="true">
-            Tracks you keep coming back to, by how many sets they turn up in.
-          </p>
+          {/* The "Tracks you keep coming back to, by how many sets they turn up
+              in" line is GONE (Arjun, 2026-08-12). It was already `aria-hidden`
+              — the module's `aria-label` carries the same finding — so it was
+              costing a line of prose above every list on this page to restate a
+              heading ("Workhorses") beside a value column that literally reads
+              "N sets · M plays". Nothing was lost with it. */}
           <TrackRowList
             rows={model.rows.map((row) => ({
               // Through D-18's helper. The previous form embedded a raw NUL
@@ -71,7 +70,6 @@ export function Workhorses({ model }: { model: WorkhorsesModel }) {
               value: `${row.setCount} sets · ${row.plays} plays`,
             }))}
             visibleRows={WORKHORSES_VISIBLE_ROWS}
-            moreLabel={(n) => `Show the other ${n}`}
           />
           {/* D-19's rule, applied to the row cap: a silent truncation of a list
               the DJ reads as "everything" is the failure. Stated only when the
