@@ -773,20 +773,19 @@ describe("utilizationDisclosure", () => {
     expect(utilizationDisclosure(clean)).toBeNull();
   });
 
-  it("discloses excluded null-title plays", () => {
-    const index = buildUtilizationIndex([
-      set({ external_id: "a", started_at: "2026-06-01T22:00:00.000Z", plays: [play({ position: 0 }), play({ position: 1 })] }),
-    ]);
-    expect(utilizationDisclosure(index)).toContain("2 plays have no track name");
-  });
-
-  it("discloses undated sets, and both clauses together when both apply", () => {
+  it("discloses undated sets", () => {
     const index = buildUtilizationIndex([
       set({ external_id: "a", started_at: null, plays: [play({ position: 0 })] }),
     ]);
     const line = utilizationDisclosure(index);
-    expect(line).toContain("1 play has no track name");
     expect(line).toContain("1 set has no date");
+  });
+
+  it("says nothing about null-title plays — that disclosure was removed from the page", () => {
+    const index = buildUtilizationIndex([
+      set({ external_id: "a", started_at: "2026-06-01T22:00:00.000Z", plays: [play({ position: 0 }), play({ position: 1 })] }),
+    ]);
+    expect(utilizationDisclosure(index)).toBeNull();
   });
 });
 
@@ -842,7 +841,6 @@ describe("review regressions", () => {
 
     expect(index.playsByKey.size).toBe(0);
     expect(index.nullTitlePlayCount).toBe(2);
-    expect(utilizationDisclosure(index)).toContain("2 plays have no track name");
   });
 
   it("renders an empty-string artist as Unknown, never as a blank", () => {
@@ -1027,17 +1025,14 @@ describe("review regressions", () => {
     expect(summary).not.toContain("1 tracks");
   });
 
-  it("scopes each disclosure clause to the figures it actually governs", () => {
-    // One "not counted in the stats above" tail cannot cover both clauses:
-    // null-title plays are absent everywhere, but undated sets are still
-    // counted by workhorses and played-once. "Above" also over-claimed against
-    // the meter and the trend, which exclude neither.
+  it("scopes the undated-sets clause to the figures it actually governs", () => {
+    // "Not counted in the stats above" over-claimed against the meter and the
+    // trend, which exclude neither — the clause names its own reach instead.
     const index = buildUtilizationIndex([
       set({ external_id: "a", started_at: null, plays: [play({ position: 0 })] }),
     ]);
     const line = utilizationDisclosure(index) ?? "";
 
-    expect(line).toContain("absent from every utilization figure here");
     expect(line).toContain("absent from the repeat rate, set similarity and rotation size");
     expect(line).not.toContain("the stats above");
   });

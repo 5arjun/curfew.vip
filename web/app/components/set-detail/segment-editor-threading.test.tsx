@@ -139,6 +139,27 @@ function renderTracklist(editor: SegmentEditor, editable = true): string {
       onLoadMore={() => undefined}
       editor={editor}
       editable={editable}
+      viewSelectedId={editor.segments[0]?.id ?? null}
+      onSelectView={() => undefined}
+    />,
+  );
+}
+
+/**
+ * The merged dancefloor strip (2026-08-12). `viewSelectedId` defaults to the
+ * ranked head, which is what `resolveViewSegment` hands it on a real page when
+ * the DJ has not picked a floor yet.
+ */
+function renderSelector(
+  editor: SegmentEditor,
+  { editable = true, viewSelectedId = editor.segments[0]?.id ?? null } = {},
+): string {
+  return renderToStaticMarkup(
+    <SegmentSelector
+      editor={editor}
+      editable={editable}
+      viewSelectedId={viewSelectedId}
+      onSelectView={() => undefined}
     />,
   );
 }
@@ -253,17 +274,16 @@ describe("edit mode (Arjun's 2026-08-11 polish pass)", () => {
   });
 
   it("pins the action bar only while editing", () => {
-    const idle = renderToStaticMarkup(<SegmentSelector editor={editorFor([segment()])} editable />);
-    expect(idle).not.toContain('data-editing="true"');
+    const idle = renderSelector(editorFor([segment()]));
+    // At rest neither the strip nor any chip is in an edit state, so the
+    // attribute the sticky rule (and the chip's second ring) key off is absent
+    // from the whole render — not merely absent from one element.
+    expect(idle).not.toContain("data-editing");
+    expect(idle).not.toContain("Confirm");
     // And it offers the way in, now that the gutter "+" is edit-mode only.
     expect(idle).toContain("+ New");
 
-    const editing = renderToStaticMarkup(
-      <SegmentSelector
-        editor={editorFor([segment()], { isEditing: true, activeId: "seg-1" })}
-        editable
-      />,
-    );
+    const editing = renderSelector(editorFor([segment()], { isEditing: true, activeId: "seg-1" }));
     expect(editing).toContain('data-editing="true"');
     expect(editing).toContain("Confirm");
     // "+ New" retires while an edit is in flight — two ways to start something
@@ -272,12 +292,67 @@ describe("edit mode (Arjun's 2026-08-11 polish pass)", () => {
   });
 
   it("swaps the chip label to Edit on hover, without saying it twice to a screen reader", () => {
-    const html = renderToStaticMarkup(<SegmentSelector editor={editorFor([segment()])} editable />);
+    const html = renderSelector(editorFor([segment()]));
     expect(html).toContain("sd-segment-chip-edit");
     expect(html).toContain(">Edit<");
     // The hover face is decorative: the button's accessible name stays the
     // segment's own, not "Dancefloor 1Edit".
     expect(html).toMatch(/aria-hidden="true"[^>]*>Edit</);
+  });
+});
+
+/**
+ * The merged strip (Arjun, 2026-08-12) — one chip per floor carrying BOTH the
+ * view scope Story 5.4 shipped as a second parallel chip list and the edit
+ * target Story 5.3 shipped here. The click contract is two steps on one chip,
+ * so what has to be asserted is that the chip always SAYS which step it is on:
+ * a chip whose click will only rescope the page must not promise an edit.
+ */
+describe("one chip per dancefloor, two steps (2026-08-12 consolidation)", () => {
+  const second = segment({ id: "seg-2", firstPlayId: "p5", lastPlayId: "p5" });
+
+  it("renders exactly one chip per floor — never two strips of the same names", () => {
+    const html = renderSelector(editorFor([segment(), second]));
+    expect(html.match(/Dancefloor 1/g)).toHaveLength(1);
+    expect(html.match(/Dancefloor 2/g)).toHaveLength(1);
+  });
+
+  it('offers "View" on an unviewed floor and "Edit" on the viewed one', () => {
+    const html = renderSelector(editorFor([segment(), second]), { viewSelectedId: "seg-1" });
+    // Step 1 on the chip you are not reading, step 2 on the one you are.
+    expect(html).toContain(">View<");
+    expect(html).toContain(">Edit<");
+  });
+
+  it('says "Editing" on the floor whose boundaries are live', () => {
+    const html = renderSelector(
+      editorFor([segment(), second], { activeId: "seg-1", isEditing: true }),
+      { viewSelectedId: "seg-1" },
+    );
+    expect(html).toContain(">Editing<");
+    expect(html).not.toContain(">Edit<");
+  });
+
+  it('never offers an edit step on a set that cannot be edited', () => {
+    // Fixture-backed plays have no cloud row behind them, so the second click
+    // has nothing to do — the chip says so instead of promising one.
+    const html = renderSelector(editorFor([segment(), second]), { editable: false });
+    expect(html).toContain(">Viewing<");
+    expect(html).not.toContain(">Edit<");
+  });
+
+  it("marks the viewed floor and the edited floor as distinguishable states", () => {
+    const html = renderSelector(
+      editorFor([segment(), second], { activeId: "seg-1", isEditing: true }),
+      { viewSelectedId: "seg-1" },
+    );
+    // Exactly one chip is pressed (the viewed floor) — the scoped segment is
+    // never ambiguous, which is what the retired view-selector suite asserted.
+    expect(html.match(/aria-pressed="true"/g)).toHaveLength(1);
+    expect(html.match(/aria-pressed="false"/g)).toHaveLength(1);
+    // And editing carries its own attribute, so "read this floor" and "I am
+    // rewriting this floor's boundaries" cannot render identically.
+    expect(html).toMatch(/data-selected="true" data-editing="true"/);
   });
 });
 
@@ -365,9 +440,7 @@ describe("keyboard affordances reach the DOM (Task 7.1/7.3, D-36)", () => {
 describe("the multi-segment selector (Task 6.1, D-30)", () => {
   it("renders one chip per real segment, with its track count", () => {
     const second = segment({ id: "seg-2", firstPlayId: "p5", lastPlayId: "p5" });
-    const html = renderToStaticMarkup(
-      <SegmentSelector editor={editorFor([segment(), second])} editable />,
-    );
+    const html = renderSelector(editorFor([segment(), second]));
     expect(html).toContain("Dancefloor 1");
     expect(html).toContain("Dancefloor 2");
     expect(html).toContain("3 tracks");
@@ -375,39 +448,29 @@ describe("the multi-segment selector (Task 6.1, D-30)", () => {
   });
 
   it("says nothing about a second floor when there is only one", () => {
-    const html = renderToStaticMarkup(<SegmentSelector editor={editorFor([segment()])} editable />);
+    const html = renderSelector(editorFor([segment()]));
     expect(html).toContain("Dancefloor 1");
     expect(html).not.toContain("Dancefloor 2");
   });
 
   it("marks which chip is selected, so an edit is never aimed ambiguously", () => {
     const second = segment({ id: "seg-2", firstPlayId: "p5", lastPlayId: "p5" });
-    const html = renderToStaticMarkup(
-      <SegmentSelector editor={editorFor([segment(), second], { activeId: "seg-2" })} editable />,
-    );
+    const html = renderSelector(editorFor([segment(), second], { activeId: "seg-2" }), {
+      viewSelectedId: "seg-2",
+    });
     expect(html.match(/aria-pressed="true"/g)).toHaveLength(1);
     expect(html.match(/aria-pressed="false"/g)).toHaveLength(1);
   });
 
   it("announces a rejected write with its specific reason, not a shrug", () => {
-    const html = renderToStaticMarkup(
-      <SegmentSelector
-        editor={editorFor([segment()], { error: "overlaps-another-segment" })}
-        editable
-      />,
-    );
+    const html = renderSelector(editorFor([segment()], { error: "overlaps-another-segment" }));
     expect(html).toContain("overlap another dancefloor");
     expect(html).toContain('aria-live="polite"');
   });
 
   it("distinguishes the four rejection reasons from each other", () => {
     const text = (reason: Parameters<typeof editorFor>[1] extends never ? never : string) =>
-      renderToStaticMarkup(
-        <SegmentSelector
-          editor={editorFor([segment()], { error: reason as never })}
-          editable
-        />,
-      );
+      renderSelector(editorFor([segment()], { error: reason as never }));
     const messages = [
       text("overlaps-another-segment"),
       text("boundaries-reversed"),
@@ -420,11 +483,8 @@ describe("the multi-segment selector (Task 6.1, D-30)", () => {
   });
 
   it("carries the nudge announcement in a live region (Task 7.3)", () => {
-    const html = renderToStaticMarkup(
-      <SegmentSelector
-        editor={editorFor([segment()], { announcement: "Dancefloor now starts at Second, 10:10pm" })}
-        editable
-      />,
+    const html = renderSelector(
+      editorFor([segment()], { announcement: "Dancefloor now starts at Second, 10:10pm" }),
     );
     expect(html).toContain("Dancefloor now starts at Second, 10:10pm");
   });

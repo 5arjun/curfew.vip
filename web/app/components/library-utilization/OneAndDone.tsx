@@ -66,13 +66,10 @@ export function OneAndDone({ model }: { model: OneAndDoneModel }) {
         />
       ) : (
         <>
-          {/* aria-hidden: the section's `aria-label` already states the count,
-              and leaving these exposed announced the same figure twice in two
-              registers — the failure Story 4.5's review found twice, and the
-              treatment every other module on this page already applies. */}
-          <p className="lu-stat-empty" aria-hidden="true">
-            Tracks you reached for once and haven&apos;t come back to.
-          </p>
+          {/* The "Tracks you reached for once and haven't come back to" line is
+              GONE (Arjun, 2026-08-12) — see `Workhorses.tsx` for the reasoning,
+              which is the same here: already `aria-hidden`, already restated by
+              the heading and by the date in the value column. */}
           <TrackRowList
             rows={model.rows.map((row) => ({
               // Through D-18's helper, not an ad-hoc `title + " " + artist`:
@@ -94,7 +91,6 @@ export function OneAndDone({ model }: { model: OneAndDoneModel }) {
                 : "—",
             }))}
             visibleRows={ONE_AND_DONE_VISIBLE_ROWS}
-            moreLabel={(n) => `Show the other ${n}`}
           />
           {/* Same D-19 treatment as Workhorses. Most-recent-first ordering
               makes the cap benign here — the rows worth acting on are the ones

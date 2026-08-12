@@ -35,12 +35,17 @@ export function LibraryConversionTrend({
 
   // AC-7/D-10: tracks with no resolvable add-date, and cohorts still inside
   // their window, are excluded from the math — and always said out loud.
+  //
+  // `pendingCohortCount` is pinned to 0 (Arjun, 2026-08-12: remove "1 recent
+  // month is still inside the 60-day window — not counted here"). AC-7/D-10 is
+  // that the exclusion is never SILENT, and it is not: the chart's own
+  // explainer button says it in full, on the chart, in the same breath as the
+  // thing it explains — "The most recent months are missing on purpose — they
+  // haven't had their full N days yet." The retired line was that sentence a
+  // second time, in smaller type, below the chart. The no-add-date clause is a
+  // different fact with no such second home, so it still renders.
   const disclosure = useMemo(
-    () =>
-      undatedDisclosure(
-        { noAddDateCount: library.noAddDateCount, pendingCohortCount: library.windows[window].pendingCohortCount },
-        window,
-      ),
+    () => undatedDisclosure({ noAddDateCount: library.noAddDateCount, pendingCohortCount: 0 }, window),
     [library, window],
   );
 
@@ -50,7 +55,7 @@ export function LibraryConversionTrend({
     // accessible name at all — a bare `<div>` — so R-10's outline fix was
     // complete everywhere except the module that sits directly beside the one
     // it was written for.
-    <div className="lu-trend" role="group" aria-label="Conversion trend">
+    <div className="lu-conversion-cell lu-trend" role="group" aria-label="Conversion trend">
       <h3 className="lu-stat-label">Conversion trend</h3>
       {!hasEnoughCohorts(library, window) ? (
         <InsufficientHistory copy={libraryInsufficientCopy(window)} />
@@ -64,6 +69,15 @@ export function LibraryConversionTrend({
           librarySeries={series}
           libraryModel={library}
           conversionWindow={window}
+          // Arjun, 2026-08-12 — the "1 of the 1 tracks added in April 2026 made
+          // it into a set within 60 days (100%) — up from 0% in January 2025"
+          // line. It read the two endpoints of a curve the DJ is looking at,
+          // and on a thin library it stated a 100% built from one track as
+          // though it were a trend. The hover chip gives the same counts per
+          // month, on demand and without the false confidence. Same call the
+          // Tempo and Genre charts already made; the Chart Summary string keeps
+          // its aria and error-fallback duties.
+          showCaption={false}
         />
       )}
       {disclosure && <p className="se-disclosure">{disclosure}</p>}

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { LibraryRosterEntry } from "@/lib/sets/libraryRoster";
+import { parseCamelot } from "@/lib/sets/setDetail";
 import {
   buildClockStrip,
   buildMixNeighbours,
@@ -135,15 +136,37 @@ const NOT_PLAYED_YET_COPY =
  * genre but no subgenre must not read as though the subgenre were the genre.
  */
 function TrackTags({ identity }: { identity: TrackIdentity }) {
+  const keyCamelot = identity.camelotKey ? parseCamelot(identity.camelotKey) : null;
   return (
     <dl className="td-tags">
       <div className="td-tag">
         <dt>BPM</dt>
         <dd>{identity.bpm === null ? UNKNOWN : identity.bpm}</dd>
       </div>
+      {/* AC-5 plus a colour (Arjun, 2026-08-12: "make the key be the actual
+          colour that the key is in for the clock"). The hue is the track's own
+          `--camelot-{n}{a|b}` token — the exact 1:1 mapping the Camelot wheel
+          and the set-detail tracklist's key chips already use, so a key is the
+          same colour everywhere in the app rather than a third convention.
+          Built from the PARSED key, never the raw string: a malformed value has
+          to fall back to neutral, and interpolating it would name a CSS custom
+          property that does not exist — which is invalid-at-computed-value-time
+          rather than a var() fallback, i.e. it would not fall back at all.
+          (The identical trap is documented at `Tracklist.tsx`'s `sd-row-key`.) */}
       <div className="td-tag">
         <dt>Key</dt>
-        <dd>{identity.camelotKey ?? UNKNOWN}</dd>
+        <dd
+          className="td-tag-key"
+          style={
+            keyCamelot
+              ? ({
+                  "--td-key-color": `var(--camelot-${keyCamelot.number}${keyCamelot.letter.toLowerCase()})`,
+                } as React.CSSProperties)
+              : undefined
+          }
+        >
+          {identity.camelotKey ?? UNKNOWN}
+        </dd>
       </div>
       <div className="td-tag">
         <dt>Genre</dt>

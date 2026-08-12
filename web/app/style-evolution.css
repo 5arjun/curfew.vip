@@ -509,16 +509,21 @@
    height of the value it names, so the axis stays honest about where the
    number actually sits. BPM numbers carry no "BPM" suffix — the unit is a
    given once you're looking at a chart titled BPM Range. */
-/* 5.8% — NOT 58px. The plot's x coordinates come out of TrendChart.tsx as
-   percentages of a 1000-unit viewBox, where Y_AXIS_GUTTER = 58 reserves
-   exactly 5.8% of the width. A fixed 58px only agreed with that at a card
+/* 4.2% — NOT 42px. The plot's x coordinates come out of TrendChart.tsx as
+   percentages of a 1000-unit viewBox, where Y_AXIS_GUTTER = 42 reserves
+   exactly 4.2% of the width. A fixed 42px only agreed with that at a card
    width of exactly 1000px: wider, the labels floated left of their data;
    narrower, this box overlapped the plot. Keep this in sync with
-   Y_AXIS_GUTTER / VIEW.width in TrendChart.tsx. */
+   Y_AXIS_GUTTER / VIEW.width in TrendChart.tsx.
+   Narrowed 5.8% → 4.2% (Arjun, 2026-08-12: "quite a bit of a gap between the
+   Y axis and the actual starting point of the graph"). The gutter was sized
+   for the widest label a chart can produce, so on every chart that does NOT
+   produce one — BPM's three digits, the fixed 0/50/100% ticks — it left a
+   band of dead air the width of the label again. */
 .se-chart-yaxis {
   position: absolute;
   inset: 0;
-  width: 5.8%;
+  width: 4.2%;
   pointer-events: none;
   z-index: 4;
 }
@@ -535,6 +540,23 @@
   width: max-content;
   max-width: 54px;
   line-height: 1.2;
+}
+
+/* Above phone width the labels hang off the RIGHT of the gutter, so a short
+   label ("50") sits against the plot instead of pinned to the far edge with
+   the gap the DJ noticed sitting between it and the data. The gutter still
+   reserves the same width — this only decides which end of it the label sits
+   at, so nothing about the plot geometry moves.
+   Phone keeps `left: 0`: down there the widest labels are already WIDER than
+   the gutter (see the max-width: 640px block below), and right-aligning an
+   overflowing label would push it off the card's left edge instead of over
+   the plot. */
+@media (min-width: 640.02px) {
+  .se-chart-ylabel {
+    left: auto;
+    right: 6px;
+    text-align: right;
+  }
 }
 
 .se-chart-ylabel--bars {
@@ -896,9 +918,9 @@
   flex-wrap: wrap;
   gap: 8px 14px;
   margin-top: 8px;
-  /* Aligns with the plot's first column, so it tracks the same 5.8% gutter
-     the y-axis box uses rather than a third hardcoded 58. */
-  padding-left: 5.8%;
+  /* Aligns with the plot's first column, so it tracks the same 4.2% gutter
+     the y-axis box uses rather than a third hardcoded 42. */
+  padding-left: 4.2%;
   font-family: var(--font-inter);
   font-size: 11.5px;
   color: var(--color-abyss-text-45);
@@ -922,6 +944,135 @@
      comment false. Now identical to the stream's band alpha, which is why
      the stream no longer needs a swatch override of its own. */
   opacity: 0.7;
+}
+
+/* ─── The long tail's one control (Arjun, 2026-08-12) ─────────────────────
+   Sits at the END of the legend row, after the named genres — "something to
+   the right of the top genres colors". It does two jobs at once because they
+   are the same question asked two ways: click expands the folded band into one
+   band per genre, hover says which genres those are and what shade each is
+   currently drawn in. Inlining the tail into the legend instead would turn a
+   one-line row into a paragraph on any real library.
+   Hover AND focus open the tip — hover-only strands keyboard users, and the
+   button is a real toggle so focus lands on it either way. */
+.se-chart-tail {
+  position: relative;
+  /* Same stacking promotion as .se-chart-info, for the same reason: the plot
+     is a later sibling, so without a stacking context of its own the tip is
+     painted under the plot's positioned descendants. */
+  z-index: 20;
+  display: inline-flex;
+}
+
+.se-chart-tail-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 3px 9px;
+  font-family: inherit;
+  font-size: 11.5px;
+  color: var(--color-abyss-text-45);
+  border: 1px solid var(--color-abyss-hairline);
+  border-radius: var(--radius-full);
+  background: none;
+  cursor: pointer;
+  transition:
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    border-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.se-chart-tail-btn:hover,
+.se-chart-tail-btn:focus-visible {
+  color: var(--color-abyss-text);
+  border-color: var(--color-abyss-glint);
+}
+
+.se-chart-tail-btn[aria-pressed="true"] {
+  color: var(--color-abyss-text);
+  border-color: var(--color-abyss-accent);
+}
+
+.se-chart-tail-btn:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 6px var(--color-abyss-accent-glow);
+}
+
+/* Three overlapping swatches as the button's own glyph: folded they are three
+   copies of the one neutral (which is exactly what the chart shows), expanded
+   they preview the first three steps of the ramp. */
+.se-chart-tail-swatches {
+  display: inline-flex;
+}
+
+.se-chart-tail-swatches .se-chart-cat-swatch:not(:first-child) {
+  margin-left: -3px;
+}
+
+.se-chart-tail-tip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  width: max-content;
+  /* Same two-cap rule as .se-chart-info-tip — the reading measure, and the
+     viewport term that keeps it on-screen at 320px. Opens UPWARD, unlike the
+     header explainer: this row is the last thing in the card, so a tip
+     dropping below it would hang off the bottom edge. */
+  max-width: min(300px, calc(100vw - 8rem));
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--color-abyss-raised);
+  box-shadow:
+    0 0 0 1px var(--color-abyss-hairline),
+    0 12px 32px var(--shadow-ink-40);
+  color: var(--color-abyss-text-72);
+  font-size: 11.5px;
+  line-height: 1.5;
+  text-align: left;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(3px);
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-standard),
+    transform var(--motion-duration-fast) var(--motion-ease-standard),
+    visibility var(--motion-duration-fast);
+}
+
+.se-chart-tail:hover .se-chart-tail-tip,
+.se-chart-tail-btn:focus-visible + .se-chart-tail-tip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.se-chart-tail-tip-head {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-abyss-text-45);
+}
+
+/* A long tail is genuinely long — bound the list and let it scroll rather
+   than growing a tip taller than the card it hangs off. */
+.se-chart-tail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 220px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .se-chart-tail-tip {
+    transition: none;
+    transform: none;
+  }
 }
 
 /* Footnote for the MAX_CATEGORIES cap — rendered only when the cap actually
@@ -960,10 +1111,33 @@
   fill-opacity: 0.7;
   pointer-events: auto; /* parent .se-chart-svg is pointer-events: none */
   transition: fill-opacity var(--motion-duration-fast) var(--motion-ease-standard);
+  /* The "+more genres" toggle (Arjun, 2026-08-12: "doesn't really look like
+     it updates") swaps the fold band for its tail genres, all drawn from the
+     SAME lightness-ramp family the fold neutral belongs to (`genreColor.ts`'s
+     own design intent — a 22nd-ranked genre must not read as loud as the
+     DJ's biggest). That similarity is deliberate, but it also meant the
+     split happened instantly with no cue to notice it by: a React key change
+     (`bucket:bandIndex`) remounts the affected paths with zero transition of
+     its own. This animation runs on every mount, not just the toggle — a
+     path's key changes exactly when what it draws does, so "just mounted" is
+     already the right moment to announce, on first paint or on toggle alike. */
+  animation: se-band-in var(--motion-duration-slow) var(--motion-ease-standard) both;
 }
 
 .se-stream-band[data-hot] {
   fill-opacity: 1;
+}
+
+@keyframes se-band-in {
+  from {
+    fill-opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .se-stream-band {
+    animation: none;
+  }
 }
 
 /* ─── Key row (Arjun, 2026-08-08): the wheel is square and doesn't earn a
@@ -1056,9 +1230,9 @@
     padding-left: 0;
   }
 
-  /* The gutter is a PERCENTAGE of the plot (5.8%, matching the viewBox's
+  /* The gutter is a PERCENTAGE of the plot (4.2%, matching the viewBox's
      Y_AXIS_GUTTER/VIEW.width), which keeps labels registered to their data at
-     every width — but 5.8% of a 375px phone is only ~17px, and "53 plays" is
+     every width — but 4.2% of a 375px phone is only ~16px, and "53 plays" is
      47px. Measured at 375px: labels ran to 47px while the first data point
      starts at 25px, so they sat on top of the leftmost column. Shrinking the
      type and dropping the noun (the row is unambiguous at a glance, and the

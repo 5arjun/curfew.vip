@@ -120,22 +120,27 @@ export function visibleTrackSearchRows(
   return rows.filter((row) => isOwned(row) || row[TS_PLAY_COUNT] > 0);
 }
 
-/** Visible results before the `<details>` disclosure. */
+/** How many result rows the list shows before it starts scrolling in place.
+ *  (Was "before the `<details>` disclosure" until 2026-08-12 retired that
+ *  affordance for a bounded scroll region — see `TrackRowList`.) */
 export const TRACK_SEARCH_VISIBLE_ROWS = 8;
 
 /**
  * The hard cap on rendered results.
  *
- * `EXPERIENCE.md:108` bans infinite scroll on track lists and names
- * "paginate / 'load more'" as the alternative, which `TrackRowList`'s native
- * `<details>` already is. This cap is about payload rather than affordance: a
+ * `EXPERIENCE.md:108` bans infinite scroll on track lists — a list that keeps
+ * fetching and appending. `TrackRowList` renders a fixed, complete, already-
+ * capped set of rows in a box with a real bottom, which is not that. This cap
+ * is about payload rather than affordance: a
  * one-character query matches most of a 1,644-track library, and rendering all
  * of it would put thousands of `<li>` in the DOM for a list nobody reads past
  * the top of — failure mode 11 on this epic's own list, where Story 4.9 emitted
  * ~2,360 `<li>` to display 12.
  *
- * **Stated, never silent** (Non-negotiable 5): {@link trackSearchCapDisclosure}
- * names the full match count and which end the shown rows come from.
+ * **Stated, never silent** (Non-negotiable 5): when the cap bites, `TrackSearch`
+ * prints "N of M matches" above the list. It used to print a full sentence that
+ * also explained the ordering; Arjun retired that on 2026-08-12 and the ordering
+ * half became the filter chips beside the field. The count stayed.
  */
 export const TRACK_SEARCH_MAX_ROWS = 25;
 
@@ -292,15 +297,6 @@ export function hasSearchableTracks(index: TrackSearchIndex): boolean {
   return index.rows.length > 0;
 }
 
-/**
- * The cap disclosure — stated only when the cap actually bites, and naming both
- * the full match count and WHICH END the shown rows come from (Non-negotiable
- * 5). Ordered, but with no ranking vocabulary (`DESIGN.md:199`).
- */
-export function trackSearchCapDisclosure(matchCount: number): string | null {
-  if (matchCount <= TRACK_SEARCH_MAX_ROWS) return null;
-  return `Showing ${TRACK_SEARCH_MAX_ROWS} of ${matchCount} matches — tracks you've played come first, by play count, then the rest of your library.`;
-}
 
 /**
  * The status line when a query returns no VISIBLE rows (Non-negotiable 4;

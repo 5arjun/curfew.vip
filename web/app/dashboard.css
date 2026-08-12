@@ -221,6 +221,55 @@
   display: none;
 }
 
+/* ─── Release the viewport lock on SHORT screens too (Arjun, 2026-08-12) ──
+   D9 locks this page to the viewport and clips whatever does not fit, on the
+   premise that everything fits. On a laptop with a browser toolbar and a Dock
+   that premise fails: measured at 1440×722, `.dz` was `height: 722px;
+   overflow: clip` with `maxScroll: 0` — the last set row was sliced in half and
+   the right column's lower cards were below the fold, with NO scroll available
+   anywhere on the page to reach them. `overflow: clip` is specifically a box
+   that "can never scroll" (see `.dz` above), so this was not recoverable by any
+   gesture; the content was simply gone.
+   The narrow-WIDTH release below has existed since 3.6 for the same reason in
+   the other axis. This is its complement. 820px is the height at which the hero
+   (200–300px) + the columns' own comfortable minimum + gaps + padding stop
+   fitting.
+   Unlike the width release this does NOT collapse to one column: the screen is
+   short, not narrow, and stacking a 1440px-wide list on top of a 1440px-wide
+   right column would make the page four times taller to fix a height problem.
+   Only the lock itself is released, so the page scrolls normally. */
+@media (min-width: 900.02px) and (max-height: 820px) {
+  .dz {
+    height: auto;
+    /* Still fills the viewport when the content happens to be short — this
+       releases a ceiling, it does not remove the floor. */
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  .dz-hero {
+    flex-basis: auto;
+    min-height: 240px;
+  }
+  /* Same `flex: none` as the width release, for the same reason: the desktop
+     `flex: 1 1 0` collapses to zero height against an auto-height parent. */
+  .dz-columns {
+    flex: none;
+  }
+  /* The list keeps a real height of its own instead of inheriting one from a
+     grid row that no longer has a fixed ceiling to divide up. */
+  .dz-list {
+    min-height: 60dvh;
+  }
+  /* The column's own hidden-scrollbar overflow was the only way to reach its
+     lower cards while the page could not scroll. With the page scrolling it is
+     no longer needed, and leaving it would keep the wheel trapped in a scroller
+     the DJ cannot see the bounds of. */
+  .dz-right {
+    overflow-y: visible;
+    min-height: auto;
+  }
+}
+
 /* ─── Responsive: release the viewport lock on narrow screens ──────────── */
 /* `(width < 900.02px)` is the true complement of the rail's
    `(min-width: 900.02px)` (globals.css) — no gap, no overlap width. */
@@ -294,6 +343,22 @@
   flex-direction: column;
   justify-content: space-between;
   padding: clamp(20px, 3vh, 32px) clamp(24px, 3vw, 40px);
+}
+
+/* The hero is chart-as-canvas, so the BPM stroke runs UNDER the date and the
+   stat numbers — a bright ice-cyan stroke crossing pale glyphs at any vertical
+   position the night's tempo happens to take. A scrim would flatten the
+   canvas premise, so the legibility fix rides on the type itself: a tight
+   contact shadow to separate glyph from stroke, plus a wide soft halo that
+   darkens the immediate ground without reading as a box. Scoped to the text
+   nodes (not .dz-hero-content) so it can't inherit into the metal arrow,
+   whose own shader highlights are the point. */
+.dz-hero-when,
+.dz-hero-stats {
+  text-shadow:
+    0 2px 6px var(--shadow-ink-80),
+    0 1px 2px var(--shadow-ink-80),
+    0 0 28px var(--shadow-ink-60);
 }
 
 .dz-hero-when {
@@ -1532,25 +1597,32 @@
     inset 0 0 0 1px var(--color-abyss-accent-soft);
 }
 
-/* Set-day blips: the ref's today-dot, repurposed (1–3, glow past 3). */
+/* Set-day blips: the ref's today-dot, repurposed (1–3, glow past 3).
+   The blip is the ONLY thing marking "you played that night" on the whole
+   calendar, so at the ref's 4px dot it lost the scan — a 4px mark under a
+   13px numeral on a dark ground reads as grid noise. Enlarged to 6px and
+   given the halo unconditionally (it used to be reserved for the >3 case),
+   which is what actually buys the visibility: the glow doubles the mark's
+   apparent size without eating the cell. Past three, the halo widens. */
 .cal-blips {
   position: absolute;
-  bottom: 3px;
+  bottom: 2px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  gap: 2px;
+  gap: 3px;
 }
 
 .cal-blip {
-  width: 4px;
-  height: 4px;
+  width: 6px;
+  height: 6px;
   border-radius: 100px;
   background: var(--color-abyss-accent);
+  box-shadow: 0 0 5px var(--color-abyss-accent-glow);
 }
 
 .cal-blips[data-glow] .cal-blip {
-  box-shadow: 0 0 6px 1px var(--color-abyss-accent-glow);
+  box-shadow: 0 0 9px 2px var(--color-abyss-accent-glow);
 }
 
 /* Weekly: the ref's horizontal strip, hidden scrollbar. Exactly 7 day-columns

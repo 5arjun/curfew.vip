@@ -114,10 +114,18 @@ export function StyleEvolutionView({ model }: { model: StyleEvolutionModel }) {
   // calculation but their count is always disclosed alongside the chart —
   // never silently folded in or dropped (mirrors genre_breakdown's own
   // no_genre_count "never omitted" contract).
-  const genreDisclosure = useMemo(() => {
-    const total = genreSeries.reduce((sum, g) => sum + (g?.no_genre_count ?? 0), 0);
-    return total > 0 ? `${total} ${total === 1 ? "play" : "plays"} untagged` : null;
-  }, [genreSeries]);
+  //
+  // Arjun, 2026-08-12: "remove that thing in the bottom left which shows the
+  // number of untagged plays". Removed as a standing SENTENCE under the
+  // section — not as a fact. AC-5/AC-6 is a never-drop contract and deleting
+  // the number outright would leave the entropy quietly computed over a
+  // smaller population than the DJ thinks, so it moves into the Genre Mix
+  // card's own legend row as a single muted word. One line of running prose
+  // becomes three characters in a row that was already there.
+  const untaggedCount = useMemo(
+    () => genreSeries.reduce((sum, g) => sum + (g?.no_genre_count ?? 0), 0),
+    [genreSeries],
+  );
   // Story 4.8 AC-10 extends the same line with the wheel's unreadable-key
   // count (keys `parseCamelot` rejects are never silently dropped into a
   // cell) — appended to the ONE existing disclosure rather than growing a
@@ -200,6 +208,14 @@ export function StyleEvolutionView({ model }: { model: StyleEvolutionModel }) {
             metric="bpm"
             bpmSeries={bpmSeries}
             genreSeries={[]}
+            // Arjun, 2026-08-12 — the same call the Genre section already
+            // made. The card's title, its Fastest/Slowest legend and the
+            // hover chip already say everything the sentence did, and it was
+            // the one line of running prose in a row of charts. The Chart
+            // Summary string keeps its other two duties either way (the
+            // plot's aria text-equivalent, the error-boundary fallback), so
+            // nothing is lost to a screen reader.
+            showCaption={false}
           />
         ) : (
           <InsufficientHistory copy={TREND_GATE_COPY.bpm} />
@@ -216,6 +232,7 @@ export function StyleEvolutionView({ model }: { model: StyleEvolutionModel }) {
           granularity={granularity}
           genreSeries={genreSeries}
           genreColors={genreColors}
+          untaggedCount={untaggedCount}
         />
         {sectionsReady ? (
           <TrendChart
@@ -230,7 +247,6 @@ export function StyleEvolutionView({ model }: { model: StyleEvolutionModel }) {
         ) : (
           <InsufficientHistory copy={TREND_GATE_COPY.genre} />
         )}
-        {genreDisclosure && <p className="se-disclosure">{genreDisclosure}</p>}
       </section>
 
       {/* Key: wheel (hero, ungated) beside the harmonic trend (secondary,

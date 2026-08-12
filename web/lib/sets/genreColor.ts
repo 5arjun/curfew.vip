@@ -38,6 +38,40 @@ export const GENRE_SLOT_COUNT = 7;
  *  the categorical order so it never impersonates a real genre. */
 export const FOLD_COLOR = "var(--chart-cat-other)";
 
+/**
+ * The long-tail ramp (Arjun, 2026-08-12) — what a genre gets when the stream's
+ * "show every genre" toggle breaks the fold band apart.
+ *
+ * A LIGHTNESS ramp in the fold neutral's own family, not more categorical
+ * hues, and that is the whole design: the 8 slots above are a CVD-validated
+ * set whose adjacent-ΔE guarantees do not survive being stretched to an
+ * unbounded tail, and a 22nd-ranked genre should not read as loud as the
+ * DJ's biggest. The tail is a family, and it looks like one. See the
+ * `--chart-tail-*` block in tokens.css for the contrast validation.
+ */
+export const TAIL_COLORS = [
+  "var(--chart-tail-1)",
+  "var(--chart-tail-2)",
+  "var(--chart-tail-3)",
+  "var(--chart-tail-4)",
+  "var(--chart-tail-5)",
+  "var(--chart-tail-6)",
+] as const;
+
+/**
+ * A tail genre's shade, by its rank within the tail.
+ *
+ * Cycles past the last step rather than clamping: with 30 tail genres,
+ * clamping would paint 25 of them identically at the dark end, which reads as
+ * one enormous band. A cycle at least keeps every NEIGHBOURING pair distinct,
+ * which is the only adjacency a stacked stream actually shows — and the
+ * legend names each band, so a shade reused six bands away is a shade, not a
+ * claim that two genres are the same thing.
+ */
+export function tailColorFor(tailRank: number): string {
+  return TAIL_COLORS[tailRank % TAIL_COLORS.length];
+}
+
 /** The literal `"Other"` genre's own hue — slot 8, added to tokens.css by
  *  this story so the named slots stay whole. It used to borrow slot 6, which
  *  AC-2 needs for a named genre; D-3 moved it 7 → 8 when the roster widened.

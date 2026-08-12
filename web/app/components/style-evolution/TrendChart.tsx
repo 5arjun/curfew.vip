@@ -84,7 +84,7 @@ import { CursorChip, useCursorChipTarget } from "@/app/components/ui/CursorChip"
 export type TrendMetric = "bpm" | "genre" | "library" | "harmonic";
 
 const VIEW = { width: 1000, height: 260, padding: 28 };
-const Y_AXIS_GUTTER = 58; // left margin reserved for the y-axis labels
+const Y_AXIS_GUTTER = 42; // left margin reserved for the y-axis labels (4.2% of VIEW.width)
 /** Minimum vertical separation, in viewBox units, between two gutter labels
  *  before one is nudged clear of the other (~one line of the label type). */
 const AXIS_LABEL_CLEARANCE = 15;

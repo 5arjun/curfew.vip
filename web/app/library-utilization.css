@@ -130,6 +130,12 @@
 }
 
 .lu-stat-label {
+  /* inline-flex so a heading can carry the `.se-chart-info` explainer beside
+     its text (Set Similarity) without the glyph riding the uppercase baseline.
+     Harmless on the headings that don't. */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--font-geist-mono);
   font-size: 10.5px;
   letter-spacing: 0.12em;
@@ -167,13 +173,31 @@
   display: grid;
   grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
   gap: 16px;
-  align-items: stretch;
+  /* `start`, not `stretch` (Arjun, 2026-08-12). Stretching made the meter — a
+     percentage, a pip row and one sentence — as tall as a 260px chart, so
+     two-thirds of that card was empty. Aligning the pair was the ask; matching
+     their heights was never part of it, and equal heights bought the emptiness
+     the same conversation called out. Both cards still START on the same line,
+     which is the thing that was actually broken. */
+  align-items: start;
 }
 
 @media (max-width: 900px) {
   .lu-conversion-body {
     grid-template-columns: 1fr;
   }
+}
+
+/* One cell of the conversion pair: a heading, then a card. Both columns use it
+   so the two CARDS start on the same line (Arjun, 2026-08-12) — the meter used
+   to carry its heading inside its card while the trend, whose card is
+   `TrendChart`'s own shell, could only put its heading above. The result was
+   two containers in one row whose tops were a heading's height apart. */
+.lu-conversion-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
 }
 
 .lu-trend {
@@ -240,11 +264,14 @@
      that continues rather than one that ended. */
   max-height: 340px;
   overflow-y: auto;
-  /* Scrolling the shelf must not chain into the page once it bottoms out —
-     on a trackpad that reads as the page lurching for no reason. Hidden
-     scrollbar + `overscroll-behavior: contain` is the same pairing
-     `.dz-list-scroll` and `.dz-sheet-tracklist ol` already use. */
-  overscroll-behavior: contain;
+  /* `overscroll-behavior: contain` REMOVED 2026-08-12 (Arjun). Its note here
+     argued that chaining "reads as the page lurching for no reason" once the
+     shelf bottoms out. That reasoning holds for `.dz-list-scroll` on the
+     dashboard, which is a viewport-locked shell where there is no page to
+     chain INTO. This shelf sits in the middle of a long scrolling page with
+     100 rows (~5,200px) in a 340px box, so `contain` meant the page stopped
+     dead whenever the pointer crossed the shelf. Chaining out is the lesser
+     evil, and on this page it is not an evil at all. */
   scrollbar-width: none;
 }
 
@@ -504,12 +531,56 @@
 
 /* ─── Track rows (AC-5 workhorses, AC-6 one-and-done) ───────────────────── */
 
+/* Scrolls in place rather than hiding its tail behind a "Show the other N"
+   (Arjun, 2026-08-12) — the same bounded-scroll shape `.lu-shelf-list` already
+   uses on this page, including the hidden scrollbar and the overscroll
+   containment that stops a trackpad flick from lurching the whole page once
+   the list bottoms out.
+   The height is `--lu-rows-visible` rows of ~44px (6px padding either side of a
+   13px title + 11.5px artist, plus the hairline). Approximate on purpose: a
+   wrapped title makes its row taller, and rounding the cap to a whole number of
+   TYPICAL rows is what keeps the two paired modules the same height as each
+   other. The half-row that lands at the fold is a feature — a list cut exactly
+   at a row boundary reads as a list that ended. */
 .lu-row-list {
   list-style: none;
   margin: 4px 0 0;
   padding: 0;
   display: flex;
   flex-direction: column;
+  max-height: calc(var(--lu-rows-visible, 8) * 44px);
+  overflow-y: auto;
+  /* NOT `overscroll-behavior: contain` (Arjun, 2026-08-12: "a lot of the pages
+     don't scroll all the way down"). `contain` was copied from
+     `.lu-shelf-list`, whose note argues it stops the page lurching when the
+     list bottoms out. On a list holding ~2,900px of rows in a 264px box the
+     trade goes the other way entirely: put the cursor over Workhorses and the
+     page simply stops scrolling — you have to scroll the full list first, and
+     with `contain` it never chains out at all, so the page below is
+     unreachable without moving the mouse. Default chaining is what a DJ
+     expects from a small list inside a long page. */
+  scrollbar-width: none;
+}
+
+.lu-row-list::-webkit-scrollbar {
+  display: none;
+}
+
+/* The rows inside are links, but only some of them (a row with no `track_id`
+   is plain text by D-26), so the container carries its own focus ring for the
+   keyboard-only case where there is nothing tabbable to scroll it with — same
+   ruling as `.lu-shelf-list`. Applied only when it is focusable at all; see
+   `TrackRowList`'s conditional tabIndex. */
+.lu-row-list:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--color-abyss-accent);
+}
+
+@media (forced-colors: active) {
+  .lu-row-list:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: -2px;
+  }
 }
 
 .lu-row {
@@ -517,6 +588,16 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
+  /* REQUIRED, not tidiness — found in the browser pass, invisible to every
+     gate. `.lu-row-list` is a column flex container, and since it gained a
+     `max-height` its children are eligible to shrink. A flex item's automatic
+     minimum size (`min-height: auto`) normally makes that harmless… except this
+     rule sets `min-height: 24px` explicitly, which REPLACES the automatic
+     minimum. So every row was free to compress to 24px, and a two-line row
+     (title over artist) does not fit in 24px: the artist rendered on top of the
+     next row's title. `.lu-shelf-list` never hit this because its rows set no
+     min-height and so kept the automatic one. */
+  flex: none;
   /* 6px vertical plus the 13px line box clears the 24px SC 2.5.8 floor with
      room to spare. Sized for the interactive case even while the rows are
      static: Story 4.10 makes each row a link to `/track/[track_id]`, and a row
@@ -562,40 +643,6 @@
      colour guard's named-colour pattern matches a word inside that other
      property's name. A lint-driven idiom, but a consistent one. */
   text-wrap: nowrap;
-}
-
-/* The "load more" (EXPERIENCE.md:108 bans infinite scroll on track lists). A
-   native `<details>`, so both modules stay server components and the keyboard
-   path comes for free. */
-.lu-row-more {
-  margin-top: 2px;
-}
-
-.lu-row-more-toggle {
-  /* 24x24 minimum for SC 2.5.8 — this is the one genuinely interactive target
-     these two modules add, so it is sized deliberately rather than inherited. */
-  display: inline-flex;
-  align-items: center;
-  min-height: 24px;
-  padding: 4px 2px;
-  font-family: var(--font-inter);
-  font-size: 12px;
-  font-weight: 550;
-  color: var(--color-abyss-accent);
-  cursor: pointer;
-  list-style: none;
-}
-
-.lu-row-more-toggle::-webkit-details-marker {
-  display: none;
-}
-
-.lu-row-more-toggle:focus-visible {
-  outline: none;
-  border-radius: var(--radius-full);
-  box-shadow:
-    0 0 0 2px var(--color-abyss-accent),
-    0 0 0 6px var(--color-abyss-accent-glow);
 }
 
 /* ─── Set similarity (AC-4) ─────────────────────────────────────────────── */
@@ -804,14 +851,129 @@
 
 /* ─── Track search (Story 4.10, AC-1/AC-2) ──────────────────────────────────
    The field reuses `.spot-*` (dashboard.css:1208) verbatim; only its container
-   and its results chrome live here. No `.spot-goo`: that class exists to carry
-   the blob filter that merges the pill with `SpotlightSearch`'s sort chips, and
-   this field has no chips to merge with. */
+   and its results chrome live here. `.spot-goo` and its hover-gated chips ARE
+   carried too, as of 2026-08-12 — see the block below and `TrackSearch.tsx`'s
+   own doc comment for why that reverses an earlier "nothing to merge here"
+   ruling this comment used to state. */
 
 .lu-search {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+/* Field + filters on one line (Arjun, 2026-08-12). The field takes the slack;
+   the chips keep their intrinsic width and wrap under it only when there is
+   genuinely no room, rather than squeezing the field to nothing first.
+   Carries `.spot-goo` too, so the chips and the pill blend through the same
+   `#lu-blob` metaball filter the dashboard's sort chips use — that is what
+   makes them read as separating OUT of the field rather than sitting beside
+   it. The filter needs the gap to be small enough for the blur to bridge; 10px
+   is inside the dashboard's own 12px. */
+.lu-search-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  /* 14px, not the dashboard's 12px: its chips are 48px circles that deliberately
+     overlap the pill as they emerge, where these are text pills that have to
+     stay readable as three distinct options. At 10px the metaball fused the
+     first chip into the field's right edge and the pill stopped having a
+     visible end. 14px keeps the bridge as a hint of surface tension between
+     them rather than a merge. */
+  gap: 14px;
+  filter: url(#lu-blob);
+}
+
+/* The goo filter is a blur+threshold, so anything inside it that is meant to
+   stay crisp has to be lifted out of the filtered layer. The pill's own text
+   and icon are already handled by `.spot-pill`'s stacking; the chips get the
+   same treatment via their z-index below. */
+.lu-search-bar .spot-pill {
+  position: relative;
+  z-index: 10;
+}
+
+.lu-search-bar .spot {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.lu-search-filters {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+/* The chips themselves take the pill's own fill and height so the metaball has
+   two shapes of the same weight to bridge — a hairline-outlined chip would
+   dissolve rather than merge. `z-index` lifts them above the filtered blur the
+   way `.spot-chip` does on the dashboard. */
+.lu-search-filter {
+  position: relative;
+  z-index: 10;
+  /* 44px, matching `.spot-pill`'s 52px closely enough for the blob to read as
+     one mass, and comfortably over the SC 2.5.8 24px floor. */
+  min-height: 44px;
+  padding: 6px 18px;
+  border: none;
+  font-family: var(--font-inter);
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--color-abyss-text);
+  border-radius: var(--radius-full);
+  background: var(--color-abyss-raised);
+  box-shadow: inset 0 0 24px var(--color-abyss-shell-glow);
+  /* 0.7 at rest, not the dashboard's 0.45. Its chips are icons whose meaning
+     survives being faint because they only exist while you are reaching for
+     them; these are the labels of a filter you have to be able to READ from
+     across the page to know which one is on. */
+  opacity: 0.7;
+  cursor: pointer;
+  text-wrap: nowrap;
+  /* The entrance/exit spring and the hover-gated mounting itself are now
+     `framer-motion`, in `TrackSearch.tsx` — not CSS, and deliberately not:
+     `MotionConfig reducedMotion="user"` there already gives the same
+     `prefers-reduced-motion` contract this file's media queries give
+     everywhere else. A CSS `animation` here would fight the inline
+     `transform` framer drives on mount. */
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-standard),
+    box-shadow var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lu-search-filter:hover {
+  opacity: 1;
+  box-shadow:
+    inset 0 0 24px var(--color-abyss-shell-glow),
+    0 0 18px var(--color-abyss-accent-glow);
+}
+
+.lu-search-filter[aria-pressed="true"] {
+  opacity: 1;
+  box-shadow:
+    inset 0 0 24px var(--color-abyss-shell-glow),
+    0 0 0 1px var(--color-abyss-accent),
+    0 0 18px var(--color-abyss-accent-glow);
+}
+
+.lu-search-filter:focus-visible {
+  outline: none;
+  opacity: 1;
+  box-shadow:
+    0 0 0 2px var(--color-abyss-accent),
+    0 0 0 6px var(--color-abyss-accent-glow);
+}
+
+/* Results get their own surface instead of sitting on the page ground — a list
+   that appears on a keystroke needs an edge, or it reads as loose text over the
+   Silk backdrop. Same `.dz-shell` glass as every module on this page. */
+.lu-search-results {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 22px;
 }
 
 .lu-search-status {
@@ -826,8 +988,8 @@
    `prefers-reduced-motion` guard is the same contract `<MotionConfig
    reducedMotion="user">` provides, without pulling the library toward a page
    that animates nothing else. */
-.lu-search .lu-row-list,
-.lu-search .lu-search-status {
+.lu-search-results,
+.lu-search > .lu-search-status {
   animation: lu-search-in 180ms var(--motion-ease-liquid) both;
 }
 
@@ -843,8 +1005,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .lu-search .lu-row-list,
-  .lu-search .lu-search-status {
+  .lu-search-results,
+  .lu-search > .lu-search-status {
     animation: none;
   }
 }

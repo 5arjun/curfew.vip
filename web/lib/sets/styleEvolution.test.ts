@@ -1153,19 +1153,25 @@ describe("camelotWheelSummary (Story 4.8 AC-11)", () => {
   const wheelOf = (entries: Array<[string, number]>) =>
     buildCamelotWheel([{ index: 1, no_key_count: 0, breakdown: entries.map(([name, count]) => ({ name, count })) }]);
 
+  // AC-11 asks for the top keys and their share. It got them wrapped in a
+  // sentence ("Your keys center on …") until 2026-08-12, when Arjun asked for
+  // the pairs alone — the wheel directly above the caption already makes the
+  // point the prose was making. The lead-in survives because this ONE string
+  // is also the plot's aria text-equivalent and the render-failure fallback.
   it("names the top keys and their share — AC-11's literal wording", () => {
     const s = camelotWheelSummary(wheelOf([["8A", 5], ["7A", 3], ["9B", 2]]));
-    expect(s).toBe("Your keys center on 8A (50%), 7A (30%), and 9B (20%).");
+    expect(s).toBe("Top keys: 8A 50% · 7A 30% · 9B 20%");
   });
 
   it("reads honestly at one key and at two", () => {
-    expect(camelotWheelSummary(wheelOf([["8A", 4]]))).toBe("Every keyed play sits in 8A.");
-    expect(camelotWheelSummary(wheelOf([["8A", 3], ["8B", 1]]))).toBe("Your keys center on 8A (75%) and 8B (25%).");
+    // A one-key library gets one pair, not a padded list claiming three.
+    expect(camelotWheelSummary(wheelOf([["8A", 4]]))).toBe("Top keys: 8A 100%");
+    expect(camelotWheelSummary(wheelOf([["8A", 3], ["8B", 1]]))).toBe("Top keys: 8A 75% · 8B 25%");
   });
 
   it("breaks count ties deterministically by wheel position", () => {
     expect(camelotWheelSummary(wheelOf([["9B", 2], ["2A", 2], ["2B", 2], ["1A", 1]]))).toBe(
-      "Your keys center on 2A (29%), 2B (29%), and 9B (29%).",
+      "Top keys: 2A 29% · 2B 29% · 9B 29%",
     );
   });
 });

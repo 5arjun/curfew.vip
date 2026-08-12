@@ -91,6 +91,23 @@ export function ClockStrip({ model }: { model: ClockStripModel }) {
                     // anyway.
                     style={{ height: `${Math.round((count / peak) * 100)}%` }}
                   />
+                  {/* Hover readout (Arjun, 2026-08-12: "add a hover that says
+                      how many plays at the time"). Until now the strip's shape
+                      was the whole answer — a DJ could see that one hour was
+                      taller than another and never learn what either number
+                      was, and the only place the counts existed at all was the
+                      group's `aria-label`, which names the busiest hour and
+                      nothing else. The hover target is the whole SLOT, not the
+                      bar: a one-play hour draws a 2px bar, and a tooltip you
+                      have to hit a 2px target to read is a tooltip nobody
+                      reads. Pure CSS on `:hover`/`:focus-within` — the strip is
+                      already `aria-hidden` with the summary carrying the
+                      accessible reading, so this is mouse enrichment on top of
+                      a text equivalent that already exists, exactly the
+                      precedent the chart hovers elsewhere in the app follow. */}
+                  <span className="td-clock-tip" aria-hidden="true">
+                    {formatHour(hour)} · {count} {count === 1 ? "play" : "plays"}
+                  </span>
                   {hour % 6 === 0 && <span className="td-clock-tick">{formatHour(hour)}</span>}
                 </li>
               );

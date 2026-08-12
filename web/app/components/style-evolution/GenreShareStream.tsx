@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useId, useMemo, useRef, useState } from "react";
 import {
   buildGenreShare,
   genreShareSummary,
@@ -9,7 +9,13 @@ import {
   type Granularity,
   type MonthGenreDiversity,
 } from "@/lib/sets/styleEvolution";
-import { genreColorFor, GENRE_SLOT_COUNT, type GenreColorAssignment } from "@/lib/sets/genreColor";
+import {
+  genreColorFor,
+  tailColorFor,
+  FOLD_COLOR,
+  GENRE_SLOT_COUNT,
+  type GenreColorAssignment,
+} from "@/lib/sets/genreColor";
 import { createMonotoneYAt, type CurveXY } from "@/lib/sets/energyArc";
 import { CursorChip, useCursorChipTarget } from "@/app/components/ui/CursorChip";
 import { TrendChartErrorBoundary } from "./TrendChart";
@@ -23,7 +29,7 @@ import { TrendChartErrorBoundary } from "./TrendChart";
 // only draws.
 //
 // Geometry mirrors TrendChart's plot conventions on purpose (same 1000×260
-// viewBox, same padding, same 5.8% y-axis gutter) so the stream's columns
+// viewBox, same padding, same 4.2% y-axis gutter) so the stream's columns
 // sit vertically aligned with the 2^H trend chart directly below it in the
 // same section.
 //
@@ -46,7 +52,7 @@ import { TrendChartErrorBoundary } from "./TrendChart";
 // inline-style percentages.
 
 const VIEW = { width: 1000, height: 260, padding: 28 };
-const Y_AXIS_GUTTER = 58; // keep in sync with TrendChart / the 5.8% CSS gutter
+const Y_AXIS_GUTTER = 42; // keep in sync with TrendChart / the 4.2% CSS gutter
 /** Curve samples per run segment — same density the trend band fill uses. */
 const FILL_SAMPLES = 24;
 /** An isolated bucket's column width in viewBox units (capped like
@@ -107,6 +113,7 @@ export function GenreShareStream({
   granularity,
   genreSeries,
   genreColors,
+  untaggedCount = 0,
 }: {
   buckets: string[];
   granularity: Granularity;
@@ -114,15 +121,30 @@ export function GenreShareStream({
   /** The page-level shared assignment (G-1) — the same one the breakdown
    *  bars consume, so the two charts in this section always agree. */
   genreColors: GenreColorAssignment;
+  /** Plays with no genre at all, summed across the visible partition. They
+   *  are excluded from every share on this chart, and AC-5/AC-6 makes that
+   *  exclusion a thing that must always be stated — it used to be a sentence
+   *  under the whole section (2026-08-12: removed as prose, kept as a fact).
+   *  It rides the legend row here because that row is already the card's
+   *  "what is and isn't in these bands" line. */
+  untaggedCount?: number;
 }) {
+  // "Show every genre" (Arjun, 2026-08-12) — breaks the single folded band
+  // into one band per genre. Lives HERE rather than in the plot because the
+  // model, and therefore the caption and the error-boundary reset key, all
+  // change with it: the caption is the chart's only accessible reading (the
+  // visible one was dropped in 4.8), so it has to describe the expanded stack
+  // when the stack is expanded.
+  const [showAllGenres, setShowAllGenres] = useState(false);
+
   // The COLOR ROSTER, not the full ranking: only genres holding a reserved
   // hue can get a band, and the roster is one wider than the band cap so a
   // rostered genre absent from this view no longer costs a band (D-3).
   // Built out here rather than in the plot so the caption can describe the
   // bands that actually render (P-5).
   const model = useMemo(
-    () => buildGenreShare(genreSeries, genreColors.ranked.slice(0, GENRE_SLOT_COUNT)),
-    [genreSeries, genreColors],
+    () => buildGenreShare(genreSeries, genreColors.ranked.slice(0, GENRE_SLOT_COUNT), showAllGenres),
+    [genreSeries, genreColors, showAllGenres],
   );
 
   // THE one Chart Summary string (aria text-equivalent + render-failure
@@ -145,7 +167,7 @@ export function GenreShareStream({
   return (
     <TrendChartErrorBoundary
       caption={caption}
-      resetKey={`genre-share:${granularity}:${buckets.length}:${playTotal}`}
+      resetKey={`genre-share:${granularity}:${buckets.length}:${playTotal}:${showAllGenres}`}
     >
       <GenreShareStreamPlot
         buckets={buckets}
@@ -153,6 +175,9 @@ export function GenreShareStream({
         model={model}
         genreColors={genreColors}
         caption={caption}
+        showAllGenres={showAllGenres}
+        onToggleAllGenres={() => setShowAllGenres((on) => !on)}
+        untaggedCount={untaggedCount}
       />
     </TrendChartErrorBoundary>
   );
@@ -167,20 +192,57 @@ function GenreShareStreamPlot({
   model,
   genreColors,
   caption,
+  showAllGenres,
+  onToggleAllGenres,
+  untaggedCount,
 }: {
   buckets: string[];
   granularity: Granularity;
   model: GenreShareModel;
   genreColors: GenreColorAssignment;
   caption: string;
+  showAllGenres: boolean;
+  onToggleAllGenres: () => void;
+  untaggedCount: number;
 }) {
   const xs = useMemo(() => buckets.map((_, i) => xForIndex(i, buckets.length)), [buckets]);
   const runs = useMemo(() => columnRuns(model.columns), [model]);
 
   const bandColor = (bandIndex: number) => {
     const band = model.bands[bandIndex];
+    // A tail band's genre holds no reserved hue by definition, so asking the
+    // assignment for one would hand back the fold neutral and paint every
+    // expanded band the same grey — the exact failure the expansion exists to
+    // fix. Its shade comes from the tail ramp instead.
+    if (band.kind === "tail") return tailColorFor(band.tailRank ?? 0);
     return genreColorFor(genreColors, band.name);
   };
+
+  /** The bands that get an inline legend entry: the six named genres plus the
+   *  taxonomy's own "Other". Never the fold band and never the tail — both of
+   *  those are represented by the one control at the end of the row. */
+  const namedBands = useMemo(
+    () =>
+      model.bands
+        .map((band, index) => ({ band, index }))
+        .filter(({ band }) => band.kind === "named" || band.kind === "catchAll"),
+    [model],
+  );
+
+  /** The tail, as legend entries, in BOTH states — which is why the model
+   *  carries `tail` independently of whether it drew tail bands. Folded, each
+   *  entry wears the fold neutral, because that is genuinely the one band all
+   *  of them are inside; expanded, each wears its own step of the ramp. */
+  const tailEntries = useMemo(
+    () =>
+      model.tail.map((name, tailRank) => ({
+        name,
+        color: showAllGenres ? tailColorFor(tailRank) : FOLD_COLOR,
+      })),
+    [model, showAllGenres],
+  );
+
+  const tailTipId = useId();
 
   // Per-band filled regions. For each run of ≥2 buckets, every stacking
   // boundary (cumulative share) is sampled through the SAME monotone
@@ -398,16 +460,70 @@ function GenreShareStreamPlot({
           distinction — reworded 2026-08-08 because two "Other…" entries
           side by side read as a mystery. No visible caption on this card
           (Arjun, same session): `caption` still serves as the aria
-          text-equivalent above and the error-boundary fallback. */}
+          text-equivalent above and the error-boundary fallback.
+
+          The TAIL never enters this row (Arjun, 2026-08-12). Expanded, it can
+          be thirty genres — inlining them turned a one-line legend into a
+          paragraph that pushed the section below it off the fold, and buried
+          the six bands that carry the reading. It gets one control at the end
+          of the row instead: click to expand or fold, hover for the full
+          list with the shades those genres are actually drawn in. */}
       <div className="se-chart-cats">
-        {model.bands.map((band, bi) => (
+        {namedBands.map(({ band, index }) => (
           <span key={band.name} className="se-chart-cat">
-            <span className="se-chart-cat-swatch" style={{ background: bandColor(bi) }} aria-hidden="true" />
-            {band.kind === "fold" ? `${band.name}*` : band.name}
+            <span className="se-chart-cat-swatch" style={{ background: bandColor(index) }} aria-hidden="true" />
+            {band.name}
           </span>
         ))}
-        {model.bands.some((b) => b.kind === "fold") && (
-          <span className="se-chart-cats-note">*genres outside the top 6, folded together</span>
+
+        {tailEntries.length > 0 && (
+          <span className="se-chart-tail">
+            <button
+              type="button"
+              className="se-chart-tail-btn"
+              aria-pressed={showAllGenres}
+              aria-describedby={tailTipId}
+              onClick={onToggleAllGenres}
+            >
+              <span className="se-chart-tail-swatches" aria-hidden="true">
+                {tailEntries.slice(0, 3).map((entry) => (
+                  <span key={entry.name} className="se-chart-cat-swatch" style={{ background: entry.color }} />
+                ))}
+              </span>
+              {showAllGenres
+                ? `${tailEntries.length} shown separately`
+                : `+${tailEntries.length} more ${tailEntries.length === 1 ? "genre" : "genres"}`}
+            </button>
+
+            {/* The swatch beside each name is the one that genre is drawn in
+                RIGHT NOW — the fold neutral while they are still one band,
+                its own shade once they are not. So the tip never promises a
+                colour that isn't on the chart yet; folded, the repeated grey
+                IS the honest reading ("all of these are that one band"). */}
+            <span role="tooltip" id={tailTipId} className="se-chart-tail-tip">
+              <span className="se-chart-tail-tip-head">
+                {showAllGenres ? "Drawn separately" : "Folded into one band"}
+              </span>
+              <span className="se-chart-tail-list">
+                {tailEntries.map((entry) => (
+                  <span key={entry.name} className="se-chart-cat">
+                    <span
+                      className="se-chart-cat-swatch"
+                      style={{ background: entry.color }}
+                      aria-hidden="true"
+                    />
+                    {entry.name}
+                  </span>
+                ))}
+              </span>
+            </span>
+          </span>
+        )}
+
+        {untaggedCount > 0 && (
+          <span className="se-chart-cats-note">
+            {untaggedCount} {untaggedCount === 1 ? "play" : "plays"} untagged
+          </span>
         )}
       </div>
 

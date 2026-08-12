@@ -17,7 +17,6 @@ import {
   buildUtilizationIndex,
   buildWorkhorses,
   partitionSetsByConfidence,
-  unlinkableTracksDisclosure,
   utilizationDisclosure,
   type UtilizationIndex,
 } from "@/lib/sets/libraryUtilization";
@@ -121,9 +120,14 @@ export default async function LibraryUtilizationPage() {
   return (
     <main className="lu">
       <SilkBackdrop />
+      {/* The subtitle ("How much of your library actually makes it to the
+          dancefloor.") is GONE — Arjun, 2026-08-12. It restated the page title
+          in a longer form, and it sat directly above `.lu-capture-note`, which
+          is a second line of page-level prose the DJ actually needs. Two
+          stacked explanatory sentences before the first number is what made the
+          top of this page read as a preamble. */}
       <header className="lu-header">
         <h1 className="lu-title">Library Utilization</h1>
-        <p className="lu-subtitle">How much of your library actually makes it to the dancefloor.</p>
       </header>
 
       {/* AC-8, said ONCE and at page level because it governs the modules above
@@ -343,10 +347,6 @@ function renderBody(
   const workhorses = buildWorkhorses(utilization);
   const oneAndDone = buildOneAndDone(utilization);
   const utilizationNote = utilizationDisclosure(utilization);
-  // Story 4.10 AC-4: how many of the tracks in the lists above (and in search)
-  // carry no identity and so cannot open. Population-dependent like every other
-  // figure here, so it is built per call rather than once at page level.
-  const unlinkableNote = unlinkableTracksDisclosure(utilization);
 
   return (
     <>
@@ -478,24 +478,16 @@ function renderBody(
           TWO lines, not one, and they are not interchangeable: the first names
           exclusions on the ADD side (tracks with no add date, tracks whose add
           date can't be reconciled) and covers the meter, time-to-first-play and
-          the shelf; the second names exclusions on the PLAY side (plays with no
-          track name, sets with no date) and covers Story 4.9's five modules.
-          Folding them together would produce one sentence claiming both sets of
-          exclusions apply to every figure above, which is false in both
-          directions.
+          the shelf; the second names exclusions on the PLAY side (sets with no
+          date) and covers Story 4.9's five modules. Folding them together would
+          produce one sentence claiming both sets of exclusions apply to every
+          figure above, which is false in both directions.
 
           Both return `null` rather than "0 excluded" when there is nothing to
           disclose — the Story 4.7 R-2 failure was a count dropping to 0
           precisely when it had the most to say. */}
       {undatedNote && <p className="lu-disclosure">{undatedNote}</p>}
       {utilizationNote && <p className="lu-disclosure">{utilizationNote}</p>}
-      {/* Story 4.10 AC-4 — a THIRD line rather than a clause folded into the
-          one above it, for the same reason those two are not one sentence: this
-          one names a limit on what can be OPENED, where the other two name
-          plays and sets excluded from the FIGURES. Merging them would produce a
-          sentence claiming both kinds of exclusion apply to both, which is
-          false in both directions. */}
-      {unlinkableNote && <p className="lu-disclosure">{unlinkableNote}</p>}
     </>
   );
 }

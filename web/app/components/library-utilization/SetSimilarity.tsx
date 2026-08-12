@@ -6,6 +6,7 @@ import {
   type SimilarityAxis,
 } from "@/lib/sets/libraryUtilization";
 import { InsufficientHistory } from "@/app/components/style-evolution/InsufficientHistory";
+import { InfoTip } from "@/app/components/ui/InfoTip";
 
 /**
  * This module's OWN insufficient-history copy (AC-9) — **two** of them, because
@@ -90,8 +91,31 @@ export function SetSimilarity({ model }: { model: SetSimilarityModel }) {
   return (
     <div className="lu-module lu-module-wide dz-shell" role="group" aria-label={summary}>
       <span className="dz-dots" aria-hidden="true" />
+      {/* The explainer (Arjun, 2026-08-12: "add a tooltip they can hover over
+          that shows how that similarity is actually calculated"). A percentage
+          in a matrix is the one figure on this page a DJ cannot reverse-engineer
+          from what is on screen — 40% of WHICH set, counted how, over what — and
+          two reasonable readings of "40% similar" give different numbers.
+          So it states the formula, names the denominator, and says out loud what
+          a blank cell means, which is the part that actually confuses (a blank
+          is unknown, not zero — see `Row` below).
+
+          Reuses Style Evolution's `.se-chart-info` explainer verbatim, chrome
+          and behaviour: hover AND keyboard focus AND a tap-toggle, because
+          hover-only strands both keyboard and touch. Verbatim rather than
+          re-styled — it is already the one "what does this mean" affordance in
+          this app, and a second dialect of it would be the thing to justify. */}
       <div className="lu-stat-head">
-        <h3 className="lu-stat-label">Set similarity</h3>
+        <h3 className="lu-stat-label">
+          Set similarity
+          <InfoTip label="How set similarity is calculated">
+            Each cell counts the tracks two sets have in common, divided by the number of distinct
+            identified tracks across both — so two identical sets read 100%, and two with nothing in
+            common read 0%. A track counts once per set no matter how often you played it, and tracks
+            Curfew couldn&rsquo;t identify are left out of both halves. A blank cell means one of the
+            two sets had no identified tracks at all, which is unknown rather than zero.
+          </InfoTip>
+        </h3>
       </div>
 
       {!ready ? (

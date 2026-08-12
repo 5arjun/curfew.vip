@@ -1,12 +1,12 @@
 "use client";
 
+import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import { Search } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { formatDayDate } from "@/lib/sets/format";
 import {
   filterTrackSearchRows,
   isOwned,
-  trackSearchCapDisclosure,
   trackSearchHaystacks,
   trackSearchNoMatchCopy,
   visibleTrackSearchRows,
@@ -49,19 +49,36 @@ import { TrackRowList } from "./TrackRowList";
  * `.spot-*` chrome is reused verbatim (already global, `dashboard.css:1208`),
  * and so is its accessibility shape: a real `<input>` with an explicit
  * `aria-label`, a decorative placeholder marked `aria-hidden`, icons
- * `aria-hidden`. Three things are NOT copied:
- *   - the sort chips, and with them the `.spot-goo` blob filter that exists to
- *     merge the pill with them. There is nothing to merge here, and an SVG
- *     filter over a live-filtering field is cost with no reader.
- *   - `framer-motion`. `SpotlightSearch` wraps itself in `<MotionConfig
- *     reducedMotion="user">` because it animates; nothing here does, and a
- *     no-op `MotionConfig` would pull the whole library toward this page's
- *     bundle to configure animations that do not exist. The results' entrance
- *     is CSS, inside a `prefers-reduced-motion` guard — same contract, no
- *     dependency.
- *   - its chip pattern generally. `deferred-work.md:135` has that logged as an
- *     incomplete tablist (no roving tabindex, no `aria-controls`); this story
- *     must not add a fourth instance.
+ * `aria-hidden`.
+ *
+ * **The `.spot-goo` blob filter IS copied now (Arjun, 2026-08-12: "I wanted
+ * the toggles on the song search to have the same animation, sort of thing as
+ * the dashboard set search").** This comment used to say the opposite — "there
+ * is nothing to merge here" — and that was true right up until this field grew
+ * filter chips beside its pill. Now there is exactly the thing the filter
+ * exists for, so the chips emerge from behind the pill as one liquid mass and
+ * separate out, the same way the dashboard's sort chips do.
+ *
+ * **`framer-motion` and the HOVER-GATED mounting are now copied too** (Arjun,
+ * same session, follow-up: "the same exact way ... filter icons popping out
+ * and hover animations the same way"). This comment used to keep both out —
+ * the chips used to animate in once on mount and then stay, on the reasoning
+ * that hiding which filter is active until you hover it makes a control you
+ * cannot read. That reasoning did not survive contact with the actual ask:
+ * `aria-pressed` still carries the state for anyone who reaches the group (via
+ * hover OR focus — focusing the input sets `hovered` exactly like
+ * `SpotlightSearch`'s own `onFocus`, so Tab still reaches every chip in
+ * order), and the springs firing on every hover is the whole point being
+ * copied. `SpotlightSearch`'s literal spring values (0.8s, bounce 0.2, 64px ×
+ * index, 0.05s stagger) are reused verbatim rather than re-derived.
+ *
+ * Two things are still NOT copied:
+ *   - the placeholder-roll-on-hover trick. That exists to reveal an
+ *     icon-only chip's meaning; these chips already show their label the
+ *     whole time they're mounted, so there is no meaning left to reveal.
+ *   - its chip pattern's ARIA. `deferred-work.md:135` logs that as an
+ *     incomplete tablist (no roving tabindex, no `aria-controls`); these are
+ *     plain toggle buttons in a labelled group, which owes none of that.
  */
 
 /**
@@ -78,6 +95,37 @@ import { TrackRowList } from "./TrackRowList";
 const TRACK_SEARCH_INSUFFICIENT_COPY =
   "Once a set is captured or your library syncs, every track Curfew knows about is searchable here.";
 
+/**
+ * The population filter beside the field (Arjun, 2026-08-12: "add a toggle(s)
+ * to the right of the search bar similar to the dashboard, which has the filter
+ * buttons").
+ *
+ * These chips REPLACE a sentence, they are not decoration on top of one. The
+ * results used to carry "tracks you've played come first, by play count, then
+ * the rest of your library" underneath them — a line explaining an ordering the
+ * DJ could not act on. The same fact is now a control: the two halves of the
+ * index the sentence described are the two things you can filter to.
+ *
+ * AC-2's requirement that a result says which population it came from is
+ * untouched — that lives on the row (`stateLabel`), and still does with the
+ * filter set to "all".
+ */
+type SearchFilter = "all" | "played" | "library";
+
+const SEARCH_FILTERS: Array<{ id: SearchFilter; label: string }> = [
+  { id: "all", label: "All" },
+  { id: "played", label: "Played" },
+  { id: "library", label: "Not played" },
+];
+
+function matchesFilter(row: TrackSearchRow, filter: SearchFilter): boolean {
+  if (filter === "all") return true;
+  // `isOwned` is "in the library, never played" — the exact split the retired
+  // sentence was describing, so the filter and the row's own state label can
+  // never disagree about which half a track is in.
+  return filter === "library" ? isOwned(row) : !isOwned(row);
+}
+
 export function TrackSearch({
   index,
   revealed,
@@ -92,6 +140,15 @@ export function TrackSearch({
   revealed: boolean;
 }) {
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<SearchFilter>("all");
+  // Gates the filter chips exactly like `SpotlightSearch`'s own `hovered` —
+  // hover OR focus, cleared only when focus leaves the whole group (see the
+  // `onBlur` below). Deliberately NOT also gated on `query` the way the
+  // dashboard's sort chips are: those hide once you start typing because
+  // there is nothing left in the field to make room for; these three FILTER
+  // the results a query produces, so they matter most exactly when a query is
+  // typed and must stay reachable then.
+  const [hovered, setHovered] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Built ONCE per index, not once per keystroke — the property D-29 asks for,
@@ -102,16 +159,46 @@ export function TrackSearch({
   // Every whitespace-split token must hit the haystack, mirroring
   // `SetListPanel.tsx:76-90` exactly. Filtered before the population split so
   // the matching work happens once rather than twice.
-  const matches = useMemo(
-    () => filterTrackSearchRows(index.rows, haystacks, query),
-    [index.rows, haystacks, query],
-  );
+  const matches = useMemo(() => {
+    const hits = filterTrackSearchRows(index.rows, haystacks, query);
+    return filter === "all" ? hits : hits.filter((row) => matchesFilter(row, filter));
+  }, [index.rows, haystacks, query, filter]);
 
   const searchable = hasSearchableTracks(index);
   const typed = query.trim() !== "";
 
   return (
     <div className="lu-search">
+      {/* The blob filter the goo row references. Duplicated from
+          `SpotlightSearch` rather than hoisted to a shared component: it is
+          nine lines of inert SVG, the two pages never render together, and a
+          shared `<SVGFilter>` would be a new module whose only job is to own an
+          id string. */}
+      <svg width="0" height="0" aria-hidden="true" focusable="false">
+        <filter id="lu-blob">
+          <feGaussianBlur stdDeviation="10" in="SourceGraphic" />
+          <feColorMatrix
+            values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -9"
+            result="blob"
+          />
+          <feBlend in="SourceGraphic" in2="blob" />
+        </filter>
+      </svg>
+
+      <MotionConfig reducedMotion="user">
+      <div
+        className="lu-search-bar spot-goo"
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        onFocus={() => setHovered(true)}
+        onBlur={(e) => {
+          // Mirrors `SpotlightSearch` exactly: only clear when focus leaves
+          // the whole pill+chips group, not when it moves between the input
+          // and a chip within it — otherwise the chips would unmount out from
+          // under a keyboard user tabbing from the field into them.
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setHovered(false);
+        }}
+      >
       <div className="spot">
         <div className="spot-pill" onClick={() => inputRef.current?.focus()}>
           <span className="spot-search-icon">
@@ -141,6 +228,40 @@ export function TrackSearch({
         </div>
       </div>
 
+        {/* Deliberately NOT `SpotlightSearch`'s chip pattern's ARIA, which
+            `deferred-work.md:135` logs as an incomplete tablist (no roving
+            tabindex, no `aria-controls`) — these are plain toggle buttons in a
+            labelled group: three real tab stops, `aria-pressed` carrying the
+            state, nothing to re-earn. The MOUNTING and SPRINGS, though, are
+            now the dashboard's own: hidden until `hovered`, same 64px×index
+            offset and 0.05s stagger, same 0.8s/bounce-0.2 spring in both
+            directions (`SpotlightSearch.tsx`'s literal values). */}
+        <div className="lu-search-filters" role="group" aria-label="Filter results">
+          <AnimatePresence>
+            {hovered &&
+              SEARCH_FILTERS.map((option, i) => (
+                <motion.button
+                  key={option.id}
+                  type="button"
+                  className="lu-search-filter"
+                  aria-pressed={filter === option.id}
+                  onClick={() => setFilter(option.id)}
+                  initial={{ scale: 0.7, x: -1 * (64 * (i + 1)) }}
+                  animate={{ scale: 1, x: 0 }}
+                  exit={{
+                    scale: 0.7,
+                    x: 1 * (16 * (SEARCH_FILTERS.length - i - 1) + 64 * (SEARCH_FILTERS.length - i - 1)),
+                  }}
+                  transition={{ duration: 0.8, type: "spring", bounce: 0.2, delay: i * 0.05 }}
+                >
+                  {option.label}
+                </motion.button>
+              ))}
+          </AnimatePresence>
+        </div>
+      </div>
+      </MotionConfig>
+
       {!searchable ? (
         <InsufficientHistory copy={TRACK_SEARCH_INSUFFICIENT_COPY} />
       ) : (
@@ -164,8 +285,8 @@ export function TrackSearch({
  */
 function SearchResults({ matches, revealed }: { matches: TrackSearchRow[]; revealed: boolean }) {
   const rows = visibleTrackSearchRows(matches, revealed);
-  const capNote = trackSearchCapDisclosure(rows.length);
   const noMatchCopy = trackSearchNoMatchCopy(matches.length, rows.length);
+  const shown = Math.min(rows.length, TRACK_SEARCH_MAX_ROWS);
 
   if (noMatchCopy) {
     // `role="status"` so the live filter announces the miss rather than leaving
@@ -179,9 +300,28 @@ function SearchResults({ matches, revealed }: { matches: TrackSearchRow[]; revea
   }
 
   return (
-    <>
+    // Results sit on their OWN surface (Arjun, 2026-08-12: "let's make it a
+    // container or something so you don't see only the background of the actual
+    // site"). They used to render straight onto the page ground, so a list that
+    // appears on a keystroke had no edge and no depth — it read as text dropped
+    // over the Silk backdrop rather than as a panel that opened. Same
+    // `.dz-shell` glass every other module on this page already sits on, so the
+    // results belong to the field above them rather than looking like a fourth
+    // kind of surface.
+    <div className="lu-search-results dz-shell">
+      <span className="dz-dots" aria-hidden="true" />
       <p className="lu-search-status" role="status">
-        {rows.length === 1 ? "1 match" : `${rows.length} matches`}
+        {/* The cap is stated as a count rather than as the sentence that used
+            to hang under the list ("Showing 25 of N matches — tracks you've
+            played come first, by play count, then the rest of your library").
+            Non-negotiable 5 is that a truncation is never SILENT, not that it
+            costs a line of prose; the ordering half of that sentence is now the
+            filter chips beside the field. */}
+        {shown < rows.length
+          ? `${shown} of ${rows.length} matches`
+          : rows.length === 1
+            ? "1 match"
+            : `${rows.length} matches`}
       </p>
       <TrackRowList
         rows={rows.slice(0, TRACK_SEARCH_MAX_ROWS).map((row) => ({
@@ -197,10 +337,8 @@ function SearchResults({ matches, revealed }: { matches: TrackSearchRow[]; revea
           value: stateLabel(row, revealed),
         }))}
         visibleRows={TRACK_SEARCH_VISIBLE_ROWS}
-        moreLabel={(n) => `Show the other ${n}`}
       />
-      {capNote && <p className="lu-disclosure">{capNote}</p>}
-    </>
+    </div>
   );
 }
 

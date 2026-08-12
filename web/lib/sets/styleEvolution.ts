@@ -784,14 +784,30 @@ export interface GenreShareBand {
   /** `named` = one of the top-6 genres; `catchAll` = the taxonomy's own
    *  literal "Other" genre (a real category); `fold` = this chart's
    *  fold-the-rest aggregate ("Other genres" — never mistakable for a
-   *  genre, AC-2). */
-  kind: "named" | "catchAll" | "fold";
+   *  genre, AC-2); `tail` = one real genre that WOULD have folded, drawn on
+   *  its own because the DJ asked to see every genre (2026-08-12). */
+  kind: "named" | "catchAll" | "fold" | "tail";
+  /** `tail` bands only: rank within the tail, driving `tailColorFor`. Ordered
+   *  by play count in the current view, so the biggest folded genre always
+   *  takes the first shade. */
+  tailRank?: number;
 }
 
 export interface GenreShareModel {
   /** Stack order, bottom → top: named genres in the shared global rank
-   *  order, then the literal catch-all, then the fold band. */
+   *  order, then either the fold band or (when expanded) one band per
+   *  {@link GenreShareModel.tail} entry, then the literal catch-all last.
+   *  The catch-all is typically the single biggest band on the chart
+   *  (Arjun, 2026-08-12), so the fold/tail sits BELOW it rather than above —
+   *  stacked above the catch-all, the thin tail slivers would float at the
+   *  very top of the chart, visually detached from the axis they measure
+   *  against. */
   bands: GenreShareBand[];
+  /** Every genre that did NOT earn a named band, biggest-first — present
+   *  whether or not the tail is expanded, so the legend can name what is
+   *  inside the fold band without having to build a second model to find
+   *  out. Empty when nothing folded. */
+  tail: string[];
   /** Parallel to the bucket axis. `null` = a bucket with no categorized
    *  play — a D-8 gap in the stream, never a fabricated all-Other column.
    *  `counts` is parallel to `bands`; `total` is the bucket's categorized
@@ -823,6 +839,19 @@ export const GENRE_FOLD_LABEL = "Everything else";
 export function buildGenreShare(
   values: Array<MonthGenreDiversity | null>,
   rosterNames: string[],
+  /**
+   * Break the fold band into one band per folded genre (Arjun, 2026-08-12:
+   * "instead of it being in one color, it displays them separately, so it is
+   * better to understand").
+   *
+   * Off by default, and off is still the honest default: six named bands plus
+   * one labelled aggregate is the reading a DJ can hold in their head, and the
+   * tail can run to thirty genres of two plays each. This is disclosure on
+   * request, not a new baseline — nothing about the named bands, their colors
+   * or their stack order changes when it flips, so the chart the DJ was
+   * reading is still there underneath the expansion.
+   */
+  expandTail = false,
 ): GenreShareModel {
   // Per-genre totals within THIS view. A genre absent here gets no band (a
   // zero-height band everywhere is legend noise), but its color stays
@@ -860,15 +889,38 @@ export function buildGenreShare(
   const topSet = new Set(top);
   // Anything present that did not get a band folds — including genres past
   // the roster entirely, which is why this reads `present` and not the
-  // roster.
-  const hasFold = [...present].some((n) => n !== TAXONOMY_CATCH_ALL && !topSet.has(n));
+  // roster. Ordered biggest-first so the tail's own ranking is stable and the
+  // largest folded genre takes the first (lightest) shade.
+  const tailNames = [...present]
+    .filter((n) => n !== TAXONOMY_CATCH_ALL && !topSet.has(n))
+    .sort((a, b) => (viewTotals.get(b) ?? 0) - (viewTotals.get(a) ?? 0) || (a < b ? -1 : 1));
+  const hasFold = tailNames.length > 0;
 
   const bands: GenreShareBand[] = top.map((name) => ({ name, kind: "named" as const }));
+  if (hasFold) {
+    // Expanded: one band per folded genre, in the tail's own order, ABOVE the
+    // named bands — so the six the DJ reads by default keep their exact stack
+    // positions and the expansion only ever grows upward. Still BELOW the
+    // catch-all (pushed last, below), which stays the top of the stack either
+    // way (Arjun, 2026-08-12).
+    if (expandTail) {
+      tailNames.forEach((name, tailRank) => bands.push({ name, kind: "tail", tailRank }));
+    } else {
+      bands.push({ name: GENRE_FOLD_LABEL, kind: "fold" });
+    }
+  }
+  // Pushed LAST, not right after the named bands: the catch-all is usually
+  // the single biggest band, and putting the fold/tail above it kept the
+  // tail's thin slivers stranded at the very top of the chart. Below it, they
+  // sit against the same ground the named bands do.
   if (present.has(TAXONOMY_CATCH_ALL)) bands.push({ name: TAXONOMY_CATCH_ALL, kind: "catchAll" });
-  if (hasFold) bands.push({ name: GENRE_FOLD_LABEL, kind: "fold" });
 
   const slot = new Map(bands.map((b, i) => [b.name, i]));
-  const foldSlot = hasFold ? bands.length - 1 : -1;
+  // Where an unslotted genre's plays go. Expanded there is no such genre — the
+  // tail bands ARE the slots — so nothing may be swept anywhere, and -1 says
+  // so. A `GENRE_FOLD_LABEL` slot lookup would also be wrong then: the fold
+  // band does not exist in the expanded model.
+  const foldSlot = hasFold && !expandTail ? bands.length - 1 : -1;
 
   const columns = values.map((v) => {
     const breakdown = v?.breakdown ?? [];
@@ -885,7 +937,7 @@ export function buildGenreShare(
     return total === 0 ? null : { counts, total };
   });
 
-  return { bands, columns };
+  return { bands, tail: tailNames, columns };
 }
 
 /** One Camelot cell's aggregate play count. `number`/`letter` come from the
@@ -1025,12 +1077,20 @@ export function camelotWheelSummary(wheel: CamelotWheelModel): string {
     .filter((c) => c.count > 0)
     .sort((a, b) => b.count - a.count || a.number - b.number || (a.letter < b.letter ? -1 : 1))
     .slice(0, 3);
-  if (top.length === 1) {
-    return `Every keyed play sits in ${top[0].number}${top[0].letter}.`;
-  }
-  const parts = top.map((c) => `${c.number}${c.letter} (${pctLabel(c.count, wheel.totalKeyed)})`);
-  const list = parts.length === 2 ? parts.join(" and ") : `${parts[0]}, ${parts[1]}, and ${parts[2]}`;
-  return `Your keys center on ${list}.`;
+  // The top three, named and quantified, with no sentence wrapped around them
+  // (Arjun, 2026-08-12: "remove that sentence… and instead just say the top
+  // three keys and the percentages"). "Your keys center on 8A (34%), 5A (21%),
+  // and 12B (14%)." spent nine words restating what the wheel above it already
+  // draws, and the reading a DJ actually wants out of it is the three
+  // key/percentage pairs.
+  //
+  // This is still THE one Chart Summary string — the visible caption, the
+  // plot's aria text-equivalent, and the error-boundary fallback are all this
+  // return value (AC-11), so it keeps the "Top keys" lead-in: stripped to a
+  // bare list it would reach a screen reader as three unexplained tokens, and
+  // as the render-failure fallback it would be the only thing on the card.
+  const parts = top.map((c) => `${c.number}${c.letter} ${pctLabel(c.count, wheel.totalKeyed)}`);
+  return `Top keys: ${parts.join(" · ")}`;
 }
 
 /** |Δ| in percentage points under this reads as "held steady" — the same

@@ -218,7 +218,7 @@ export function SetListPanel({ rows }: { rows: SetRowModel[] }) {
                           className="dz-list-hidden-toggle"
                           onClick={() => setShowLowConfidence(false)}
                         >
-                          hide them
+                          hide
                         </button>
                       </>
                     ) : (
@@ -229,7 +229,7 @@ export function SetListPanel({ rows }: { rows: SetRowModel[] }) {
                           className="dz-list-hidden-toggle"
                           onClick={() => setShowLowConfidence(true)}
                         >
-                          show them
+                          show
                         </button>
                       </>
                     )}
