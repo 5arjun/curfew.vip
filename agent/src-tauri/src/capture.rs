@@ -812,7 +812,17 @@ pub fn session_bounds(plays: &[CapturedPlay]) -> (Option<i64>, Option<i64>) {
 /// (serato4 `history_session.end_time`), the last-resort played-duration bound
 /// for a final play with no per-play end; `None` where the source has no such
 /// record (legacy).
-fn assemble(
+///
+/// `pub` only so out-of-tree tooling can reuse the exact production assembly
+/// rather than reimplementing it: the demo-account generator
+/// (`examples/demo_set_generator.rs`, demo-account-spec §4.1) builds synthetic
+/// `(Play, JoinedMetadata)` pairs and needs the same stats, the same
+/// `confidence::classify`, and above all the same `segments::detect` the
+/// product would run — the rule `supabase/scripts/generate-seed.mjs` already
+/// follows for segments ("call the Rust detector, never reimplement it"). It
+/// is a pure function of its arguments with no store or IO reachable from it,
+/// so widening its visibility adds no new call-path into the agent's state.
+pub fn assemble(
     pairs: &[(Play, JoinedMetadata)],
     set_end: Option<i64>,
     floors: &Floors,
