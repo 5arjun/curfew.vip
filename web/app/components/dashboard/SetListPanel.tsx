@@ -2,7 +2,7 @@
 
 import { ArrowLeft, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { SetRowModel } from "@/lib/sets/listModel";
+import { floorDisclosureLabel, type SetRowModel } from "@/lib/sets/listModel";
 import { MetalButton } from "@/app/components/dashboard/MetalButton";
 import { SpotlightSearch, type SpotlightSort } from "@/app/components/dashboard/SpotlightSearch";
 
@@ -178,6 +178,14 @@ export function SetListPanel({ rows }: { rows: SetRowModel[] }) {
                 <span className="dz-actions-date">{sheetRow.dateLabel}</span>
                 <span className="dz-row-meta">
                   {sheetRow.floorCount} · {sheetRow.durationLabel}
+                  {/* Story 5.4, AC #4: never silently pick the longest floor and
+                      stay quiet about the rest — same rule as the row below. */}
+                  {floorDisclosureLabel(sheetRow.floorSegmentCount) && (
+                    <span className="dz-floor-disclosure">
+                      {" "}
+                      · {floorDisclosureLabel(sheetRow.floorSegmentCount)}
+                    </span>
+                  )}
                 </span>
               </span>
             </div>
@@ -257,6 +265,15 @@ export function SetListPanel({ rows }: { rows: SetRowModel[] }) {
                         <Plus size={18} strokeWidth={2} className="dz-row-icon" aria-hidden="true" />
                         <span className="dz-row-meta">
                           {row.floorCount} · {row.durationLabel}
+                          {/* Story 5.4, AC #4: a set with several dancefloors used
+                              to render only its longest here, with no affordance
+                              saying so (deferred-work.md:759) — this closes it. */}
+                          {floorDisclosureLabel(row.floorSegmentCount) && (
+                            <span className="dz-floor-disclosure">
+                              {" "}
+                              · {floorDisclosureLabel(row.floorSegmentCount)}
+                            </span>
+                          )}
                         </span>
                       </span>
                     </button>
@@ -291,7 +308,15 @@ export function SetListPanel({ rows }: { rows: SetRowModel[] }) {
                 </div>
                 <div>
                   <dd>{sheetRow.floorCount}</dd>
-                  <dt>Dancefloor tracks</dt>
+                  <dt>
+                    Dancefloor tracks
+                    {floorDisclosureLabel(sheetRow.floorSegmentCount) && (
+                      <span className="dz-floor-disclosure">
+                        {" "}
+                        · {floorDisclosureLabel(sheetRow.floorSegmentCount)}
+                      </span>
+                    )}
+                  </dt>
                 </div>
                 <div>
                   <dd className="dz-sheet-range">{sheetRow.timeRange}</dd>

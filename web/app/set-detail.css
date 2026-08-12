@@ -745,6 +745,18 @@
   padding: 0 10px;
 }
 
+/* Story 5.4: the view-scope selector, stacked above the editing-target one
+   (`.sd-segment-selector`) so the two are visibly related — same chip markup,
+   no sticky/editing behaviour of its own since nothing here is an edit. */
+.sd-view-segment-selector {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin: 0 0 10px;
+  padding: 0 10px;
+}
+
 /* Pinned while editing: a floor can run eighty rows, so dragging its far
    boundary would otherwise scroll the controls out of reach. The glass fill and
    hairline only appear in this state — unpinned it should read as part of the

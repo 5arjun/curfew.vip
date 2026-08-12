@@ -1,8 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { primaryDancefloorSegment } from "@/lib/sets/dancefloor";
-import { arcPeakPosition, newTracks, scopedPlays, type NewTracksWindow, type Scope } from "@/lib/sets/setDetail";
+import { dancefloorSegments } from "@/lib/sets/dancefloor";
+import {
+  arcPeakPosition,
+  newTracks,
+  resolveViewSegment,
+  scopedPlays,
+  viewSegmentFirstPosition,
+  type NewTracksWindow,
+  type Scope,
+} from "@/lib/sets/setDetail";
 import type { SetRecord } from "@/lib/sets/types";
 import { SilkBackdrop } from "@/app/components/dashboard/SilkBackdrop";
 import type { Focus, OverlayKind, ScopeFrame } from "./model";
@@ -11,6 +19,7 @@ import { DetailArc } from "./DetailArc";
 import { StatsColumn } from "./StatsColumn";
 import { Tracklist } from "./Tracklist";
 import { SegmentSelector } from "./SegmentSelector";
+import { SegmentViewSelector } from "./SegmentViewSelector";
 import { useSegmentEditor } from "./useSegmentEditor";
 
 // Set Detail shell (Story 3.7) — owns the three pieces of view state the whole
@@ -27,10 +36,21 @@ const INITIAL_ROWS = 50;
 export function SetDetail({ set }: { set: SetRecord }) {
   // The dancefloor cut arrives ON the set row (Story 5.2) — detected agent-side
   // against this DJ's own calibrated floors, stored as `segments` rows, fetched
-  // by the read seam. Nothing is computed here any more; when a set carries
-  // several segments the longest is the interim pick (D-24), and `null` still
-  // means "no dancefloor", which the scope toggle below already handles.
-  const segment = useMemo(() => primaryDancefloorSegment(set.segments), [set.segments]);
+  // by the read seam. `null` still means "no dancefloor", which the scope
+  // toggle below already handles.
+  const segments = useMemo(() => dancefloorSegments(set.segments), [set.segments]);
+
+  // Story 5.4: which dancefloor the DJ is VIEWING, independent of `editor`'s
+  // editing-target selection below (model.ts's `activeSegmentId` doc comment
+  // names this split explicitly). `null` means "no explicit pick yet", which
+  // resolves to `segments[0]` — the same longest-first pick
+  // `primaryDancefloorSegment` used to hand back, so a 0/1-segment set (and a
+  // freshly opened 2+-segment one) renders byte-identical to before.
+  const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
+  const segment = useMemo(
+    () => resolveViewSegment(segments, selectedSegmentId),
+    [segments, selectedSegmentId],
+  );
 
   // A set whose plays carry no cloud id cannot be edited: there is no row for a
   // boundary to point at. True of fixture-backed data by construction, and
@@ -160,6 +180,36 @@ export function SetDetail({ set }: { set: SetRecord }) {
     setFocusState(null);
   }, []);
 
+  // Same precedent, for the same reason (Task 1.2): switching which dancefloor
+  // is being VIEWED swaps the frame just as switching dancefloor/whole does, so
+  // a focus computed under the old segment clears rather than mixing two frames.
+  //
+  // The reveal below is the OTHER precedent in this file, and it belongs here
+  // for exactly the reason `revealPosition`'s own doc comment gives ("Required,
+  // not a nicety"): the tracklist pages at 50 rows and a set's second or third
+  // dancefloor routinely starts past that — fixture 975's start at positions 69
+  // and 96. Without it, picking "Dancefloor 2" rescoped the stats, the arc and
+  // the header onto rows that were neither rendered nor on screen, and
+  // `frame.peakPosition` moved to a row behind "Load more", so the ★ peak marker
+  // vanished from the list instead of moving. Story 5.3 hit and fixed this same
+  // bug for the editing selector; the view selector reintroduced it.
+  // (Code review 2026-08-11 — invisible to lint/typecheck/build/test.)
+  const selectViewSegment = useCallback(
+    (id: string) => {
+      setSelectedSegmentId(id);
+      setFocusState(null);
+      // Derived from `set.plays` rather than `editor.positionsFor`, which is
+      // draft-aware: a live boundary drag on ANOTHER floor must not decide
+      // where the view jumps. View-scope stays independent of edit state.
+      const firstPosition = viewSegmentFirstPosition(
+        set.plays,
+        segments.find((s) => s.id === id) ?? null,
+      );
+      if (firstPosition != null) revealPosition(firstPosition, true);
+    },
+    [segments, set.plays, revealPosition],
+  );
+
   return (
     <main className="sd" data-scope={frame.scope}>
       {/* Same Silk ground as the dashboard (post-review parity ruling). */}
@@ -173,6 +223,15 @@ export function SetDetail({ set }: { set: SetRecord }) {
 
       <div className="sd-body">
         <div className="sd-spine" ref={listRef}>
+          {/* Story 5.4: which dancefloor the stats are SCOPED to — independent of,
+              and rendered alongside, the editing-target selector below so both
+              are visible together (Dev Notes: a later merge call is Arjun's,
+              not preempted here). */}
+          <SegmentViewSelector
+            segments={segments}
+            selectedId={segment?.id ?? null}
+            onSelect={selectViewSegment}
+          />
           {/* D-30: the count of real dancefloors is never hidden, and which one
               an edit is aimed at is always stated. Above the tracklist because
               the tracklist is the editing surface it governs. */}
