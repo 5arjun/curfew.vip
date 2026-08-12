@@ -196,9 +196,19 @@ export function SetDetail({ set }: { set: SetRecord }) {
     (id: string) => {
       setSelectedSegmentId(id);
       setFocusState(null);
+      // Picking a floor MEANS "show me this floor" (Arjun's ruling, code review
+      // 2026-08-11). Under whole-night scope `scopedPlays` returns every play,
+      // so without this the chip lit up and rewrote the header's scope line
+      // while every number in the rail stayed whole-night — a control that
+      // looked like it worked and didn't. Flipping the scope is what makes the
+      // click mean something, rather than hiding or disabling the chip.
+      setScope("dancefloor");
       // Derived from `set.plays` rather than `editor.positionsFor`, which is
-      // draft-aware: a live boundary drag on ANOTHER floor must not decide
-      // where the view jumps. View-scope stays independent of edit state.
+      // draft-aware: a live boundary drag must not decide where the view jumps.
+      // The view scopes to the STORED segment, never the live draft — that is
+      // what keeps `model.ts`'s "every arrow press rewrites the right column"
+      // hazard closed now that editing a floor requires viewing it first
+      // (the 2026-08-12 one-chip-list merge).
       const firstPosition = viewSegmentFirstPosition(
         set.plays,
         segments.find((s) => s.id === id) ?? null,

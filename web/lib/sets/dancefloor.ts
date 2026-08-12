@@ -110,11 +110,21 @@ export function dancefloorSegments(
  *
  * A set can legitimately carry zero, one, or several dancefloor segments (FR-28,
  * D-15) — a wedding with a cocktail-hour floor and a post-dinner peak is two,
- * not one. Every consumer below still has exactly one "the dancefloor" slot, so
- * until Story 5.4 ships a real segment picker this takes the **longest by
- * elapsed time**. That is an interim rendering pick recorded as such (D-24), not
- * a product decision about which floor matters — do not build on it as if the
- * longest floor is semantically the main one.
+ * not one. This takes the **longest by elapsed time**.
+ *
+ * Story 5.4 has now shipped the real picker, so this is no longer the stopgap
+ * its previous comment described — but it is still the right function for the
+ * surfaces that structurally have exactly one "the dancefloor" slot: the
+ * dashboard card and the hero band. What changed is that those surfaces no
+ * longer stay QUIET about the rest — they carry `floorSegmentCount` and
+ * disclose the plurality alongside (`floorDisclosureLabel`). Set Detail no
+ * longer calls this at all; it resolves a DJ-selected floor through
+ * `resolveViewSegment`.
+ *
+ * Still not a product decision about which floor matters — do not build on it
+ * as if the longest floor is semantically the main one. `rightColumn.ts` is the
+ * one remaining caller where the single pick actually DROPS data rather than
+ * merely displaying one of several; see its comment.
  *
  * Ties break on the earlier start, then on the earlier end, so the choice is
  * total and stable rather than dependent on row order from PostgREST.

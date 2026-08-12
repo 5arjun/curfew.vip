@@ -109,8 +109,20 @@ function mostPlayedInRecentSets(newestFirst: SetRecord[], count: number): MostPl
     // whole-set fallback — this set carries no dancefloor segment at all.
     //
     // Story 5.2: the segment is fetched off the set row now, not recomputed
-    // here; when a set has several, the longest is the interim pick until 5.4
-    // ships a real picker (D-24).
+    // here. When a set has several this still takes the longest — and as of
+    // Story 5.4 that is no longer an "interim pick until a picker ships": the
+    // picker HAS shipped (Set Detail's chip list), and this call site was left
+    // on the single longest floor deliberately, because a cross-set tally has
+    // no one per-set stat to disclose plurality beside.
+    //
+    // That is a narrowing, not a neutral choice, and it is tracked: every play
+    // on a non-longest floor is excluded from this tally, so a wedding's
+    // cocktail-hour floor never counts toward Most Played. 15 of 58 sample sets
+    // carry several floors. Arjun's code-review ruling (2026-08-11) is to union
+    // ALL dancefloor segments here; it is held only because it moves numbers on
+    // a card already tuned twice and wants a before/after against seeded data.
+    // See the story's Review Findings — do not "tidy" this comment away as
+    // stale without doing the union.
     const floorPlays = playsInSegment(set.plays, primaryDancefloorSegment(set.segments));
     for (const play of floorPlays) {
       const title = play.title;
