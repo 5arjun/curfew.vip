@@ -59,6 +59,70 @@ pub fn parse(raw: &str) -> Option<CamelotKey> {
         .then_some(CamelotKey { number, letter })
 }
 
+/// Parses a *musical-notation* key string (`Am`, `F#`, `Ebm`, `C# minor`) into
+/// its [`CamelotKey`], or `None` if it is not well-formed musical notation.
+///
+/// Why this exists: the legacy `database V2` key column and embedded `TKEY`
+/// frames store predominantly musical notation — on real data ~70% of stored
+/// keys (the same measurement that motivated Story 3.6's `key_value` fix on
+/// the Serato 4+ path, where the free-text column had been silently dropping
+/// ~88% of keys). [`parse`] correctly rejects those strings as not-Camelot,
+/// so every consumer of the legacy/tag paths currently reads them as "no
+/// key". This function is the deterministic conversion for whoever chooses
+/// to bridge that gap — the demo-catalog extractor consumes it today;
+/// **nothing in the product stat path calls it yet** (wiring it into the
+/// joiner/stat engine changes displayed stats for legacy libraries, which is
+/// a product decision for its own story, not a side effect to smuggle in).
+///
+/// Accepted shape, case-insensitive, whitespace-trimmed: note letter `A`–`G`,
+/// optional accidental (`#`/`♯`/`b`/`♭`), optional mode (`m`/`min`/`minor` for
+/// minor; empty/`maj`/`major` for major, with optional space before the word
+/// forms). Total and infallible like [`parse`]: anything else — including
+/// Camelot strings themselves — is `None`, never a guess (AD-11).
+///
+/// The mapping is pure pitch-class arithmetic (matching this module's
+/// no-lookup-table idiom): on the Camelot wheel each fifth is +1 step, major
+/// C sits at 8B and minor A at 8A, so `number = 8 + 7·Δpc (mod 12)` measured
+/// from the respective anchor. Enharmonic spellings (`C#`/`Db`, and even the
+/// theoretical `Cb`/`E#`) land on the same pitch class, hence the same key.
+pub fn parse_musical(raw: &str) -> Option<CamelotKey> {
+    let trimmed = raw.trim();
+    let mut chars = trimmed.chars();
+    let pitch: i16 = match chars.next()?.to_ascii_uppercase() {
+        'C' => 0,
+        'D' => 2,
+        'E' => 4,
+        'F' => 5,
+        'G' => 7,
+        'A' => 9,
+        'B' => 11,
+        _ => return None,
+    };
+    let rest = chars.as_str();
+    let (accidental, rest) = if let Some(r) = rest.strip_prefix(['#', '♯']) {
+        (1, r)
+    } else if let Some(r) = rest.strip_prefix(['b', '♭']) {
+        (-1, r)
+    } else {
+        (0, rest)
+    };
+    let minor = match rest.trim().to_lowercase().as_str() {
+        "" | "maj" | "major" => false,
+        "m" | "min" | "minor" => true,
+        _ => return None,
+    };
+
+    let pc = (pitch + accidental).rem_euclid(12);
+    // Anchors: C major = 8B (pc 0), A minor = 8A (pc 9); +7 semitones (a
+    // fifth) is +1 Camelot step on either ring.
+    let anchor_pc = if minor { 9 } else { 0 };
+    let number = (8 + 7 * (pc - anchor_pc)).rem_euclid(12);
+    Some(CamelotKey {
+        number: if number == 0 { 12 } else { number as u8 },
+        letter: if minor { Letter::A } else { Letter::B },
+    })
+}
+
 /// Standard harmonic-mixing adjacency between two Camelot keys.
 ///
 /// Three compatible shapes, all arithmetic/equality — no lookup table:
@@ -151,6 +215,94 @@ mod tests {
         assert_eq!(parse("13A"), None, "number out of 1..=12 range");
         assert_eq!(parse("0B"), None, "number out of 1..=12 range");
         assert_eq!(parse(""), None, "empty string");
+    }
+
+    fn key(number: u8, letter: Letter) -> CamelotKey {
+        CamelotKey { number, letter }
+    }
+
+    /// `parse_musical` maps all 24 keys to their Camelot wheel positions —
+    /// the full standard table, so a wrong anchor or step direction in the
+    /// arithmetic cannot hide behind a partial sample.
+    #[test]
+    fn parse_musical_maps_the_full_wheel() {
+        let majors = [
+            ("B", 1),
+            ("F#", 2),
+            ("Db", 3),
+            ("Ab", 4),
+            ("Eb", 5),
+            ("Bb", 6),
+            ("F", 7),
+            ("C", 8),
+            ("G", 9),
+            ("D", 10),
+            ("A", 11),
+            ("E", 12),
+        ];
+        for (name, number) in majors {
+            assert_eq!(
+                parse_musical(name),
+                Some(key(number, Letter::B)),
+                "{name} major should be {number}B"
+            );
+        }
+        let minors = [
+            ("Abm", 1),
+            ("Ebm", 2),
+            ("Bbm", 3),
+            ("Fm", 4),
+            ("Cm", 5),
+            ("Gm", 6),
+            ("Dm", 7),
+            ("Am", 8),
+            ("Em", 9),
+            ("Bm", 10),
+            ("F#m", 11),
+            ("C#m", 12),
+        ];
+        for (name, number) in minors {
+            assert_eq!(
+                parse_musical(name),
+                Some(key(number, Letter::A)),
+                "{name} should be {number}A"
+            );
+        }
+    }
+
+    /// Enharmonic spellings are the same pitch class, hence the same key —
+    /// including the theoretical spellings a tagger could still emit.
+    #[test]
+    fn parse_musical_treats_enharmonics_identically() {
+        assert_eq!(parse_musical("C#"), parse_musical("Db"));
+        assert_eq!(parse_musical("G#m"), parse_musical("Abm"));
+        assert_eq!(parse_musical("Gbm"), parse_musical("F#m"));
+        assert_eq!(parse_musical("Cb"), Some(key(1, Letter::B)), "Cb is B major");
+        assert_eq!(parse_musical("E#m"), Some(key(4, Letter::A)), "E#m is Fm");
+    }
+
+    /// Case, whitespace, and the word-form mode suffixes all fold; the strings
+    /// are whatever a tagging tool wrote, not a validated vocabulary.
+    #[test]
+    fn parse_musical_folds_case_whitespace_and_mode_words() {
+        assert_eq!(parse_musical("  am  "), Some(key(8, Letter::A)));
+        assert_eq!(parse_musical("ebm"), Some(key(2, Letter::A)));
+        assert_eq!(parse_musical("F# minor"), Some(key(11, Letter::A)));
+        assert_eq!(parse_musical("C MAJ"), Some(key(8, Letter::B)));
+        assert_eq!(parse_musical("bm"), Some(key(10, Letter::A)));
+    }
+
+    /// Anything that is not musical notation is `None`, never a guess (AD-11) —
+    /// including Camelot strings, which belong to [`parse`], and the real-data
+    /// garbage that motivated the total-function contract.
+    #[test]
+    fn parse_musical_rejects_non_musical_strings() {
+        assert_eq!(parse_musical("8A"), None, "Camelot is parse()'s job");
+        assert_eq!(parse_musical("10m"), None, "real-data garbage key");
+        assert_eq!(parse_musical("H"), None, "not a note letter");
+        assert_eq!(parse_musical("Amx"), None, "trailing junk is not a mode");
+        assert_eq!(parse_musical(""), None);
+        assert_eq!(parse_musical("Deep House"), None, "a genre is not a key");
     }
 
     /// (Task 3, AC-1) The three compatible shapes hold true; a non-adjacent,

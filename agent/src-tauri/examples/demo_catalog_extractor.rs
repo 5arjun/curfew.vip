@@ -239,9 +239,13 @@ struct CatalogRow {
     bpm: Option<f64>,
     /// Key exactly as stored (may be musical notation, may be junk).
     key_raw: Option<String>,
-    /// The stored key re-rendered iff it parses as Camelot; the demo pipeline
-    /// treats anything else as "no key", same as the product does.
+    /// The stored key in Camelot notation: native Camelot passes through
+    /// `camelot::parse`, musical notation converts via `camelot::parse_musical`
+    /// (the drive stores ~70% musical). `None` = no key, or junk.
     key_camelot: Option<String>,
+    /// Which parser resolved `key_camelot`: "camelot" | "musical" |
+    /// "unparsed" (key present, neither notation) | null (no key at all).
+    key_notation: Option<&'static str>,
     genre_raw: Option<String>,
     genre_normalized: Option<String>,
     subgenre: Option<String>,
@@ -284,6 +288,21 @@ fn merge_copies(id: &str, copies: &[&FileRow]) -> CatalogRow {
     }
 
     let key_raw = first(|r| r.key.clone());
+    let (key_camelot, key_notation) = match key_raw.as_deref() {
+        None => (None, None),
+        Some(raw) => match camelot::parse(raw).map(|k| (k, "camelot")).or_else(|| {
+            camelot::parse_musical(raw).map(|k| (k, "musical"))
+        }) {
+            Some((k, notation)) => (
+                Some(format!("{}{}", k.number, match k.letter {
+                    camelot::Letter::A => 'A',
+                    camelot::Letter::B => 'B',
+                })),
+                Some(notation),
+            ),
+            None => (None, Some("unparsed")),
+        },
+    };
     let genre_raw = first(|r| r.genre.clone());
     let normalized = genre::normalize(genre_raw.as_deref());
 
@@ -312,13 +331,8 @@ fn merge_copies(id: &str, copies: &[&FileRow]) -> CatalogRow {
         title: copies[0].title.clone().unwrap_or_default(),
         artist: copies[0].artist.clone().unwrap_or_default(),
         bpm: copies.iter().find_map(|r| r.bpm),
-        key_camelot: key_raw
-            .as_deref()
-            .and_then(camelot::parse)
-            .map(|k| format!("{}{}", k.number, match k.letter {
-                camelot::Letter::A => 'A',
-                camelot::Letter::B => 'B',
-            })),
+        key_camelot,
+        key_notation,
         key_raw,
         genre_normalized: normalized.as_ref().map(|n| n.normalized.clone()),
         subgenre: normalized.as_ref().map(|n| n.subgenre.clone()),
@@ -696,7 +710,10 @@ fn print_summary(catalog: &[CatalogRow], files: &[FileRow], no_identity: &[&File
     println!("  … with a proposed A-T split: {proposed}");
     println!("bpm coverage:                  {}", pct(catalog.iter().filter(|r| r.bpm.is_some()).count()));
     println!("key present (raw):             {}", pct(catalog.iter().filter(|r| r.key_raw.is_some()).count()));
-    println!("key parses as Camelot:         {}", pct(catalog.iter().filter(|r| r.key_camelot.is_some()).count()));
+    println!("key resolves to Camelot:       {}", pct(catalog.iter().filter(|r| r.key_camelot.is_some()).count()));
+    println!("  … native Camelot notation:   {}", pct(catalog.iter().filter(|r| r.key_notation == Some("camelot")).count()));
+    println!("  … converted from musical:    {}", pct(catalog.iter().filter(|r| r.key_notation == Some("musical")).count()));
+    println!("  … unparsed junk:             {}", pct(catalog.iter().filter(|r| r.key_notation == Some("unparsed")).count()));
     println!("genre present (raw):           {}", pct(catalog.iter().filter(|r| r.genre_raw.is_some()).count()));
     println!(
         "genre in a real bucket:        {}",
