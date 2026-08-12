@@ -257,6 +257,18 @@ impl LegacyLibrary {
             )
         })
     }
+
+    /// Every catalogued track with its full metadata row, keyed by the path
+    /// exactly as the catalogue stored it (root-relative, no leading `/`).
+    ///
+    /// The whole-library, all-fields read the demo-catalog extractor
+    /// (`examples/demo_catalog_extractor.rs`, demo-account-spec §4) iterates —
+    /// as opposed to [`entries`](Self::entries)'s narrower
+    /// (path, date_added, title, artist) projection, which stays `pub(crate)`.
+    /// Read-only: hands out borrows, never mutates the table.
+    pub fn tracks(&self) -> impl Iterator<Item = (&Path, &LibraryTrack)> {
+        self.tracks.iter().map(|(path, track)| (path.as_path(), track))
+    }
 }
 
 /// Resolves one played track against a loaded legacy library (AC-1, AC-3, AC-4).

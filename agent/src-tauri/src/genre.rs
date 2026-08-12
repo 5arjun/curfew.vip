@@ -64,7 +64,16 @@
 /// Bumped 1 -> 2: taxonomy restructured to a two-level subgenre/parent-genre
 /// hierarchy and the Bollywood bucket (Bhangra/Punjabi/Desi EDM/Bollywood
 /// Hip-Hop-Trap/Bollywood) was added.
-pub const TAXONOMY_VERSION: u32 = 2;
+///
+/// Bumped 2 -> 3 (demo-account catalog review, Arjun's ruling on the ranked
+/// unmapped-genre report): record-pool compound tags ("Hip-Hop / R&B",
+/// "Electronic / Dance", "Pop / Top 40", …) alias to their first-listed
+/// genre; new subgenres Top 40, Grime, Big Room, Indie Dance, Latin Pop,
+/// Moombahton, Twerk, Jersey Club, Garba/Raas; new parents Blues and
+/// Country; and [`normalize`]'s lookup-key fold now collapses internal
+/// whitespace runs (matching `capture::normalize_identity_text`'s fold), so
+/// a re-typed "Hip  Hop" reaches the "hip hop" alias.
+pub const TAXONOMY_VERSION: u32 = 3;
 
 /// The subgenre/parent a *present but unrecognized* raw genre maps to (AC-2). A
 /// genre that the table has no alias for is never dropped — it lands here
@@ -86,8 +95,9 @@ pub const DEFAULT_BUCKET: &str = "Other";
 /// spelling synonyms (e.g. `"uk garage"`/`"ukg"`) are merged into a single subgenre
 /// rather than split.
 ///
-/// **Maintenance contract:** every alias string MUST be lowercase and whitespace-
-/// trimmed, because [`normalize`] matches against a lowercased/trimmed lookup key by
+/// **Maintenance contract:** every alias string MUST be lowercase, whitespace-
+/// trimmed, and single-spaced (no internal whitespace runs), because [`normalize`]
+/// matches against a lowercased/trimmed/whitespace-collapsed lookup key by
 /// direct equality (it does not re-fold the aliases). Include a subgenre's own
 /// lowercased spelling among its aliases when it has one. Each alias must belong to
 /// exactly one subgenre across the *entire* table (not just within one parent) — a
@@ -103,13 +113,33 @@ const TAXONOMY: &[GenreEntry] = &[
     (
         "House",
         &[
-            ("House", &["house"]),
+            (
+                "House",
+                &[
+                    "house",
+                    "hyper house",
+                    "speed house",
+                    "club",
+                    "club / electro",
+                    "house / edm",
+                    "house / electro",
+                    "house / electro / hip hop",
+                    "house/electro",
+                    "house / edm / pop",
+                    "house / electro / pop",
+                    "house / electro / r&b",
+                    "house / pop",
+                    "house / pop / bootleg",
+                    "house,house / electro,dance / edm",
+                    "house afrobeat pop",
+                ],
+            ),
             ("Deep House", &["deep house"]),
-            ("Tech House", &["tech house"]),
+            ("Tech House", &["tech house", "yeedm / tech house"]),
             ("Progressive House", &["progressive house"]),
             ("Future House", &["future house"]),
             ("Bass House", &["bass house"]),
-            ("Electro House", &["electro house"]),
+            ("Electro House", &["electro house", "electro"]),
             ("Tropical House", &["tropical house"]),
             ("Afro House", &["afro house"]),
             ("Soulful House", &["soulful house"]),
@@ -170,6 +200,7 @@ const TAXONOMY: &[GenreEntry] = &[
             ("UK Bass", &["uk bass"]),
             ("Future Bass", &["future bass"]),
             ("Wave", &["wave"]),
+            ("Jersey Club", &["jersey club"]),
         ],
     ),
     (
@@ -178,6 +209,7 @@ const TAXONOMY: &[GenreEntry] = &[
             ("Trap", &["trap"]),
             ("Festival Trap", &["festival trap"]),
             ("Hybrid Trap", &["hybrid trap"]),
+            ("Twerk", &["twerk"]),
         ],
     ),
     (
@@ -221,16 +253,39 @@ const TAXONOMY: &[GenreEntry] = &[
         "Funk / Soul",
         &[
             ("Funk", &["funk"]),
-            ("Soul", &["soul"]),
+            ("Soul", &["soul", "soul / r&b / rock & roll"]),
             ("Funk & Soul", &["funk & soul", "funk and soul"]),
         ],
     ),
     (
         "Hip-Hop",
         &[
-            ("Hip-Hop", &["hip-hop", "hip hop", "hiphop"]),
-            ("Rap", &["rap"]),
+            (
+                "Hip-Hop",
+                &[
+                    "hip-hop",
+                    "hip hop",
+                    "hiphop",
+                    "hip - hop",
+                    "hip-hop / r&b",
+                    "hip hop / rnb",
+                    "hip hop / pop",
+                    "hip hop/ rap",
+                    "hip hop/latin",
+                    "hip hop / redrum",
+                    "hip hop / dj tool",
+                    "hip hop / redrum / dj tool",
+                    "hip hop / segue",
+                    "hip hop / tech house / transition up",
+                    "hip hop / pop / dancehall blend",
+                    "hip-hop/dancehall",
+                    "00's hip hop",
+                    "10's hip hop",
+                ],
+            ),
+            ("Rap", &["rap", "rap/hip hop"]),
             ("Boom Bap", &["boom bap"]),
+            ("Grime", &["grime"]),
         ],
     ),
     (
@@ -243,16 +298,53 @@ const TAXONOMY: &[GenreEntry] = &[
     (
         "Pop",
         &[
-            ("Pop", &["pop"]),
-            ("Dance Pop", &["dance pop"]),
+            (
+                "Pop",
+                &[
+                    "pop",
+                    "pop / dancehall / redrum",
+                    "pop/house",
+                    "pop/house/electro",
+                    "pop/dance",
+                    "pop / edm",
+                    "pop / afrobeat",
+                    "pop / country",
+                    "pop / big room edm",
+                    "pop/mainstage edm",
+                    "pop/rock/alternative",
+                    "90's pop / r&b",
+                    "pop, dance, euro, indie, folk, hip-hop, rnb, latin, country",
+                ],
+            ),
+            (
+                "Dance Pop",
+                &[
+                    "dance pop",
+                    "pop dance mashup",
+                    "pop dance mashup / bass house",
+                    "pop dance mashup / tech house",
+                    "pop dance remix",
+                ],
+            ),
             ("Electropop", &["electropop"]),
             ("Synthpop", &["synthpop", "synth-pop"]),
+            (
+                "Top 40",
+                &[
+                    "top 40",
+                    "top40",
+                    "pop / top 40",
+                    "top 40 / dance",
+                    "club 40",
+                    "top / club",
+                ],
+            ),
         ],
     ),
     (
         "Rock",
         &[
-            ("Rock", &["rock"]),
+            ("Rock", &["rock", "rock/pop", "rock/ alternative /pop"]),
             ("Indie Rock", &["indie rock"]),
             ("Alternative Rock", &["alternative rock"]),
             ("Classic Rock", &["classic rock"]),
@@ -271,26 +363,61 @@ const TAXONOMY: &[GenreEntry] = &[
         "Electronica",
         &[
             ("Electronica", &["electronica", "electronic"]),
-            ("EDM", &["edm"]),
+            ("EDM", &["edm", "edm / dance"]),
             ("IDM", &["idm"]),
-            ("Dance", &["dance"]),
+            (
+                "Dance",
+                &[
+                    "dance",
+                    "electronic / dance",
+                    "dance/hip-hop",
+                    "dance/ hip hop",
+                    "dance & dj",
+                ],
+            ),
+            ("Big Room", &["big room", "mainstage"]),
+            (
+                "Indie Dance",
+                &[
+                    "indie dance",
+                    "indie dance / nu disco",
+                    "indie dance / rock/alternative",
+                ],
+            ),
         ],
     ),
     (
         "Reggae / Dancehall",
         &[
             ("Reggae", &["reggae", "ragga"]),
-            ("Dancehall", &["dancehall"]),
+            ("Dancehall", &["dancehall", "reggae / dancehall"]),
             ("Dub", &["dub"]),
         ],
     ),
     (
         "Latin",
         &[
-            ("Latin", &["latin"]),
-            ("Reggaeton", &["reggaeton"]),
+            (
+                "Latin",
+                &[
+                    "latin",
+                    "latin / mainstage edm",
+                    "urban latin / hip hop / moombahton",
+                ],
+            ),
+            (
+                "Reggaeton",
+                &[
+                    "reggaeton",
+                    "urban / reggaeton",
+                    "urban/reggaeton",
+                    "urban / reggaeton / dj tool",
+                ],
+            ),
             ("Salsa", &["salsa"]),
             ("Cumbia", &["cumbia"]),
+            ("Latin Pop", &["latin pop", "urban / latin pop / dj tools"]),
+            ("Moombahton", &["moombahton"]),
         ],
     ),
     (
@@ -305,11 +432,41 @@ const TAXONOMY: &[GenreEntry] = &[
         &[
             (
                 "Bollywood",
-                &["bollywood", "filmi", "desi pop", "indi pop", "hindi pop"],
+                &[
+                    "bollywood",
+                    "filmi",
+                    "desi pop",
+                    "indi pop",
+                    "hindi pop",
+                    "bollywood music",
+                    "bollywood, india",
+                    "hindi",
+                    "hindi remix",
+                    "indian pop",
+                    "bollywood dance remixes",
+                    "bollywood remix",
+                    "bollywood dance music",
+                    "bollywood dance music (bdm)",
+                    "bollywood songs",
+                    "marathi music",
+                ],
             ),
-            ("Bhangra", &["bhangra"]),
-            ("Punjabi", &["punjabi", "punjabi pop"]),
-            ("Desi EDM", &["desi edm", "desi house", "indo house"]),
+            ("Bhangra", &["bhangra", "bhangra / remix"]),
+            ("Punjabi", &["punjabi", "punjabi pop", "punjabi(jatt.fm)"]),
+            (
+                "Desi EDM",
+                &[
+                    "desi edm",
+                    "desi house",
+                    "indo house",
+                    "bollytech",
+                    "bolly edm",
+                    "bolly house",
+                    "afro bollywood",
+                    "bolly afro house",
+                    "desi afro house",
+                ],
+            ),
             (
                 "Bollywood Hip-Hop/Trap",
                 &[
@@ -319,8 +476,11 @@ const TAXONOMY: &[GenreEntry] = &[
                     "desi trap",
                 ],
             ),
+            ("Garba/Raas", &["garba", "raas"]),
         ],
     ),
+    ("Blues", &[("Blues", &["blues"])]),
+    ("Country", &[("Country", &["country"])]),
 ];
 
 /// A raw genre string normalized against the fixed Curfew taxonomy, stamped with the
@@ -359,8 +519,8 @@ pub struct NormalizedGenre {
 ///   empty string is not a real value," extended one step: `non_empty` rejects only the
 ///   exact empty string (it returns `Some("   ")` for whitespace), whereas `normalize`
 ///   trims first, so a whitespace-only genre is `None` here too.
-/// - a *known* raw (any case, surrounding whitespace ignored) → `Some` with its
-///   taxonomy subgenre + parent genre.
+/// - a *known* raw (any case, surrounding whitespace ignored, internal whitespace
+///   runs collapsed) → `Some` with its taxonomy subgenre + parent genre.
 /// - a *present-but-unrecognized* raw → `Some` with [`DEFAULT_BUCKET`] at both levels
 ///   (AC-2).
 ///
@@ -371,10 +531,17 @@ pub struct NormalizedGenre {
 pub fn normalize(raw: Option<&str>) -> Option<NormalizedGenre> {
     let raw = raw?;
 
-    // Fold only the *lookup key*: trim surrounding whitespace and lowercase so
-    // "Deep House", "deep house", and "  DEEP HOUSE " all match the same alias. The
-    // stored `raw` below is the untouched original.
-    let key = raw.trim().to_lowercase();
+    // Fold only the *lookup key*: trim, collapse internal whitespace runs, and
+    // lowercase so "Deep House", "deep house", "  DEEP HOUSE ", and a re-typed
+    // "Deep  House" all match the same alias — the same fold
+    // `capture::normalize_identity_text` applies to track identity (taxonomy v3;
+    // real data carried "Hip  Hop" ×30). The stored `raw` below is the untouched
+    // original.
+    let key = raw
+        .to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
 
     // A present-but-blank / whitespace-only genre is "no meaningful genre," not a real
     // value — treat it as absent (Open Question #4), reserving the default bucket for
@@ -666,22 +833,22 @@ mod tests {
         // the guard holds regardless of the hash pin.
         assert_eq!(
             (genres, subgenres, aliases),
-            (22, 97, 130),
+            (24, 108, 233),
             "taxonomy structure changed — re-pin the counts + EXPECTED_FNV and bump \
              TAXONOMY_VERSION in the same commit; fingerprint is now {actual:#018x}"
         );
 
         // Content fingerprint pin. See the doc comment for how to re-pin on a real
         // taxonomy change.
-        const EXPECTED_FNV: u64 = 0xe08607ac1ad07986;
+        const EXPECTED_FNV: u64 = 0xfac01db3be58dcae;
         assert_eq!(
             actual, EXPECTED_FNV,
             "taxonomy content changed — re-pin EXPECTED_FNV to {actual:#018x} and bump \
              TAXONOMY_VERSION in the same commit"
         );
         assert_eq!(
-            TAXONOMY_VERSION, 2,
-            "content is pinned to version 2; bump it (and re-pin above) on any table edit"
+            TAXONOMY_VERSION, 3,
+            "content is pinned to version 3; bump it (and re-pin above) on any table edit"
         );
     }
 }
