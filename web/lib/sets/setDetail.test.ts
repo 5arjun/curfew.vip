@@ -3,7 +3,7 @@
 // derived.camelot_mixing_stats on the real fixture (set 975).
 import { describe, expect, it } from "vitest";
 import fixture from "./recent-sets.fixture.json";
-import { dancefloorSegments, primaryDancefloorSegment } from "./dancefloor";
+import { dancefloorSegments, playsInSegment, primaryDancefloorSegment } from "./dancefloor";
 import type { DancefloorSegment } from "./dancefloor";
 import { fixtureSegments } from "./fixtureSegments";
 import type { SetRecord } from "./types";
@@ -182,6 +182,51 @@ describe("viewSegmentFirstPosition (Story 5.4 code review — the reveal seam)",
       end: "1999-01-01T01:00:00.000Z",
     };
     expect(viewSegmentFirstPosition(set975.plays, orphan)).toBeNull();
+  });
+});
+
+describe("view selection scopes frame.plays (Story 5.4, Task 2.4 / AC #2)", () => {
+  // Task 2.4 asked for this against fixture set 975's three REAL dancefloor
+  // segments, cross-checked against `dancefloorSegments()`, rather than
+  // hand-authored bounds. `frame.plays` in SetDetail.tsx is exactly
+  // `scopedPlays(set.plays, <resolved view segment>, effectiveScope)`, so
+  // composing the two here is the seam that assertion lands on.
+  const floors = dancefloorSegments(fixtureSegments(set975));
+
+  it("fixture 975 really does carry three dancefloor segments", () => {
+    expect(floors).toHaveLength(3);
+  });
+
+  it("scopes to exactly the selected segment's window, for EVERY floor — not just the primary", () => {
+    for (const floor of floors) {
+      const resolved = resolveViewSegment(floors, floor.id);
+      expect(resolved).toEqual(floor);
+      expect(scopedPlays(set975.plays, resolved, "dancefloor")).toEqual(
+        playsInSegment(set975.plays, floor),
+      );
+    }
+  });
+
+  it("the three floors are genuinely different windows, so the assertion above has teeth", () => {
+    const [a, b, c] = floors.map((f) => scopedPlays(set975.plays, f, "dancefloor"));
+    expect(a.length).toBeGreaterThan(0);
+    expect(b.length).toBeGreaterThan(0);
+    expect(c.length).toBeGreaterThan(0);
+    const positions = (ps: typeof a) => ps.map((p) => p.position);
+    // Disjoint: no play may count toward two floors (D-29 forbids overlap).
+    expect(positions(a).filter((x) => positions(b).includes(x))).toEqual([]);
+    expect(positions(b).filter((x) => positions(c).includes(x))).toEqual([]);
+    expect(positions(a).filter((x) => positions(c).includes(x))).toEqual([]);
+  });
+
+  it("under WHOLE scope the selection changes nothing — why picking a floor now flips the scope", () => {
+    // This is the finding behind the auto-flip in `selectViewSegment`: with
+    // scope "whole", `scopedPlays` returns every play regardless of which floor
+    // is selected, so the chip used to light up while every number stayed
+    // whole-night. Locked here so the flip cannot be quietly removed.
+    for (const floor of floors) {
+      expect(scopedPlays(set975.plays, floor, "whole")).toEqual(set975.plays);
+    }
   });
 });
 
