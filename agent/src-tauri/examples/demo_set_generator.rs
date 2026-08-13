@@ -3422,15 +3422,19 @@ fn verification_markdown(
         overlay.no_identity_unusable
     ));
     s.push_str(
-        "> **Open item for Arjun.** The second number is the blocking one. A row that had no \
-         identity also had no `track_id`, and the extractor keyed all per-track metadata by \
-         `track_id` — so those rows exist in `duplicates.json` as `{path, title, artist, crates}` \
-         and nothing else. Minting an identity gives them a name; it does not give them a tempo, \
-         a key, a genre, or an add-date, and there is nothing to sequence a play *by*. They are \
-         therefore **excluded from set generation** rather than being given invented values. \
-         Two ways forward, both cheap: re-run the extractor with a pass that emits bpm/key/genre/\
-         mtime for identity-less paths, or author those fields in the overlay for the subset that \
-         is actually wanted on a screenshot.\n",
+        "> **RULED 2026-08-13 (Arjun): dropped.** A row that had no identity also had no \
+         `track_id`, and stage 1 keyed all per-track metadata by `track_id` — so those rows exist \
+         in `duplicates.json` as `{path, title, artist, crates}` and nothing else. Minting an \
+         identity gives them a name; it does not give them a tempo, a key, a genre, or an \
+         add-date, and there is nothing to sequence a play *by*. The options were a re-extraction \
+         pass emitting metadata for identity-less paths, or hand-authored overlay fields. Neither \
+         was taken: the wedding sets §7.4 needed them for are already carried by the 120 \
+         `tracks` corrections, so the rescue bought nothing it did not already have.\n>\n\
+         > The corrections themselves are **kept in `demo-overlay.json`, not deleted** — they are \
+         hand-curated and correct, they cost nothing to carry, and they become usable the moment \
+         anyone does run that extractor pass. They are simply never a candidate for a play, and \
+         the whole identity-less population (these 150, the 12 ceremony tracks, the ~311 \
+         non-Indian artist-less rows) is now invisible by choice rather than by omission.\n",
     );
 
     s
