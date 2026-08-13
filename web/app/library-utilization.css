@@ -7,7 +7,27 @@
    are prefixed `lu-` (library utilization) so they can't collide.
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/* ─── Page rhythm (layout pass, Arjun 2026-08-13) ───────────────────────────
+   This page used ONE flat `gap: 18px` for its whole column, with a 24px bump
+   above each group heading. 18 vs 24 is a 6px difference: it is not
+   perceivable, so vertical space was doing no grouping work at all and nine
+   modules read as nine unrelated cards in a stack. The `<h2>`s were carrying
+   the entire structural load at 10.5px grey mono, which they cannot.
+
+   Replaced with a scale whose steps are visibly different — a section break is
+   double a module break, which is enough for the grouping to register with the
+   headings alone. `gap` is 0 and each step is a `margin-top` on the element
+   that OWNS the relationship, so a step is read where it applies rather than
+   inferred from the container. */
 .lu {
+  --lu-gutter: var(--space-lg);
+  /* module → module inside one section */
+  --lu-gap-module: 32px;
+  /* group heading → its first module */
+  --lu-gap-heading: var(--space-md);
+  /* last module of a section → next group heading */
+  --lu-gap-section: 64px;
+
   position: relative;
   min-height: 100dvh;
   width: 100%;
@@ -15,7 +35,7 @@
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 0;
   /* Same rule and same reason as `.dashboard-inner` — clear the floating nav's
      bottom dock (~44px) plus the device safe-area. This page also shipped
      without the dashboard's `--space-lg` term; matched here so all three
@@ -31,6 +51,57 @@
     max-width: none;
     padding-left: calc(var(--nav-rail-inset) + var(--nav-rail-width) + var(--space-gutter));
   }
+}
+
+/* The default step. Everything below is an element that owns a TIGHTER or
+   WIDER relationship than "another module in the same section". */
+.lu > * + * {
+  margin-top: var(--lu-gap-module);
+}
+
+/* `* + *` counts `SilkBackdrop` (the first child, out of flow) as a sibling,
+   so the header would otherwise start 32px down for no visible reason. */
+.lu > .lu-header {
+  margin-top: 0;
+}
+
+/* The intro cluster — title, the capture note, the reveal control and the
+   search field are ONE block of page furniture, not four modules, so they sit
+   at conversational distance from each other and take a real break before the
+   first number. */
+.lu > .lu-capture-note {
+  margin-top: var(--space-sm);
+}
+
+.lu > .lu-reveal {
+  margin-top: 12px;
+}
+
+.lu > .lu-search {
+  margin-top: 20px;
+}
+
+/* Anchored to the conversion section itself rather than to `.lu-search + *`:
+   both the reveal row and the search field are conditional (see
+   `LibraryUtilizationReveal`), so a sibling selector here would silently move
+   the break for a DJ with no hidden sets. This section is always the first
+   thing under the intro. */
+.lu > .lu-conversion {
+  margin-top: 48px;
+}
+
+.lu > .lu-group-heading {
+  margin-top: var(--lu-gap-section);
+}
+
+.lu > .lu-group-heading + * {
+  margin-top: var(--lu-gap-heading);
+}
+
+/* The two disclosures speak for different halves of the page (see `page.tsx`)
+   but they are one footnote block on screen. */
+.lu > .lu-disclosure + .lu-disclosure {
+  margin-top: var(--space-sm);
 }
 
 .lu-header {
@@ -62,23 +133,20 @@
   border-radius: 22px;
 }
 
-/* Restores the `max-width: 440px` `.lu-module` carried until Story 4.7, for
-   the modules 4.7 did NOT take over. 4.7 dropped that cap correctly for its
-   own sake: the meter moved into `.lu-conversion-body`'s `minmax(0, 340px)`
-   column, which bounds it more tightly than 440px ever did, so the rule was
-   dead weight there. But `.lu-module` is not the meter's private class —
-   Story 4.5's time-to-first-play uses it too, and sits OUTSIDE that grid as a
-   direct child of `.lu` (see `page.tsx`: it is window-independent, so it is
-   deliberately not in the window-governed section). Losing the cap left a
-   single short stat line stretched across the full container width.
+/* The `max-width: 440px` cap on `.lu > .lu-module` is GONE (layout pass, Arjun
+   2026-08-13), along with the matching restatement on `.lu-pair > .lu-module`.
+   It existed to stop a one-line stat stretching across the full container, and
+   it did — but a fixed px cap inside a fluid column is how this page ended up
+   with five different content widths and a right edge that moved 864px between
+   rows. Time-to-first-play and the aging shelf were the last two modules still
+   floating at 440px in a 1304px field, which left an 864 × 590px hole down the
+   right of the page's final screen.
 
-   Scoped to direct children of `.lu` rather than restored globally, which
-   would re-cap the meter at 440px in the ≤900px one-column layout where 4.7
-   means it to fill the width. Below 440px viewports this is a no-op, so the
-   375px layout is unchanged either way. */
-.lu > .lu-module {
-  max-width: 440px;
-}
+   Every module is now bounded by a COLUMN instead: one of the two halves of
+   `.lu-pair`, or `.lu-conversion-body`'s 340px meter column. Nothing on this
+   page is a direct `.lu` child that needs bounding any more, so there is no
+   cap to scope. The stat lines are still short — they are just short inside a
+   column that ends where every other row ends. */
 
 /* The insufficient-history state is shared with Style Evolution, where it
    fills a CHART slot and is sized for it (`.se-empty { min-height: 260px }`,
@@ -172,7 +240,8 @@
 .lu-conversion-body {
   display: grid;
   grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
-  gap: 16px;
+  /* One gutter for the whole page — this row and both `.lu-pair`s. */
+  gap: var(--lu-gutter);
   /* `start`, not `stretch` (Arjun, 2026-08-12). Stretching made the meter — a
      percentage, a pip row and one sentence — as tall as a 260px chart, so
      two-thirds of that card was empty. Aligning the pair was the ask; matching
@@ -184,7 +253,15 @@
 
 @media (max-width: 900px) {
   .lu-conversion-body {
-    grid-template-columns: 1fr;
+    /* `minmax(0, 1fr)`, not a bare `1fr` — a grid track's implicit minimum is
+       `auto`, i.e. its content's min-content width, so a bare `1fr` lets a long
+       unbreakable track title push the column WIDER than the page. The
+       desktop rule above has always guarded this; both collapse rules were
+       written as bare `1fr` and only got away with it because the modules that
+       could blow out were capped at 440px until this layout pass removed the
+       caps. Verified against the aging shelf at 390px, which blew its column
+       out to 1307px before this. */
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -494,7 +571,11 @@
    Styled identically to `.lu-stat-label` so the visual language is unchanged —
    this is a semantics fix, not a redesign. */
 .lu-group-heading {
-  margin: 6px 0 0;
+  /* Spacing is owned by the page's rhythm block at the top of this file, not
+     by the heading — a group heading's distance to what follows it is a
+     different relationship from its distance to what precedes it, and one
+     `margin` shorthand here could only ever express one of them. */
+  margin: 0;
   padding: 0 4px;
   font-family: var(--font-geist-mono);
   font-size: 10.5px;
@@ -508,24 +589,32 @@
    `.lu-conversion-body` uses for the meter and the trend, collapsing at the
    same breakpoint so the whole page reflows in one step rather than three.
 
-   `.lu > .lu-module { max-width: 440px }` is scoped to DIRECT children of
-   `.lu`, and a module in here is not one — so the cap is RESTATED explicitly
-   rather than left to inheritance. Losing it is a regression that has already
-   shipped once on this page (see the comment above that rule). */
+   The `max-width: 440px` restatement on `.lu-pair > .lu-module` is GONE (Arjun,
+   2026-08-13). It was the single most visible spacing defect on the page: each
+   column is 640px, so a 440px card left a 200px hole down the MIDDLE of every
+   pair and 200px hanging off the right of each one. It read as broken rather
+   than as breathing room. Cards now fill their column, which is what makes the
+   pair rows and the conversion row finally end at the same x. */
 .lu-pair {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 16px;
-  align-items: stretch;
-}
-
-.lu-pair > .lu-module {
-  max-width: 440px;
+  gap: var(--lu-gutter);
+  /* `start`, not `stretch` — the SAME ruling `.lu-conversion-body` already
+     carries, for the same reason, now that a pair can hold two modules of
+     genuinely different heights. Both pre-existing pairs are naturally equal
+     (122/122 and 533/533 — the track lists are capped at a whole number of rows
+     precisely so they match), so `stretch` was doing no work for them. It only
+     started mattering when time-to-first-play joined the 447px aging shelf:
+     three lines of stat in a 447px card is ~380px of empty, which is the
+     emptiness this whole pass is removing, just relocated inside a card. */
+  align-items: start;
 }
 
 @media (max-width: 900px) {
   .lu-pair {
-    grid-template-columns: 1fr;
+    /* See `.lu-conversion-body`'s collapse rule for why this is not a bare
+       `1fr`. */
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

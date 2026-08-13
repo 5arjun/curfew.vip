@@ -435,7 +435,27 @@ function renderBody(
           Below the pair rather than above it, per `LibraryUtilizationView`'s
           own note that further modules are expected to grow below it. */}
       <h2 className="lu-group-heading">First play</h2>
-      <TimeToFirstPlay model={timeToFirstPlay} />
+      {/* Layout pass (Arjun, 2026-08-13): these two were the last direct `.lu`
+          children still capped at 440px, stacked one above the other, which
+          left an 864 × 590px empty rectangle down the right of the page's
+          final screen — the single worst piece of the dead space this pass
+          exists to remove. They are now a `.lu-pair` like the two rows above,
+          so the page has exactly two row shapes (halves, and full width)
+          instead of five widths.
+
+          Pairing them is defensible on the content too: both are about a
+          track's distance from a dancefloor in TIME — how long the played ones
+          waited, and how long the unplayed ones have been waiting.
+
+          **Open copy question, flagged rather than decided.** The `<h2>First
+          play</h2>` above now sits over a two-card row whose right card is the
+          shelf, and it only describes the left one. The DOM heading order is
+          unchanged (`First play`, then `AgingShelf`'s own `<h2>`), so nothing
+          about heading navigation moved — but the visible label is now doing
+          less work than it looks like it is. Renaming it to cover both is a
+          copy decision, which is not this pass's to make. */}
+      <div className="lu-pair">
+        <TimeToFirstPlay model={timeToFirstPlay} />
 
       {/* ── Shelf ─────────────────────────────────────────────────────────
           Story 4.4's aging shelf, kept at the placement it SHIPPED with — a
@@ -471,7 +491,8 @@ function renderBody(
           for a single `useState` holding the sort direction — the whole model
           is computed on the server and passed in, so the page itself stays a
           server component and no data work crosses the boundary. */}
-      <AgingShelf model={agingShelf} />
+        <AgingShelf model={agingShelf} />
+      </div>
 
       {/* Last, so they sit under everything they speak for.
 
