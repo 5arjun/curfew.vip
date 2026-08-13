@@ -364,6 +364,35 @@ struct Track {
     affinity: f64,
 }
 
+/// One `sync_library_roster()` entry — the DJ's whole library, not just what
+/// they played. Mirrors `SyncLibraryRosterEntryWire`.
+///
+/// This is deliberately every identifiable catalog row, including the ~800
+/// with a genre the taxonomy files under `Other` and the handful with no BPM:
+/// `/library-utilization` measures rotation size, one-and-done and the aging
+/// shelf *against the whole library*, and a roster filtered down to what is
+/// playable would quietly turn "you own 4,000 records and rotate 765" into a
+/// much flatter, much less true picture.
+#[derive(Debug, Clone, Serialize)]
+struct RosterEntry {
+    track_id: String,
+    title: Option<String>,
+    artist: Option<String>,
+    added_at: Option<i64>,
+    /// Already in the library when Curfew was installed. Not a branch
+    /// condition anywhere downstream (`agingShelf.ts` is explicit about that)
+    /// — it is what suppresses the add event, nothing more.
+    is_baseline: bool,
+    absent_at: Option<i64>,
+}
+
+/// One `sync_library_add_events()` row — mirrors `SyncLibraryAddEventWire`.
+#[derive(Debug, Clone, Serialize)]
+struct AddEvent {
+    track_id: String,
+    added_at: Option<i64>,
+}
+
 /// A track the catalog carries with a genuine gap — no BPM, or no key. Held
 /// separately and spent against §9's mess budget rather than filtered out and
 /// forgotten: the exclusion disclosures are a feature, and they need real
@@ -960,6 +989,28 @@ struct GeneratorMeta {
 }
 
 #[derive(Debug, Serialize)]
+struct DemoLibrary {
+    generator: LibraryMeta,
+    roster: Vec<RosterEntry>,
+    add_events: Vec<AddEvent>,
+}
+
+#[derive(Debug, Serialize)]
+struct LibraryMeta {
+    spec: &'static str,
+    anchor: String,
+    anchor_shift_days: i64,
+    install_at: i64,
+    install_at_et: String,
+    roster_count: usize,
+    baseline_count: usize,
+    add_event_count: usize,
+    note: &'static str,
+    excluded_no_identity: usize,
+    total_catalogue_rows: usize,
+}
+
+#[derive(Debug, Serialize)]
 struct EmittedFloors {
     density: f64,
     median_bpm: f64,
@@ -1026,19 +1077,32 @@ fn main() {
         duplicates.near_miss_clusters.len()
     );
 
-    let (pool, mess, overlay_report) =
-        build_pool(&catalog, &overlay, &duplicates, shift_days, seed);
-    eprintln!(
-        "pool {} playable | {} mess-budget rows",
-        pool.len(),
-        mess.len()
-    );
-
-    // ---- Calendar and composition ----------------------------------------
+    // The account's install moment. Everything already in the library at this
+    // instant is production's silent first-run baseline (`LibraryScanOutcome`,
+    // Story 4.2 D-1): it lands in the roster and emits **no** add event, which
+    // is what keeps `/library-utilization`'s conversion cohorts a measure of
+    // "how fast does new music reach a set" rather than a re-scored history.
     let window_start = et_to_epoch(
         days_from_civil(CANON_START.0, CANON_START.1, CANON_START.2) + shift_days,
         20 * 3600,
     );
+
+    let (pool, mess, roster, overlay_report) = build_pool(
+        &catalog,
+        &overlay,
+        &duplicates,
+        shift_days,
+        window_start,
+        seed,
+    );
+    eprintln!(
+        "pool {} playable | {} mess-budget rows | {} roster entries",
+        pool.len(),
+        mess.len(),
+        roster.len()
+    );
+
+    // ---- Calendar and composition ----------------------------------------
     let plans = build_calendar(seed, shift_days);
     let composed = compose_all(&plans, &pool, &mess, window_start, seed);
 
@@ -1070,6 +1134,45 @@ fn main() {
     )
     .expect("demo-sets.json writes");
 
+    // §10's other two write paths. Emitted as their own artifact rather than
+    // folded into `demo-sets.json`: stage 3 posts them through different RPCs
+    // at a different point in the build order, and `sync_set` re-runs must not
+    // drag a 4,000-row roster along with them.
+    let add_events: Vec<AddEvent> = roster
+        .iter()
+        .filter(|e| !e.is_baseline)
+        .map(|e| AddEvent {
+            track_id: e.track_id.clone(),
+            added_at: e.added_at,
+        })
+        .collect();
+    let library = DemoLibrary {
+        generator: LibraryMeta {
+            spec: "_bmad-output/planning-artifacts/demo-account-spec.md §10",
+            anchor: format!("{:04}-{:02}-{:02}", anchor.0, anchor.1, anchor.2),
+            anchor_shift_days: shift_days,
+            install_at: window_start,
+            install_at_et: et_iso(window_start),
+            roster_count: roster.len(),
+            baseline_count: roster.iter().filter(|e| e.is_baseline).count(),
+            add_event_count: add_events.len(),
+            note: "roster -> sync_library_roster(); add_events -> \
+                   sync_library_add_events(). Baseline rows carry no add event, \
+                   matching capture::LibraryScanOutcome. `excludedNoIdentityCount` \
+                   and `totalCatalogueRows` have no synced carrier yet (Story 4.11 \
+                   AC-6) and are reported here for the record only.",
+            excluded_no_identity: overlay_report.no_identity_minted,
+            total_catalogue_rows: catalog.len(),
+        },
+        roster: roster.clone(),
+        add_events,
+    };
+    std::fs::write(
+        catalog_dir.join("demo-library.json"),
+        serde_json::to_string_pretty(&library).expect("serializes"),
+    )
+    .expect("demo-library.json writes");
+
     std::fs::write(
         catalog_dir.join("demo-sets-tier1.md"),
         tier1_markdown(&out, &plans),
@@ -1078,7 +1181,7 @@ fn main() {
 
     std::fs::write(
         catalog_dir.join("demo-sets-verification.md"),
-        verification_markdown(&out, &plans, &pool, window_start, &overlay_report),
+        verification_markdown(&out, &plans, &pool, &library, window_start, &overlay_report),
     )
     .expect("demo-sets-verification.md writes");
 
@@ -1106,13 +1209,15 @@ struct OverlayReport {
     no_identity_unusable: usize,
 }
 
+#[allow(clippy::type_complexity)]
 fn build_pool(
     catalog: &[CatalogRow],
     overlay: &Overlay,
     duplicates: &Duplicates,
     shift_days: i64,
+    install_at: i64,
     seed: u64,
-) -> (Vec<Track>, Vec<MessTrack>, OverlayReport) {
+) -> (Vec<Track>, Vec<MessTrack>, Vec<RosterEntry>, OverlayReport) {
     // Cluster membership first — keyed by the catalog's own ids, then re-keyed
     // as corrections re-mint them.
     let mut cluster_of: HashMap<String, usize> = HashMap::new();
@@ -1203,7 +1308,27 @@ fn build_pool(
     let mut affinity_rng = Rng::substream(seed, "affinity");
     let mut pool = Vec::new();
     let mut mess = Vec::new();
+    let mut roster: Vec<RosterEntry> = Vec::new();
     for r in rows {
+        // Roster first, and from every identifiable row — a track with no BPM
+        // is still a record the DJ owns.
+        if let (Some(title), Some(artist), Some(mtime)) =
+            (r.title.clone(), r.artist.clone(), r.mtime)
+        {
+            let added_at = mtime + shift_days * 86_400;
+            roster.push(RosterEntry {
+                track_id: r.id.clone(),
+                title: Some(title),
+                artist: Some(artist),
+                added_at: Some(added_at),
+                is_baseline: added_at < install_at,
+                // Nothing in this account is ever removed from the library.
+                // `absent_at` exists for a track that vanished from the
+                // catalogue between scans, which is a state worth having in the
+                // product and not one worth manufacturing for a screenshot.
+                absent_at: None,
+            });
+        }
         let (Some(title), Some(artist), Some(mtime)) = (r.title.clone(), r.artist.clone(), r.mtime)
         else {
             continue;
@@ -1255,6 +1380,7 @@ fn build_pool(
     }
     pool.sort_by(|a, b| a.id.cmp(&b.id));
     mess.sort_by(|a, b| a.id.cmp(&b.id));
+    roster.sort_by(|a, b| a.track_id.cmp(&b.track_id));
     // An overlay title/artist correction re-mints `track_id` (§4.3), so a
     // careless pair of corrections could fold two different records onto one
     // identity — which downstream would look like a single track that
@@ -1272,6 +1398,7 @@ fn build_pool(
     (
         pool,
         mess,
+        roster,
         OverlayReport {
             applied_track_corrections: applied,
             no_identity_minted: overlay.no_identity.len(),
@@ -1989,11 +2116,18 @@ fn pick_track(
                 };
             }
 
-            // A new record gets hammered for a few weeks — the behaviour
+            // A new record gets hammered for the first few weekends, then
+            // settles into the rotation — the behaviour
             // `/library-utilization`'s conversion cohorts exist to measure.
+            // Two tiers rather than one flat 45-day boost: a single wide window
+            // spread the lift so thinly that a small month-cohort (July has two
+            // tracks) converted at 0%, which reads as a broken chart rather
+            // than a quiet month.
             let age_days = (now - t.added_at) as f64 / 86_400.0;
-            if age_days < 45.0 {
-                score *= 2.6;
+            if age_days < 18.0 {
+                score *= 6.5;
+            } else if age_days < 60.0 {
+                score *= 2.4;
             }
 
             if score > 0.0 {
@@ -2465,6 +2599,7 @@ fn verification_markdown(
     out: &DemoSets,
     _plans: &[SetPlan],
     pool: &[Track],
+    library: &DemoLibrary,
     window_start: i64,
     overlay: &OverlayReport,
 ) -> String {
@@ -2967,45 +3102,93 @@ fn verification_markdown(
         workhorses.to_string(),
         workhorses >= 25,
     );
-    let conversion = {
-        // Tracks added inside the window, played within 30 days of the add.
-        let mut added_in_window = 0usize;
-        let mut converted = 0usize;
-        let first_play: BTreeMap<String, i64> = {
-            let mut m: BTreeMap<String, i64> = BTreeMap::new();
-            for p in &plays {
-                if let (Some(id), Some(s)) = (&p.track_id, p.started_at) {
-                    let e = m.entry(id.clone()).or_insert(i64::MAX);
-                    *e = (*e).min(i64::from(s));
-                }
+    // ---- §10 / §12 library payloads --------------------------------------
+    //
+    // Measured the way `/library-utilization` will measure them: cohorts run
+    // off the ADD EVENTS (`libraryConversion.ts`'s denominator), not off the
+    // roster, so a baseline track can never inflate a rate.
+    let first_play: BTreeMap<String, i64> = {
+        let mut m: BTreeMap<String, i64> = BTreeMap::new();
+        for p in &plays {
+            if let (Some(id), Some(st)) = (&p.track_id, p.started_at) {
+                let e = m.entry(id.clone()).or_insert(i64::MAX);
+                *e = (*e).min(i64::from(st));
             }
-            m
-        };
-        for t in pool {
-            if t.added_at >= window_start
-                && t.added_at <= out.sets.last().map(|s| s.started_at).unwrap_or(0)
-            {
-                added_in_window += 1;
-                if let Some(f) = first_play.get(&t.id) {
-                    if *f - t.added_at <= 30 * 86_400 {
-                        converted += 1;
-                    }
+        }
+        m
+    };
+    let roster = &library.roster;
+    let events = &library.add_events;
+    let baseline = roster.iter().filter(|e| e.is_baseline).count();
+    check(
+        "Roster — entries",
+        "the whole library",
+        roster.len().to_string(),
+        roster.len() > 3_500,
+    );
+    check(
+        "Roster — baseline vs go-forward adds",
+        "most of a 7-month-old install is baseline",
+        format!(
+            "{baseline} baseline · {} added in-window",
+            roster.len() - baseline
+        ),
+        baseline > 0 && events.len() == roster.len() - baseline,
+    );
+    check(
+        "Add events — one per non-baseline roster entry",
+        "exact",
+        events.len().to_string(),
+        events.len() == roster.len() - baseline,
+    );
+    let no_baseline_event = events.iter().all(|e| {
+        roster
+            .iter()
+            .any(|r| r.track_id == e.track_id && !r.is_baseline)
+    });
+    check(
+        "Add events — never emitted for a baseline track",
+        "true",
+        no_baseline_event.to_string(),
+        no_baseline_event,
+    );
+    let roster_ids: BTreeSet<&str> = roster.iter().map(|e| e.track_id.as_str()).collect();
+    let orphan_plays = plays
+        .iter()
+        .filter_map(|p| p.track_id.as_deref())
+        .filter(|id| !roster_ids.contains(id))
+        .count();
+    check(
+        "Every identified play joins to a roster entry",
+        "0 orphans",
+        orphan_plays.to_string(),
+        orphan_plays == 0,
+    );
+
+    let mut conversion_lines: Vec<String> = Vec::new();
+    for window_days in [60i64, 30, 14] {
+        let mut n = 0usize;
+        let mut converted = 0usize;
+        for e in events {
+            let Some(added) = e.added_at else { continue };
+            n += 1;
+            if let Some(f) = first_play.get(&e.track_id) {
+                if *f >= added && *f - added <= window_days * 86_400 {
+                    converted += 1;
                 }
             }
         }
-        (converted, added_in_window)
-    };
-    check(
-        "Library conversion — 30-day window",
-        "a non-degenerate rate",
-        format!(
-            "{}/{} = {:.0}%",
-            conversion.0,
-            conversion.1,
-            100.0 * conversion.0 as f64 / conversion.1.max(1) as f64
-        ),
-        conversion.1 >= 100 && conversion.0 * 4 >= conversion.1,
-    );
+        let rate = 100.0 * converted as f64 / n.max(1) as f64;
+        conversion_lines.push(format!(
+            "| {window_days} days | {n} | {converted} | {rate:.0}% |"
+        ));
+        check(
+            &format!("Library conversion — {window_days}-day window"),
+            "a non-degenerate rate",
+            format!("{converted}/{n} = {rate:.0}%"),
+            n >= 100 && (10.0..=90.0).contains(&rate),
+        );
+    }
 
     // ---- Duplicate-cluster guard -----------------------------------------
     let cluster_of: BTreeMap<String, usize> = pool
@@ -3163,6 +3346,41 @@ fn verification_markdown(
          pace and tempo, and the detector is the authority on what those knobs produced.\n",
         sets.len()
     ));
+
+    s.push_str("\n## Library payloads (§10, `/library-utilization`)\n\n");
+    s.push_str(&format!(
+        "`demo-library.json` — **{} roster entries** ({} baseline, {} go-forward adds). \
+         Baseline rows carry no add event, matching `capture::LibraryScanOutcome`.\n\n\
+         Conversion, measured off the add events the way `libraryConversion.ts` will:\n\n\
+         | window | cohort | converted | rate |\n| --- | ---: | ---: | ---: |\n{}\n\n",
+        roster.len(),
+        baseline,
+        events.len(),
+        conversion_lines.join("\n")
+    ));
+    let mut cohorts: BTreeMap<String, (usize, usize)> = BTreeMap::new();
+    for e in events {
+        let Some(added) = e.added_at else { continue };
+        let c = cohorts.entry(et_month(added)).or_default();
+        c.0 += 1;
+        if let Some(f) = first_play.get(&e.track_id) {
+            if *f >= added && *f - added <= 60 * 86_400 {
+                c.1 += 1;
+            }
+        }
+    }
+    s.push_str("Month-added cohorts at the 60-day default:\n\n| cohort | added | converted | rate |\n| --- | ---: | ---: | ---: |\n");
+    for (m, (n, c)) in &cohorts {
+        s.push_str(&format!(
+            "| {m} | {n} | {c} | {:.0}% |\n",
+            100.0 * *c as f64 / (*n).max(1) as f64
+        ));
+    }
+    s.push_str(
+        "\n> Thin months are real, not a generator artifact: the add-dates are file mtimes off \
+         Arjun's own drive, and some months genuinely saw almost no new music. A cohort of four \
+         tracks will render as a spiky point on the trend line.\n\n",
+    );
 
     s.push_str("\n## Deviations from the spec, and why\n\n");
     s.push_str(
