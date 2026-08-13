@@ -14,7 +14,7 @@
 // overlap (the D-4 fix — a window with no BPM-carrying plays must still band
 // honestly instead of silently un-zooming).
 import type { SegmentBounds } from "./dancefloor";
-import { createMonotoneYAt, monotonePath, type ArcPoint } from "./energyArc";
+import { arcEpochMs, createMonotoneYAt, monotonePath, type ArcPoint } from "./energyArc";
 
 export interface HeroArcView {
   width: number;
@@ -53,7 +53,35 @@ export interface HeroArcGeometry {
   tMax: number;
 }
 
+/** Segment bounds only. These are read-model ISO strings (`segments` resolves
+ * its boundaries through `plays.started_at`, a real `timestamptz`), which is a
+ * different wire convention from the arc points' epoch seconds — those go
+ * through `arcEpochMs`. Keeping the two readers separate is deliberate: one
+ * shared "parse whatever" helper is how the arc's integers got silently fed to
+ * a date parser in the first place. */
 const EPOCH = (iso: string) => new Date(iso).getTime();
+
+/**
+ * The arc points falling inside a segment's window — the ONE scoping filter.
+ *
+ * Extracted because it was written twice, inline, in two components that both
+ * draw the same arc (`DetailArc`'s scope flip and `HeroBand`'s dancefloor-only
+ * line), and the second copy was missed when the first was fixed. Both sides of
+ * the comparison also read from DIFFERENT wire conventions — the points carry
+ * epoch seconds, the bounds carry read-model ISO — which is exactly the kind of
+ * mismatch a duplicated one-liner hides. One function, one pair of readers.
+ *
+ * A `null` segment scopes to nothing narrower: the whole arc comes back.
+ */
+export function arcInSegment(points: ArcPoint[], segment: SegmentBounds | null): ArcPoint[] {
+  if (!segment) return points;
+  const start = EPOCH(segment.start);
+  const end = EPOCH(segment.end);
+  return points.filter((p) => {
+    const t = arcEpochMs(p.started_at);
+    return t >= start && t <= end;
+  });
+}
 
 /** Rolling-median half-window (± tracks) that tames per-track BPM outliers. */
 const SMOOTH_HALF_WINDOW = 2;
@@ -75,7 +103,7 @@ function median(values: number[]): number {
  * (bucket-mean), so the dancefloor band still lands on the true clock.
  */
 function smoothPoints(points: ArcPoint[]): Array<{ t: number; bpm: number }> {
-  const raw = points.map((p) => ({ t: EPOCH(p.started_at), bpm: p.bpm }));
+  const raw = points.map((p) => ({ t: arcEpochMs(p.started_at), bpm: p.bpm }));
   const smoothed = raw.map((p, i) => {
     const from = Math.max(0, i - SMOOTH_HALF_WINDOW);
     const to = Math.min(raw.length - 1, i + SMOOTH_HALF_WINDOW);

@@ -259,7 +259,10 @@
       "additionalProperties": false,
       "required": ["started_at", "bpm"],
       "properties": {
-        "started_at": { "type": "string", "format": "date-time" },
+        "started_at": {
+          "description": "Unix epoch SECONDS -- the integer branch is what the agent has always sent (CapturedEnergyPoint.started_at is a u32 and sync.rs forwards derived_json verbatim). The original 'string, format date-time' here described a read model that never existed for this field: derived is stored as jsonb and read back unchanged, so no layer ever converted it. The string branch is kept only so hand-authored fixtures and older stored derived blobs still validate; new payloads are always integers.",
+          "type": ["integer", "string"]
+        },
         "bpm": { "type": "number" }
       }
     },

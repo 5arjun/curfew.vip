@@ -10,9 +10,45 @@
 // (D-8): both the detail arc and the dashboard thumbnail draw the monotone
 // cubic below via heroArc.ts.
 
+/**
+ * A point's timestamp as it actually arrives from `derived.energy_arc`.
+ *
+ * **Unix epoch SECONDS when it is a number**, which is what every real agent
+ * sync carries: `CapturedEnergyPoint::started_at` in
+ * `agent/src-tauri/src/store.rs` is a `u32`, and `sync.rs` forwards
+ * `derived_json` to `sync_set` verbatim. `derived` is a jsonb column read back
+ * unchanged, so — unlike `plays[].started_at`, which `sync_set` converts with
+ * `to_timestamp(...)` and PostgREST hands back as ISO — nothing in the stack
+ * ever turned this into a date string. The `string` branch survives only for
+ * hand-authored fixtures and any older stored blob.
+ */
+export type ArcTime = number | string;
+
 export interface ArcPoint {
-  started_at: string;
+  started_at: ArcTime;
   bpm: number;
+}
+
+/**
+ * The ONE reader for an arc timestamp — epoch ms, or `NaN` if unparseable.
+ *
+ * Every consumer of `derived.energy_arc` must go through this instead of
+ * `new Date(p.started_at).getTime()`. That call is the bug this function
+ * exists to make unrepresentable: `new Date(1786245580)` reads the integer as
+ * *milliseconds* and lands on 1970-01-21, a factor of 1000 off, which surfaced
+ * as "No tempo data in the dancefloor window." on a set whose arc was full of
+ * points. Every gate stayed green because `web/lib/sets/*.fixture.json` writes
+ * `energy_arc[].started_at` as an ISO string, so the suite only ever exercised
+ * the string path — see `arcEpochMs`'s own numeric tests, which are the only
+ * thing that can catch a regression here.
+ *
+ * Seconds-vs-milliseconds is decided by TYPE, not by magnitude: the agent's
+ * field is a `u32`, so it cannot physically carry an epoch-ms value (those
+ * pass 2^32 in 1970+49 days), and a magnitude sniff would only add a threshold
+ * to get wrong.
+ */
+export function arcEpochMs(t: ArcTime): number {
+  return typeof t === "number" ? t * 1000 : new Date(t).getTime();
 }
 
 export interface CurveXY {
@@ -172,13 +208,13 @@ export function arcTextEquivalent(points: ArcPoint[], scope: ArcScope = "whole")
 
   // Where the trend concentrates (D-13, templated): split at the time
   // midpoint and compare each half's contribution in the overall direction.
-  const t0 = new Date(points[0].started_at).getTime();
-  const t1 = new Date(points[points.length - 1].started_at).getTime();
+  const t0 = arcEpochMs(points[0].started_at);
+  const t1 = arcEpochMs(points[points.length - 1].started_at);
   const midT = t0 + (t1 - t0) / 2;
   let midIdx = 0;
   let midDist = Infinity;
   for (let i = 0; i < points.length; i++) {
-    const dist = Math.abs(new Date(points[i].started_at).getTime() - midT);
+    const dist = Math.abs(arcEpochMs(points[i].started_at) - midT);
     // `<=` (not `<`): on an exact tie, prefer the later index — an earlier-wins
     // tie-break silently biases every even split toward "back half" phrasing.
     if (dist <= midDist) {

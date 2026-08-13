@@ -1,7 +1,7 @@
 import { dancefloorSegments, primaryDancefloorSegment, segmentStats } from "@/lib/sets/dancefloor";
 import { arcTextEquivalent } from "@/lib/sets/energyArc";
 import { formatBpm, formatDayDate, formatTimeRange } from "@/lib/sets/format";
-import { heroArcGeometry } from "@/lib/sets/heroArc";
+import { arcInSegment, heroArcGeometry } from "@/lib/sets/heroArc";
 import { floorDisclosureLabel } from "@/lib/sets/listModel";
 import type { SetRecord } from "@/lib/sets/types";
 import { MetalButton } from "@/app/components/dashboard/MetalButton";
@@ -30,12 +30,11 @@ export function HeroBand({ set }: { set: SetRecord }) {
   // across silence. No dim full-night backdrop. Falls back to the whole set
   // when detection finds no floor (rare; then there's no window to clip to).
   const floorArc = segment != null;
-  const arcSource = segment
-    ? set.derived.energy_arc.filter((p) => {
-        const t = new Date(p.started_at).getTime();
-        return t >= new Date(segment.start).getTime() && t <= new Date(segment.end).getTime();
-      })
-    : set.derived.energy_arc;
+  // `arcInSegment` (not a filter written out again here): the arc's points carry
+  // epoch SECONDS while the segment bounds carry read-model ISO, and this copy
+  // of the comparison read the points with `new Date(...)` — so it silently
+  // matched nothing and drew no hero line at all.
+  const arcSource = arcInSegment(set.derived.energy_arc, segment);
   // null segment → heroArcGeometry emits no band; the clipped points ARE the
   // whole line now, so there's nothing left to split dim-vs-bright.
   const geo = heroArcGeometry(arcSource, null, VIEW);

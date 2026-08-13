@@ -207,8 +207,27 @@ export interface SyncSetDerived {
   set_length_sec: number | null;
   /** From `stats::track_count`. Total plays, not unique tracks. */
   track_count: number;
-  /** From `stats::energy_arc`/`EnergyArcPoint`. Only points with both `start_time` and `bpm` present; chronological order preserved. */
-  energy_arc: Array<{ started_at: string; bpm: number }>;
+  /**
+   * From `stats::energy_arc`/`EnergyArcPoint`. Only points with both
+   * `start_time` and `bpm` present; chronological order preserved.
+   *
+   * **`started_at` is Unix epoch SECONDS, not an ISO string** — the same wire
+   * convention `idle_gaps` documents at length below, and the same one
+   * `plays[].started_at` crosses `sync_set` with. `CapturedEnergyPoint` in
+   * `agent/src-tauri/src/store.rs` declares it `u32` and `sync.rs` forwards
+   * `derived_json` **verbatim**, so this has always been an integer on the
+   * wire; unlike `plays[]`, nothing ever converted it, because `derived` is
+   * stored as jsonb and read back unchanged. The `string` this field used to
+   * be typed as was simply wrong, and every web consumer that did
+   * `new Date(started_at)` on it read 1970 (`bug-energy-arc-epoch-vs-iso`).
+   *
+   * The union keeps `string` accepted so a hand-authored fixture or an older
+   * stored `derived` blob carrying ISO still parses — read it through
+   * `arcEpochMs` in `web/lib/sets/energyArc.ts`, never `new Date(...)`
+   * directly. A `u32` can never hold epoch *milliseconds* (they exceed 4.29e9
+   * by 2^8), so "number ⇒ seconds" is unambiguous, not a heuristic.
+   */
+  energy_arc: Array<{ started_at: number | string; bpm: number }>;
   /**
    * From `confidence::classify`/`SessionConfidence` (Story 1.8, FR-27).
    * Required, not optional — Epic 4 Story 4.1 AC-3 depends on this signal

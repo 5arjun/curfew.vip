@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  arcEpochMs,
   arcTextEquivalent,
   createMonotoneYAt,
   monotonePath,
@@ -154,5 +155,53 @@ describe("arcTextEquivalent — ONE chart-summary generator (D-12/D-13)", () => 
     const s = arcTextEquivalent([pt(0, 100), pt(600, 140), pt(1200, 110)]);
     expect(s).not.toMatch(/peak/i);
     expect(s).not.toMatch(/\d+:\d+/);
+  });
+});
+
+describe("arcEpochMs — the one reader for an arc timestamp", () => {
+  /**
+   * The whole point of this block: `pt()` above converts seconds to an ISO
+   * string, which is what every fixture in this directory does too — so the
+   * suite has never once fed `arcTextEquivalent` the integer the agent actually
+   * sends. `wirePt` below does, and it is the only thing standing between a
+   * future refactor and a second 1970 regression.
+   */
+  const wirePt = (sec: number, bpm: number): ArcPoint => ({ started_at: sec, bpm });
+
+  it("reads a number as SECONDS, not milliseconds", () => {
+    // The literal value from the failing set. `new Date(1786245580)` — the call
+    // this function replaced — is 1970-01-21.
+    expect(arcEpochMs(1786245580)).toBe(1786245580000);
+    expect(new Date(arcEpochMs(1786245580)).getUTCFullYear()).toBe(2026);
+  });
+
+  it("still parses an ISO string, so fixtures and older stored blobs keep working", () => {
+    const ms = Date.UTC(2026, 5, 21, 22, 30, 0);
+    expect(arcEpochMs(new Date(ms).toISOString())).toBe(ms);
+    // The two forms of the same instant must be interchangeable.
+    expect(arcEpochMs(ms / 1000)).toBe(arcEpochMs(new Date(ms).toISOString()));
+  });
+
+  it("returns NaN for an unparseable string rather than a wrong instant", () => {
+    expect(Number.isNaN(arcEpochMs("not a date"))).toBe(true);
+  });
+
+  it("gives the caption's time-midpoint split the same answer either way", () => {
+    // The `through the first half` / `back half` clause is chosen by comparing
+    // each half's contribution around the TIME midpoint — the one place in the
+    // caption that reads timestamps at all, and so the one that could disagree.
+    const base = Date.UTC(2026, 5, 21, 22, 0, 0) / 1000;
+    const shape: Array<[number, number]> = [
+      [0, 120],
+      [600, 121],
+      [1200, 122],
+      [1800, 129],
+    ];
+    expect(arcTextEquivalent(shape.map(([s, b]) => wirePt(base + s, b)))).toBe(
+      arcTextEquivalent(shape.map(([s, b]) => pt(base + s, b))),
+    );
+    expect(arcTextEquivalent(shape.map(([s, b]) => wirePt(base + s, b)))).toBe(
+      "BPM ranged 120–129, climbing through the back half.",
+    );
   });
 });

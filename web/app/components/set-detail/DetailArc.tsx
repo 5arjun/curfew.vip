@@ -12,7 +12,7 @@ import {
 } from "react";
 import { arcTextEquivalent, type ArcPoint } from "@/lib/sets/energyArc";
 import { formatClock } from "@/lib/sets/format";
-import { heroArcGeometry } from "@/lib/sets/heroArc";
+import { arcInSegment, heroArcGeometry } from "@/lib/sets/heroArc";
 import {
   bpmSummary,
   camelotCompatible,
@@ -42,6 +42,8 @@ const STRIP_H = 28;
 
 /* ── Pure helpers ─────────────────────────────────────────────────────── */
 
+/** Segment bounds and `plays.started_at` — read-model ISO strings. Arc points
+ * are epoch seconds and go through `arcEpochMs` instead; see its doc comment. */
 const EPOCH = (iso: string) => new Date(iso).getTime();
 
 interface TimedPlay {
@@ -115,16 +117,14 @@ export function DetailArc({
 }) {
   // Scope-reactive caption input (D-13): the dancefloor caption reads only the
   // window's points; whole-night reads them all. Recomputes with the flip.
-  const scopedArc = useMemo<ArcPoint[]>(() => {
-    const points = set.derived.energy_arc;
-    if (frame.scope !== "dancefloor" || !frame.segment) return points;
-    const s = EPOCH(frame.segment.start);
-    const e = EPOCH(frame.segment.end);
-    return points.filter((p) => {
-      const t = EPOCH(p.started_at);
-      return t >= s && t <= e;
-    });
-  }, [set.derived.energy_arc, frame.scope, frame.segment]);
+  const scopedArc = useMemo<ArcPoint[]>(
+    () =>
+      arcInSegment(
+        set.derived.energy_arc,
+        frame.scope === "dancefloor" ? frame.segment : null,
+      ),
+    [set.derived.energy_arc, frame.scope, frame.segment],
+  );
 
   // THE one chart-summary string (D-12): visible caption, aria
   // text-equivalent, and error-boundary fallback below.
