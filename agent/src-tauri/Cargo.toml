@@ -192,3 +192,13 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
     "NSView",
 ] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std"] }
+
+# `demo_overlay_scrub` is the only example carrying its own `#[cfg(test)]`
+# module, and examples default to `test = false` — so its ten rule tests were
+# built by CI and never RUN by it. They are the entire safety net on ~156
+# automated title/artist rewrites (an over-eager rule would mangle a title with
+# nobody reading the 4,000-row diff), so they get gated like any other test.
+# Declaring one example does not turn off autodiscovery for the others.
+[[example]]
+name = "demo_overlay_scrub"
+test = true

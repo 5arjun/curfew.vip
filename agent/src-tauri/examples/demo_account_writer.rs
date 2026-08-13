@@ -73,14 +73,49 @@ const SYNC_STATE: &str = "Idle";
 /// between a sync that works on a phone tether and one that times out.
 const BATCH_SIZE: usize = 200;
 
-/// How many of the most recent sets keep their dancefloor segment *unconfirmed*.
+/// How many sets keep their dancefloor segment *unconfirmed*.
 ///
-/// A DJ seven months into using this has confirmed nearly all of them, but not
-/// the ones from last week — and the suggestion state is a real, designed
-/// product state (`SegmentSelector.tsx` renders it with its own chip dot), so
-/// showing a couple is more honest than a wall of green checks. Kept off the
-/// most recent set on purpose: that one is the dashboard hero.
-const UNCONFIRMED_RECENT: usize = 3;
+/// The suggestion state is a real, designed product state
+/// (`SegmentSelector.tsx` renders it with its own chip dot), so showing a
+/// couple is more honest than a wall of green checks.
+///
+/// **These are MID-archive sets, never recent ones**, which is the opposite of
+/// what this constant did when it was named `UNCONFIRMED_RECENT`: it took the
+/// last `n` entries of a chronologically-ASCENDING array, so the newest set —
+/// the dashboard hero, the first thing anyone sees — was always among them, and
+/// the hero carried "suggested, not yet confirmed" in every screenshot. The old
+/// doc comment even claimed the opposite ("Kept off the most recent set on
+/// purpose: that one is the dashboard hero"), so the intent was never in doubt,
+/// only the indexing. `unconfirmed_indices` now derives the picks from the
+/// middle of the archive and asserts the hero is not among them.
+const UNCONFIRMED_COUNT: usize = 2;
+
+/// Which set indices keep an unconfirmed suggestion, given a chronologically
+/// ascending `sets` array.
+///
+/// Picked as fractions of the archive rather than hardcoded indices so the
+/// choice survives a regenerated catalog with a different set count, and stays
+/// deterministic across runs (the writer is idempotent — a second run must not
+/// move which floors read as unconfirmed).
+fn unconfirmed_indices(len: usize) -> Vec<usize> {
+    if len < 4 {
+        return Vec::new();
+    }
+    // 40% and 60% in: unambiguously mid-archive, and far from both the hero at
+    // the end and the "first ever set" at the start, which are the two the demo
+    // narrative points at.
+    let picks: Vec<usize> = (0..UNCONFIRMED_COUNT)
+        .map(|k| len * (4 + 2 * k) / 10)
+        .collect();
+
+    // The guard the old constant's prose asked for but nothing enforced.
+    assert!(
+        picks.iter().all(|&i| i < len - 1 && i > 0),
+        "unconfirmed picks {picks:?} must stay off the newest set (the dashboard \
+         hero) and the oldest one; len = {len}"
+    );
+    picks
+}
 
 // =============================================================================
 // Artifacts
@@ -248,37 +283,54 @@ fn main() {
         }
     }
 
-    // ---- 4. confirm the suggested segments --------------------------------
+    // ---- 4. settle the suggested segments ---------------------------------
     //
     // NOT a re-write of the segment rows: `sync_set` already created them from
     // `derived.suggested_segments` (see the module docs). This flips
     // `confirmed` and touches nothing else, exactly like `segmentWrites.ts`'s
     // own confirm path — `source` stays `'suggested'` so the provenance of the
     // boundary is preserved.
-    let cutoff = sets.sets.len().saturating_sub(UNCONFIRMED_RECENT);
+    //
+    // Both directions are written, not just the confirm. This step CONVERGES on
+    // the state `unconfirmed_indices` declares rather than ratcheting toward
+    // "everything confirmed": a re-run over an account written by the previous
+    // version of this file would otherwise confirm the old hero (correct) and
+    // then quietly leave the new mid-archive picks confirmed too (wrong), since
+    // a skip is not a write. Idempotence has to mean "ends in the declared
+    // state", not "never un-does anything".
+    let unconfirmed = unconfirmed_indices(sets.sets.len());
     let mut confirmed = 0usize;
+    let mut unset = 0usize;
     for (identity, sid, i) in &set_ids {
-        if *i >= cutoff {
-            continue;
-        }
+        let want = !unconfirmed.contains(i);
+        // Filter on the CURRENT value being the opposite of the wanted one, so
+        // a settled row is not rewritten and `rows.len()` counts real changes.
         let res = http
             .patch(format!(
-                "{}/rest/v1/segments?set_id=eq.{sid}&source=eq.suggested&confirmed=is.false",
-                args.url
+                "{}/rest/v1/segments?set_id=eq.{sid}&source=eq.suggested&confirmed=is.{}",
+                args.url, !want
             ))
             .header("apikey", &args.anon_key)
             .header("Authorization", format!("Bearer {token}"))
             .header("Content-Type", "application/json")
             .header("Prefer", "return=representation")
-            .json(&json!({ "confirmed": true }))
+            .json(&json!({ "confirmed": want }))
             .send()
-            .expect("segment confirm sends");
-        let rows: Vec<Value> = expect_json(res, &format!("confirm segments {identity}"));
-        confirmed += rows.len();
+            .expect("segment settle sends");
+        let rows: Vec<Value> = expect_json(res, &format!("settle segments {identity}"));
+        if want {
+            confirmed += rows.len();
+        } else {
+            unset += rows.len();
+        }
     }
     eprintln!(
-        "segments: {confirmed} confirmed, {} sets left showing an unconfirmed suggestion",
-        sets.sets.len() - cutoff
+        "segments: {confirmed} newly confirmed, {unset} returned to unconfirmed; \
+         {} mid-archive sets left showing an unconfirmed suggestion (indices \
+         {unconfirmed:?} of {}; the newest set is never among them — it is the \
+         dashboard hero)",
+        unconfirmed.len(),
+        sets.sets.len()
     );
 
     // ---- 5. roster, then add events ---------------------------------------
@@ -408,7 +460,7 @@ fn dry_run_plan(sets: &DemoSets, library: &DemoLibrary) {
                 .unwrap_or(0)
         })
         .sum();
-    let cutoff = sets.sets.len().saturating_sub(UNCONFIRMED_RECENT);
+    let unconfirmed = unconfirmed_indices(sets.sets.len());
     let mut by_kind: BTreeMap<&str, usize> = BTreeMap::new();
     for s in &sets.sets {
         *by_kind.entry(s.kind.as_str()).or_default() += 1;
@@ -430,9 +482,11 @@ fn dry_run_plan(sets: &DemoSets, library: &DemoLibrary) {
         sets.sets.iter().map(|s| s.plays.len()).sum::<usize>()
     );
     println!(
-        "  3. PATCH  segments               confirm on the first {cutoff} sets; the newest {} keep \
-         an unconfirmed suggestion",
-        sets.sets.len() - cutoff
+        "  3. PATCH  segments               confirm on {} sets; {} MID-archive sets \
+         (indices {unconfirmed:?}) keep an unconfirmed suggestion — never the \
+         newest, which is the dashboard hero",
+        sets.sets.len() - unconfirmed.len(),
+        unconfirmed.len()
     );
     println!(
         "  4. POST   rpc/sync_library_roster      x{} batches ({} entries)",

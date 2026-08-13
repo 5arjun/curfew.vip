@@ -50,6 +50,43 @@
 //! and the "no track is played before its add-date" invariant survive a
 //! re-anchor unchanged.
 //!
+//! ### The anchor is also the conversion-trend knob (a recording-time choice)
+//!
+//! `/library-utilization`'s conversion trend plots only **complete** cohorts,
+//! and `libraryConversion.ts :: isCohortComplete` measures completeness against
+//! the VIEWER'S REAL CLOCK — `now >= monthEnd + window` — not against this
+//! anchor. That is correct product behaviour (whether a cohort has finished
+//! converting genuinely depends on today's date, not on when the data was
+//! generated), so there is nothing to fix in the web. It does mean the number
+//! of plotted points **shrinks as the recording date moves away from the
+//! anchor**, which is a knob to set deliberately rather than a bug to chase.
+//!
+//! Measured on the canonical `--anchor 2026-08-10` data, recording on
+//! 2026-08-13:
+//!
+//! | Window   | Cohorts plotted        |
+//! | -------- | ---------------------- |
+//! | 60 days  | 4 — Feb, Mar, Apr, May |
+//! | 30 days  | 5 — …plus June         |
+//! | 2 weeks  | 5 — …plus June         |
+//!
+//! **Six is the ceiling at any window and any anchor**, because the add-events
+//! only span Feb–Jul 2026 (and July carries just 2 events, so it is a noisy
+//! point even once it completes). To plot more, the fix is more months of
+//! add-events in §5's calendar, not a re-anchor.
+//!
+//! So, at recording time, pick one:
+//!
+//! - **Keep the anchor, use the 30-day or 2-week toggle** — 5 points, and the
+//!   newest set stays "last weekend", which is what `/dashboard` wants. This is
+//!   the recommended default.
+//! - **Re-anchor ~3 weeks earlier** (`--anchor 2026-07-21`) — the 60-day window
+//!   reaches 5 points and 30/14-day reach 6, at the cost of the hero set being
+//!   three weeks old.
+//!
+//! A later anchor never helps: it moves the data *toward* the clock, so fewer
+//! cohorts have had their full window.
+//!
 //! Run:
 //! ```sh
 //! cargo run --release --example demo_set_generator -- \
