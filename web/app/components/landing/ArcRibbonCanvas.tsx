@@ -275,7 +275,29 @@ void main() {
   // One tick per real play start.
   col += uAccent * vTick * 0.55 * uAmp;
 
-  gl_FragColor = vec4(col, uReveal);
+  // ── The resting horizon (Arjun, 2026-08-14: "make that look more natural
+  //    until the scroll") ──────────────────────────────────────────────────
+  // Flat is the point — the hero opens on a horizon and scroll inflates it —
+  // but flat plus edge-to-edge plus uniform alpha reads as a rule ruled across
+  // the page, and against the mesh behind it that seam is the first thing the
+  // eye finds. Two falloffs, both keyed to uAmp so they cost nothing once the
+  // shape exists:
+  //
+  //   ends — dissolve the last sixth at each side, so the line arrives from
+  //          somewhere and leaves for somewhere. It relaxes as the arc
+  //          inflates because by then the first and last track are
+  //          information, and fading them away would be a small lie.
+  //   body — feather the cross-section. At rest the band is ~3px tall, which
+  //          rasterizes as a hard bar with an aliased top edge; softening it
+  //          turns the same geometry into a line of light. At full amplitude
+  //          the ribbon wants its real edges back, so this goes to 1 too.
+  float ends = smoothstep(0.0, 0.17, vUv.x) * (1.0 - smoothstep(0.83, 1.0, vUv.x));
+  float body = smoothstep(0.0, 0.34, v) * (1.0 - smoothstep(0.66, 1.0, v));
+  float alpha = uReveal
+    * mix(ends, 1.0, uAmp * 0.72)
+    * mix(body, 1.0, smoothstep(0.0, 0.45, uAmp));
+
+  gl_FragColor = vec4(col, alpha);
 }
 `;
 

@@ -55,7 +55,15 @@ export default function LoginPage() {
 }
 
 function LoginPageContent() {
-  const [mode, setMode] = useState<Mode>("login");
+  const searchParams = useSearchParams();
+  // The Landing's "Join" lands here rather than on a separate signup route —
+  // one auth surface, opened on the right side of its own toggle. Read once,
+  // as the initial state, so the toggle below still owns the mode afterwards:
+  // a reader who arrives via Join and decides they already have an account
+  // must not be snapped back to signup on the next render.
+  const [mode, setMode] = useState<Mode>(
+    searchParams.get("intent") === "join" ? "signup" : "login",
+  );
   const [authStatus, setAuthStatus] = useState<AuthActionState["status"]>("idle");
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [passkeySignedIn, setPasskeySignedIn] = useState(false);
@@ -68,7 +76,6 @@ function LoginPageContent() {
   // BiometricAnchor only checked their own pending flag, so a user could
   // trigger both in the window before the OAuth redirect navigates away.
   const authMethodPending = passkeyPending || oauthPending !== null;
-  const searchParams = useSearchParams();
   const confirmationFailed = searchParams.get("error") === "confirmation-failed";
 
   // Task 5.2 (deferred-work.md, 2.3a/2.3b reviews): a stale failure message

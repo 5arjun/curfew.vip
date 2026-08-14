@@ -16,6 +16,7 @@
      line to re-decide rather than eleven. D-4 settled on Bricolage Grotesque
      (Arjun, 2026-08-14) — see fonts.ts for why the serif direction lost. */
   --lp-display: var(--font-bricolage-var), system-ui, sans-serif;
+  --lp-mesh-opacity: 0.55;
   background: var(--color-abyss-base);
   color: var(--color-abyss-text);
   font-family: var(--font-inter);
@@ -23,6 +24,264 @@
 
 .lp-main {
   display: block;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Atmosphere: the drifting mesh behind every beat ─────────────────────────
+   Fixed, so it is one surface the page scrolls over rather than a thing that
+   scrolls with it. --lp-mesh-opacity is a single dial on purpose — it is the
+   knob to turn when the field competes with the ribbon instead of sitting
+   under it. */
+.lp-mesh {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: var(--lp-mesh-opacity);
+  pointer-events: none;
+}
+
+/* ── Nav: a floating pill the hero's wordmark flies into ─────────────────────
+   --lp-dock is 0 at the top of the page and 1 once the mark has docked;
+   LandingNav.tsx writes it from a rAF. It defaults to 1 so the bar's first
+   paint — and its no-JS paint — is the finished, docked state. Nothing here
+   transitions on --lp-dock: it is scroll-linked, and a transition on a
+   scroll-linked value is lag, not easing. */
+.lp-nav {
+  position: fixed;
+  top: clamp(10px, 1.8vh, 20px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 var(--lp-gutter);
+  /* Only the pill and the sheet take the pointer — the rest of this strip is
+     over the hero, which has its own CTA to click. */
+  pointer-events: none;
+}
+
+.lp-nav-bar {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 6px 6px 6px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--color-abyss-hairline);
+  background: var(--color-abyss-shell-glass);
+  -webkit-backdrop-filter: blur(24px) saturate(1.15);
+  backdrop-filter: blur(24px) saturate(1.15);
+  box-shadow:
+    inset 0 1px 0 var(--shadow-ink-0),
+    0 18px 40px var(--shadow-ink-20);
+}
+
+/* The slot is a hole in the layout that opens as the mark arrives — this is
+   the "move the other buttons over" half. The mark itself is absolutely
+   positioned inside it, so its own geometry never depends on how far the slot
+   has opened; only the links to its right move. */
+.lp-nav-slot {
+  --lp-nav-mark-w: clamp(58px, 5vw, 74px);
+  position: relative;
+  align-self: stretch;
+  flex: none;
+  width: calc((var(--lp-nav-mark-w) + 20px) * var(--lp-dock, 1));
+}
+
+/* Same PNG-as-mask treatment and the same ink ramp as .lp-wordmark — the two
+   have to be the same object, because during the flight they are. */
+.lp-nav-mark {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  margin: auto 0;
+  width: var(--lp-nav-mark-w);
+  aspect-ratio: 1302 / 308;
+  transform-origin: 0 0;
+  will-change: transform;
+  background: linear-gradient(
+    180deg,
+    var(--color-abyss-text-72) 0%,
+    var(--color-abyss-text-45) 100%
+  );
+  -webkit-mask: url("/brand/curfew-wordmark.png") left center / contain no-repeat;
+  mask: url("/brand/curfew-wordmark.png") left center / contain no-repeat;
+}
+
+/* While the mark is in flight it IS the hero's wordmark, so the hero's own is
+   hidden rather than duplicated. visibility, not display: the hero's eyebrow
+   keeps its box, so nothing under it shifts when the bar takes over. */
+.lp-root:has(.lp-nav[data-travel="true"]) .lp-wordmark {
+  visibility: hidden;
+}
+
+.lp-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.lp-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 20px;
+}
+
+.lp-nav-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 9px 13px;
+  border-radius: 999px;
+  font-family: var(--font-inter);
+  font-size: 0.875rem;
+  line-height: 1;
+  color: var(--color-abyss-text-72);
+  text-decoration: none;
+  text-wrap: nowrap;
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lp-nav-link:hover {
+  color: var(--color-abyss-text);
+}
+
+.lp-nav-link:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-primary),
+    0 0 0 6px var(--color-primary-glow);
+}
+
+/* The FAQ label until the FAQ exists. Dimmer than a link and inert to the
+   pointer, so it never promises a destination it does not have. */
+.lp-nav-link--pending {
+  color: var(--color-abyss-text-45);
+  cursor: default;
+}
+
+.lp-nav-join {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--metal-abyss-tint) 0%, var(--metal-abyss-back) 100%);
+  font-family: var(--font-inter);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--color-abyss-base);
+  text-decoration: none;
+  text-wrap: nowrap;
+  transition: filter var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lp-nav-join:hover {
+  filter: brightness(1.08);
+}
+
+.lp-nav-join:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-primary),
+    0 0 0 6px var(--color-primary-glow);
+}
+
+/* ── The narrow arrangement ──────────────────────────────────────────────── */
+.lp-nav-menu {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  width: 40px;
+  height: 40px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  cursor: pointer;
+}
+
+.lp-nav-menu-bar {
+  display: block;
+  height: 1.5px;
+  border-radius: 2px;
+  background: var(--color-abyss-text-72);
+  transition: transform var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lp-nav-menu[aria-expanded="true"] .lp-nav-menu-bar:first-child {
+  transform: translateY(3.25px) rotate(45deg);
+}
+
+.lp-nav-menu[aria-expanded="true"] .lp-nav-menu-bar:last-child {
+  transform: translateY(-3.25px) rotate(-45deg);
+}
+
+.lp-nav-menu:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-primary),
+    0 0 0 6px var(--color-primary-glow);
+}
+
+.lp-nav-sheet {
+  pointer-events: auto;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 8px;
+  padding: 8px;
+  min-width: min(280px, 100%);
+  border-radius: 22px;
+  border: 1px solid var(--color-abyss-hairline);
+  background: var(--color-abyss-shell-glass);
+  -webkit-backdrop-filter: blur(24px) saturate(1.15);
+  backdrop-filter: blur(24px) saturate(1.15);
+  box-shadow: 0 18px 40px var(--shadow-ink-20);
+}
+
+.lp-nav-sheet .lp-nav-link {
+  padding: 13px 14px;
+  font-size: 0.9375rem;
+}
+
+@media (max-width: 760px) {
+  .lp-nav-bar {
+    padding: 6px 6px 6px 14px;
+  }
+
+  .lp-nav-links,
+  .lp-nav-login {
+    display: none;
+  }
+
+  .lp-nav-actions {
+    margin-left: 14px;
+  }
+
+  .lp-nav-menu {
+    display: flex;
+  }
+
+  .lp-nav-sheet[data-open="true"] {
+    display: flex;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .lp-nav-bar,
+  .lp-nav-sheet {
+    background: var(--color-abyss-shell);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }
 
 /* ── Stage: the hero and the explorer share one scroll and one ribbon ────────
@@ -51,21 +310,11 @@
   isolation: isolate;
 }
 
-/* Static steel-indigo pool. Never oscillates — same rule the dashboard's hero
-   atmosphere follows, and the reason it is a gradient rather than an animation. */
-.lp-stage-sticky::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(
-    78% 46% at 50% 46%,
-    var(--landing-atmos) 0%,
-    var(--landing-atmos-fade) 72%
-  );
-  opacity: 0.72;
-  pointer-events: none;
-  z-index: 0;
-}
+/* The static steel-indigo pool that used to live here is OFF while the mesh is
+   on trial: it painted an opaque --landing-atmos over the middle 78% of the
+   hero, which is exactly where the field is worth looking at. If the mesh does
+   not survive, this comes back — radial-gradient(78% 46% at 50% 46%, atmos,
+   atmos-fade 72%) at 0.72 opacity, static, never oscillating. */
 
 /* ── Ribbon ─────────────────────────────────────────────────────────────── */
 .lp-ribbon {
@@ -96,6 +345,27 @@
   transform: translateY(-40%);
   opacity: 1;
   transition: opacity var(--motion-duration-slow) var(--motion-ease-standard);
+  /* The end-dissolve the GL band does in its fragment shader, done here in the
+     one place the fallback can do it. Masked at the <svg> rather than on the
+     stroke so the area fill agrees with the line — otherwise the fill's edge
+     becomes the hard vertical the stroke stopped being. The GL side relaxes
+     this as the arc inflates; the fallback cannot read amplitude from CSS, so
+     it holds the fade throughout, which is the right trade for a path that
+     only ever renders on small or low-memory devices. */
+  -webkit-mask: linear-gradient(
+    90deg,
+    var(--shadow-ink-0) 0%,
+    var(--color-surface-void) 17%,
+    var(--color-surface-void) 83%,
+    var(--shadow-ink-0) 100%
+  );
+  mask: linear-gradient(
+    90deg,
+    var(--shadow-ink-0) 0%,
+    var(--color-surface-void) 17%,
+    var(--color-surface-void) 83%,
+    var(--shadow-ink-0) 100%
+  );
 }
 
 .lp-ribbon-svg[data-hidden="true"] {
