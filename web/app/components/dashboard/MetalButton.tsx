@@ -27,6 +27,13 @@ import { useMetalColors, usePrefersReducedMotion } from "@/app/components/ui/met
 // sanctioned placements are the hero arrow (icon mode), the expanded set
 // card's "Enter Set" pill (text mode), and the nav rail's rim (FloatingNav,
 // Arjun 2026-08-03). Never map it over a list.
+//
+// Added 2026-08-14 (Arjun): the landing page's CTA, in all three of its
+// placements — hero, stepper, close — via <LandingActions>. That is 3 contexts
+// on a route that already spends one on the arc ribbon, so /landing sits at 4
+// of the browser's ~16. It is the ceiling for that page: the "See features"
+// secondary is deliberately plain CSS, and any further landing CTA should
+// reuse LandingActions rather than mount a fourth shader.
 const LiquidMetal = dynamic(
   () => import("@paper-design/shaders-react").then((m) => m.LiquidMetal),
   { ssr: false },

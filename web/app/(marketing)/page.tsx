@@ -2,25 +2,41 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ArcRibbon } from "@/app/components/landing/ArcRibbon";
-import { Closing, CoverMedia, Diptych, Stepper, Triptych } from "@/app/components/landing/Beats";
-import { arc } from "@/app/components/landing/arc-curve";
+import {
+  Closing,
+  CoverMedia,
+  Diptych,
+  LandingActions,
+  Stepper,
+} from "@/app/components/landing/Beats";
 
 // Landing beats 00-02 (Story 6.1). The remaining beats (03-10) are storyboarded
 // in _bmad-output/implementation-artifacts/6-1-landing-page-design.md and land
 // as the captures arrive; this route exists so the ribbon can be built and
 // judged against real scroll before the rest of the page is committed.
 //
-// Lives at /landing rather than / while it is being built, so the Story 1.1
-// scaffold page at app/page.tsx keeps working until this replaces it.
+// PROMOTED TO `/` (Arjun, 2026-08-14), ahead of pointing curfew.vip at this
+// project — a domain whose front door is a scaffold page is not wired up. The
+// Story 1.1 scaffold that used to hold this route (app/page.tsx) is deleted:
+// its job was to prove web/ consumes @curfew/shared through a real import, and
+// lib/sets/{types,libraryConversion,libraryRoster}.ts each do that now against
+// production code paths, so the proof outlived the proof-of-concept.
 
 // Two statements, not three (Arjun, 2026-08-14). "This is one night. Yours."
 // was the third and it is gone: with the stage shortened there is no room for a
 // line that restates what the ribbon is already showing, and holding a reader
 // on two sentences for 300vh is what made the beat feel slow. The two that
 // remain are the argument — a set has a shape, and you have never seen yours.
+//
+// The turn is pinned to the bead, not to a taste number (Arjun, 2026-08-14:
+// "stay until the orb on the ribbon reaches the middle, then switch"). Both
+// renderers walk the bead on `(p - 0.3) / 0.62` (ArcRibbon.tsx layoutFromSvg,
+// ArcRibbonCanvas.tsx), so walk = 0.5 — the midpoint of the night — falls at
+// p = 0.3 + 0.62/2 = 0.61. If that walk window is ever retuned, this number
+// moves with it; it is the same constant read from the other end.
 const STAGES = [
   { at: 0.0, lines: ["Every set has a shape."] },
-  { at: 0.46, lines: ["You have never seen yours."] },
+  { at: 0.61, lines: ["You have never seen yours."] },
 ];
 
 function useStage(section: React.RefObject<HTMLElement | null>) {
@@ -102,6 +118,13 @@ export default function LandingPage() {
               Curfew reads the sets you already played and gives you the only baseline that means
               anything - your own.
             </p>
+            {/* The page's only CTA used to be 3,000px down, at the close
+                (Arjun, 2026-08-14). A reader who is already sold has nowhere to
+                act until they have scrolled the whole film. The secondary is an
+                anchor rather than a button because it genuinely navigates — it
+                lands on beat 05, the feature tour — so it works without JS and
+                takes focus and middle-click like a link should. */}
+            <LandingActions className="lp-hero-actions" />
             <p className="lp-cue">
               <span>Scroll</span>
               <span className="lp-cue-line" />
@@ -117,19 +140,17 @@ export default function LandingPage() {
               </p>
             ))}
           </div>
-
-          <p className="lp-provenance" data-shown={active >= 1 ? "true" : "false"}>
-            {arc.summary.trackCount} tracks · {arc.summary.bpmMin.toFixed(0)}–
-            {arc.summary.bpmMax.toFixed(0)} BPM · dancefloor {arc.dancefloor.firstPosition}–
-            {arc.dancefloor.lastPosition}
-          </p>
+          {/* The provenance strip ("44 tracks · 99–130 BPM · dancefloor 11–38")
+              is CUT (Arjun, 2026-08-14). It was a third text layer competing
+              with the caption and the tracklist for the same moment, and it
+              stated in numbers what the shape above it was already showing.
+              The tracklist column still carries the night's count and span. */}
         </div>
       </section>
 
       <CoverMedia />
       <Diptych />
       <Stepper />
-      <Triptych />
       <Closing />
     </main>
   );

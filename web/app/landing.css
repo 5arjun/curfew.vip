@@ -29,14 +29,18 @@
    300vh of scroll, 200vh of travel. The ribbon never remounts between beats —
    that continuity is the whole trick, so they cannot be separate sections.
 
-   400vh → 300vh (Arjun, 2026-08-14): a third of the copy came out of this beat,
-   and the same scroll length over less to read is what "staring at two
-   sentences" means. Everything scroll-linked here — inflation, rotation, the
-   bead, the tracklist walk — reads the same normalized progress, so shortening
-   the stage speeds all of it up together and nothing needs retiming. */
+   400vh → 300vh → 210vh (Arjun, 2026-08-14, twice): a third of the copy came
+   out of this beat, and the same scroll length over less to read is what
+   "staring at two sentences" means. The second cut is the bead specifically —
+   "have the orb travel faster so the user doesn't have to scroll too much to
+   get past this point." Everything scroll-linked here — inflation, rotation,
+   the bead, the tracklist walk — reads the same normalized progress, so
+   shortening the stage speeds all of it up together and nothing needs
+   retiming. In wheel terms: the bead now reaches the middle of the night
+   ~67vh into the stage rather than ~122vh. */
 .lp-stage {
   position: relative;
-  height: 300vh;
+  height: 210vh;
 }
 
 .lp-stage-sticky {
@@ -584,6 +588,72 @@
   color: var(--color-abyss-text-72);
 }
 
+/* ── CTA pair ────────────────────────────────────────────────────────────────
+   Both children are inline-flex boxes with the SAME min-height and a
+   line-height of 1 (Arjun, 2026-08-14, with a screenshot: "the buttons aren't
+   aligned"). They were a <button> and an <a> carrying different intrinsic
+   line-heights and vertical padding, so they resolved to different heights and
+   different text baselines — flex `align-items: center` centred two boxes that
+   were never the same size. Pinning the box and killing inherited leading is
+   what actually makes them agree; nothing here relies on the two labels
+   happening to be the same length. */
+.lp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.lp-hero-actions {
+  margin-top: var(--space-xl);
+}
+
+.lp-stepper-actions {
+  margin-top: var(--space-xl);
+}
+
+.lp-closing-actions {
+  justify-content: center;
+  margin-top: var(--space-lg);
+}
+
+/* MetalButton brings its own .mtl-hit:focus-visible ring, so only the
+   secondary needs one — and it has to match, not merely exist. */
+.lp-ghost-cta:focus-visible {
+  box-shadow:
+    0 0 0 2px var(--color-primary),
+    0 0 0 6px var(--color-primary-glow);
+  outline: none;
+}
+
+/* The secondary wears the same metal, thinned to an edge: a steel hairline and
+   a face that is barely there, so it reads as the same material seen from the
+   side rather than as a different component. */
+.lp-ghost-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  padding: 0 28px;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--color-abyss-hairline);
+  background: linear-gradient(180deg, var(--shadow-ink-0) 0%, var(--shadow-ink-20) 100%);
+  font-family: var(--font-inter);
+  font-size: 0.9375rem;
+  line-height: 1;
+  color: var(--color-abyss-text-72);
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lp-ghost-cta:hover {
+  border-color: var(--metal-abyss-label);
+  color: var(--color-abyss-text);
+}
+
 .lp-cue {
   position: absolute;
   left: var(--lp-gutter);
@@ -667,22 +737,8 @@
   transform: translateY(0);
 }
 
-.lp-provenance {
-  position: absolute;
-  left: var(--lp-gutter);
-  bottom: var(--space-xl);
-  z-index: 3;
-  font-family: var(--font-geist-mono);
-  font-size: 0.6875rem;
-  letter-spacing: 0.08em;
-  color: var(--color-abyss-text-45);
-  opacity: 0;
-  transition: opacity var(--motion-duration-slow) var(--motion-ease-standard);
-}
-
-.lp-provenance[data-shown="true"] {
-  opacity: 1;
-}
+/* .lp-provenance is gone (Arjun, 2026-08-14) — see the note at its old markup
+   site in page.tsx. Nothing else on the page used the class. */
 
 /* ── Placeholder tail so the sticky stage has somewhere to release into ─── */
 .lp-next {
@@ -748,7 +804,6 @@
     display: none;
   }
 
-  .lp-provenance,
   .lp-tracklist {
     display: none;
   }
@@ -773,7 +828,6 @@
   .lp-hero,
   .lp-caption,
   .lp-poi,
-  .lp-provenance,
   .lp-ribbon-svg {
     transition: none;
   }
@@ -836,15 +890,56 @@
   transform: scale(1);
 }
 
+/* Same corner, different register (Arjun, 2026-08-14). This was a 10px mono
+   uppercase stamp reading as metadata; it is now a sentence at reading size,
+   so it takes the display face and the page's full text colour. The position
+   is deliberately unchanged — top-left of the frame, on the gutter. */
 .lp-cover-tag {
   position: absolute;
   left: var(--lp-gutter);
   top: var(--space-xl);
-  font-family: var(--font-geist-mono);
-  font-size: 0.625rem;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--color-abyss-text-45);
+  /* Establishes the stacking context the ::before ground lives inside, so a
+     z-index of -1 lands above the film rather than behind it. */
+  z-index: 2;
+  margin: 0;
+  font-family: var(--lp-display);
+  font-weight: 500;
+  /* Bigger again (Arjun, 2026-08-14) — it now sits in headline territory
+     rather than caption territory, which is what "in a nice size" over a
+     full-bleed film turned out to mean. */
+  font-size: clamp(2.25rem, 5vw, 4rem);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: var(--color-abyss-text);
+  text-shadow: 0 2px 18px var(--shadow-ink-80);
+}
+
+/* The same ground beat 04's copy carries, at this one's scale: a flat pool of
+   base colour plus a real blur of the video, both faded out by a radial mask so
+   the treatment has no edge of its own. Two words over moving footage need it
+   more than a paragraph does — there is less type to hold the eye. */
+.lp-cover-tag::before {
+  content: "";
+  position: absolute;
+  inset: -0.7em -1.5em;
+  z-index: -1;
+  background: var(--landing-scrim);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  -webkit-mask: radial-gradient(
+    62% 58% at 50% 50%,
+    var(--color-abyss-text) 0%,
+    var(--shadow-ink-0) 100%
+  );
+  mask: radial-gradient(62% 58% at 50% 50%, var(--color-abyss-text) 0%, var(--shadow-ink-0) 100%);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .lp-cover-tag::before {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }
 
 /* ── 04 Capture ───────────────────────────────────────────────────────────────
@@ -1021,49 +1116,9 @@
 /* 06 Principle — CUT (Arjun, 2026-08-14). See Beats.tsx for what came out and
    why it is worth remembering that it did. */
 
-/* ── 07 Triptych ──────────────────────────────────────────────────────────── */
-.lp-triptych {
-  position: relative;
-  padding: 12vh var(--lp-gutter);
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-lg);
-  align-items: start;
-}
-
-.lp-triptych-img {
-  width: 100%;
-  aspect-ratio: 3 / 4;
-  object-fit: cover;
-  object-position: left top;
-  border-radius: var(--radius-xl);
-  border: 1px solid var(--color-abyss-hairline);
-  opacity: 0;
-  transform: translateY(36px);
-  transition:
-    opacity var(--motion-duration-liquid-open) var(--motion-ease-liquid),
-    transform var(--motion-duration-liquid-open) var(--motion-ease-liquid);
-}
-
-.lp-triptych-img:nth-child(2) {
-  transition-delay: 90ms;
-  transform: translateY(64px);
-}
-
-.lp-triptych-img:nth-child(3) {
-  transition-delay: 180ms;
-}
-
-.lp-triptych[data-shown="true"] .lp-triptych-img {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.lp-triptych-tag {
-  grid-column: 1 / -1;
-  text-align: center;
-  margin-top: var(--space-lg);
-}
+/* 07 Triptych — CUT (Arjun, 2026-08-14). Three stills of screens the stepper
+   had just shown as film, under a caption asserting what the beat above it
+   had already demonstrated. See Beats.tsx for the full note. */
 
 /* ── 10 Closing ───────────────────────────────────────────────────────────── */
 .lp-closing {
@@ -1127,27 +1182,24 @@
   color: var(--color-abyss-text-45);
 }
 
-.lp-cta {
-  justify-self: center;
-  margin-top: var(--space-md);
-  padding: 14px 34px;
-  border-radius: var(--radius-xl);
-  border: 1px solid var(--btn-gradient-border);
-  background: radial-gradient(
-    120% 160% at 30% 20%,
-    var(--btn-gradient-1) 0%,
-    var(--btn-gradient-2) 52%,
-    var(--btn-gradient-3) 100%
-  );
-  color: var(--color-on-background);
-  font-family: var(--font-inter);
-  font-size: 0.9375rem;
-  cursor: pointer;
-  transition: filter var(--motion-duration-fast) var(--motion-ease-standard);
+/* The primary CTA is the dashboard's "Enter Set" pill itself (MetalButton,
+   text mode) — see LandingActions in Beats.tsx. Only its geometry is set here,
+   through the same --mtl-* custom properties the component sizes itself from,
+   so a landing CTA can be bigger than a pill on a set card without forking any
+   of the layer stack, the shader, or the press physics.
+
+   The earlier hand-rolled chrome gradient is gone: it could imitate the
+   material but never the animation, which is the half Arjun asked for. */
+.lp-metal-cta {
+  --mtl-w: 208px;
+  --mtl-h: 52px;
+  --mtl-iw: 204px;
+  --mtl-ih: 48px;
 }
 
-.lp-cta:hover {
-  filter: brightness(1.16);
+.lp-metal-cta .mtl-face {
+  font-size: 0.9375rem;
+  font-family: var(--font-inter);
 }
 
 .lp-footer {
@@ -1163,10 +1215,6 @@
 }
 
 @media (max-width: 860px) {
-  .lp-triptych {
-    grid-template-columns: 1fr;
-  }
-
   /* No room to lie the copy across the film at this width — it stacks, and the
      scrim comes off with the overlap that made it necessary. */
   .lp-diptych-stage {
@@ -1202,7 +1250,6 @@
   .lp-cover-media,
   .lp-diptych-film,
   .lp-diptych-copy,
-  .lp-triptych-img,
   .lp-closing-inner,
   .lp-stepper-frame {
     transition: none;

@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { MetalButton } from "@/app/components/dashboard/MetalButton";
 import { useMediaQuery, usePrefersReducedMotion } from "@/app/components/ui/metal-hooks";
-import { clockAt, nightDate } from "./arc-curve";
 
 // Beats 03-10 (Story 6.1). MOCKUP PASS, 2026-08-13: assembled from the assets
 // that exist today so the whole page can be judged end to end. Everything here
@@ -98,6 +98,7 @@ function BeatVideo({
   className,
   active = true,
   shown,
+  start = 0,
 }: {
   src: string;
   poster: string;
@@ -105,6 +106,8 @@ function BeatVideo({
   /** Stepper frames are all mounted; only the current one should be running. */
   active?: boolean;
   shown?: boolean;
+  /** Where to enter the take, as a fraction of its duration. */
+  start?: number;
 }) {
   const [ref, inView] = useInView<HTMLVideoElement>(0.25);
   const reduced = usePrefersReducedMotion();
@@ -112,6 +115,25 @@ function BeatVideo({
   // poster; the beats read fine as stills and the bandwidth is indefensible.
   const narrow = useMediaQuery("(max-width: 639px)");
   const still = reduced || narrow;
+
+  // Enter the take partway in (Arjun, 2026-08-14: "for 01-02, start from
+  // halfway through the video"). Seeking needs a duration, which is not known
+  // at mount, so it waits on loadedmetadata — and it fires once per source
+  // rather than on every loop, so the film still cycles the whole way round
+  // after the first pass instead of jumping back to the midpoint forever.
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || !start || still) return;
+    let done = false;
+    const seek = () => {
+      if (done || !Number.isFinite(node.duration) || node.duration === 0) return;
+      done = true;
+      node.currentTime = node.duration * start;
+    };
+    seek();
+    node.addEventListener("loadedmetadata", seek);
+    return () => node.removeEventListener("loadedmetadata", seek);
+  }, [ref, start, still, src]);
 
   useEffect(() => {
     const node = ref.current;
@@ -136,6 +158,45 @@ function BeatVideo({
   );
 }
 
+/**
+ * The page's call to action, in the three places it now appears: the hero, the
+ * pinned stepper, and the close. One component so the wording and the metal
+ * never drift apart between them.
+ *
+ * The primary IS the dashboard's "Enter Set" pill (Arjun, 2026-08-14:
+ * "reference the 'Enter Set' button on the dashboard and how that is
+ * styled/animated"), not a copy of it — same <MetalButton mode="text">, so the
+ * landing CTA and the in-product CTA share one shader, one speed state machine
+ * (idle 0.35 → hover 1.0 → click burst 2.4) and one press physics. A CSS
+ * imitation was the first attempt and it could not have the animation at all.
+ * `.mtl-*` is global (globals.css @imports dashboard.css), so this costs no
+ * new stylesheet; only the pill's size is overridden, through its own
+ * --mtl-* custom properties.
+ *
+ * The secondary stays plain: an <a>, not a button, because it genuinely
+ * navigates to beat 05 — so it works with JS off and keeps middle-click and
+ * focus order. It is also what keeps the WebGL budget honest; see the
+ * placement note in MetalButton.tsx.
+ */
+export function LandingActions({
+  className,
+  secondary = true,
+}: {
+  className?: string;
+  secondary?: boolean;
+}) {
+  return (
+    <div className={["lp-actions", className].filter(Boolean).join(" ")}>
+      <MetalButton mode="text" label="Start your archive" className="lp-metal-cta" />
+      {secondary && (
+        <a className="lp-ghost-cta" href="#features">
+          See features
+        </a>
+      )}
+    </div>
+  );
+}
+
 /* ── Beat 03 — the handoff ─────────────────────────────────────────────────
    The ribbon's last frame should mask-wipe into this. Waiting on V1 (the arc
    drawing itself in, camera-free); until then this is the V2 sweep, which
@@ -146,20 +207,18 @@ export function CoverMedia() {
     <section className="lp-cover" ref={ref} data-shown={inView ? "true" : "false"}>
       <BeatVideo
         className="lp-cover-media"
-        src="/landing/set-detail.mp4"
-        poster="/landing/set-detail-poster.jpg"
+        src="/landing/set-detail-3.mp4"
+        poster="/landing/set-detail-3-poster.jpg"
       />
-      {/* A slate, not a label (Arjun, 2026-08-14: "'Set detail · 3h 17m · 44
-          tracks' seems out of place"). It was naming the screen you are
-          already looking at, in the product's own UI vocabulary, over footage
-          whose whole job is to speak for itself. What replaces it says nothing
-          about the software: it is the night's own date and hours — the same
-          set the ribbon above was built from — stamped like the head of an
-          archive reel. If it still reads as one thing too many, deleting it
-          entirely is what the storyboard originally called for. */}
-      <p className="lp-cover-tag">
-        {nightDate()} · {clockAt(0)} → {clockAt(1)}
-      </p>
+      {/* An invitation, not a slate (Arjun, 2026-08-14). This position has now
+          held three things: the product's own UI vocabulary ("Set detail · 3h
+          17m · 44 tracks"), then the night's date and hours stamped like an
+          archive reel. Both described the footage. Two words that ask the
+          reader forward do more over a shot that already speaks for itself.
+          It carries its own ground — the same scrim + backdrop-blur treatment
+          beat 04's copy uses — because a phrase this size has to survive
+          whatever frame the film happens to be on. */}
+      <p className="lp-cover-tag">See everything</p>
     </section>
   );
 }
@@ -180,14 +239,14 @@ export function Diptych() {
             dashboard film until that shot exists. */}
         <BeatVideo
           className="lp-diptych-film"
-          src="/landing/dashboard.mp4"
-          poster="/landing/dashboard-poster.jpg"
+          src="/landing/dashboard-3.mp4"
+          poster="/landing/dashboard-3-poster.jpg"
         />
         <div className="lp-diptych-copy" ref={copy}>
           <h2 className="lp-h2">You don&rsquo;t do anything.</h2>
           <p className="lp-body">
-            A small app on your machine reads Serato&rsquo;s own history the moment you close the
-            laptop. No plugin, no upload, no ritual. Play the way you already play.
+            Curfew reads Serato the moment you finish the set. No plugin, no upload, no ritual.
+            Play the way you already play.
           </p>
         </div>
       </div>
@@ -196,42 +255,59 @@ export function Diptych() {
 }
 
 /* ── Beat 05 — the pinned capability stepper ──────────────────────────────── */
-type StepMedia =
-  | { type: "video"; src: string; poster: string }
-  | { type: "image"; src: string };
+// TWO FILMS ACROSS FOUR STEPS (Arjun, 2026-08-14). The media is keyed off the
+// step rather than owned by it, because a step that owns its own <video> is a
+// step that remounts the element every time the index changes — and a remount
+// restarts playback at frame 0. Steps 01→02 are one continuous take of set
+// detail and 03→04 one of style evolution, so each film keeps running
+// underneath while the copy changes against scroll.
+type Film = { src: string; poster: string; start?: number };
 
-type Step = { n: string; title: string; body: string; media: StepMedia };
+const FILMS: Film[] = [
+  // 01-02 — the set-detail screen, recorded 2026-08-14. This also retires the
+  // V3 (segment-editor drag) placeholder: step 02 now shows the real thing.
+  // Entered at the midpoint, where the take is already inside the tracklist
+  // rather than still settling onto the screen (Arjun, 2026-08-14). Beat 03
+  // plays the SAME file from its head, so the two are not redundant.
+  { src: "/landing/set-detail-3.mp4", poster: "/landing/set-detail-3-poster.jpg", start: 0.5 },
+  // 03-04 — style evolution, recorded 2026-08-14. NOTE: this take never leaves
+  // the Style Evolution screen, so step 04 ("The library") plays footage of a
+  // different feature. Flagged to Arjun; `library.jpg` is still in
+  // public/landing if step 04 should go back to its own still.
+  { src: "/landing/style-evolution.mp4", poster: "/landing/style-evolution-poster.jpg" },
+];
+
+type Step = { n: string; title: string; body: string; film: number };
 
 const STEPS: Step[] = [
   {
     n: "01",
     title: "The night",
     body: "Every track, in order, against the clock. The set as it actually happened, not as you remember it.",
-    media: {
-      type: "video",
-      src: "/landing/set-detail.mp4",
-      poster: "/landing/set-detail-poster.jpg",
-    },
+    film: 0,
   },
   {
-    // Wants V3 (the segment editor drag) — the most important shot still
-    // outstanding. Standing in with the dashboard film.
     n: "02",
     title: "The dancefloor",
-    body: "Curfew guesses where the floor was. You drag the edges until it\u2019s right.",
-    media: { type: "video", src: "/landing/dashboard.mp4", poster: "/landing/dashboard-poster.jpg" },
+    body: "Curfew\u2019s dancefloor detection engine estimates when your real dancefloor is. You can edit and the engine will learn.",
+    film: 0,
   },
   {
     n: "03",
     title: "The drift",
-    body: "What you played this month against what you played last. Not better. Different \u2014 and now visible.",
-    media: { type: "image", src: "/landing/style-evolution.jpg" },
+    body: "What you played tonight versus your sets in the past. Learn to evolve as a DJ.",
+    film: 1,
   },
   {
     n: "04",
     title: "The library",
-    body: "The records you own and never reach for, named.",
-    media: { type: "image", src: "/landing/library.jpg" },
+    // "The records you own and never reach for, named." replaced (Arjun,
+    // 2026-08-14, "I’m not the biggest fan"). What was wrong with it: it
+    // described a data structure — a named list — when what the feature
+    // actually trades on is money already spent. The replacement keeps the
+    // page's shape: second person, a flat statement, then the turn.
+    body: "You keep buying music. Curfew shows you what never leaves the shelf.",
+    film: 1,
   },
 ];
 
@@ -265,7 +341,9 @@ export function Stepper() {
   }, []);
 
   return (
-    <section className="lp-stepper" ref={section}>
+    // The hero's "See features" anchor lands here — the stepper IS the feature
+    // tour, so the link goes to the thing rather than to a list about it.
+    <section className="lp-stepper" id="features" ref={section}>
       <div className="lp-stepper-sticky">
         <div className="lp-stepper-copy">
           <span className="lp-stepper-n">{STEPS[active].n}</span>
@@ -276,28 +354,26 @@ export function Stepper() {
               <li key={step.n} data-active={i === active ? "true" : "false"} />
             ))}
           </ol>
+          {/* The second of three placements (Arjun, 2026-08-14). The stepper is
+              where the page finishes making its case, and it is pinned for four
+              screenfuls — the longest stretch on the page with nowhere to act.
+              No "See features" here: you are standing in them. */}
+          <LandingActions className="lp-stepper-actions" secondary={false} />
         </div>
         <div className="lp-stepper-media">
-          {STEPS.map((step, i) =>
-            step.media.type === "video" ? (
-              <BeatVideo
-                key={step.n}
-                className="lp-stepper-frame"
-                src={step.media.src}
-                poster={step.media.poster}
-                active={i === active}
-                shown={i === active}
-              />
-            ) : (
-              <img
-                key={step.n}
-                className="lp-stepper-frame"
-                src={step.media.src}
-                alt=""
-                data-shown={i === active ? "true" : "false"}
-              />
-            ),
-          )}
+          {/* Keyed by film, not by step: crossing 01→02 leaves the same element
+              mounted and playing, so only 02→03 is an actual cut. */}
+          {FILMS.map((film, i) => (
+            <BeatVideo
+              key={film.src}
+              className="lp-stepper-frame"
+              src={film.src}
+              poster={film.poster}
+              start={film.start}
+              active={STEPS[active].film === i}
+              shown={STEPS[active].film === i}
+            />
+          ))}
         </div>
       </div>
     </section>
@@ -313,18 +389,13 @@ export function Stepper() {
    it is one component in git history — and beat 05's step 03 copy ("Not
    better. Different") is the only surviving trace of the idea. */
 
-/* ── Beat 07 — the details ────────────────────────────────────────────────── */
-export function Triptych() {
-  const [ref, inView] = useInView<HTMLElement>(0.25);
-  return (
-    <section className="lp-triptych" ref={ref} data-shown={inView ? "true" : "false"}>
-      <img src="/landing/genre-key.jpg" alt="" className="lp-triptych-img" />
-      <img src="/landing/style-evolution.jpg" alt="" className="lp-triptych-img" />
-      <img src="/landing/library.jpg" alt="" className="lp-triptych-img" />
-      <p className="lp-stamp lp-triptych-tag">The details are the point</p>
-    </section>
-  );
-}
+/* ── Beat 07 — CUT (Arjun, 2026-08-14) ────────────────────────────────────────
+   The three-still panel ("The details are the point") is gone: it showed three
+   screens the stepper had just shown as film, under a caption that asserted
+   what the beat above had already demonstrated. The page now runs steps →
+   close. Its three stills (genre-key.jpg, style-evolution.jpg, library.jpg)
+   are still in public/landing and unreferenced — left there deliberately,
+   since step 04's film is the open question. */
 
 /* ── Beat 10 — close ──────────────────────────────────────────────────────── */
 export function Closing() {
@@ -343,9 +414,7 @@ export function Closing() {
           $6<span>/month</span>
         </p>
         <p className="lp-body lp-closing-body">One plan. Cancel whenever.</p>
-        <button type="button" className="lp-cta">
-          Start your archive
-        </button>
+        <LandingActions className="lp-closing-actions" secondary={false} />
       </div>
       <footer className="lp-footer">
         <span>Curfew</span>
