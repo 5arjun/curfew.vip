@@ -1,30 +1,68 @@
-# Prompt for the next session
+# Story 6.1 — next-session prompt
 
-Copy everything below the line into a fresh session.
+Paste the block below into a fresh session. Updated 2026-08-14, after the two
+redline passes and the D-4 ruling.
 
 ---
 
-I'm building the Curfew Landing page (Story 6.1, Epic 6) — a scroll-driven marketing page modelled on verostudio.com, on-theme with the app's Abyss palette.
+Continuing the Curfew Landing page (Story 6.1). Read
+`_bmad-output/implementation-artifacts/6-1-landing-page-design.md` first —
+storyboard, capture list, ruling log, and a build log that already records what
+was tried and rejected. Don't re-derive it, and don't re-litigate §4: **D-4 is
+settled, the display face is Bricolage Grotesque**, and §4's "display serif"
+recommendation is kept only as the record of a decision that lost.
 
-**Read `_bmad-output/implementation-artifacts/6-1-landing-page-design.md` first.** It has the storyboard, the capture list, every ruling, and a build log of what's done and what's known-broken. Do not re-derive any of it.
+Live at `/landing`. Run `pnpm dev` in `web/` and LOOK at it in a foreground
+window before changing anything. **Browser automation lies about this page** and
+the reason is known: the whole page is rAF-driven, and Chrome produces no frames
+for a background tab — so `scroll` events never fire (even for a programmatic
+`scrollTo`), `position: sticky` stops being re-solved, and the WebGL canvas
+holds a stale frame while the DOM around it repaints. To measure anyway: shim
+`window.requestAnimationFrame` onto `setTimeout` and dispatch synthetic
+`new Event('scroll')` after each `scrollTo`. That revives every DOM layer;
+canvas-projected elements (POI markers, the 3D axis) still need a real window.
 
-The page is live at `/landing` (`web/app/(marketing)/landing/page.tsx`). Run `pnpm dev` in `web/` and look at it in a browser before changing anything — the Playwright MCP screenshot capture is unreliable on this page (blank/stale frames, probably racing the WebGL rAF), so verify layout by measuring `getBoundingClientRect` rather than trusting a screenshot.
+State: beats 00–02 are the real build (WebGL ribbon + SVG fallback, both with
+axis, bead, readout, tracklist). Beats 03–10 are a mockup from two Screen Studio
+recordings and three product screenshots in `web/public/landing/`. Beat 06 (the
+"never ranked" principle) was cut on 2026-08-14 — the page states that principle
+nowhere now. Mobile is fixed and verified. The page is ~8,100px; the stage is
+300vh.
 
-**What exists:** beats 00–02 are the real build — a WebGL ribbon (`ArcRibbonCanvas.tsx`) driven by one real demo set (`hero-arc.json`, set 1289), with a time axis, genre strip, tracklist column, BPM readout and a bead that rides the crest as you scroll. Beats 03–10 (`Beats.tsx`) are a **mockup pass** built from the two Screen Studio recordings and three product screenshots in `web/public/landing/`.
+What I want changed this session:
+- [ ]
+- [ ]
+- [ ]
 
-**What I want this session:** [FILL THIS IN — e.g. "polish beats 03–10 to the same standard as 00–02", or "swap in the new V1/V3 captures", or "make the whole thing work on mobile"].
+Rules: tokens only (`no-hardcoded-colors.test.ts`; marketing values go in
+`--landing-*`). `prefers-reduced-motion` must leave the page fully readable.
+Landing is the only surface with a motion budget. One flag per question for
+capability gates — don't re-conflate "can render 3D" with "should show
+furniture". Every display rule reads `--lp-display`; don't hardcode a family.
+Deps: `three`, `@react-three/fiber`, `framer-motion` in; Lenis sanctioned but
+not installed; nothing else without asking.
 
-Constraints that are not up for renegotiation:
-- Tokens only. `no-hardcoded-colors.test.ts` is the guard; `tokens.css` is the one file allowed literal hex. Marketing-only values go in the `--landing-*` block.
-- `prefers-reduced-motion` must leave the page fully readable — no video autoplay, no scroll-linked motion. The ribbon freezes at its most legible orientation.
-- Landing is the ONLY surface with a motion budget. UX-DR16's "logged-in surfaces stay still" still holds.
-- Runtime deps: `three` + `@react-three/fiber` + `framer-motion` are in. Lenis is sanctioned but not yet installed. Nothing else without asking.
-- Before finishing: `npx tsc --noEmit`, `npx eslint app`, `npx vitest run` (862 tests should pass). Delete any `.playwright-mcp/` screenshot strays — they land in the repo.
+Before finishing: `npx tsc --noEmit`, `npx eslint app` (4 known `<img>`
+warnings), `npx vitest run` (862 pass), and delete any `.playwright-mcp/`
+strays or stray screenshots at the repo root — never `git add -A` after a
+browser pass.
 
-Known shortcuts in the mockup pass, fix if they're in scope: `<img>` instead of `next/image`, no WebM alongside the MP4s, and the two films carry Screen Studio's auto-zoom so they can't be scroll-scrubbed.
+Known shortcuts, fix if in scope: `<img>` not `next/image` (4 warnings), no
+WebM, and both films carry Screen Studio auto-zoom so they can't be
+scroll-scrubbed.
 
-Still owed from me (Arjun), don't wait on them unless the task needs them:
-- **V1** — Set Detail hard-reload, arc drawing itself in, ~7s, auto-zoom OFF, no mouse movement.
-- **V3** — the segment editor drag, 12–15s, auto-zoom OFF.
-- **V9** — the agent tray catching a set.
-- Real photography (P1–P3, P6, and especially **P7**, the empty room with the house lights up — that's the closing image and it can't be the AI placeholder).
+Still owed from Arjun: V1 (arc draw, auto-zoom OFF, 7s, no mouse), V3 (segment
+editor drag, auto-zoom OFF), V9 (agent tray), real photography — especially P7,
+the empty room with house lights up, which is the closing image. The
+AI-generated booth photo is off the page entirely as of 2026-08-13, so P1–P3 no
+longer block anything.
+
+Open questions carried forward:
+- Beat 03's slate (`Sat, Jul 25 · 11:09 PM → 2:26 AM`) replaced a label Arjun
+  disliked. The storyboard's original instruction was "No headline. Let it
+  land." — deleting it is still live.
+- The footer credit row's small mono "Curfew" is still type, not the wordmark.
+- Tuning items 2–4 from the mobile-fix pass are open: the `drift` POI anchors
+  where the gap starts rather than where the eye reads the notch; the
+  dancefloor window is too subtle to read as a marked region; reduced-motion
+  and the low-power SVG fallback have never been visually verified.
