@@ -36,6 +36,21 @@ function stripComments(line: string): string {
   return line.replace(/\/\/.*$/, "").replace(/\/\*.*?\*\//g, "");
 }
 
+// `transparent` is a CSS color keyword AND a three.js material property name
+// (`<shaderMaterial transparent />` enables alpha blending — it is a boolean,
+// not a color). Story 6.1's WebGL ribbon is the first code in the app to hit
+// that collision. Narrowed rather than exempting the file: only the bare JSX
+// boolean attribute form is dropped, so `color: transparent`, `"transparent"`,
+// and `transparent: "#fff"` all still trip the guard exactly as before. The
+// invariant being protected is "no hard-coded colors" — a blend-mode flag was
+// never one, and the CSS keyword remains banned everywhere it can be a color
+// (use a zero-alpha token instead; see tokens.css's *-fade family).
+function stripNonColorKeywords(line: string): string {
+  // Trailing `$` matters: Prettier puts a lone boolean JSX attribute on its own
+  // line, so the common form has no trailing character at all.
+  return line.replace(/(^|[\s{])transparent(?=\s*\/?>|\s*=\s*\{(?:true|false)\}|\s|$)/g, "$1");
+}
+
 function collectFiles(dir: string, extensions: string[]): string[] {
   const results: string[] = [];
   for (const entry of readdirSync(dir)) {
@@ -65,7 +80,7 @@ describe("web/app has no hard-coded colors outside the token file (Story 2.2 AC-
     for (const file of files) {
       const lines = readFileSync(file, "utf-8").split("\n");
       lines.forEach((line, index) => {
-        if (COLOR_LITERAL_PATTERN.test(stripComments(line))) {
+        if (COLOR_LITERAL_PATTERN.test(stripNonColorKeywords(stripComments(line)))) {
           violations.push({ file, line: index + 1, text: line.trim() });
         }
       });

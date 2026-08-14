@@ -231,14 +231,30 @@
    that "can never scroll" (see `.dz` above), so this was not recoverable by any
    gesture; the content was simply gone.
    The narrow-WIDTH release below has existed since 3.6 for the same reason in
-   the other axis. This is its complement. 820px is the height at which the hero
-   (200–300px) + the columns' own comfortable minimum + gaps + padding stop
-   fitting.
+   the other axis. This is its complement.
    Unlike the width release this does NOT collapse to one column: the screen is
    short, not narrow, and stacking a 1440px-wide list on top of a 1440px-wide
    right column would make the page four times taller to fix a height problem.
-   Only the lock itself is released, so the page scrolls normally. */
-@media (min-width: 900.02px) and (max-height: 820px) {
+   Only the lock itself is released, so the page scrolls normally.
+
+   THRESHOLD 820px → 640px (Arjun, 2026-08-13: "the bottom of the screen is cut
+   off and I can't scroll lower", recording demo video on a 1440×~810 window).
+   Two things were wrong with 820:
+   1. It fired on every normal laptop window — 900px of screen minus browser
+      chrome minus the Dock lands at ~720-810 — so the DESIGNED layout (D9) was
+      the one nobody ever saw, and the fallback was the product.
+   2. The premise "the page scrolls normally" is false here. `.dz-list-scroll`
+      keeps `overscroll-behavior: contain` and covers most of the viewport, so
+      the wheel never reaches the document; the page is taller than the window
+      and cannot be scrolled from the only place a pointer naturally sits. The
+      released layout was less reachable than the locked one, not more.
+   Re-measured at 1440×722 with the lock restored: `.dz` 722px, page maxScroll
+   0, hero 200, columns 423, list scroller 351px of 3334 and right column 423
+   of 674 — both scroll internally, with the edge-fades that exist for exactly
+   that, and nothing is unreachable. The floor is well below 722, so the
+   release now guards genuinely short windows (a half-height window, a short
+   external display) rather than the common case. */
+@media (min-width: 900.02px) and (max-height: 640px) {
   .dz {
     height: auto;
     /* Still fills the viewport when the content happens to be short — this
@@ -268,6 +284,13 @@
     overflow-y: visible;
     min-height: auto;
   }
+  /* And the same for the set list, which is the bigger offender: `contain`
+     stops the wheel at the list's own bounds, and the list is most of the
+     viewport. Released, the page is the scroller of record, so the list has to
+     hand the gesture on when it reaches its end. */
+  .dz-list-scroll {
+    overscroll-behavior: auto;
+  }
 }
 
 /* ─── Responsive: release the viewport lock on narrow screens ──────────── */
@@ -294,6 +317,12 @@
   .dz-right {
     overflow-y: visible;
     min-height: auto;
+  }
+  /* Same scroll-trap as the height release: with the page scrolling, a list
+     that contains its own overscroll swallows every wheel and swipe that
+     starts over it — which on a phone is all of them. */
+  .dz-list-scroll {
+    overscroll-behavior: auto;
   }
 }
 

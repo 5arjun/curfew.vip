@@ -1,0 +1,1295 @@
+/**
+ * Landing (Story 6.1) — marketing surface only.
+ *
+ * D-2 (Arjun, 2026-08-13) gives this one page a motion budget the rest of the
+ * app does not have. Everything here is scoped under .lp-root so none of it can
+ * reach the authenticated surfaces, which stay still per UX-DR16.
+ *
+ * Tokens only, per no-hardcoded-colors.test.ts. The ribbon's own four colours
+ * are also read from :root at runtime by the shader — see tokens.css's
+ * --landing-* block for why they are hex there and var() everywhere else.
+ */
+
+.lp-root {
+  --lp-gutter: clamp(20px, 5vw, 72px);
+  /* Every display-serif rule on this page reads --lp-display, so D-4 is one
+     line to re-decide rather than eleven. The [data-face] blocks below are the
+     live A/B and come out with the switcher once Arjun picks. */
+  --lp-display: var(--font-instrument-serif-var), Georgia, serif;
+  background: var(--color-abyss-base);
+  color: var(--color-abyss-text);
+  font-family: var(--font-inter);
+}
+
+/* ── D-4 candidates, round two (DEVELOPMENT ONLY — see FaceSwitcher.tsx) ──── */
+.lp-root[data-face="archivo"] {
+  --lp-display: var(--font-archivo-var), system-ui, sans-serif;
+}
+
+.lp-root[data-face="space"] {
+  --lp-display: var(--font-space-grotesk-var), system-ui, sans-serif;
+}
+
+.lp-root[data-face="syne"] {
+  --lp-display: var(--font-syne-var), system-ui, sans-serif;
+}
+
+.lp-root[data-face="bricolage"] {
+  --lp-display: var(--font-bricolage-var), system-ui, sans-serif;
+}
+
+.lp-root[data-face="shoulders"] {
+  --lp-display: var(--font-big-shoulders-var), system-ui, sans-serif;
+}
+
+.lp-root[data-face="hanken"] {
+  --lp-display: var(--font-hanken-grotesk), system-ui, sans-serif;
+}
+
+/* The serif was set at display sizes that assume high contrast and a small
+   x-height. A grotesque at 94px is a different animal: it needs less size,
+   tighter tracking and a real weight to stop reading as a system dialog. Only
+   the sans faces take this — Instrument keeps its own setting. */
+.lp-root:is([data-face="archivo"], [data-face="space"], [data-face="syne"],
+  [data-face="bricolage"], [data-face="hanken"]) .lp-headline {
+  font-size: clamp(2.25rem, 5.6vw, 4.5rem);
+  font-weight: 500;
+  letter-spacing: -0.035em;
+  line-height: 1.06;
+}
+
+/* Big Shoulders is condensed to the point that it needs the size back. */
+.lp-root[data-face="shoulders"] .lp-headline {
+  font-size: clamp(3rem, 8.4vw, 7rem);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+/* None of the sans faces has a true italic worth setting a headline in
+   (Archivo's is a slant, Space Grotesk has none at all), so the second line
+   holds its emphasis by weight and colour instead of by slope. */
+.lp-root:not([data-face="instrument"]) .lp-headline-turn {
+  font-style: normal;
+  font-weight: 600;
+  padding-left: 0;
+}
+
+.lp-face-switch {
+  position: fixed;
+  right: var(--space-md);
+  bottom: var(--space-md);
+  z-index: 90;
+  display: flex;
+  gap: 1px;
+  padding: 1px;
+  border: 1px solid var(--color-abyss-hairline);
+  border-radius: var(--radius-lg);
+  background: var(--landing-scrim);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.lp-face-switch button {
+  padding: 6px 10px;
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 3px);
+  background: none;
+  font-family: var(--font-geist-mono);
+  font-size: 0.5625rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-abyss-text-45);
+  cursor: pointer;
+}
+
+.lp-face-switch button[data-active="true"] {
+  background: var(--color-abyss-shell-glass);
+  color: var(--color-abyss-text);
+}
+
+.lp-main {
+  display: block;
+}
+
+/* ── Stage: the hero and the explorer share one scroll and one ribbon ────────
+   300vh of scroll, 200vh of travel. The ribbon never remounts between beats —
+   that continuity is the whole trick, so they cannot be separate sections.
+
+   400vh → 300vh (Arjun, 2026-08-14): a third of the copy came out of this beat,
+   and the same scroll length over less to read is what "staring at two
+   sentences" means. Everything scroll-linked here — inflation, rotation, the
+   bead, the tracklist walk — reads the same normalized progress, so shortening
+   the stage speeds all of it up together and nothing needs retiming. */
+.lp-stage {
+  position: relative;
+  height: 300vh;
+}
+
+.lp-stage-sticky {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* Static steel-indigo pool. Never oscillates — same rule the dashboard's hero
+   atmosphere follows, and the reason it is a gradient rather than an animation. */
+.lp-stage-sticky::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    78% 46% at 50% 46%,
+    var(--landing-atmos) 0%,
+    var(--landing-atmos-fade) 72%
+  );
+  opacity: 0.72;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Ribbon ─────────────────────────────────────────────────────────────── */
+.lp-ribbon {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.lp-ribbon canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Above .lp-readout, below the text layers — this is the "ribbon layer". */
+.lp-canvas {
+  position: relative;
+  z-index: 1;
+}
+
+.lp-ribbon-svg {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 34vh;
+  width: 100%;
+  transform: translateY(-40%);
+  opacity: 1;
+  transition: opacity var(--motion-duration-slow) var(--motion-ease-standard);
+}
+
+.lp-ribbon-svg[data-hidden="true"] {
+  opacity: 0;
+}
+
+.lp-arc-stop-top {
+  stop-color: var(--landing-ribbon-accent);
+  stop-opacity: 0.34;
+}
+
+.lp-arc-stop-bottom {
+  stop-color: var(--landing-ribbon-deep);
+  stop-opacity: 0;
+}
+
+.lp-arc-shape {
+  transform-origin: 0 120px;
+  /* Default upright so the SSR/pre-canvas paint still shows a true curve; the
+     2D scroll pass sets the real value on mount, before first paint matters. */
+  transform: scaleY(1);
+}
+
+.lp-arc-line {
+  fill: none;
+  stroke: var(--landing-ribbon-crest);
+  stroke-width: 1.25;
+  vector-effect: non-scaling-stroke;
+}
+
+/* ── POI markers ────────────────────────────────────────────────────────────
+   Positioned by the canvas each frame via transform; everything else about them
+   is ordinary text so they stay selectable and readable by assistive tech. */
+.lp-poi-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.lp-poi {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  transform: translate3d(-100px, -100px, 0);
+  will-change: transform, opacity;
+  transition: opacity var(--motion-duration-slow) var(--motion-ease-out);
+}
+
+.lp-poi[data-shown="true"] {
+  opacity: 1;
+}
+
+/* The label hangs off a short stem so it never sits ON the crest it is
+   annotating; alternating up/down keeps neighbouring markers off each other. */
+.lp-poi-stem {
+  position: absolute;
+  left: 0;
+  width: 1px;
+  height: 22px;
+  background: var(--color-abyss-text-22);
+}
+
+.lp-poi[data-alt="up"] .lp-poi-stem {
+  bottom: 0;
+}
+
+.lp-poi[data-alt="down"] .lp-poi-stem {
+  top: 0;
+}
+
+.lp-poi-text {
+  position: absolute;
+  left: 10px;
+}
+
+.lp-poi[data-alt="up"] .lp-poi-text {
+  bottom: 18px;
+}
+
+.lp-poi[data-alt="down"] .lp-poi-text {
+  top: 18px;
+}
+
+.lp-poi[data-anchor="end"] .lp-poi-text {
+  left: auto;
+  right: 10px;
+  flex-direction: row-reverse;
+}
+
+.lp-poi-dot {
+  position: absolute;
+  left: -4px;
+  top: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--landing-ribbon-crest);
+  box-shadow: 0 0 0 4px var(--color-abyss-accent-glow);
+  flex: none;
+}
+
+.lp-poi-text {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  font-family: var(--font-geist-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-wrap: nowrap;
+}
+
+.lp-poi-label {
+  font-style: normal;
+  color: var(--color-abyss-text);
+}
+
+.lp-poi-caption {
+  color: var(--color-abyss-text-45);
+  text-transform: uppercase;
+}
+
+/* ── Time axis ──────────────────────────────────────────────────────────────
+   Anchored to the ribbon's baseline in 3D, so the ticks tilt with it. Without
+   this nothing on screen says the horizontal axis is time. */
+.lp-axis-layer {
+  position: absolute;
+  inset: 0;
+  /* Above the tracklist's scrim: the ribbon runs the full width now, so the
+     axis has to read continuously across it rather than stopping at the
+     column's left edge. */
+  z-index: 4;
+  pointer-events: none;
+}
+
+.lp-axis-tick {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  transform: translate3d(-100px, -100px, 0);
+  will-change: transform, opacity;
+  transition: opacity var(--motion-duration-slow) var(--motion-ease-out);
+}
+
+.lp-axis-tick[data-shown="true"] {
+  opacity: 1;
+}
+
+.lp-axis-mark {
+  position: absolute;
+  left: 0;
+  top: -5px;
+  width: 1px;
+  height: 10px;
+  background: var(--color-abyss-text-22);
+}
+
+.lp-axis-label {
+  position: absolute;
+  top: 12px;
+  left: 0;
+  transform: translateX(-50%);
+  font-family: var(--font-geist-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  color: var(--color-abyss-text-45);
+  text-wrap: nowrap;
+}
+
+/* The two end labels sit inside the ribbon's span rather than hanging off it. */
+.lp-axis-tick[data-edge="start"] .lp-axis-label {
+  transform: none;
+}
+
+.lp-axis-tick[data-edge="end"] .lp-axis-label {
+  transform: translateX(-100%);
+}
+
+.lp-axis-tick[data-edge="mid"] .lp-axis-mark {
+  height: 16px;
+  top: -8px;
+}
+
+/* ── BPM readout ────────────────────────────────────────────────────────────
+   The number under the scroll position. Balances the tracklist on the far side
+   and gives the eye one moving thing while the ribbon holds still. */
+.lp-readout {
+  position: absolute;
+  left: var(--lp-gutter);
+  top: 16%;
+  /* Behind the canvas on purpose (Arjun, 2026-08-13): the number belongs to the
+     background layer, with the ribbon passing in front of it, so it reads as
+     ambient instrumentation rather than a headline. */
+  z-index: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  opacity: 0;
+  transition: opacity var(--motion-duration-slow) var(--motion-ease-standard);
+  pointer-events: none;
+}
+
+.lp-readout[data-shown="true"] {
+  opacity: 1;
+}
+
+.lp-readout-value {
+  font-family: var(--font-geist-mono);
+  font-size: clamp(1.375rem, 2.1vw, 1.875rem);
+  line-height: 1;
+  color: var(--color-abyss-text-45);
+  font-variant-numeric: tabular-nums;
+}
+
+.lp-readout-unit {
+  font-family: var(--font-geist-mono);
+  font-size: 0.5rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--color-abyss-text-22);
+}
+
+/* ── Tracklist ghost column ─────────────────────────────────────────────────
+   44 real titles, dimmed, with the one under the scroll position lit. This is
+   what ties the abstract shape back to actual records — a DJ reads titles. */
+.lp-tracklist {
+  position: absolute;
+  right: var(--lp-gutter);
+  top: 44%;
+  transform: translateY(-50%);
+  z-index: 3;
+  width: min(24ch, 24vw);
+  pointer-events: none;
+  /* The whole column, header and scrim included, belongs to the explorer beat
+     (Arjun, 2026-08-13: "we shouldn't be able to see that 44 tracks part until
+     we scroll"). Only the rows used to be gated, which left the header and its
+     rule hanging in the hero over nothing. */
+  opacity: 0;
+  transition: opacity var(--motion-duration-slow) var(--motion-ease-standard);
+}
+
+.lp-tracklist[data-shown="true"],
+.lp-now[data-shown="true"] {
+  opacity: 1;
+}
+
+/* The ribbon runs under this column now, so the text needs its own ground.
+   Faded in from the left so the shape dissolves under the list rather than
+   hitting a hard edge. */
+.lp-tracklist::before {
+  content: "";
+  position: absolute;
+  inset: -3vh -4vw -3vh -3.5vw;
+  z-index: -1;
+  background: linear-gradient(
+    to right,
+    var(--color-abyss-scrim-fade) 0%,
+    var(--landing-scrim) 26%,
+    var(--landing-scrim) 100%
+  );
+  backdrop-filter: blur(3px);
+  pointer-events: none;
+}
+
+.lp-tracklist-head {
+  font-family: var(--font-geist-mono);
+  font-size: 0.5625rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-abyss-text-45);
+  margin-bottom: var(--space-sm);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--color-abyss-hairline);
+}
+
+/* A window onto a longer night: the list scrolls under the mask so the current
+   track stays centred with its neighbours visible either side. */
+.lp-tracklist-window {
+  height: 40vh;
+  overflow: hidden;
+  mask-image: linear-gradient(
+    to bottom,
+    var(--shadow-ink-0) 0%,
+    var(--color-abyss-text) 18%,
+    var(--color-abyss-text) 82%,
+    var(--shadow-ink-0) 100%
+  );
+}
+
+.lp-tracklist-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  transition:
+    opacity var(--motion-duration-slow) var(--motion-ease-standard),
+    transform var(--motion-duration-base) var(--motion-ease-standard);
+}
+
+.lp-tracklist-rows[data-shown="true"] {
+  opacity: 1;
+}
+
+.lp-tl-row {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: baseline;
+  font-size: 0.625rem;
+  line-height: 1.6;
+  color: var(--color-abyss-text-22);
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lp-tl-row[data-active="true"] {
+  color: var(--color-abyss-text);
+}
+
+.lp-tl-time {
+  font-family: var(--font-geist-mono);
+  font-size: 0.5625rem;
+  flex: none;
+  color: inherit;
+  opacity: 0.7;
+}
+
+.lp-tl-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-wrap: nowrap;
+}
+
+/* ── Bead (2D path) ────────────────────────────────────────────────────────
+   The canvas draws its own lit sphere; without WebGL this is the same idea as
+   a DOM dot, placed from the same curve data. */
+.lp-bead {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 4;
+  width: 11px;
+  height: 11px;
+  margin: -5.5px 0 0 -5.5px;
+  border-radius: var(--radius-full);
+  background: var(--landing-ribbon-crest);
+  box-shadow: 0 0 12px 3px var(--color-abyss-accent-glow);
+  opacity: 0;
+  will-change: transform;
+  transition: opacity var(--motion-duration-base) var(--motion-ease-standard);
+  pointer-events: none;
+}
+
+.lp-bead[data-shown="true"] {
+  opacity: 1;
+}
+
+/* ── "Now" line — the phone's tracklist ────────────────────────────────────── */
+.lp-now {
+  position: absolute;
+  left: var(--lp-gutter);
+  right: var(--lp-gutter);
+  bottom: 27vh;
+  z-index: 4;
+  pointer-events: none;
+  /* Same gate as the desktop column: nothing about the set is stated until the
+     scroll has begun to draw it. */
+  opacity: 0;
+  transition: opacity var(--motion-duration-slow) var(--motion-ease-standard);
+}
+
+.lp-now-head {
+  font-family: var(--font-geist-mono);
+  font-size: 0.5rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-abyss-text-45);
+  margin-bottom: var(--space-xs);
+}
+
+.lp-now-title {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--color-abyss-text);
+  min-height: 1.4em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-wrap: nowrap;
+}
+
+/* ── Hero copy ──────────────────────────────────────────────────────────── */
+.lp-hero {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 var(--lp-gutter);
+  max-width: 62rem;
+  opacity: 1;
+  transition:
+    opacity var(--motion-duration-slow) var(--motion-ease-standard),
+    filter var(--motion-duration-slow) var(--motion-ease-standard);
+}
+
+.lp-hero[data-shown="false"] {
+  opacity: 0;
+  filter: blur(6px);
+  pointer-events: none;
+}
+
+.lp-eyebrow {
+  margin-bottom: var(--space-lg);
+}
+
+/* The wordmark, not the word (Arjun, 2026-08-13). Same PNG-as-mask treatment as
+   the nav rail's .nav-brand-mark — opaque glyphs on a clear ground, trimmed
+   1302×308 — so the brand is one asset across both sides of the login. The
+   fill is a quiet ink ramp rather than the rail's cold chrome: at this size,
+   above a 100px headline, metal would read as a second headline. */
+.lp-wordmark {
+  display: block;
+  width: clamp(96px, 9.5vw, 138px);
+  aspect-ratio: 1302 / 308;
+  background: linear-gradient(
+    180deg,
+    var(--color-abyss-text-72) 0%,
+    var(--color-abyss-text-45) 100%
+  );
+  -webkit-mask: url("/brand/curfew-wordmark.png") left center / contain no-repeat;
+  mask: url("/brand/curfew-wordmark.png") left center / contain no-repeat;
+}
+
+.lp-headline {
+  font-family: var(--lp-display);
+  font-weight: 400;
+  font-size: clamp(2.75rem, 7.4vw, 6.25rem);
+  line-height: 1.02;
+  letter-spacing: -0.015em;
+  margin: 0;
+}
+
+.lp-headline-quote {
+  display: block;
+  color: var(--color-abyss-text-72);
+}
+
+.lp-headline-turn {
+  display: block;
+  font-style: italic;
+  color: var(--color-abyss-text);
+  padding-left: 0.09em;
+}
+
+.lp-word {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: bottom;
+  padding-right: 0.22em;
+}
+
+.lp-word-inner {
+  display: inline-block;
+  transform: translateY(112%);
+  animation: lp-rise var(--motion-duration-liquid-open) var(--motion-ease-liquid) forwards;
+}
+
+@keyframes lp-rise {
+  to {
+    transform: translateY(0);
+  }
+}
+
+.lp-sub {
+  margin-top: var(--space-lg);
+  max-width: 44ch;
+  font-size: 1.0625rem;
+  line-height: 1.55;
+  color: var(--color-abyss-text-72);
+}
+
+.lp-cue {
+  position: absolute;
+  left: var(--lp-gutter);
+  bottom: var(--space-xl);
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  font-family: var(--font-geist-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--color-abyss-text-45);
+}
+
+.lp-cue-line {
+  display: block;
+  width: 64px;
+  height: 1px;
+  background: var(--color-abyss-text-22);
+  transform-origin: left center;
+  animation: lp-breathe 2.6s var(--motion-ease-in-out) infinite;
+}
+
+@keyframes lp-breathe {
+  0%,
+  100% {
+    transform: scaleX(0.35);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+/* ── Explorer captions ──────────────────────────────────────────────────── */
+.lp-captions {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Anchored to the TOP, not the bottom (Arjun, 2026-08-13: "the text once I
+   scroll is appearing too low"). The beat was bottom-heavy — arc, axis,
+   caption and provenance all fighting over the lower third while the upper
+   third held one dim BPM number — and the last line ended up a dock's height
+   from the edge of the screen. The caption now sits under the readout in the
+   left void, above the curve's quiet opening hours, which is also the
+   arrangement the phone layout has used since the mobile fix. */
+.lp-caption {
+  position: absolute;
+  left: var(--lp-gutter);
+  /* 22vh, not 20: at 20 the caption's line box started exactly where the BPM
+     readout ended (measured 144px, both), and the two read as one block. */
+  top: 22vh;
+  /* Narrower than before: it has to clear the crest as the ribbon inflates,
+     and the crest is what it is annotating. */
+  max-width: 16ch;
+  font-family: var(--lp-display);
+  font-size: clamp(2rem, 4.4vw, 3.5rem);
+  line-height: 1.06;
+  letter-spacing: -0.01em;
+  color: var(--color-abyss-text);
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity var(--motion-duration-slow) var(--motion-ease-out),
+    transform var(--motion-duration-slow) var(--motion-ease-out);
+}
+
+.lp-caption span {
+  display: block;
+}
+
+.lp-caption[data-shown="true"] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.lp-provenance {
+  position: absolute;
+  left: var(--lp-gutter);
+  bottom: var(--space-xl);
+  z-index: 3;
+  font-family: var(--font-geist-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  color: var(--color-abyss-text-45);
+  opacity: 0;
+  transition: opacity var(--motion-duration-slow) var(--motion-ease-standard);
+}
+
+.lp-provenance[data-shown="true"] {
+  opacity: 1;
+}
+
+/* ── Placeholder tail so the sticky stage has somewhere to release into ─── */
+.lp-next {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-top: 1px solid var(--color-abyss-hairline);
+}
+
+.lp-next-note {
+  font-family: var(--font-geist-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-abyss-text-45);
+}
+
+/* ── Narrow widths ──────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  /* 150vh, not 320: the scroll length has to match how much actually changes.
+     The 3D path earns its longer travel with a rotation the SVG has no
+     equivalent for, and the phone now has two captions rather than three. */
+  .lp-stage {
+    height: 150vh;
+  }
+
+  /* The arc moves to the lower third so the upper half belongs to type. This
+     is what stops the curve being drawn through the headline, and it restores
+     the horizon reading the whole beat opens on. */
+  .lp-ribbon-svg {
+    top: auto;
+    bottom: 20vh;
+    height: 26vh;
+    transform: none;
+  }
+
+  .lp-hero {
+    justify-content: flex-start;
+    padding-top: 16vh;
+  }
+
+  .lp-caption {
+    max-width: 14ch;
+    top: 16vh;
+  }
+
+  .lp-readout {
+    top: auto;
+    bottom: 12vh;
+    left: auto;
+    right: var(--lp-gutter);
+  }
+
+  .lp-axis-label {
+    font-size: 0.5rem;
+  }
+
+  /* Only the hour boundaries; the two ends are stated by the "now" line's
+     header, and five labels do not fit across 390px. */
+  .lp-axis-tick[data-edge="start"],
+  .lp-axis-tick[data-edge="end"] {
+    display: none;
+  }
+
+  .lp-provenance,
+  .lp-tracklist {
+    display: none;
+  }
+}
+
+/* ── Reduced motion ─────────────────────────────────────────────────────────
+   AC-3. The page must read completely with every animation removed: words are
+   simply present, the cue stops breathing, and the ribbon (handled in the
+   canvas) freezes at its most legible orientation instead of tracking scroll. */
+@media (prefers-reduced-motion: reduce) {
+  .lp-word-inner {
+    transform: none;
+    animation: none;
+  }
+
+  .lp-cue-line {
+    animation: none;
+    transform: scaleX(1);
+    opacity: 1;
+  }
+
+  .lp-hero,
+  .lp-caption,
+  .lp-poi,
+  .lp-provenance,
+  .lp-ribbon-svg {
+    transition: none;
+  }
+
+  .lp-hero[data-shown="false"] {
+    filter: none;
+  }
+}
+
+/* ═══ BEATS 03-10 (mockup pass, 2026-08-13) ════════════════════════════════ */
+
+.lp-h2 {
+  font-family: var(--lp-display);
+  font-weight: 400;
+  font-size: clamp(1.75rem, 3.4vw, 3rem);
+  line-height: 1.08;
+  letter-spacing: -0.012em;
+  margin: 0 0 var(--space-md);
+  color: var(--color-abyss-text);
+}
+
+.lp-body {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--color-abyss-text-72);
+  max-width: 42ch;
+  margin: 0;
+}
+
+.lp-stamp {
+  font-family: var(--font-geist-mono);
+  font-size: 0.5625rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--color-abyss-text-45);
+}
+
+/* ── 03 Cover ─────────────────────────────────────────────────────────────── */
+.lp-cover {
+  position: relative;
+  height: 100vh;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+
+.lp-cover-media {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transform: scale(1.04);
+  transition:
+    opacity var(--motion-duration-liquid-grand) var(--motion-ease-liquid),
+    transform var(--motion-duration-liquid-grand) var(--motion-ease-liquid);
+}
+
+.lp-cover[data-shown="true"] .lp-cover-media {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.lp-cover-tag {
+  position: absolute;
+  left: var(--lp-gutter);
+  top: var(--space-xl);
+  font-family: var(--font-geist-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-abyss-text-45);
+}
+
+/* ── 04 Capture ───────────────────────────────────────────────────────────────
+   One film, pushed right and made large, with the copy standing over its left
+   edge (Arjun, 2026-08-13). The overlap is the point: two side-by-side panels
+   read as a slide, a caption lying across the image reads as a page. */
+.lp-diptych {
+  padding: 14vh var(--lp-gutter);
+}
+
+.lp-diptych-stage {
+  position: relative;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.lp-diptych-film {
+  /* Wide enough that its left edge runs well under the copy — at 80% the two
+     only grazed each other (44px), which reads as a collision rather than a
+     layer. Measured at 1440: the sentence now lies ~135px over the film. */
+  width: 84%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--color-abyss-hairline);
+  opacity: 0;
+  transform: translateY(28px);
+  transition:
+    opacity var(--motion-duration-liquid-open) var(--motion-ease-liquid),
+    transform var(--motion-duration-liquid-open) var(--motion-ease-liquid);
+}
+
+.lp-diptych[data-shown="true"] .lp-diptych-film {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Centred by flex, not by a -50% transform: the transform belongs to the
+   entrance alone, so `transform: none` under prefers-reduced-motion cannot
+   quietly drop the copy half a block down the page. */
+.lp-diptych-copy {
+  position: absolute;
+  left: 0;
+  inset-block: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  max-width: 36ch;
+  opacity: 0;
+  /* Entrance is opacity ONLY. `transform` belongs to useParallax, which writes
+     it every frame — a transition on the same property would fight the rAF and
+     smear the whole travel. */
+  transition: opacity var(--motion-duration-liquid-open) var(--motion-ease-liquid);
+  transition-delay: 140ms;
+  will-change: transform;
+}
+
+.lp-diptych[data-shown="true"] .lp-diptych-copy {
+  opacity: 1;
+}
+
+/* The type has to survive whatever frame the film happens to be on, so it
+   carries its own ground: a flat pool of base colour AND a real blur of the
+   video behind it, both faded out by the same radial mask so the treatment has
+   no edge of its own. A hard-edged plate would read as a card sitting on the
+   video; this reads as the video falling out of focus behind the sentence.
+   (Arjun, 2026-08-14: "a bit of a drop shadow or a slight blur behind the text
+   but above the video".) */
+.lp-diptych-copy::before {
+  content: "";
+  position: absolute;
+  inset: 0 -34% 0 -60%;
+  z-index: -1;
+  background: var(--landing-scrim);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  -webkit-mask: radial-gradient(
+    58% 54% at 42% 50%,
+    var(--color-abyss-text) 0%,
+    var(--shadow-ink-0) 100%
+  );
+  mask: radial-gradient(
+    58% 54% at 42% 50%,
+    var(--color-abyss-text) 0%,
+    var(--shadow-ink-0) 100%
+  );
+  pointer-events: none;
+}
+
+/* The blur is the legibility mechanism; without it the flat scrim alone would
+   be a grey rectangle over the footage. */
+@media (prefers-reduced-transparency: reduce) {
+  .lp-diptych-copy::before {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+.lp-diptych-copy .lp-h2,
+.lp-diptych-copy .lp-body {
+  text-shadow: 0 2px 18px var(--shadow-ink-80);
+}
+
+/* ── 05 Stepper ───────────────────────────────────────────────────────────── */
+.lp-stepper {
+  position: relative;
+  height: 400vh;
+}
+
+.lp-stepper-sticky {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(0, 34%) minmax(0, 66%);
+  align-items: center;
+  gap: clamp(var(--space-lg), 4vw, 72px);
+  padding: 0 var(--lp-gutter);
+}
+
+.lp-stepper-n {
+  display: block;
+  font-family: var(--lp-display);
+  font-size: clamp(2.5rem, 5vw, 4.5rem);
+  line-height: 1;
+  color: var(--color-abyss-text-22);
+  margin-bottom: var(--space-md);
+}
+
+.lp-stepper-dots {
+  list-style: none;
+  display: flex;
+  gap: var(--space-sm);
+  margin: var(--space-xl) 0 0;
+  padding: 0;
+}
+
+.lp-stepper-dots li {
+  width: 22px;
+  height: 2px;
+  background: var(--color-abyss-text-22);
+  transition: background var(--motion-duration-base) var(--motion-ease-standard);
+}
+
+.lp-stepper-dots li[data-active="true"] {
+  background: var(--color-abyss-accent);
+}
+
+.lp-stepper-media {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  border: 1px solid var(--color-abyss-hairline);
+}
+
+.lp-stepper-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity var(--motion-duration-liquid-close) var(--motion-ease-liquid);
+}
+
+.lp-stepper-frame[data-shown="true"] {
+  opacity: 1;
+}
+
+/* 06 Principle — CUT (Arjun, 2026-08-14). See Beats.tsx for what came out and
+   why it is worth remembering that it did. */
+
+/* ── 07 Triptych ──────────────────────────────────────────────────────────── */
+.lp-triptych {
+  position: relative;
+  padding: 12vh var(--lp-gutter);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-lg);
+  align-items: start;
+}
+
+.lp-triptych-img {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  object-position: left top;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--color-abyss-hairline);
+  opacity: 0;
+  transform: translateY(36px);
+  transition:
+    opacity var(--motion-duration-liquid-open) var(--motion-ease-liquid),
+    transform var(--motion-duration-liquid-open) var(--motion-ease-liquid);
+}
+
+.lp-triptych-img:nth-child(2) {
+  transition-delay: 90ms;
+  transform: translateY(64px);
+}
+
+.lp-triptych-img:nth-child(3) {
+  transition-delay: 180ms;
+}
+
+.lp-triptych[data-shown="true"] .lp-triptych-img {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.lp-triptych-tag {
+  grid-column: 1 / -1;
+  text-align: center;
+  margin-top: var(--space-lg);
+}
+
+/* ── 10 Closing ───────────────────────────────────────────────────────────── */
+.lp-closing {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 0 var(--lp-gutter) var(--space-xl);
+  background:
+    radial-gradient(90% 60% at 50% 40%, var(--landing-atmos) 0%, var(--landing-atmos-fade) 70%);
+}
+
+.lp-closing-inner {
+  flex: 1;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  gap: var(--space-md);
+  opacity: 0;
+  transform: translateY(20px);
+  transition:
+    opacity var(--motion-duration-liquid-grand) var(--motion-ease-liquid),
+    transform var(--motion-duration-liquid-grand) var(--motion-ease-liquid);
+}
+
+.lp-closing[data-shown="true"] .lp-closing-inner {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.lp-closing-title {
+  margin: 0;
+  line-height: 1;
+}
+
+/* The closing mark is the hero's wordmark at display size — the page opens and
+   closes on the same object. Brighter than the hero's ramp because it is the
+   CTA's anchor rather than an eyebrow above a headline. */
+.lp-wordmark--closing {
+  width: clamp(180px, 26vw, 340px);
+  margin: 0 auto var(--space-xs);
+  background: linear-gradient(180deg, var(--color-abyss-text) 0%, var(--color-abyss-text-72) 100%);
+  -webkit-mask-position: center;
+  mask-position: center;
+}
+
+.lp-closing-price {
+  font-family: var(--font-geist-mono);
+  font-size: clamp(1.5rem, 3vw, 2.25rem);
+  color: var(--color-abyss-text);
+  margin: 0;
+}
+
+.lp-closing-price span {
+  font-size: 0.5em;
+  color: var(--color-abyss-text-45);
+}
+
+.lp-closing-body {
+  max-width: none;
+  color: var(--color-abyss-text-45);
+}
+
+.lp-cta {
+  justify-self: center;
+  margin-top: var(--space-md);
+  padding: 14px 34px;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--btn-gradient-border);
+  background: radial-gradient(
+    120% 160% at 30% 20%,
+    var(--btn-gradient-1) 0%,
+    var(--btn-gradient-2) 52%,
+    var(--btn-gradient-3) 100%
+  );
+  color: var(--color-on-background);
+  font-family: var(--font-inter);
+  font-size: 0.9375rem;
+  cursor: pointer;
+  transition: filter var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lp-cta:hover {
+  filter: brightness(1.16);
+}
+
+.lp-footer {
+  display: flex;
+  justify-content: space-between;
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--color-abyss-hairline);
+  font-family: var(--font-geist-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-abyss-text-45);
+}
+
+@media (max-width: 860px) {
+  .lp-triptych {
+    grid-template-columns: 1fr;
+  }
+
+  /* No room to lie the copy across the film at this width — it stacks, and the
+     scrim comes off with the overlap that made it necessary. */
+  .lp-diptych-stage {
+    display: grid;
+    gap: var(--space-xl);
+  }
+
+  .lp-diptych-film {
+    width: 100%;
+  }
+
+  .lp-diptych-copy {
+    position: static;
+    max-width: none;
+  }
+
+  .lp-diptych-copy::before {
+    display: none;
+  }
+
+  .lp-diptych-copy .lp-h2,
+  .lp-diptych-copy .lp-body {
+    text-shadow: none;
+  }
+
+  .lp-stepper-sticky {
+    grid-template-columns: 1fr;
+    align-content: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-cover-media,
+  .lp-diptych-film,
+  .lp-diptych-copy,
+  .lp-triptych-img,
+  .lp-closing-inner,
+  .lp-stepper-frame {
+    transition: none;
+    transform: none;
+    opacity: 1;
+  }
+
+  .lp-stepper-frame {
+    opacity: 0;
+  }
+
+  .lp-stepper-frame[data-shown="true"] {
+    opacity: 1;
+  }
+}

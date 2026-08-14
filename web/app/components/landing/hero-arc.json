@@ -1,0 +1,513 @@
+{
+ "source": {
+  "set": "serato4:1289",
+  "label": "Set detail \u2014 peak-time club",
+  "kind": "club",
+  "startedAt": "2026-07-25T23:09:04-04:00",
+  "endedAt": "2026-07-26T02:26:25-04:00",
+  "note": "Real demo-account set. Same set shown in the Set Detail capture, so beat 03's ribbon->UI handoff is exact."
+ },
+ "summary": {
+  "trackCount": 44,
+  "lengthSec": 11841,
+  "bpmMin": 98.98,
+  "bpmMax": 130.07,
+  "bpmMedian": 125.0,
+  "confidence": 1.0
+ },
+ "dancefloor": {
+  "firstPosition": 11,
+  "lastPosition": 38,
+  "tStart": 0.358922,
+  "tEnd": 0.808209
+ },
+ "idleGaps": [
+  {
+   "tStart": 0.263153,
+   "tEnd": 0.324973,
+   "seconds": 732
+  },
+  {
+   "tStart": 0.822988,
+   "tEnd": 0.882442,
+   "seconds": 704
+  }
+ ],
+ "poi": [
+  {
+   "id": "open",
+   "t": 0.0,
+   "label": "11:09 PM",
+   "caption": "first track",
+   "track": "I Adore You (Clean Extended)"
+  },
+  {
+   "id": "floor",
+   "t": 0.358922,
+   "label": "12:19 AM",
+   "caption": "the floor opens"
+  },
+  {
+   "id": "peak",
+   "t": 0.527489,
+   "label": "peak",
+   "caption": "130 BPM",
+   "track": "THE SCOTTS (Clean)"
+  },
+  {
+   "id": "drift",
+   "t": 0.263153,
+   "caption": "the drift",
+   "seconds": 732
+  },
+  {
+   "id": "last",
+   "t": 1.0,
+   "label": "2:26 AM",
+   "caption": "last track",
+   "track": "Locked Out Of Heaven - David Mackay & Hoax (BE) Remix"
+  }
+ ],
+ "points": [
+  {
+   "position": 1,
+   "t": 0.0,
+   "bpm": 120.0,
+   "bpmNorm": 0.676102,
+   "camelot": "9A",
+   "genre": "House",
+   "title": "I Adore You (Clean Extended)",
+   "artist": "HUGEL, Topic, Arash & Daecolm"
+  },
+  {
+   "position": 2,
+   "t": 0.041044,
+   "bpm": 115.0,
+   "bpmNorm": 0.515278,
+   "camelot": "9A",
+   "genre": "Electronica",
+   "title": "Beat 54 (Krystal Klear Remix) (Clean)",
+   "artist": "Jungle"
+  },
+  {
+   "position": 3,
+   "t": 0.073811,
+   "bpm": 113.0,
+   "bpmNorm": 0.450949,
+   "camelot": "8A",
+   "genre": "Afrobeats",
+   "title": "Lonely (R-You Blend) (Dirty Extended)",
+   "artist": "Akon"
+  },
+  {
+   "position": 4,
+   "t": 0.109788,
+   "bpm": 120.0,
+   "bpmNorm": 0.676102,
+   "camelot": "12A",
+   "genre": "Electronica",
+   "title": "Maps - Diego Druck & Leopizzatto Remix",
+   "artist": "Maroon 5"
+  },
+  {
+   "position": 5,
+   "t": 0.148129,
+   "bpm": 118.0,
+   "bpmNorm": 0.611772,
+   "camelot": "7A",
+   "genre": "Pop",
+   "title": "Ride It (Clean)",
+   "artist": "Regard"
+  },
+  {
+   "position": 6,
+   "t": 0.184782,
+   "bpm": 120.0,
+   "bpmNorm": 0.676102,
+   "camelot": "1A",
+   "genre": "House",
+   "title": "The Business (Clean)",
+   "artist": "Tiesto"
+  },
+  {
+   "position": 7,
+   "t": 0.221518,
+   "bpm": 120.0,
+   "bpmNorm": 0.676102,
+   "camelot": "12A",
+   "genre": "House",
+   "title": "DtMF (J Rythm Afro House Edit) (Clean Short Edit)",
+   "artist": "Bad Bunny"
+  },
+  {
+   "position": 8,
+   "t": 0.263153,
+   "bpm": 122.0,
+   "bpmNorm": 0.740431,
+   "camelot": "1A",
+   "genre": "Electronica",
+   "title": "Me & U (Bren F Remix) (HH Clean Short)",
+   "artist": "Cassie"
+  },
+  {
+   "position": 9,
+   "t": 0.324973,
+   "bpm": 126.0,
+   "bpmNorm": 0.86909,
+   "camelot": "1B",
+   "genre": "House",
+   "title": "Afterglow - Chizzle & Syntrix Remix",
+   "artist": "Ed Sheeran"
+  },
+  {
+   "position": 10,
+   "t": 0.344228,
+   "bpm": 123.0,
+   "bpmNorm": 0.772596,
+   "camelot": "12B",
+   "genre": "Pop",
+   "title": "Be Kind (Joy Club Remix) (Clean Extended)",
+   "artist": "Marshmello & Halsey"
+  },
+  {
+   "position": 11,
+   "t": 0.358922,
+   "bpm": 124.0,
+   "bpmNorm": 0.80476,
+   "camelot": "2A",
+   "genre": "House",
+   "title": "Stronger (Cody Dunstall & SPRINKK Remix) (Dirty Extended)",
+   "artist": "Kanye West"
+  },
+  {
+   "position": 12,
+   "t": 0.377671,
+   "bpm": 126.0,
+   "bpmNorm": 0.86909,
+   "camelot": "2A",
+   "genre": "House",
+   "title": "Welcome To The Playhouse (Dirty Short Edit)",
+   "artist": "Steve Aoki & DJ Diesel aka Shaquille O\u2019Neal"
+  },
+  {
+   "position": 13,
+   "t": 0.396081,
+   "bpm": 127.99,
+   "bpmNorm": 0.933097,
+   "camelot": "9A",
+   "genre": "House",
+   "title": "Secrets (DJ Nasa Bootleg) (Clean Extended)",
+   "artist": "Tiesto & KSHMR ft Vassy"
+  },
+  {
+   "position": 14,
+   "t": 0.411198,
+   "bpm": 125.0,
+   "bpmNorm": 0.836925,
+   "camelot": "9A",
+   "genre": "House",
+   "title": "Sacrifice (John Summit Remix) (Clean Short Edit)",
+   "artist": "The Weeknd"
+  },
+  {
+   "position": 15,
+   "t": 0.428427,
+   "bpm": 126.03,
+   "bpmNorm": 0.870055,
+   "camelot": "1A",
+   "genre": "House",
+   "title": "Dirty Sexy Money (Joe Stone Remix) (Dirty) (Short Edit)",
+   "artist": "David Guetta & Afrojack ft Charli XCX & French Montana"
+  },
+  {
+   "position": 16,
+   "t": 0.447766,
+   "bpm": 125.0,
+   "bpmNorm": 0.836925,
+   "camelot": "2A",
+   "genre": "House",
+   "title": "Pon De Replay (Sir Gio Remix) (Clean Extended)",
+   "artist": "Rihanna"
+  },
+  {
+   "position": 17,
+   "t": 0.464066,
+   "bpm": 126.0,
+   "bpmNorm": 0.86909,
+   "camelot": "2A",
+   "genre": "House",
+   "title": "I Don't Care (Mister Gray Jackie Chan Edit) (Clean Extended)",
+   "artist": "Ed Sheeran & Justin Bieber vs Tiesto & Dzeko"
+  },
+  {
+   "position": 18,
+   "t": 0.478,
+   "bpm": 123.0,
+   "bpmNorm": 0.772596,
+   "camelot": "2A",
+   "genre": "House",
+   "title": "Another World (HUGEL Remix) (Clean Extended)",
+   "artist": "MEDUZA"
+  },
+  {
+   "position": 19,
+   "t": 0.49337,
+   "bpm": 120.0,
+   "bpmNorm": 0.676102,
+   "camelot": "1A",
+   "genre": "House",
+   "title": "Move (Clean Extended)",
+   "artist": "Adam Port & Stryv ft Camila Cabello"
+  },
+  {
+   "position": 20,
+   "t": 0.508994,
+   "bpm": 129.99,
+   "bpmNorm": 0.997427,
+   "camelot": "9A",
+   "genre": "Hip-Hop",
+   "title": "Start Wit Me (HH Dirty Intro)",
+   "artist": "Roddy Ricch ft Gunna"
+  },
+  {
+   "position": 21,
+   "t": 0.527489,
+   "bpm": 130.07,
+   "bpmNorm": 1.0,
+   "camelot": "5A",
+   "genre": "Hip-Hop",
+   "title": "THE SCOTTS (Clean)",
+   "artist": "Travis Scott & Kid Cudi"
+  },
+  {
+   "position": 22,
+   "t": 0.546998,
+   "bpm": 130.0,
+   "bpmNorm": 0.997748,
+   "camelot": "5B",
+   "genre": "House",
+   "title": "Stay The Night (Even Steve Always Edit) Clean",
+   "artist": "Zedd & Hayley Williams vs jeonghyeon"
+  },
+  {
+   "position": 23,
+   "t": 0.564057,
+   "bpm": 98.98,
+   "bpmNorm": 0.0,
+   "camelot": "3B",
+   "genre": "Hip-Hop",
+   "title": "Yukon x Up (DJ Hunny Bee Mashup) (Intro Clean)",
+   "artist": "Justin Bieber"
+  },
+  {
+   "position": 24,
+   "t": 0.583143,
+   "bpm": 125.0,
+   "bpmNorm": 0.836925,
+   "camelot": "2A",
+   "genre": "Electronica",
+   "title": "Cut It (Onderkoffer Mi Gente Edit) (Clean)",
+   "artist": "O.T. Genasis ft Young Dolph"
+  },
+  {
+   "position": 25,
+   "t": 0.597416,
+   "bpm": 126.0,
+   "bpmNorm": 0.86909,
+   "camelot": "3B",
+   "genre": "House",
+   "title": "I Love It - DJ Serg Sniper Heartless Edit (Clean)",
+   "artist": "Icona Pop ft. Charli XCX"
+  },
+  {
+   "position": 26,
+   "t": 0.611013,
+   "bpm": 126.0,
+   "bpmNorm": 0.86909,
+   "camelot": "3A",
+   "genre": "Electronica",
+   "title": "All Of The Lights (Just Jax Bootleg) (Dirty Extended)",
+   "artist": "Kanye West"
+  },
+  {
+   "position": 27,
+   "t": 0.62765,
+   "bpm": 125.0,
+   "bpmNorm": 0.836925,
+   "camelot": "2A",
+   "genre": "Electronica",
+   "title": "We Found Love - Hoax (BE) Life Edit",
+   "artist": "Rihanna ft. Calvin Harris"
+  },
+  {
+   "position": 28,
+   "t": 0.64302,
+   "bpm": 125.0,
+   "bpmNorm": 0.836925,
+   "camelot": "1A",
+   "genre": "Electronica",
+   "title": "The Beat Drops (Extended Mix)",
+   "artist": "Bart B More & CAROLA"
+  },
+  {
+   "position": 29,
+   "t": 0.65915,
+   "bpm": 128.03,
+   "bpmNorm": 0.934384,
+   "camelot": "3A",
+   "genre": "House",
+   "title": "Dark Horse vs Higher (BPM Supreme Edit) (Clean) (Extended)",
+   "artist": "Katy Perry ft Juicy J vs Ummet Ozcan, Lucas & Steve"
+  },
+  {
+   "position": 30,
+   "t": 0.673845,
+   "bpm": 126.0,
+   "bpmNorm": 0.86909,
+   "camelot": "2A",
+   "genre": "Pop",
+   "title": "Congratulations (DJ AndOne T.G.I.F. Edit) (Clean Intro)",
+   "artist": "Post Malone ft Quavo"
+  },
+  {
+   "position": 31,
+   "t": 0.68854,
+   "bpm": 123.98,
+   "bpmNorm": 0.804117,
+   "camelot": "1A",
+   "genre": "Electronica",
+   "title": "Heat Waves - Sterbinszky, MYNEA & Thomas Rush Remix TRANSITION",
+   "artist": "Glass Animals"
+  },
+  {
+   "position": 32,
+   "t": 0.705853,
+   "bpm": 126.0,
+   "bpmNorm": 0.86909,
+   "camelot": "2A",
+   "genre": "Electronica",
+   "title": "Take Over Control - Silano Remix",
+   "artist": "AFROJACK ft. Eva Simons"
+  },
+  {
+   "position": 33,
+   "t": 0.720547,
+   "bpm": 126.0,
+   "bpmNorm": 0.86909,
+   "camelot": "1A",
+   "genre": "Electronica",
+   "title": "21 Questions (Daft Hill Remix) (Clean)",
+   "artist": "50 Cent ft Nate Dogg"
+  },
+  {
+   "position": 34,
+   "t": 0.738451,
+   "bpm": 128.0,
+   "bpmNorm": 0.933419,
+   "camelot": "12A",
+   "genre": "Pop",
+   "title": "Taki Taki (DJ AndOne Transition 128-96 ) (Clean)",
+   "artist": "DJ Snake ft Ozuna, Cardi B & Selena Gomez"
+  },
+  {
+   "position": 35,
+   "t": 0.756777,
+   "bpm": 128.0,
+   "bpmNorm": 0.933419,
+   "camelot": "1A",
+   "genre": "House",
+   "title": "Technologic (Cesar Castilla 'FREAKS' Edit) (Clean Short Edit)",
+   "artist": "Daft Punk vs Timmy Trumpet & ShenlongZ"
+  },
+  {
+   "position": 36,
+   "t": 0.771641,
+   "bpm": 125.0,
+   "bpmNorm": 0.836925,
+   "camelot": "5B",
+   "genre": "Pop",
+   "title": "Like A G6 (Cesar Castilla Acapella Out) (Clean Short Edit)",
+   "artist": "Far East Movement ft The Cataracs & Dev"
+  },
+  {
+   "position": 37,
+   "t": 0.790136,
+   "bpm": 127.99,
+   "bpmNorm": 0.933097,
+   "camelot": "5A",
+   "genre": "Electronica",
+   "title": "Hangover (Isaac Jordan Party Starter)",
+   "artist": "Taio Cruz"
+  },
+  {
+   "position": 38,
+   "t": 0.808209,
+   "bpm": 124.0,
+   "bpmNorm": 0.80476,
+   "camelot": "6A",
+   "genre": "House",
+   "title": "Sicko Drop (Clean)",
+   "artist": "KVSH & Shillist"
+  },
+  {
+   "position": 39,
+   "t": 0.822988,
+   "bpm": 128.0,
+   "bpmNorm": 0.933419,
+   "camelot": "9A",
+   "genre": "House",
+   "title": "Shiver (Deville Tech House Edit) Clean",
+   "artist": "John Summit, Hayla, CID"
+  },
+  {
+   "position": 40,
+   "t": 0.882442,
+   "bpm": 128.0,
+   "bpmNorm": 0.933419,
+   "camelot": "10A",
+   "genre": "House",
+   "title": "Wake Me Up Goliath (JLENS Edit) (Clean Short Edit)",
+   "artist": "Dyro vs Avicii"
+  },
+  {
+   "position": 41,
+   "t": 0.914619,
+   "bpm": 124.0,
+   "bpmNorm": 0.80476,
+   "camelot": "6A",
+   "genre": "Pop",
+   "title": "Lonely (Clean Short Edit)",
+   "artist": "Joel Corry"
+  },
+  {
+   "position": 42,
+   "t": 0.943755,
+   "bpm": 123.0,
+   "bpmNorm": 0.772596,
+   "camelot": "6A",
+   "genre": "House",
+   "title": "On My Mind (Clean Short Edit)",
+   "artist": "Diplo & Sidepiece"
+  },
+  {
+   "position": 43,
+   "t": 0.972553,
+   "bpm": 123.0,
+   "bpmNorm": 0.772596,
+   "camelot": "5A",
+   "genre": "Electronica",
+   "title": "Titanium - Jablonski Tantalizing Edit",
+   "artist": "David Guetta ft. Sia"
+  },
+  {
+   "position": 44,
+   "t": 1.0,
+   "bpm": 122.0,
+   "bpmNorm": 0.740431,
+   "camelot": "7A",
+   "genre": "Electronica",
+   "title": "Locked Out Of Heaven - David Mackay & Hoax (BE) Remix",
+   "artist": "Bruno Mars"
+  }
+ ]
+}

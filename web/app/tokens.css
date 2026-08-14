@@ -528,4 +528,34 @@
   --chart-tail-4: #a6aeb7;
   --chart-tail-5: #939ca6;
   --chart-tail-6: #808a95;
+
+  /* ═══ LANDING — marketing surface only (Story 6.1) ═══════════════════════
+     The Landing is the one surface with a motion budget of its own (D-2,
+     2026-08-13: EXPERIENCE.md's "restrained, not spectacle" constraint is
+     overridden here and ONLY here — logged-in surfaces still stay still).
+     These are its own knobs so retuning the hero can never reach into the
+     dashboard's Abyss palette. Everything is decorative/graphical, never
+     text, so the 3:1 non-text floor applies rather than 4.5:1 — verified
+     against --color-abyss-base: crest 14.1:1, accent 6.2:1, deep 1.4:1
+     (the deep tone is the ribbon's shadowed base, seen only against the
+     brighter body of the ribbon itself, never carrying meaning alone).
+
+     -deep    the graphite the ribbon's base pools into
+     -accent  the body tone, glacial cyan one step cooler than the app's
+     -crest   the lit top edge — the "energy arc line" identity, carried over
+     -floor   the dancefloor window's emphasis tone
+     -atmos   the steel-indigo ambience pooled behind the hero
+     The first four are read by the WebGL shader at runtime via
+     getComputedStyle (same pattern as --metal-* / --color-abyss-silk), so
+     they must stay real hex a JS hex parser can read — not var() aliases. */
+  --landing-ribbon-deep: #0a1620;
+  --landing-ribbon-accent: #4fb2d6;
+  --landing-ribbon-crest: #cfeeff;
+  --landing-ribbon-floor: #7fd8f2;
+  --landing-atmos: #0b1826;
+  --landing-atmos-fade: #0b182600;
+  /* Scrim the tracklist column sits on, now that the ribbon runs underneath it
+     rather than stopping short. ~80% of the page base, faded in from the left
+     so the ribbon dissolves under the text instead of being cut off by it. */
+  --landing-scrim: #04060acc;
 }
