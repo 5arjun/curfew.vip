@@ -56,9 +56,13 @@
   left: 0;
   right: 0;
   z-index: 40;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  /* Grid, not a centred flex column, for one reason: it gives the bar and the
+     sheet a shared track, sized to the bar's own content. The sheet then takes
+     that width exactly rather than guessing at one — and a sheet exactly as
+     wide as the pill has its top-right corner ON the menu button, which is what
+     makes it look like it grew out of the thing that was tapped. */
+  display: grid;
+  justify-content: center;
   padding: 0 var(--lp-gutter);
   /* Only the pill and the sheet take the pointer — the rest of this strip is
      over the hero, which has its own CTA to click. */
@@ -193,7 +197,25 @@
     0 0 0 6px var(--color-primary-glow);
 }
 
-/* ── The narrow arrangement ──────────────────────────────────────────────── */
+/* ── The narrow arrangement ──────────────────────────────────────────────────
+   Everything below is the phone's menu, and it is the one part of this page
+   that had no motion at all: the sheet toggled `display`, so it appeared and
+   vanished on a frame with no path between the button and the panel (Arjun,
+   2026-08-14: "lets make the menu animation when i tap it better").
+
+   Three things fix that, in the order they matter:
+
+     * the sheet is always laid out and is hidden by state, not by `display` —
+       a display toggle cannot be transitioned in either direction, and the
+       close is the half that was completely lost;
+     * it grows FROM the button, top-right, rather than arriving in the middle
+       of the bar. If something appears from somewhere, it has to go back the
+       same way, so the exit is the same path at a shorter duration;
+     * it materialises: the blur and the scale arrive together, so the glass
+       reads as a surface forming rather than a rectangle fading up.
+
+   Nothing here bounces. The sheet opens on a tap — there is no flick, no
+   momentum, nothing physical for an overshoot to be the consequence of. */
 .lp-nav-menu {
   display: none;
   flex-direction: column;
@@ -206,14 +228,42 @@
   border-radius: 999px;
   background: none;
   cursor: pointer;
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    transform var(--motion-duration-instant) var(--motion-ease-standard);
+}
+
+/* On press, not on release. The sheet cannot open until the finger lifts, so
+   without this the whole first half of the interaction is silent. */
+.lp-nav-menu:active {
+  transform: scale(0.9);
+}
+
+.lp-nav-menu[aria-expanded="true"] {
+  background: var(--color-abyss-raised);
 }
 
 .lp-nav-menu-bar {
   display: block;
+  width: 100%;
   height: 1.5px;
   border-radius: 2px;
   background: var(--color-abyss-text-72);
-  transition: transform var(--motion-duration-fast) var(--motion-ease-standard);
+  transition:
+    transform var(--motion-duration-base) var(--motion-ease-liquid),
+    width var(--motion-duration-base) var(--motion-ease-liquid);
+}
+
+/* Two bars of different lengths read as a menu; two of the same length read as
+   an equals sign. They square up as they cross, which is also what makes the X
+   symmetric — a 64% bar rotated about its own centre would sit off to the left. */
+.lp-nav-menu-bar:last-child {
+  width: 64%;
+  align-self: flex-start;
+}
+
+.lp-nav-menu[aria-expanded="true"] .lp-nav-menu-bar {
+  width: 100%;
 }
 
 .lp-nav-menu[aria-expanded="true"] .lp-nav-menu-bar:first-child {
@@ -232,19 +282,76 @@
 }
 
 .lp-nav-sheet {
-  pointer-events: auto;
   display: none;
   flex-direction: column;
   gap: 2px;
   margin-top: 8px;
   padding: 8px;
-  min-width: min(280px, 100%);
   border-radius: 22px;
   border: 1px solid var(--color-abyss-hairline);
   background: var(--color-abyss-shell-glass);
+  box-shadow: 0 18px 40px var(--shadow-ink-20);
+
+  /* Closed. The origin is the menu button's corner, so the panel collapses
+     back into the thing that opened it. */
+  pointer-events: none;
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(-12px) scale(0.92);
+  transform-origin: 100% 0;
+  -webkit-backdrop-filter: blur(0) saturate(1);
+  backdrop-filter: blur(0) saturate(1);
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-standard),
+    transform 200ms var(--motion-ease-standard),
+    -webkit-backdrop-filter 200ms var(--motion-ease-standard),
+    backdrop-filter 200ms var(--motion-ease-standard),
+    /* Held until the collapse finishes, or the panel would blink out on
+       frame one and the exit would be as invisible as `display: none` was. */
+    visibility 0s linear 200ms;
+}
+
+.lp-nav-sheet[data-open="true"] {
+  pointer-events: auto;
+  visibility: visible;
+  opacity: 1;
+  transform: translateY(0) scale(1);
   -webkit-backdrop-filter: blur(24px) saturate(1.15);
   backdrop-filter: blur(24px) saturate(1.15);
-  box-shadow: 0 18px 40px var(--shadow-ink-20);
+  transition:
+    opacity var(--motion-duration-base) var(--motion-ease-out),
+    transform var(--motion-duration-slow) var(--motion-ease-liquid),
+    -webkit-backdrop-filter var(--motion-duration-slow) var(--motion-ease-liquid),
+    backdrop-filter var(--motion-duration-slow) var(--motion-ease-liquid),
+    visibility 0s;
+}
+
+/* The links arrive after the surface they are on, one after another, top down —
+   the panel makes room and then the contents land in it. Only on the way in:
+   closing, they leave together, because a staggered exit is a queue. */
+.lp-nav-sheet > * {
+  opacity: 0;
+  transform: translateY(-6px);
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-standard),
+    transform var(--motion-duration-base) var(--motion-ease-liquid);
+}
+
+.lp-nav-sheet[data-open="true"] > * {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.lp-nav-sheet[data-open="true"] > *:nth-child(1) {
+  transition-delay: 70ms;
+}
+
+.lp-nav-sheet[data-open="true"] > *:nth-child(2) {
+  transition-delay: 115ms;
+}
+
+.lp-nav-sheet[data-open="true"] > *:nth-child(3) {
+  transition-delay: 160ms;
 }
 
 .lp-nav-sheet .lp-nav-link {
@@ -270,17 +377,50 @@
     display: flex;
   }
 
-  .lp-nav-sheet[data-open="true"] {
+  /* Laid out at every narrow width, open or not — see the note above. It is
+     `inert` while closed (LandingNav.tsx), so it is out of the tab order and
+     out of the accessibility tree exactly as `hidden` used to put it. */
+  .lp-nav-sheet {
     display: flex;
   }
 }
 
 @media (prefers-reduced-transparency: reduce) {
   .lp-nav-bar,
-  .lp-nav-sheet {
+  .lp-nav-sheet,
+  .lp-nav-sheet[data-open="true"] {
     background: var(--color-abyss-shell);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
+  }
+}
+
+/* Still has to mean still. The sheet still has to appear and disappear, so it
+   cross-fades in place: no travel, no scale, no material forming. */
+@media (prefers-reduced-motion: reduce) {
+  .lp-nav-sheet,
+  .lp-nav-sheet[data-open="true"] {
+    transform: none;
+    transition:
+      opacity var(--motion-duration-fast) var(--motion-ease-standard),
+      visibility 0s linear var(--motion-duration-fast);
+  }
+
+  .lp-nav-sheet[data-open="true"] {
+    transition:
+      opacity var(--motion-duration-fast) var(--motion-ease-standard),
+      visibility 0s;
+  }
+
+  .lp-nav-sheet > *,
+  .lp-nav-sheet[data-open="true"] > * {
+    transform: none;
+    transition: opacity var(--motion-duration-fast) var(--motion-ease-standard);
+    transition-delay: 0s;
+  }
+
+  .lp-nav-menu-bar {
+    transition: none;
   }
 }
 
@@ -1029,16 +1169,19 @@
 
 /* ── Narrow widths ──────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
-  /* 150vh, not 320: the scroll length has to match how much actually changes.
-     The 3D path earns its longer travel with a rotation the SVG has no
-     equivalent for, and the phone now has two captions rather than three. */
+  /* 150vh → 190vh (2026-08-14). The old number was argued from what the phone
+     had: "the 3D path earns its longer travel with a rotation the SVG has no
+     equivalent for." The phone now runs the 3D path, so it has the rotation and
+     it has earned the travel — 150vh spent the turn in about two thumb-flicks.
+     Still short of the desktop's 210, because there are two captions here
+     rather than three and no stems to read on the way past. */
   .lp-stage {
-    height: 150vh;
+    height: 190vh;
   }
 
-  /* The arc moves to the lower third so the upper half belongs to type. This
-     is what stops the curve being drawn through the headline, and it restores
-     the horizon reading the whole beat opens on. */
+  /* Fallback only — the phone gets the canvas now, and the canvas positions the
+     arc itself (COMPACT_FIT in ArcRibbonCanvas). Kept in step with it: baseline
+     in the lower fifth, so the upper half of the screen belongs to type. */
   .lp-ribbon-svg {
     top: auto;
     bottom: 20vh;
@@ -1056,11 +1199,28 @@
     top: 16vh;
   }
 
+  /* One line under the arc, read left to right: what is playing, and how fast.
+     Both sit BELOW the axis rather than beside the curve — the fitted ribbon
+     runs from ~24vh to ~44vh off the bottom at full inflation, and the axis
+     hangs ~6vh under its baseline, so everything above 20vh is the shape's. */
+  .lp-now {
+    bottom: 4.5vh;
+    /* Room for the readout beside it. 34, not 30: at 320px the BPM value plus
+       its unit plus the gutter is ~92px, and 30vw leaves 96 — a four-pixel gap
+       between an ellipsis and a number reads as a collision. */
+    right: 34vw;
+  }
+
   .lp-readout {
     top: auto;
-    bottom: 12vh;
     left: auto;
     right: var(--lp-gutter);
+    bottom: 4.5vh;
+    /* The desktop readout sits BEHIND the ribbon as ambient instrumentation.
+       Here it is a value in a status line with the track title, and the ribbon
+       never reaches it, so being behind the canvas would only dim it. */
+    z-index: 4;
+    align-items: baseline;
   }
 
   .lp-axis-label {
@@ -1071,10 +1231,6 @@
      header, and five labels do not fit across 390px. */
   .lp-axis-tick[data-edge="start"],
   .lp-axis-tick[data-edge="end"] {
-    display: none;
-  }
-
-  .lp-tracklist {
     display: none;
   }
 }

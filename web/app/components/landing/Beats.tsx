@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { MetalButton } from "@/app/components/dashboard/MetalButton";
 import { useMediaQuery, usePrefersReducedMotion } from "@/app/components/ui/metal-hooks";
 
@@ -24,6 +24,33 @@ function useInView<T extends HTMLElement>(threshold = 0.35) {
     return () => observer.disconnect();
   }, [threshold]);
   return [ref, inView] as const;
+}
+
+/**
+ * "Has this element come within a screenful of the viewport yet?" — a latch,
+ * not a state: it never goes back to false, because it gates the `src`
+ * attribute and un-setting one mid-scroll would throw away the buffer.
+ *
+ * Separate from `useInView` on purpose. Playback wants "is it actually on
+ * screen"; fetching wants "will it be, shortly", far enough ahead that the film
+ * is decoding before the poster is even in frame. One observer cannot answer
+ * both without a rootMargin that would start the films playing off-screen.
+ */
+function useApproaching(ref: React.RefObject<HTMLElement | null>): boolean {
+  const [near, setNear] = useState(false);
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || near) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) setNear(true);
+      },
+      { rootMargin: "100% 0px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [ref, near]);
+  return near;
 }
 
 /**
@@ -87,10 +114,38 @@ function useParallax<T extends HTMLElement>(
   return node;
 }
 
+type ConnectionWithSaveData = Navigator & { connection?: { saveData?: boolean } };
+
+/**
+ * Every film ships twice. `foo.mp4` is 1600×900 at 60fps, ~3.4 MB; `foo-720.mp4`
+ * is the same take at 720×405 and 30fps, ~660 KB — five times lighter, and
+ * still twice the CSS pixels a phone displays it at. Derived rather than passed
+ * so a beat cannot name one and forget the other; run
+ * `scripts/encode-landing-film.sh <master>` to produce the companion.
+ */
+function phoneCut(src: string): string {
+  return src.replace(/\.mp4$/, "-720.mp4");
+}
+
 /**
  * Video that plays only while it is on screen. Under reduced motion it never
  * plays at all and the poster stands in — a looping product demo is exactly the
  * kind of thing that setting exists to stop.
+ *
+ * PHONES PLAY THE FILM NOW (Arjun, 2026-08-14: "the videos do not play, they
+ * just look like screenshots when i open the site on mobile"). They looked like
+ * screenshots because they were: `narrow` fed the same flag as `reduced`, so a
+ * phone was served the poster and no `src` at all. The reason given was
+ * bandwidth — "7.5 MB of H.264 encoded at 1600px, to be displayed at ~348" —
+ * and it was a fair objection to shipping the desktop master. It is not an
+ * argument for a still. Three answers, in order:
+ *
+ *   1. a phone-sized encode (above), 660 KB rather than 3.4 MB;
+ *   2. no `src` until the beat is within a screenful, so the three films are
+ *      three separate small fetches spread across the scroll, never a burst at
+ *      load — the hero and the ribbon get the connection to themselves;
+ *   3. Save-Data still gets the poster, because a reader who has asked for less
+ *      data has said something about their connection that a byte count cannot.
  */
 function BeatVideo({
   src,
@@ -110,11 +165,16 @@ function BeatVideo({
   start?: number;
 }) {
   const [ref, inView] = useInView<HTMLVideoElement>(0.25);
+  const near = useApproaching(ref);
   const reduced = usePrefersReducedMotion();
-  // 7.5 MB of H.264 encoded at 1600px, to be displayed at ~348. Phones get the
-  // poster; the beats read fine as stills and the bandwidth is indefensible.
-  const narrow = useMediaQuery("(max-width: 639px)");
-  const still = reduced || narrow;
+  const narrow = useMediaQuery("(max-width: 640px)");
+  const saveData = useSyncExternalStore(
+    () => () => {},
+    () => (navigator as ConnectionWithSaveData).connection?.saveData === true,
+    () => false,
+  );
+  const still = reduced || saveData;
+  const file = narrow ? phoneCut(src) : src;
 
   // Enter the take partway in (Arjun, 2026-08-14: "for 01-02, start from
   // halfway through the video"). Seeking needs a duration, which is not known
@@ -133,11 +193,13 @@ function BeatVideo({
     seek();
     node.addEventListener("loadedmetadata", seek);
     return () => node.removeEventListener("loadedmetadata", seek);
-  }, [ref, start, still, src]);
+  }, [ref, start, still, file]);
 
   useEffect(() => {
     const node = ref.current;
     if (!node) return;
+    // play() rejects if the element has no source yet, which is the normal
+    // state until the beat is approached — the catch is not incidental.
     if (inView && active && !still) void node.play().catch(() => {});
     else node.pause();
   }, [inView, active, still, ref]);
@@ -147,12 +209,17 @@ function BeatVideo({
       ref={ref}
       className={className}
       data-shown={shown === undefined ? undefined : shown ? "true" : "false"}
-      src={still ? undefined : src}
+      src={still || !near ? undefined : file}
       poster={poster}
       muted
       loop
       playsInline
-      preload="metadata"
+      /* By the time a src exists at all the beat is one screenful away, so on a
+         phone — where the file is 660 KB — buffer the whole thing and have it
+         running before it is looked at. Not on desktop: that is the 3.4 MB
+         master, and "auto" across four of them is 13 MB of eager download to
+         save a stutter that streaming already covers. */
+      preload={narrow ? "auto" : "metadata"}
       aria-hidden="true"
     />
   );

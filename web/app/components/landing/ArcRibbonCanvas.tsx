@@ -26,11 +26,91 @@ const HEIGHT = 1.15;
 // Shifted left so the ribbon clears the tracklist column on the right rather
 // than running underneath it.
 const OFFSET_X = 0;
+
+// The camera never moves, so one world unit is a fixed share of the viewport's
+// HEIGHT on every device — which is what makes BAND, the bead's radius and the
+// group's resting y portable as they stand. The visible WIDTH is the aspect's
+// business, and that is the whole of the phone problem below.
+const CAMERA = { fov: 34, z: 5.4 };
+const VIEW_HEIGHT = 2 * CAMERA.z * Math.tan((CAMERA.fov * Math.PI) / 360);
+
+// ── Fitting a landscape object into a portrait viewport (2026-08-14) ─────────
+// Arjun, on the phone build: "the ribbon doesn't animate nicely on mobile, it
+// looks 2d and plain". It was not the ribbon — it was the SVG fallback, which
+// every phone got. This is what lets the real one run there.
+//
+// Only the ribbon's own footprint is wrong on a phone: 6.4 units is four
+// viewports across at 390px, and 1.15 tall over 6.4 wide is a 5.6:1 sliver once
+// you have squeezed it in. So the meshes get their own scale group INSIDE the
+// one that rotates. Scale under rotation is just a shorter, narrower object
+// being turned; scale ABOVE rotation would shear it as it turns. The bead stays
+// outside that group with the fit applied to its position instead — a
+// non-uniform scale would hatch it into an egg, and it is the one thing on
+// screen whose shape is not the data's.
+//
+// x is measured, not chosen: phone aspects run from about 0.42 (a 15 Pro Max in
+// portrait) to 0.56 (a short Android), which is a third of a viewport's
+// difference in visible width. Any constant wide enough to fill the shortest
+// runs off both edges of the tallest.
+const COMPACT_HEIGHT = 0.78;
+/**
+ * Share of the visible width the night is allowed; the rest is margin. 0.90
+ * rather than something closer to 1 because the yaw swings the last track
+ * TOWARD the camera, where it is magnified — and the bead is riding it, halo
+ * and all, a full 0.088 units of sphere that is not scaled by the fit. At 0.94
+ * the halo clipped the right edge on a tall phone at the end of the turn.
+ */
+const COMPACT_FILL = 0.90;
+
+type Fit = {
+  x: number;
+  y: number;
+  thick: number;
+  restY: number;
+  liftY: number;
+  turnX: number;
+  turnY: number;
+};
+
+const DESKTOP_FIT: Fit = {
+  x: 1,
+  y: 1,
+  thick: 1,
+  restY: -0.95,
+  liftY: 0.50,
+  turnX: 0.20,
+  turnY: -0.44,
+};
+
+const COMPACT_FIT: Omit<Fit, "x"> = {
+  y: COMPACT_HEIGHT / HEIGHT,
+  // The band's cross-section rides the same y scale as the curve, which would
+  // take it from ~12px to ~8 — thin enough that the lit top edge lands on a
+  // half pixel and crawls as the ribbon turns. Put most of it back.
+  thick: 1.45,
+  // Lower than the desktop rest, because on a phone the upper half of the
+  // screen belongs to type: the headline, then the captions. The baseline sits
+  // ~15vh off the bottom at rest and ~29vh once the night has opened, which
+  // puts the crest around 52vh — clear of a caption that ends near 28vh.
+  restY: -1.15,
+  liftY: 0.45,
+  // Half the desktop's pitch. Yaw is where the depth comes from and it keeps
+  // all of it; pitch is what swings everything BELOW the baseline out of the
+  // object — and the axis is DOM text that cannot rotate with the plane it is
+  // pinned to, so at the desktop's 0.20 the three clock labels stagger
+  // diagonally down the screen and read as a fault rather than as perspective.
+  turnX: 0.11,
+  turnY: -0.44,
+};
+
 // The genre strip sits just under the baseline, at constant height — it is a
 // legend for the night, not part of the curve, so it must not inflate with it.
 const STRIP_TOP = -0.05;
 const STRIP_BOTTOM = -0.095;
-// Axis ticks hang below the strip.
+// Axis ticks hang below the strip. Fitted with the shape rather than left in
+// absolute units: it looks like a fixed pixel gap under the baseline, but it is
+// a point on a plane that pitches, so leaving it unscaled detaches it from the
+// object the moment the ribbon starts to turn.
 const AXIS_Y = -0.20;
 const BAND = 0.055;
 const BAND_ROWS = 4;
@@ -322,9 +402,18 @@ void main() {
   vec3 col = mix(uDeep, mix(uAccent, uFloor, win), pow(clamp(v, 0.0, 1.0), 1.6));
   col += uAccent * vTick * 0.10;
 
+  // The band dissolves at its two ends; this never did, because on a desktop
+  // both of them are off the side of the screen. On a phone the whole night is
+  // in frame, and the area under it ended in a hard vertical cut on both sides
+  // — the one edge on this page that was a rectangle rather than a shape.
+  // Tighter than the band's falloff (0.17) and NOT relaxed by uAmp: the band
+  // relaxes because its ends become information once the arc has inflated,
+  // whereas this is a wall, and the wall is worst at full amplitude.
+  float ends = smoothstep(0.0, 0.07, vUv.x) * (1.0 - smoothstep(0.93, 1.0, vUv.x));
+
   // Densest just under the crest, fading to nothing at the baseline — the
   // DetailArc's own area treatment, carried across.
-  float alpha = uReveal * uAmp * mix(0.0, 0.30, pow(clamp(v, 0.0, 1.0), 2.0));
+  float alpha = uReveal * uAmp * ends * mix(0.0, 0.30, pow(clamp(v, 0.0, 1.0), 2.0));
   gl_FragColor = vec4(col, alpha);
 }
 `;
@@ -409,14 +498,26 @@ type SceneProps = {
   /** 0..1 scroll progress through the hero + explorer beats. */
   progress: () => number;
   reduced: boolean;
+  /** Portrait phone: the same ribbon, refitted. See COMPACT_FIT. */
+  compact: boolean;
   onProject?: (poi: Projected[], axis: Projected[]) => void;
 };
 
-function Ribbon({ colors, progress, reduced, onProject }: SceneProps) {
+function Ribbon({ colors, progress, reduced, compact, onProject }: SceneProps) {
   const group = useRef<THREE.Group>(null);
+  const shape = useRef<THREE.Group>(null);
   const bandGeometry = useGeometry(BAND_ROWS, "band");
   const fillGeometry = useGeometry(FILL_ROWS, "fill");
   const { camera, size } = useThree();
+
+  // Re-fits on rotate and on the browser chrome collapsing under scroll. It is
+  // only a scale and two numbers — no geometry is rebuilt, which is the reason
+  // the fit is a scale group and not a differently-sized mesh.
+  const fit = useMemo<Fit>(() => {
+    if (!compact) return DESKTOP_FIT;
+    const visibleWidth = VIEW_HEIGHT * (size.width / Math.max(1, size.height));
+    return { ...COMPACT_FIT, x: (visibleWidth * COMPACT_FILL) / WIDTH };
+  }, [compact, size.width, size.height]);
   const eased = useRef(0);
   // Mount fade. Deliberately NOT tied to scroll: the flat horizon is the first
   // thing the hero shows, so it has to be on screen at progress 0.
@@ -478,14 +579,14 @@ function Ribbon({ colors, progress, reduced, onProject }: SceneProps) {
       material.uniforms.uReveal.value = born.current * 0.98;
       material.uniforms.uTime.value = reduced ? 0 : state.clock.elapsedTime;
       material.uniforms.uWave.value = reduced ? 0 : 0.16 * turn;
-      material.uniforms.uThick.value = 0.22 + 0.78 * amp;
+      material.uniforms.uThick.value = (0.22 + 0.78 * amp) * fit.thick;
     }
 
     if (group.current) {
-      group.current.rotation.y = -0.44 * turn;
-      group.current.rotation.x = 0.20 * turn;
+      group.current.rotation.y = fit.turnY * turn;
+      group.current.rotation.x = fit.turnX * turn;
       // Sits low like a horizon at rest, lifting only as the arc needs room.
-      group.current.position.y = -0.95 + 0.50 * amp;
+      group.current.position.y = fit.restY + fit.liftY * amp;
       group.current.position.x = OFFSET_X * amp;
       group.current.position.z = -0.55 * turn;
     }
@@ -495,13 +596,16 @@ function Ribbon({ colors, progress, reduced, onProject }: SceneProps) {
       const walk = Math.min(1, Math.max(0, (p - 0.3) / 0.62));
       const column = Math.round(walk * (SAMPLES - 1));
       const { heights } = getArcCurve();
-      const x = (walk - 0.5) * WIDTH;
+      // The fit is applied to the bead's POSITION, not its scale — but the
+      // wave's phase has to be read in the geometry's own pre-fit x, because
+      // the vertex shader computes it inside the scale group too.
+      const local = (walk - 0.5) * WIDTH;
       marker.current.position.set(
-        x,
-        heights[column] * HEIGHT * amp + BAND * 0.5,
+        local * fit.x,
+        (heights[column] * HEIGHT * amp + BAND * 0.5) * fit.y,
         // Mirrors the vertex shader's drift so the bead sits ON the ribbon
         // rather than hovering in front of it once the surface starts moving.
-        Math.sin(x * 0.85 + (reduced ? 0 : state.clock.elapsedTime) * 0.32) *
+        Math.sin(local * 0.85 + (reduced ? 0 : state.clock.elapsedTime) * 0.32) *
           (reduced ? 0 : 0.16 * turn) *
           amp,
       );
@@ -543,14 +647,20 @@ function Ribbon({ colors, progress, reduced, onProject }: SceneProps) {
       place(
         projectedPoi.current,
         i,
-        (poi.t - 0.5) * WIDTH,
-        heights[column] * HEIGHT * amp + BAND * 0.5,
+        (poi.t - 0.5) * WIDTH * fit.x,
+        (heights[column] * HEIGHT * amp + BAND * 0.5) * fit.y,
         p > 0.62,
       );
     }
 
     for (let i = 0; i < axisTicks.length; i += 1) {
-      place(projectedAxis.current, i, (axisTicks[i].t - 0.5) * WIDTH, AXIS_Y, amp > 0.55);
+      place(
+        projectedAxis.current,
+        i,
+        (axisTicks[i].t - 0.5) * WIDTH * fit.x,
+        AXIS_Y * fit.y,
+        amp > 0.55,
+      );
     }
 
     if (changed) onProject(projectedPoi.current, projectedAxis.current);
@@ -558,30 +668,48 @@ function Ribbon({ colors, progress, reduced, onProject }: SceneProps) {
 
   return (
     <group ref={group}>
-      <mesh geometry={fillGeometry} frustumCulled={false}>
-        <shaderMaterial
-          vertexShader={VERTEX}
-          fragmentShader={FILL_FRAGMENT}
-          ref={fillMaterial}
-          uniforms={fillUniforms}
-          transparent
-          depthWrite={false}
-          side={THREE.DoubleSide}
-        />
-      </mesh>
-      <mesh geometry={stripGeometry} frustumCulled={false}>
-        <shaderMaterial
-          ref={stripMaterial}
-          vertexShader={STRIP_VERTEX}
-          fragmentShader={STRIP_FRAGMENT}
-          uniforms={stripUniforms}
-          transparent
-          depthWrite={false}
-          side={THREE.DoubleSide}
-        />
-      </mesh>
+      {/* renderOrder, not declaration order. All five meshes are transparent
+          with depthWrite off, so what stacks over what comes out of the sort —
+          which until now happened to follow the order they were written in.
+          The fit group puts a nesting level between them, so the stack is
+          stated instead: area, genre strip, bead, band on top. */}
+      <group ref={shape} scale={[fit.x, fit.y, 1]}>
+        <mesh geometry={fillGeometry} frustumCulled={false} renderOrder={0}>
+          <shaderMaterial
+            vertexShader={VERTEX}
+            fragmentShader={FILL_FRAGMENT}
+            ref={fillMaterial}
+            uniforms={fillUniforms}
+            transparent
+            depthWrite={false}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+        <mesh geometry={stripGeometry} frustumCulled={false} renderOrder={1}>
+          <shaderMaterial
+            ref={stripMaterial}
+            vertexShader={STRIP_VERTEX}
+            fragmentShader={STRIP_FRAGMENT}
+            uniforms={stripUniforms}
+            transparent
+            depthWrite={false}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+        <mesh geometry={bandGeometry} frustumCulled={false} renderOrder={4}>
+          <shaderMaterial
+            vertexShader={VERTEX}
+            fragmentShader={BAND_FRAGMENT}
+            ref={bandMaterial}
+            uniforms={bandUniforms}
+            transparent
+            depthWrite={false}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      </group>
       <group ref={marker} visible={false}>
-        <mesh geometry={haloGeometry} frustumCulled={false}>
+        <mesh geometry={haloGeometry} frustumCulled={false} renderOrder={2}>
           <shaderMaterial
             ref={haloMaterial}
             vertexShader={MARKER_VERTEX}
@@ -592,7 +720,7 @@ function Ribbon({ colors, progress, reduced, onProject }: SceneProps) {
             blending={THREE.AdditiveBlending}
           />
         </mesh>
-        <mesh geometry={markerGeometry} frustumCulled={false}>
+        <mesh geometry={markerGeometry} frustumCulled={false} renderOrder={3}>
           <shaderMaterial
             ref={markerMaterial}
             vertexShader={MARKER_VERTEX}
@@ -603,17 +731,6 @@ function Ribbon({ colors, progress, reduced, onProject }: SceneProps) {
           />
         </mesh>
       </group>
-      <mesh geometry={bandGeometry} frustumCulled={false}>
-        <shaderMaterial
-          vertexShader={VERTEX}
-          fragmentShader={BAND_FRAGMENT}
-          ref={bandMaterial}
-          uniforms={bandUniforms}
-          transparent
-          depthWrite={false}
-          side={THREE.DoubleSide}
-        />
-      </mesh>
     </group>
   );
 }
@@ -622,9 +739,15 @@ export default function ArcRibbonCanvas(props: SceneProps) {
   return (
     <Canvas
       className="lp-canvas"
-      dpr={[1, 2]}
+      // A phone's dpr is 3, and this is a full-viewport transparent layer over
+      // a full-viewport mesh shader. 1.75 is where the band's lit top edge
+      // stops being the thing that gives the resolution away; the rest of the
+      // frame is a gradient with nothing in it to alias. antialias stays on for
+      // the same reason it is on everywhere else — at rest this whole object is
+      // one ~7px line, and MSAA is the difference between a line and a stair.
+      dpr={props.compact ? [1, 1.75] : [1, 2]}
       gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
-      camera={{ fov: 34, position: [0, 0.15, 5.4], near: 0.1, far: 40 }}
+      camera={{ fov: CAMERA.fov, position: [0, 0.15, CAMERA.z], near: 0.1, far: 40 }}
       frameloop={props.reduced ? "demand" : "always"}
     >
       <Ribbon {...props} />

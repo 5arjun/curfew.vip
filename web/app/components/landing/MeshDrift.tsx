@@ -486,9 +486,15 @@ export function MeshDrift({ className }: { className?: string }) {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const rawWidth = Math.max(1, Math.round(bounds.width * dpr));
       const rawHeight = Math.max(1, Math.round(bounds.height * dpr));
+      // 2M pixels on a desktop, 1.1M on a phone (2026-08-14). The phone now
+      // runs the arc ribbon in front of this instead of a flat SVG, so there
+      // are two live contexts over the hero where there was one. This field
+      // has no high-frequency detail to lose except the grain, which is
+      // per-pixel noise and reads the same at either resolution.
+      const ceiling = bounds.width <= 640 ? 1_100_000 : 2_000_000;
       const pixelScale = Math.min(
         1,
-        Math.sqrt(2_000_000 / Math.max(1, rawWidth * rawHeight)),
+        Math.sqrt(ceiling / Math.max(1, rawWidth * rawHeight)),
       );
       const width = Math.max(1, Math.round(rawWidth * pixelScale));
       const height = Math.max(1, Math.round(rawHeight * pixelScale));

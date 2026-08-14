@@ -133,20 +133,31 @@ export function LandingNav() {
 
   // Escape closes the sheet, and so does growing back to a width that has no
   // sheet — otherwise the disclosure stays "open" invisibly and the next
-  // narrow viewport inherits it.
+  // narrow viewport inherits it. So does a tap anywhere else: a small menu over
+  // a page you were reading should get out of the way when you reach past it,
+  // and on a phone there is no Escape key to reach for.
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
+    };
+    // pointerdown, not click: the dismissal should begin the moment the finger
+    // lands, not when it lifts. The header contains both the trigger and the
+    // sheet, so one containment test covers "did they reach past the menu".
+    const onPointerDown = (event: PointerEvent) => {
+      const header = headerRef.current;
+      if (header && !header.contains(event.target as Node)) setOpen(false);
     };
     const wide = window.matchMedia("(min-width: 761px)");
     const onWide = () => {
       if (wide.matches) setOpen(false);
     };
     document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("pointerdown", onPointerDown);
     wide.addEventListener("change", onWide);
     return () => {
       document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onPointerDown);
       wide.removeEventListener("change", onWide);
     };
   }, [open]);
@@ -198,7 +209,16 @@ export function LandingNav() {
         </div>
       </nav>
 
-      <div className="lp-nav-sheet" id={panelId} data-open={open ? "true" : "false"} hidden={!open}>
+      {/* `inert` rather than `hidden`. Both take the panel out of the tab order
+          and out of the accessibility tree, but `hidden` also removes its box —
+          and a box that does not exist cannot animate away. The panel is laid
+          out at all times now and hidden by state; landing.css has the path. */}
+      <div
+        className="lp-nav-sheet"
+        id={panelId}
+        data-open={open ? "true" : "false"}
+        inert={!open}
+      >
         {links}
         <Link className="lp-nav-link" href="/login" onClick={() => setOpen(false)}>
           Log in

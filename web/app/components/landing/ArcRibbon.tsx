@@ -50,9 +50,21 @@ type NavigatorWithMemory = Navigator & { deviceMemory?: number };
  * furniture?" are different questions. The furniture is DOM; it works fine
  * against the SVG. Only the POI markers genuinely need the canvas, because they
  * are positioned by projecting 3D points to screen space.
+ *
+ * SECOND SPLIT (Arjun, 2026-08-14: "the ribbon doesn't animate nicely on
+ * mobile, it looks 2d and plain"). The width test was still in HERE, so every
+ * phone got the SVG — and the SVG is flat, necessarily: a 2D path has no
+ * thickness, no lit cross-section, no rotation and no bead riding a surface
+ * that moves. None of that was ever a device-capability answer. A phone that
+ * runs the mesh shader behind this page can run the ribbon in front of it; what
+ * a phone cannot do is fit a 5.6:1 landscape object across 390px, and that is a
+ * layout question, answered in the canvas by COMPACT_FIT.
+ *
+ * So width now chooses the ARRANGEMENT, and this flag is back to the one thing
+ * it is named for. The SVG stays for scarce memory and for no-WebGL — it is
+ * still the only render some devices will get.
  */
 function useCanRender3D(): boolean {
-  const narrow = useMediaQuery("(max-width: 639px)");
   const scarceMemory = useSyncExternalStore(
     () => () => {},
     () => {
@@ -61,7 +73,7 @@ function useCanRender3D(): boolean {
     },
     () => false,
   );
-  return !narrow && !scarceMemory;
+  return !scarceMemory;
 }
 
 type Colors = {
@@ -211,6 +223,11 @@ function trackIndexFor(p: number): number {
 export function ArcRibbon({ section }: { section: React.RefObject<HTMLElement | null> }) {
   const reduced = usePrefersReducedMotion();
   const canRender3D = useCanRender3D();
+  /** The phone arrangement: one refitted ribbon, no POI stems, no 24ch column.
+   *  640, matching landing.css exactly — the two used to differ by a pixel, and
+   *  at precisely 640px wide that put the desktop furniture in the phone's
+   *  layout. */
+  const compact = useMediaQuery("(max-width: 640px)");
   const colors = useArcColors();
   const axisTicks = useMemo(() => getAxisTicks(), []);
 
@@ -327,6 +344,7 @@ export function ArcRibbon({ section }: { section: React.RefObject<HTMLElement | 
           colors={colors}
           progress={progress}
           reduced={reduced}
+          compact={compact}
           onProject={onProject}
         />
       )}
@@ -361,16 +379,19 @@ export function ArcRibbon({ section }: { section: React.RefObject<HTMLElement | 
         <span className="lp-readout-unit">BPM</span>
       </div>
 
-      {useCanvas ? (
-        <>
-          <div className="lp-poi-layer" aria-hidden="true">
-            {/* The closing marker is dropped: the ribbon now runs under the
-                tracklist column, so a label at t=1 would sit beneath it. The
-                axis already labels 2:26 AM at that exact x, and the column
-                header states the night's span, so nothing is lost. */}
-            {arc.poi
-              .filter((poi) => poi.t <= 0.9)
-              .map((poi, i) => (
+      {/* The stems are the one piece of furniture that genuinely needs the
+          canvas — they are placed by projecting 3D points — and the one that
+          genuinely cannot fit a phone: five labelled stems over a 390px arc is
+          a thicket. Everything else here is DOM and renders against either. */}
+      {useCanvas && !compact && (
+        <div className="lp-poi-layer" aria-hidden="true">
+          {/* The closing marker is dropped: the ribbon now runs under the
+              tracklist column, so a label at t=1 would sit beneath it. The
+              axis already labels 2:26 AM at that exact x, and the column
+              header states the night's span, so nothing is lost. */}
+          {arc.poi
+            .filter((poi) => poi.t <= 0.9)
+            .map((poi, i) => (
               <div
                 key={poi.id}
                 className="lp-poi"
@@ -389,39 +410,11 @@ export function ArcRibbon({ section }: { section: React.RefObject<HTMLElement | 
                   <span className="lp-poi-caption">{poi.caption}</span>
                 </span>
               </div>
-              ))}
-          </div>
+            ))}
+        </div>
+      )}
 
-          <aside
-            className="lp-tracklist"
-            aria-label="The set, in order"
-            data-shown="false"
-            ref={(node) => {
-              panelNode.current = node;
-            }}
-          >
-            <p className="lp-tracklist-head">
-              {arc.points.length} tracks · {clockAt(0)} — {clockAt(1)}
-            </p>
-            <div className="lp-tracklist-window" ref={windowNode}>
-              <ol className="lp-tracklist-rows" data-shown="false" ref={listNode}>
-              {arc.points.map((point, i) => (
-                <li
-                  key={`${point.position}-${point.title}`}
-                  className="lp-tl-row"
-                  ref={(node) => {
-                    rowNodes.current[i] = node;
-                  }}
-                >
-                  <span className="lp-tl-time">{clockAt(point.t)}</span>
-                  <span className="lp-tl-title">{point.title}</span>
-                </li>
-                ))}
-              </ol>
-            </div>
-          </aside>
-        </>
-      ) : (
+      {compact ? (
         /* Phone form of the tracklist: the night's span, and the one track you
            are standing on. The full column has nowhere to live beside the arc. */
         <div
@@ -437,6 +430,35 @@ export function ArcRibbon({ section }: { section: React.RefObject<HTMLElement | 
           </p>
           <p className="lp-now-title" ref={nowNode} />
         </div>
+      ) : (
+        <aside
+          className="lp-tracklist"
+          aria-label="The set, in order"
+          data-shown="false"
+          ref={(node) => {
+            panelNode.current = node;
+          }}
+        >
+          <p className="lp-tracklist-head">
+            {arc.points.length} tracks · {clockAt(0)} — {clockAt(1)}
+          </p>
+          <div className="lp-tracklist-window" ref={windowNode}>
+            <ol className="lp-tracklist-rows" data-shown="false" ref={listNode}>
+              {arc.points.map((point, i) => (
+                <li
+                  key={`${point.position}-${point.title}`}
+                  className="lp-tl-row"
+                  ref={(node) => {
+                    rowNodes.current[i] = node;
+                  }}
+                >
+                  <span className="lp-tl-time">{clockAt(point.t)}</span>
+                  <span className="lp-tl-title">{point.title}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </aside>
       )}
     </div>
   );

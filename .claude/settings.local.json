@@ -64,7 +64,11 @@
       "mcp__playwright__*",
       "Skill(impeccable)",
       "mcp__supabase__apply_migration",
-      "mcp__supabase__list_tables"
+      "mcp__supabase__list_tables",
+      "mcp__plugin_vercel_vercel__get_project",
+      "mcp__plugin_vercel_vercel__list_projects",
+      "mcp__plugin_vercel_vercel__get_project_deployment_protection",
+      "mcp__supabase__search_docs"
     ],
     "additionalDirectories": [
       "/Users/arjun/Documents/name-pending/_bmad-output/planning-artifacts/architecture"
