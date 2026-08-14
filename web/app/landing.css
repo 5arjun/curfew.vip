@@ -12,99 +12,13 @@
 
 .lp-root {
   --lp-gutter: clamp(20px, 5vw, 72px);
-  /* Every display-serif rule on this page reads --lp-display, so D-4 is one
-     line to re-decide rather than eleven. The [data-face] blocks below are the
-     live A/B and come out with the switcher once Arjun picks. */
-  --lp-display: var(--font-instrument-serif-var), Georgia, serif;
+  /* Every display rule on this page reads --lp-display, so the face is one
+     line to re-decide rather than eleven. D-4 settled on Bricolage Grotesque
+     (Arjun, 2026-08-14) — see fonts.ts for why the serif direction lost. */
+  --lp-display: var(--font-bricolage-var), system-ui, sans-serif;
   background: var(--color-abyss-base);
   color: var(--color-abyss-text);
   font-family: var(--font-inter);
-}
-
-/* ── D-4 candidates, round two (DEVELOPMENT ONLY — see FaceSwitcher.tsx) ──── */
-.lp-root[data-face="archivo"] {
-  --lp-display: var(--font-archivo-var), system-ui, sans-serif;
-}
-
-.lp-root[data-face="space"] {
-  --lp-display: var(--font-space-grotesk-var), system-ui, sans-serif;
-}
-
-.lp-root[data-face="syne"] {
-  --lp-display: var(--font-syne-var), system-ui, sans-serif;
-}
-
-.lp-root[data-face="bricolage"] {
-  --lp-display: var(--font-bricolage-var), system-ui, sans-serif;
-}
-
-.lp-root[data-face="shoulders"] {
-  --lp-display: var(--font-big-shoulders-var), system-ui, sans-serif;
-}
-
-.lp-root[data-face="hanken"] {
-  --lp-display: var(--font-hanken-grotesk), system-ui, sans-serif;
-}
-
-/* The serif was set at display sizes that assume high contrast and a small
-   x-height. A grotesque at 94px is a different animal: it needs less size,
-   tighter tracking and a real weight to stop reading as a system dialog. Only
-   the sans faces take this — Instrument keeps its own setting. */
-.lp-root:is([data-face="archivo"], [data-face="space"], [data-face="syne"],
-  [data-face="bricolage"], [data-face="hanken"]) .lp-headline {
-  font-size: clamp(2.25rem, 5.6vw, 4.5rem);
-  font-weight: 500;
-  letter-spacing: -0.035em;
-  line-height: 1.06;
-}
-
-/* Big Shoulders is condensed to the point that it needs the size back. */
-.lp-root[data-face="shoulders"] .lp-headline {
-  font-size: clamp(3rem, 8.4vw, 7rem);
-  font-weight: 500;
-  letter-spacing: -0.01em;
-}
-
-/* None of the sans faces has a true italic worth setting a headline in
-   (Archivo's is a slant, Space Grotesk has none at all), so the second line
-   holds its emphasis by weight and colour instead of by slope. */
-.lp-root:not([data-face="instrument"]) .lp-headline-turn {
-  font-style: normal;
-  font-weight: 600;
-  padding-left: 0;
-}
-
-.lp-face-switch {
-  position: fixed;
-  right: var(--space-md);
-  bottom: var(--space-md);
-  z-index: 90;
-  display: flex;
-  gap: 1px;
-  padding: 1px;
-  border: 1px solid var(--color-abyss-hairline);
-  border-radius: var(--radius-lg);
-  background: var(--landing-scrim);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
-}
-
-.lp-face-switch button {
-  padding: 6px 10px;
-  border: 0;
-  border-radius: calc(var(--radius-lg) - 3px);
-  background: none;
-  font-family: var(--font-geist-mono);
-  font-size: 0.5625rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--color-abyss-text-45);
-  cursor: pointer;
-}
-
-.lp-face-switch button[data-active="true"] {
-  background: var(--color-abyss-shell-glass);
-  color: var(--color-abyss-text);
 }
 
 .lp-main {
@@ -616,12 +530,16 @@
   mask: url("/brand/curfew-wordmark.png") left center / contain no-repeat;
 }
 
+/* Set for a grotesque, not for the serif this started as: less size, tighter
+   tracking and a real weight. A display serif can carry 100px because its
+   contrast does the work; a grotesque at that size just reads as a system
+   dialog. */
 .lp-headline {
   font-family: var(--lp-display);
-  font-weight: 400;
-  font-size: clamp(2.75rem, 7.4vw, 6.25rem);
-  line-height: 1.02;
-  letter-spacing: -0.015em;
+  font-weight: 500;
+  font-size: clamp(2.25rem, 5.6vw, 4.5rem);
+  line-height: 1.06;
+  letter-spacing: -0.035em;
   margin: 0;
 }
 
@@ -630,11 +548,13 @@
   color: var(--color-abyss-text-72);
 }
 
+/* The turn holds its emphasis by weight and colour, not by slope — Bricolage
+   has no italic worth setting a headline in. */
 .lp-headline-turn {
   display: block;
-  font-style: italic;
+  font-style: normal;
+  font-weight: 600;
   color: var(--color-abyss-text);
-  padding-left: 0.09em;
 }
 
 .lp-word {
@@ -724,9 +644,12 @@
      and the crest is what it is annotating. */
   max-width: 16ch;
   font-family: var(--lp-display);
-  font-size: clamp(2rem, 4.4vw, 3.5rem);
-  line-height: 1.06;
-  letter-spacing: -0.01em;
+  /* One notch down from the serif setting: a grotesque reads larger at the
+     same size, and these sit over the ribbon rather than on empty ground. */
+  font-weight: 500;
+  font-size: clamp(1.75rem, 3.8vw, 3rem);
+  line-height: 1.08;
+  letter-spacing: -0.03em;
   color: var(--color-abyss-text);
   opacity: 0;
   transform: translateY(14px);
@@ -864,10 +787,10 @@
 
 .lp-h2 {
   font-family: var(--lp-display);
-  font-weight: 400;
-  font-size: clamp(1.75rem, 3.4vw, 3rem);
-  line-height: 1.08;
-  letter-spacing: -0.012em;
+  font-weight: 500;
+  font-size: clamp(1.625rem, 3vw, 2.625rem);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
   margin: 0 0 var(--space-md);
   color: var(--color-abyss-text);
 }
@@ -1046,7 +969,9 @@
 .lp-stepper-n {
   display: block;
   font-family: var(--lp-display);
-  font-size: clamp(2.5rem, 5vw, 4.5rem);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  font-size: clamp(2.25rem, 4.2vw, 3.75rem);
   line-height: 1;
   color: var(--color-abyss-text-22);
   margin-bottom: var(--space-md);

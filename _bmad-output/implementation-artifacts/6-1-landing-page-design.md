@@ -14,7 +14,7 @@
 | D-1 | Landing hero object = **the energy arc as a physical ribbon** (WebGL), scroll-scrubbed. | Arjun, 2026-08-13 |
 | D-2 | `EXPERIENCE.md`'s "restrained, intention over speed, not spectacle" constraint on Landing motion is **overridden**. The Landing is a spectacle surface. The "logged-in surfaces stay still" half of UX-DR16 **still holds** — this is a Landing-only carve-out, not a licence to animate the dashboard. | Arjun, 2026-08-13 ("ignore the spec if needed") |
 | D-3 | Dependencies: add **Lenis** only. Motion built on the installed `framer-motion`; WebGL on the installed `three` + `@react-three/fiber`. No OGL, no anime.js, no GSAP — Vero's exact stack is not adopted. | Arjun, 2026-08-13 |
-| D-4 | Typeface: designer's call (see §4). | Arjun, 2026-08-13 |
+| D-4 | Typeface: designer's call (see §4). **SETTLED 2026-08-14: Bricolage Grotesque** — the "display serif" half of §4 was wrong and nine faces were tried before it gave way; see the round-two log. | Arjun, 2026-08-13 / 14 |
 | D-5 | Demo data comes from a **real account with demo data** Arjun owns, screen-recorded by Arjun. Not fabricated, not prod-empty. | Arjun, 2026-08-13 |
 
 > **⚑ Owed:** D-2 must be reflected back into `EXPERIENCE.md` (Interaction Primitives + Inspiration & Anti-patterns, both of which currently state the opposite) before this story is called done. Amending the spine is part of the story, not a follow-up.
@@ -463,7 +463,27 @@ frame. **Record at this size and the frame is whole.**
 
 Page is now ~8,100px, down from ~11,000. Gates: `tsc` clean, `eslint` clean (4 `<img>` warnings), 862 tests pass.
 
-Note for whoever commits the font decision: every display rule reads `--lp-display`, so the winner is one line in `.lp-root` plus deleting `FaceSwitcher.tsx`, the `[data-face]` blocks, and the losing families in `fonts.ts`. **None of the challengers may ship** — a rack of display families preloading is exactly the LCP failure §5 warns about.
+### D-4 settled — Bricolage Grotesque, 2026-08-14
+
+Arjun picked it off the round-two switcher. **§4 of this document is now wrong
+and stays only as the record of a decision that did not survive contact.** The
+reasoning it got right: the marketing surface has to read as authored where the
+app reads as a console. The reasoning it got wrong: that this required a serif.
+Nine faces were tried. What the page wanted was a grotesque with a voice —
+Curfew's wordmark *is* a condensed grotesque, so a grotesque headline rhymes
+with the logo in a way no serif did, and Bricolage's irregular, slightly drawn
+shapes keep it clear of Hanken's neutral console register.
+
+Removed with the decision: `FaceSwitcher.tsx`, the `[data-face]` blocks, and
+eight families from `fonts.ts` — Instrument Serif included, which nothing on
+either surface now loads. The settings the sans faces carried in the A/B are
+folded into the base rules: the headline is 4.5rem rather than 6.25rem at
+weight 500 with -0.035em tracking (a display serif can carry 100px because its
+contrast does the work; a grotesque at that size reads as a system dialog), the
+turn holds its emphasis by weight instead of slope, and the captions, `h2` and
+stepper numeral each come down a notch because a grotesque reads larger at the
+same size. Verified in-browser: one display family loads on `/landing`, nothing
+else.
 
 ## 6. What happens next
 
