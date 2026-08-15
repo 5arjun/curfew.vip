@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { AUTH_FAILURE_COPY } from "@/app/login/auth-copy";
+import { AUTH_FAILURE_COPY } from "@/app/(marketing)/login/auth-copy";
 
 // Sign-in providers row (Story 3.10, AC-9/AC-10, D-6/D-7): shows which of
 // Email / Google / Apple / Passkey are attached, with a link affordance for

@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { AUTH_FAILURE_COPY } from "@/app/login/auth-copy";
+import { AUTH_FAILURE_COPY } from "@/app/(marketing)/login/auth-copy";
 import { isValidPhone } from "./phone-validation";
 import type { PhoneActionState } from "./phone-state";
 

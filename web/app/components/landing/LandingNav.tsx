@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import {
   useMediaQuery,
@@ -68,6 +69,7 @@ export function LandingNav() {
   const colors = useMetalColors();
   const metal = useMediaQuery("(min-width: 761px)");
   const panelId = useId();
+  const pathname = usePathname();
   const speed = reduced ? 0 : hot ? 1 : 0.35;
 
   useEffect(() => {
@@ -77,7 +79,11 @@ export function LandingNav() {
 
     // The hero's own wordmark is the start of the flight path. On a marketing
     // route without a hero there is simply nothing to fly from, and the bar
-    // stays docked — which is already its default state.
+    // stays docked — which is already its default state. `pathname` is a
+    // dependency because this component outlives client navigation (it is
+    // mounted in the marketing layout): without it, leaving / for /faq or
+    // /features kept the travel measured against a hero that no longer
+    // existed, and the mark rendered flown-out over the new page's top.
     const hero = document.querySelector<HTMLElement>(".lp-wordmark");
     if (!hero || reduced) return;
 
@@ -154,7 +160,7 @@ export function LandingNav() {
       header.style.removeProperty("--lp-dock");
       mark.style.transform = "";
     };
-  }, [reduced]);
+  }, [reduced, pathname]);
 
   // Escape closes the sheet, and so does growing back to a width that has no
   // sheet — otherwise the disclosure stays "open" invisibly and the next
@@ -192,11 +198,10 @@ export function LandingNav() {
       <Link className="lp-nav-link" href="/features" onClick={() => setOpen(false)}>
         Features
       </Link>
-      {/* Not a link on purpose: the FAQ has not been written yet (Arjun,
-          2026-08-14, "leave the faq not wired"). A nav item that navigates
-          nowhere is worse than one that plainly does not navigate — this is a
-          label until there is a page, at which point it becomes a <Link>. */}
-      <span className="lp-nav-link lp-nav-link--pending">FAQ</span>
+      {/* A real link as of 2026-08-15 — the page it was waiting for exists. */}
+      <Link className="lp-nav-link" href="/faq" onClick={() => setOpen(false)}>
+        FAQ
+      </Link>
     </>
   );
 
