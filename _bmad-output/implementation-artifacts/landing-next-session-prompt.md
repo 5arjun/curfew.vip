@@ -1,17 +1,36 @@
 # Next-session prompt — landing page
 
-Written 2026-08-14, at the end of the session that put the mesh background and
-the nav bar on `curfew.vip`. Copy the block below into a fresh session.
+Rewritten 2026-08-14 at the end of the mobile pass. Copy the block below into a
+fresh session.
 
 ---
 
 I want to keep working on the **landing page** (`/`). Here is the state, so you
 do not rediscover it.
 
+## Start here: the page's primary CTA does nothing
+
+`LandingActions` in `Beats.tsx` renders
+`<MetalButton mode="text" label="Start your archive" />` with **no `href` and no
+`onClick`**. `MetalButton` falls back to a plain `<button type="button">` when
+there is no href, so the button presses, ripples, runs its shader — and
+navigates nowhere. It is live on `curfew.vip` right now, in all three
+placements: the hero, the pinned stepper, and the close.
+
+Verified on prod, not inferred: the hit targets render as `BUTTON` with
+`href: null`, and clicking leaves the URL on `https://curfew.vip/`.
+
+The fix is one prop, but the destination is a real decision and it is tangled up
+with the open question about signup below — the secondary CTA already goes to
+`#features`, and `Join` in the nav goes to `/login?intent=join`. Ask me where
+"Start your archive" should land before wiring it.
+
 ## Where it stands
 
-Shipped and live on `curfew.vip` as of commit `936ae8e` (deployment
-`dpl_DNAz1WSwgTpRLt6XjwNsrsZ2paHR`). Three things landed in that session:
+Shipped and live on `curfew.vip` as of commit `3c8cbf9` (deployment
+`dpl_GRSbtNfqHZCCrLMrpYL6JAXSBM75`), pushed to `origin/main`.
+
+An earlier session (`936ae8e`) landed three things:
 
 1. **A drifting WebGL mesh behind the whole page** — `MeshDrift.tsx`, mounted
    once in the marketing layout, `position: fixed`, one context for all beats.
@@ -20,8 +39,9 @@ Shipped and live on `curfew.vip` as of commit `936ae8e` (deployment
    while flat, both keyed to amplitude so they cost nothing once you scroll.
 3. **A nav bar the hero's wordmark flies into** — `LandingNav.tsx`.
 
-**The mobile pass (2026-08-14, NOT yet deployed).** Three things Arjun called
-out on a phone, all fixed and all verified in a real browser:
+**The mobile pass (2026-08-14, deployed).** Three things Arjun called out
+looking at the site on a phone, all fixed and all verified in a real browser
+against `curfew.vip` itself:
 
 1. **"The ribbon doesn't animate nicely on mobile, it looks 2d and plain."**
    It was not the ribbon — every phone was getting the SVG fallback, which has
@@ -172,17 +192,6 @@ browser and are settled:
   third of a viewport apart, so anything sized across the screen has to be
   measured from `size`, never chosen as a constant.
 
-## Gates and deploy
-
-From `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test` (862 tests, ~4s). All
-green at `936ae8e`. If typecheck reports a missing `app/page.js` or a stale
-route, delete `.next/dev` — leftover generated route types, not real errors.
-
-Deploy is **CLI, not git**: `vercel deploy --prod --yes` from the **repo root**
-(the link file is at the root; Root Directory is `web`). It uploads the local
-working tree, so **commit first** or prod ships code with no matching commit.
-Never run `supabase config push` — it would wipe the production auth allow-list.
-
 ## Open questions I have not ruled on
 
 1. The mesh is a full-screen shader that never leaves the viewport, so unlike
@@ -211,5 +220,49 @@ Never run `supabase config push` — it would wipe the production auth allow-lis
    roughly 29vh to 52vh off the bottom, status line under it. There is a real
    void between the caption and the crest. It reads as atmosphere against the
    mesh, but it has not been ruled on.
+8. **Signup is open on a page that is publicly linked.** Raised 2026-08-14:
+   Arjun asked to "disconnect the login/signup page — you can see the supabase
+   from there," then, on the facts, decided not to. Recording both halves so
+   this is not re-litigated from scratch:
 
-**What I actually want to do:** let's begin to also work on the mobile versino. few things that stood out to me, the ribbon doesnt animate nicely on mobile, it looks 2d and plain. also, the videos do not play, they just look like screenshots when i open the site on mobile. and lets make the menu animation when i tap it better. i've got a few animation skills, use those.
+   *The Supabase exposure is a non-issue and disconnecting `/login` would not
+   have addressed it anyway.* The project URL and key live in a SHARED chunk
+   (`3q_eq1q082l6_.js`) that `/` requests too, so they are already visible from
+   the landing page. And the key is `sb_publishable_` — the anon key, designed
+   to ship to browsers. Security advisors against prod returned no ERROR-level
+   findings and no anon-readable tables. The only warnings are four
+   `SECURITY DEFINER` functions callable by *signed-in* users (`sync_set`,
+   `sync_library_roster`, `sync_library_add_events`, `set_agent_status`) and
+   leaked-password protection being off; neither is reachable anonymously.
+
+   *What IS open:* `enable_signup = true` and `/login` is linked from the nav in
+   two places, so a stranger who finds `curfew.vip` can create a real row in
+   `auth.users` today. Nothing in the DB is at risk — this is a launch-timing
+   question, not a security one. **Prod's actual setting was never confirmed**,
+   because checking it from the outside means creating an account. Look in the
+   Supabase dashboard, and remember prod carries an auth allow-list that
+   `supabase config push` would destroy — the local `config.toml` is not
+   evidence of what prod does.
+
+   If the answer is "not yet": turning signup off in Supabase closes it however
+   someone reaches the page, which unlinking the nav does not. The unlink was
+   scoped and not built — nav `Log in` and `Join` still point at `/login`.
+
+## Gates and deploy
+
+From `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test` (862 tests, ~6s). All
+green at `3c8cbf9`. If typecheck reports a missing `app/page.js` or a stale
+route, delete `.next/dev` — leftover generated route types, not real errors.
+
+`git` on PATH is 2.15 and too old for `rev-parse --abbrev-ref`-era flags and
+`worktree remove` — use `/usr/bin/git` (2.39).
+
+Deploy is **CLI, not git**: `vercel deploy --prod --yes` from the **repo root**
+(the link file is at the root; Root Directory is `web`). It uploads the local
+working tree, so **commit first** or prod ships code with no matching commit;
+then push, so GitHub matches what is running. Never run `supabase config push`
+— it would wipe the production auth allow-list.
+
+**What I actually want to do:** _(replace this line — the mobile pass it used to
+describe is done and shipped. Start from the CTA at the top unless you have
+something else in mind.)_
