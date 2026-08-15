@@ -138,7 +138,9 @@ fn parse_args() -> Args {
     while let Some(a) = it.next() {
         match a.as_str() {
             "--catalog-dir" => {
-                catalog_dir = Some(PathBuf::from(it.next().expect("--catalog-dir takes a path")))
+                catalog_dir = Some(PathBuf::from(
+                    it.next().expect("--catalog-dir takes a path"),
+                ))
             }
             "--write" => write = true,
             other => panic!("unknown argument {other}"),
@@ -176,9 +178,7 @@ fn main() {
     // Entries a human wrote — everything not carrying our own stamp.
     let hand: BTreeMap<String, Map<String, Value>> = existing
         .iter()
-        .filter(|(_, v)| {
-            v.get("source").and_then(Value::as_str) != Some(SCRUB_SOURCE)
-        })
+        .filter(|(_, v)| v.get("source").and_then(Value::as_str) != Some(SCRUB_SOURCE))
         .filter_map(|(k, v)| v.as_object().map(|o| (k.clone(), o.clone())))
         .collect();
 
@@ -201,7 +201,10 @@ fn main() {
         if base_title.is_none() && base_artist.is_none() {
             continue;
         }
-        let before = (base_title.clone().unwrap_or_default(), base_artist.clone().unwrap_or_default());
+        let before = (
+            base_title.clone().unwrap_or_default(),
+            base_artist.clone().unwrap_or_default(),
+        );
         let (after_title, after_artist, rules) = scrub(&before.0, &before.1);
         if rules.is_empty() {
             continue;
@@ -240,7 +243,11 @@ fn main() {
         println!(
             "{}{}\n  title  {:?}\n      -> {:?}\n  artist {:?}\n      -> {:?}\n  rules  {}",
             c.track_id,
-            if c.identity_moves { "  (identity re-minted)" } else { "" },
+            if c.identity_moves {
+                "  (identity re-minted)"
+            } else {
+                ""
+            },
             c.before.0,
             c.after.0,
             c.before.1,
@@ -274,7 +281,8 @@ fn main() {
     let sorted: BTreeMap<String, Value> = tracks.into_iter().collect();
     overlay.insert("tracks".into(), json!(sorted));
 
-    let mut out = serde_json::to_string_pretty(&Value::Object(overlay)).expect("overlay serializes");
+    let mut out =
+        serde_json::to_string_pretty(&Value::Object(overlay)).expect("overlay serializes");
     out.push('\n');
     std::fs::write(&overlay_path, out)
         .unwrap_or_else(|e| panic!("writing {}: {e}", overlay_path.display()));
@@ -318,7 +326,11 @@ fn domain_end(s: &str) -> Option<usize> {
     }
     // Swallow a trailing `/path` so `instagram.com/djtejasofficial` goes whole.
     if i < bytes.len() && bytes[i] == b'/' {
-        while i < bytes.len() && !(bytes[i] as char).is_whitespace() && bytes[i] != b']' && bytes[i] != b')' {
+        while i < bytes.len()
+            && !(bytes[i] as char).is_whitespace()
+            && bytes[i] != b']'
+            && bytes[i] != b')'
+        {
             i += 1;
         }
     }
@@ -342,7 +354,10 @@ fn find_domain(s: &str) -> Option<(usize, usize)> {
                 .map(|c| c.is_alphanumeric() || c == '-' || c == '.')
                 .unwrap_or(false);
         if at_boundary {
-            let rest = rest.strip_prefix("https://").or_else(|| rest.strip_prefix("http://")).unwrap_or(rest);
+            let rest = rest
+                .strip_prefix("https://")
+                .or_else(|| rest.strip_prefix("http://"))
+                .unwrap_or(rest);
             let offset = s.len() - start - rest.len();
             if let Some(end) = domain_end(rest) {
                 return Some((start, start + offset + end));
@@ -391,7 +406,11 @@ fn strip_mp3(s: &str) -> String {
     while let Some(idx) = lower[from..].find(".mp3") {
         let at = from + idx;
         let end = at + 4;
-        let next_ok = out[end..].chars().next().map(|c| !c.is_alphanumeric()).unwrap_or(true);
+        let next_ok = out[end..]
+            .chars()
+            .next()
+            .map(|c| !c.is_alphanumeric())
+            .unwrap_or(true);
         if next_ok {
             out.replace_range(at..end, "");
             return strip_mp3(&out);
@@ -422,8 +441,8 @@ fn tidy(s: &str) -> String {
     out = out.replace(" ,", ",");
     let trimmed = out
         .trim()
-        .trim_start_matches(|c| matches!(c, '-' | '–' | '—' | '|' | ','))
-        .trim_end_matches(|c| matches!(c, '-' | '–' | '—' | '|' | ','))
+        .trim_start_matches(['-', '–', '—', '|', ','])
+        .trim_end_matches(['-', '–', '—', '|', ','])
         .trim()
         .to_string();
     let mut out = trimmed;
@@ -442,10 +461,14 @@ fn strip_sites(s: &str) -> (String, bool) {
 
 /// Rule 2: an artist that is nothing BUT a site stamp, reduced to its handle.
 fn site_handle(s: &str) -> Option<String> {
-    let trimmed = s.trim().trim_matches(|c: char| !c.is_alphanumeric() && c != '/' && c != ':');
+    let trimmed = s
+        .trim()
+        .trim_matches(|c: char| !c.is_alphanumeric() && c != '/' && c != ':');
     let (a, b) = find_domain(trimmed)?;
     // Nothing but the stamp: no other alphanumeric content around it.
-    if trimmed[..a].chars().any(char::is_alphanumeric) || trimmed[b..].chars().any(char::is_alphanumeric) {
+    if trimmed[..a].chars().any(char::is_alphanumeric)
+        || trimmed[b..].chars().any(char::is_alphanumeric)
+    {
         return None;
     }
     let token = &trimmed[a..b];
@@ -476,7 +499,9 @@ fn strip_lead_num(s: &str, guarded: bool) -> (String, bool) {
     while chars.get(i).is_some_and(|c| c.is_whitespace()) {
         i += 1;
     }
-    let punct = chars.get(i).is_some_and(|c| matches!(c, '.' | '-' | ')' | '_'));
+    let punct = chars
+        .get(i)
+        .is_some_and(|c| matches!(c, '.' | '-' | ')' | '_'));
     if punct {
         i += 1;
         while chars.get(i).is_some_and(|c| c.is_whitespace()) {
@@ -631,8 +656,16 @@ fn scrub(orig_title: &str, orig_artist: &str) -> (String, String, Vec<String>) {
 
     // Rule 6 — never empty a field. Falls back to the ORIGINAL, controls and
     // all: an unreadable value still beats deleting the track (§4.3).
-    let t_out = if t_final.trim().is_empty() { orig_title.to_string() } else { t_final };
-    let a_out = if a_us.trim().is_empty() { orig_artist.to_string() } else { a_us };
+    let t_out = if t_final.trim().is_empty() {
+        orig_title.to_string()
+    } else {
+        t_final
+    };
+    let a_out = if a_us.trim().is_empty() {
+        orig_artist.to_string()
+    } else {
+        a_us
+    };
 
     // Compared against the originals, so a control-character-only cleanup still
     // counts as a correction.
@@ -656,7 +689,10 @@ mod tests {
         assert_eq!(s("Rangtaari - DJMaza.MS", "Dev Negi").0, "Rangtaari");
         assert_eq!(s("Ghungroo (SongsMp3.Cool)", "Arijit Singh").0, "Ghungroo");
         assert_eq!(
-            s("Blue Eyes Remix - Dj Sukhi[ www.DjsDrive.In ]", "[ www.DjsDrive.In ]"),
+            s(
+                "Blue Eyes Remix - Dj Sukhi[ www.DjsDrive.In ]",
+                "[ www.DjsDrive.In ]"
+            ),
             ("Blue Eyes Remix - Dj Sukhi".into(), "DjsDrive".into())
         );
         // The edit marker after the stamp is not part of the stamp.
@@ -669,11 +705,17 @@ mod tests {
     #[test]
     fn reduces_a_site_only_artist_to_its_handle_instead_of_emptying_it() {
         // Emptying would strip the row of its identity entirely (§4.3).
-        assert_eq!(s("Fitoor", "www.instagram.com/djtejasofficial").1, "djtejasofficial");
+        assert_eq!(
+            s("Fitoor", "www.instagram.com/djtejasofficial").1,
+            "djtejasofficial"
+        );
         assert_eq!(s("Tote Tote", "www.JP-Ent.com").1, "JP-Ent");
         assert_eq!(s("Jalebi Baby Remix", "DJsLover.com").1, "DJsLover");
         // A path segment that carries no letters falls back to the host label.
-        assert_eq!(s("Yaara Dhol Bajake", "www.hindu-place.com/07").1, "hindu-place");
+        assert_eq!(
+            s("Yaara Dhol Bajake", "www.hindu-place.com/07").1,
+            "hindu-place"
+        );
     }
 
     #[test]
@@ -684,7 +726,10 @@ mod tests {
             ("24 (Remix) (HH Dirty Intro)", "Money Man ft Lil Baby"),
             ("2 Reasons (Clean)", "Trey Songz ft T.I."),
             ("130 Coco - Patty Mashup", "PATTY"),
-            ("158 - EXTENDED MIX - Aata Majhi Satakli", "@dj.prince.jaipur"),
+            (
+                "158 - EXTENDED MIX - Aata Majhi Satakli",
+                "@dj.prince.jaipur",
+            ),
         ] {
             assert_eq!(s(t, a).0, t, "{t:?} must survive untouched");
         }
@@ -693,25 +738,37 @@ mod tests {
     #[test]
     fn strips_a_leading_track_number_only_in_its_unambiguous_forms() {
         assert_eq!(s("19.Jugnu - Badshah", "DJ ABHIJIT").0, "Jugnu - Badshah");
-        assert_eq!(s("01 - Kudiya Shehar Di", "Daler Mehndi").0, "Kudiya Shehar Di");
+        assert_eq!(
+            s("01 - Kudiya Shehar Di", "Daler Mehndi").0,
+            "Kudiya Shehar Di"
+        );
         assert_eq!(s("08 Maiyya Mainu", "Dj Tejas").0, "Maiyya Mainu"); // zero-padded
-        // Not zero-padded, no punctuation, and nothing else junky about the row.
+                                                                        // Not zero-padded, no punctuation, and nothing else junky about the row.
         assert_eq!(s("13 Fitoor", "Dj Tejas").0, "13 Fitoor");
         // …but the same title IS stripped once the row proves junky.
-        assert_eq!(s("13 Fitoor _ Shamshera", "www.instagram.com/djtejasofficial").0, "Fitoor Shamshera");
+        assert_eq!(
+            s("13 Fitoor _ Shamshera", "www.instagram.com/djtejasofficial").0,
+            "Fitoor Shamshera"
+        );
     }
 
     #[test]
     fn recases_shouting_titles_but_never_an_artists_own_styling() {
         assert_eq!(
             s("MORNI BANKE (THIRD DIMENSION REMIX)", "DJ HARSH BHUTANI"),
-            ("Morni Banke (Third Dimension Remix)".into(), "DJ HARSH BHUTANI".into())
+            (
+                "Morni Banke (Third Dimension Remix)".into(),
+                "DJ HARSH BHUTANI".into()
+            )
         );
         assert_eq!(s("Another World (Clean Extended)", "MEDUZA").1, "MEDUZA");
         assert_eq!(s("Straight Outta Compton (Dirty)", "N.W.A.").1, "N.W.A.");
         assert_eq!(s("MAGIC [AFTERJOY EDIT]", "AFTERJOY").1, "AFTERJOY");
         // An artist that is a filename fragment — proven by its track number.
-        assert_eq!(s("O MEHNDI RANG LAYEE", "04 CHAL MERE BHAI").1, "Chal Mere Bhai");
+        assert_eq!(
+            s("O MEHNDI RANG LAYEE", "04 CHAL MERE BHAI").1,
+            "Chal Mere Bhai"
+        );
     }
 
     #[test]
@@ -731,7 +788,10 @@ mod tests {
 
     #[test]
     fn repairs_control_characters_without_moving_the_identity() {
-        let (t, a, rules) = scrub("act ii: date @ 8\n- MarkCutz Remix (Dirty)", "4Batz & Drake\n\n");
+        let (t, a, rules) = scrub(
+            "act ii: date @ 8\n- MarkCutz Remix (Dirty)",
+            "4Batz & Drake\n\n",
+        );
         assert_eq!(t, "act ii: date @ 8 - MarkCutz Remix (Dirty)");
         assert_eq!(a, "4Batz & Drake");
         assert!(rules.contains(&"control-chars".to_string()));
@@ -749,7 +809,9 @@ mod tests {
     fn leaves_a_merely_untrimmed_tag_alone() {
         // Trailing space is invisible in every surface (HTML collapses it) and
         // invisible to the identity fold — a correction here would be noise.
-        assert!(scrub("Champion (Dirty)", "NAV ft Travis Scott ").2.is_empty());
+        assert!(scrub("Champion (Dirty)", "NAV ft Travis Scott ")
+            .2
+            .is_empty());
     }
 
     #[test]
@@ -768,9 +830,15 @@ mod tests {
         // rule that is not a fixed point would still be a smell, and would make
         // a hand-edited overlay entry drift on the next run.
         for (t, a) in [
-            ("19.Jugnu - Badshah - (Dj Abhijit 2021 Remix)", "DJ ABHIJIT www.downloads4djs.co.in"),
+            (
+                "19.Jugnu - Badshah - (Dj Abhijit 2021 Remix)",
+                "DJ ABHIJIT www.downloads4djs.co.in",
+            ),
             ("Marathi Dance_Zingaat - MahaMP3.Com", "Ajay Gogavale"),
-            ("MORNI BANKE (THIRD DIMENSION REMIX)", "https://www.facebook.com/whatis3d/"),
+            (
+                "MORNI BANKE (THIRD DIMENSION REMIX)",
+                "https://www.facebook.com/whatis3d/",
+            ),
         ] {
             let (t1, a1, _) = scrub(t, a);
             let (t2, a2, _) = scrub(&t1, &a1);
