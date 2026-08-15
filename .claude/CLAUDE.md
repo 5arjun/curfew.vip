@@ -1,5 +1,23 @@
 # Project Instructions
 
+## Deploying
+
+**Push is the deploy. Never run `vercel --prod` / `vercel deploy --prod`.**
+
+The GitHub integration is connected: pushing to `main` builds and promotes to
+production at curfew.vip automatically. There is no promote step. Running the
+Vercel CLI on top of a push deploys the same commit a *second* time and, being
+later, wins — two builds racing for production. CLI deploys also upload the
+**working tree** rather than the commit (`gitDirty: 1`), so they ship
+uncommitted files and what runs on prod need not match any commit.
+
+`vercel --prod` is denied in `.claude/settings.json`. The rule is a speed bump,
+not a sandbox — don't work around it.
+
+Because push is the deploy, a bad push is live in minutes. For anything that
+deserves a look first, branch and open a PR: the integration builds a preview
+URL per branch. Roll back from the Vercel dashboard, not by force-pushing.
+
 ## Custom Skills Audit Cycle
 
 For each new page, feature, or major component, run through this cycle. Each phase has specific skills that should be invoked in order.

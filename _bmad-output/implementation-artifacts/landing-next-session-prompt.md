@@ -257,11 +257,23 @@ route, delete `.next/dev` — leftover generated route types, not real errors.
 `git` on PATH is 2.15 and too old for `rev-parse --abbrev-ref`-era flags and
 `worktree remove` — use `/usr/bin/git` (2.39).
 
-Deploy is **CLI, not git**: `vercel deploy --prod --yes` from the **repo root**
-(the link file is at the root; Root Directory is `web`). It uploads the local
-working tree, so **commit first** or prod ships code with no matching commit;
-then push, so GitHub matches what is running. Never run `supabase config push`
-— it would wipe the production auth allow-list.
+Deploy is **git, not CLI** (corrected 2026-08-15 — this section previously said
+the opposite, which is what produced the double deploys below). The GitHub
+integration is connected and live: **pushing to `main` builds and promotes to
+production automatically**. Push is the deploy. There is no promote step.
+
+**Do not run `vercel deploy --prod`.** The push has already deployed; the CLI
+then builds the same commit a second time and, being later, wins. Both builds
+were observed on 2026-08-15, 9s apart on `56775eb` and 23s apart on `4857802`.
+Worse, CLI deploys upload the **working tree** (`gitDirty: 1` on every one of
+them), so they ship uncommitted files and what runs on prod need not match any
+commit. The git-triggered build always builds exactly the pushed SHA.
+
+Since push is the deploy, a bad push is live in minutes. Use a branch and a PR
+when a change deserves a look first — the integration gives every branch its own
+preview URL — and roll back from the Vercel dashboard if something lands wrong.
+
+Never run `supabase config push` — it would wipe the production auth allow-list.
 
 **What I actually want to do:** _(replace this line — the mobile pass it used to
 describe is done and shipped. Start from the CTA at the top unless you have
