@@ -502,6 +502,12 @@
   height: 100vh;
   overflow: hidden;
   isolation: isolate;
+  /* The exit dissolve — written per scroll frame by useStage (page.tsx), 1 for
+     the whole beat and easing to 0 across the last stretch of travel, so the
+     stage hands off on a breath of the mesh instead of releasing mid-
+     composition with the strip and half a tracklist stranded in frame. No
+     transition: scroll-linked values lag if eased twice. */
+  opacity: var(--lp-stage-fade, 1);
 }
 
 /* The static steel-indigo pool that used to live here is OFF while the mesh is
@@ -1256,6 +1262,139 @@
   }
 }
 
+/* ── Works-with rail ─────────────────────────────────────────────────────────
+   The decks Curfew reads, on the opening frame's empty right half (Arjun,
+   2026-08-15). Instrument register, not marketing register: the tracklist
+   column's mono head and hairlines, the real wordmarks masked in the same ink
+   ramp as the Curfew mark, and one lit dot doing the talking — Serato lands
+   now, the other two are being waited for, and nothing here needs a sentence
+   to say it. Fades and blurs out on the hero's own gate so the whole opening
+   frame leaves as one. */
+.lp-support {
+  position: absolute;
+  right: var(--lp-gutter);
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  width: clamp(184px, 16vw, 228px);
+  transition:
+    opacity var(--motion-duration-slow) var(--motion-ease-standard),
+    filter var(--motion-duration-slow) var(--motion-ease-standard);
+}
+
+.lp-support[data-shown="false"] {
+  opacity: 0;
+  filter: blur(6px);
+  pointer-events: none;
+}
+
+.lp-support-head {
+  margin: 0 0 var(--space-sm);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--color-abyss-hairline);
+  font-family: var(--font-geist-mono);
+  font-size: 0.5625rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-abyss-text-45);
+}
+
+.lp-support-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.lp-support-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: 15px 0;
+}
+
+.lp-support-row + .lp-support-row {
+  border-top: 1px solid var(--color-abyss-hairline);
+}
+
+/* The wordmarks: PNG-as-mask ink ramp, exactly the hero wordmark's treatment,
+   so all four marks on this screen — Curfew's included — are one material. */
+.lp-support-logo {
+  display: block;
+  background: linear-gradient(
+    180deg,
+    var(--color-abyss-text-72) 0%,
+    var(--color-abyss-text-45) 100%
+  );
+}
+
+.lp-support-logo--serato {
+  width: 66px;
+  aspect-ratio: 480 / 120;
+  -webkit-mask: url("/brand/serato-wordmark.svg") left center / contain no-repeat;
+  mask: url("/brand/serato-wordmark.svg") left center / contain no-repeat;
+}
+
+.lp-support-logo--rekordbox {
+  width: 96px;
+  aspect-ratio: 180 / 26;
+  -webkit-mask: url("/brand/rekordbox-wordmark.svg") left center / contain no-repeat;
+  mask: url("/brand/rekordbox-wordmark.svg") left center / contain no-repeat;
+}
+
+/* No public vector exists for the Traktor mark, so it is set typographically
+   at the same optical weight as its neighbours — background-clipped so it
+   wears the identical ink ramp — until a real wordmark replaces it. */
+.lp-support-logo--traktor {
+  font-family: var(--font-inter);
+  font-size: 0.875rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  line-height: 1;
+  -webkit-background-clip: text;
+  background-clip: text;
+  /* The ink ramp shows through the glyphs, so the text's own paint must be
+     fully clear — --shadow-ink-0 is the zero-alpha ink this file already uses
+     for every gradient tail. */
+  color: var(--shadow-ink-0);
+}
+
+/* The waiting rows sit back; the working row holds full ink. */
+.lp-support-row[data-live="false"] .lp-support-logo {
+  opacity: 0.55;
+}
+
+.lp-support-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  font-family: var(--font-geist-mono);
+  font-size: 0.5625rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-abyss-text-45);
+}
+
+.lp-support-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-full);
+  background: var(--color-abyss-text-22);
+}
+
+.lp-support-row[data-live="true"] .lp-support-status {
+  color: var(--color-abyss-text-72);
+}
+
+/* The one lit thing on the rail — the same accent and glow as the bead riding
+   the ribbon, because both mean "live". */
+.lp-support-row[data-live="true"] .lp-support-dot {
+  background: var(--color-abyss-accent);
+  box-shadow: 0 0 8px var(--color-abyss-accent-glow);
+}
+
 /* ── Explorer captions ──────────────────────────────────────────────────── */
 .lp-captions {
   position: absolute;
@@ -1390,6 +1529,47 @@
   .lp-axis-tick[data-edge="end"] {
     display: none;
   }
+
+  /* The rail lies down: three columns across the space between the hero's
+     copy (ends ~52vh) and the resting horizon (~85vh). Statuses drop under
+     their marks; the hairlines go with the vertical arrangement they ruled. */
+  .lp-support {
+    top: auto;
+    bottom: 17vh;
+    left: var(--lp-gutter);
+    right: var(--lp-gutter);
+    width: auto;
+    transform: none;
+  }
+
+  .lp-support-list {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-lg);
+  }
+
+  .lp-support-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 9px;
+    padding: 0;
+  }
+
+  .lp-support-row + .lp-support-row {
+    border-top: 0;
+  }
+
+  .lp-support-logo--serato {
+    width: 58px;
+  }
+
+  .lp-support-logo--rekordbox {
+    width: 86px;
+  }
+
+  .lp-support-logo--traktor {
+    font-size: 0.78125rem;
+  }
 }
 
 /* ── Reduced motion ─────────────────────────────────────────────────────────
@@ -1411,11 +1591,13 @@
   .lp-hero,
   .lp-caption,
   .lp-poi,
-  .lp-ribbon-svg {
+  .lp-ribbon-svg,
+  .lp-support {
     transition: none;
   }
 
-  .lp-hero[data-shown="false"] {
+  .lp-hero[data-shown="false"],
+  .lp-support[data-shown="false"] {
     filter: none;
   }
 }
@@ -1452,124 +1634,82 @@
   color: var(--color-abyss-text-45);
 }
 
-/* ── 03 Cover ─────────────────────────────────────────────────────────────── */
+/* ── 03 Cover ─────────────────────────────────────────────────────────────────
+   Framed, not full-bleed (Arjun, 2026-08-15). The full-viewport crop showed a
+   third of the interface enlarged — cursor like a hand on the glass, tracklist
+   rows sliced mid-word — and its edges cut hard seams against the beats on
+   either side. The film now sits whole in the page's one product-footage frame
+   (hairline + radius, same family as the stepper and /features), at the
+   largest size that can never crop: near full-width, capped against viewport
+   height. useSettleScale carries it from 0.955 to 1 as it arrives. */
 .lp-cover {
   position: relative;
-  height: 100vh;
-  overflow: hidden;
+  /* Rises into the stage's final screenful rather than waiting below it
+     (Arjun, 2026-08-15: "a bit too much empty space"). The stage is fully
+     dissolved by p=0.96, so what this overlaps is a ghost — the frame enters
+     while the last of the ribbon scene is still breathing out, a crossfade
+     instead of a dead viewport of mesh. Top padding is a fraction of the
+     bottom's for the same reason; the breath before the beat is the fade's
+     job now, not the layout's. */
+  margin-top: -14vh;
+  padding: clamp(24px, 6vh, 64px) var(--lp-gutter) clamp(64px, 14vh, 140px);
   display: grid;
   place-items: center;
 }
 
-.lp-cover-media {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  opacity: 0;
-  transform: scale(1.04);
-  transition:
-    opacity var(--motion-duration-liquid-grand) var(--motion-ease-liquid),
-    transform var(--motion-duration-liquid-grand) var(--motion-ease-liquid);
-}
-
-.lp-cover[data-shown="true"] .lp-cover-media {
-  opacity: 1;
-  transform: scale(1);
-}
-
-/* Same corner, different register (Arjun, 2026-08-14). This was a 10px mono
-   uppercase stamp reading as metadata; it is now a sentence at reading size,
-   so it takes the display face and the page's full text colour. The position
-   is deliberately unchanged — top-left of the frame, on the gutter. */
-.lp-cover-tag {
-  position: absolute;
-  left: var(--lp-gutter);
-  top: var(--space-xl);
-  /* Establishes the stacking context the ::before ground lives inside, so a
-     z-index of -1 lands above the film rather than behind it. */
-  z-index: 2;
-  margin: 0;
-  font-family: var(--lp-display);
-  font-weight: 500;
-  /* Bigger again (Arjun, 2026-08-14) — it now sits in headline territory
-     rather than caption territory, which is what "in a nice size" over a
-     full-bleed film turned out to mean. */
-  font-size: clamp(2.25rem, 5vw, 4rem);
-  line-height: 1.05;
-  letter-spacing: -0.03em;
-  color: var(--color-abyss-text);
-  text-shadow: 0 2px 18px var(--shadow-ink-80);
-}
-
-/* The same ground beat 04's copy carries, at this one's scale: a flat pool of
-   base colour plus a real blur of the video, both faded out by a radial mask so
-   the treatment has no edge of its own. Two words over moving footage need it
-   more than a paragraph does — there is less type to hold the eye. */
-.lp-cover-tag::before {
-  content: "";
-  position: absolute;
-  inset: -0.7em -1.5em;
-  z-index: -1;
-  background: var(--landing-scrim);
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
-  -webkit-mask: radial-gradient(
-    62% 58% at 50% 50%,
-    var(--color-abyss-text) 0%,
-    var(--shadow-ink-0) 100%
-  );
-  mask: radial-gradient(62% 58% at 50% 50%, var(--color-abyss-text) 0%, var(--shadow-ink-0) 100%);
-  pointer-events: none;
-}
-
-@media (prefers-reduced-transparency: reduce) {
-  .lp-cover-tag::before {
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
-}
-
-/* ── 04 Capture ───────────────────────────────────────────────────────────────
-   One film, pushed right and made large, with the copy standing over its left
-   edge (Arjun, 2026-08-13). The overlap is the point: two side-by-side panels
-   read as a slide, a caption lying across the image reads as a page. */
-.lp-diptych {
-  padding: 14vh var(--lp-gutter);
-}
-
-.lp-diptych-stage {
+/* Mirror of the diptych's stage: film right, copy over its left edge. */
+.lp-cover-stage {
   position: relative;
+  width: 100%;
   display: flex;
   justify-content: flex-end;
 }
 
-.lp-diptych-film {
-  /* Wide enough that its left edge runs well under the copy — at 80% the two
-     only grazed each other (44px), which reads as a collision rather than a
-     layer. Measured at 1440: the sentence now lies ~135px over the film. */
+.lp-cover-frame {
+  position: relative;
+  /* The diptych's own measure — wide enough that the copy lies well over the
+     film rather than grazing it. The two beats are one composition mirrored,
+     so they share the number. */
   width: 84%;
   aspect-ratio: 16 / 9;
-  object-fit: cover;
   border-radius: var(--radius-xl);
+  overflow: hidden;
   border: 1px solid var(--color-abyss-hairline);
-  opacity: 0;
-  transform: translateY(28px);
-  transition:
-    opacity var(--motion-duration-liquid-open) var(--motion-ease-liquid),
-    transform var(--motion-duration-liquid-open) var(--motion-ease-liquid);
+  /* Deeper than the stepper's frame: these two are the reveals, sitting
+     alone on the mesh with nothing else in the composition to ground them. */
+  box-shadow: 0 32px 90px var(--shadow-ink-30);
+  will-change: transform;
 }
 
-.lp-diptych[data-shown="true"] .lp-diptych-film {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-/* Centred by flex, not by a -50% transform: the transform belongs to the
-   entrance alone, so `transform: none` under prefers-reduced-motion cannot
-   quietly drop the copy half a block down the page. */
-.lp-diptych-copy {
+/* The film's aspect equals the frame's, so object-fit: cover here is a no-crop
+   fit — it exists to absorb sub-pixel rounding at the frame's edges. */
+.lp-cover-media {
   position: absolute;
-  left: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity var(--motion-duration-liquid-grand) var(--motion-ease-liquid);
+}
+
+.lp-cover[data-shown="true"] .lp-cover-media {
+  opacity: 1;
+}
+
+/* ── The over-film copy, shared by beats 03 and 04 ───────────────────────────
+   One class, two mirrors (Arjun, 2026-08-15: "same parallax effect and shadow
+   for both"). Everything the two beats' captions share lives here — the
+   vertical centring, the entrance, the text-shadow, the scrim-and-blur ground
+   — so the pair cannot drift apart. The variants hold only what mirrors: which
+   edge the copy stands on, and which way the ground's pool faces.
+
+   Centred by flex, not by a -50% transform: the transform belongs to
+   useParallax, which writes it every frame — a transition on the same property
+   would fight the rAF and smear the whole travel. Entrance is opacity ONLY,
+   for the same reason. */
+.lp-overcopy {
+  position: absolute;
   inset-block: 0;
   z-index: 2;
   display: flex;
@@ -1577,33 +1717,46 @@
   justify-content: center;
   max-width: 36ch;
   opacity: 0;
-  /* Entrance is opacity ONLY. `transform` belongs to useParallax, which writes
-     it every frame — a transition on the same property would fight the rAF and
-     smear the whole travel. */
   transition: opacity var(--motion-duration-liquid-open) var(--motion-ease-liquid);
   transition-delay: 140ms;
   will-change: transform;
 }
 
-.lp-diptych[data-shown="true"] .lp-diptych-copy {
+.lp-overcopy--left {
+  left: 0;
+}
+
+.lp-overcopy--right {
+  right: 0;
+  align-items: flex-end;
+  text-align: right;
+}
+
+.lp-cover[data-shown="true"] .lp-overcopy,
+.lp-diptych[data-shown="true"] .lp-overcopy {
   opacity: 1;
 }
 
 /* The type has to survive whatever frame the film happens to be on, so it
    carries its own ground: a flat pool of base colour AND a real blur of the
-   video behind it, both faded out by the same radial mask so the treatment has
-   no edge of its own. A hard-edged plate would read as a card sitting on the
+   video behind it, both faded out by a radial mask so the treatment has no
+   edge of its own. A hard-edged plate would read as a card sitting on the
    video; this reads as the video falling out of focus behind the sentence.
    (Arjun, 2026-08-14: "a bit of a drop shadow or a slight blur behind the text
-   but above the video".) */
-.lp-diptych-copy::before {
+   but above the video".) The pool leans toward the film — the long overhang
+   faces whichever side the footage is on. */
+.lp-overcopy::before {
   content: "";
   position: absolute;
-  inset: 0 -34% 0 -60%;
   z-index: -1;
   background: var(--landing-scrim);
   -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
+  pointer-events: none;
+}
+
+.lp-overcopy--left::before {
+  inset: 0 -34% 0 -60%;
   -webkit-mask: radial-gradient(
     58% 54% at 42% 50%,
     var(--color-abyss-text) 0%,
@@ -1614,21 +1767,73 @@
     var(--color-abyss-text) 0%,
     var(--shadow-ink-0) 100%
   );
-  pointer-events: none;
+}
+
+.lp-overcopy--right::before {
+  inset: 0 -60% 0 -34%;
+  -webkit-mask: radial-gradient(
+    58% 54% at 58% 50%,
+    var(--color-abyss-text) 0%,
+    var(--shadow-ink-0) 100%
+  );
+  mask: radial-gradient(
+    58% 54% at 58% 50%,
+    var(--color-abyss-text) 0%,
+    var(--shadow-ink-0) 100%
+  );
 }
 
 /* The blur is the legibility mechanism; without it the flat scrim alone would
    be a grey rectangle over the footage. */
 @media (prefers-reduced-transparency: reduce) {
-  .lp-diptych-copy::before {
+  .lp-overcopy::before {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
 }
 
-.lp-diptych-copy .lp-h2,
-.lp-diptych-copy .lp-body {
+.lp-overcopy .lp-h2,
+.lp-overcopy .lp-body {
   text-shadow: 0 2px 18px var(--shadow-ink-80);
+}
+
+/* ── 04 Capture ───────────────────────────────────────────────────────────────
+   One film, pushed LEFT and made large, with the copy standing over its right
+   edge — beat 03's composition mirrored (Arjun, 2026-08-15). The overlap is
+   still the point: two side-by-side panels read as a slide, a caption lying
+   across the image reads as a page. The copy itself is the shared .lp-overcopy
+   above; only the film's own entrance lives here. */
+.lp-diptych {
+  padding: 14vh var(--lp-gutter);
+}
+
+.lp-diptych-stage {
+  position: relative;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.lp-diptych-film {
+  /* Wide enough that its edge runs well under the copy — at 80% the two only
+     grazed each other (44px), which reads as a collision rather than a layer. */
+  width: 84%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--color-abyss-hairline);
+  /* The same ground shadow the cover frame carries — the mirrored pair should
+     sit in the room the same way. */
+  box-shadow: 0 32px 90px var(--shadow-ink-30);
+  opacity: 0;
+  transform: translateY(28px);
+  transition:
+    opacity var(--motion-duration-liquid-open) var(--motion-ease-liquid),
+    transform var(--motion-duration-liquid-open) var(--motion-ease-liquid);
+}
+
+.lp-diptych[data-shown="true"] .lp-diptych-film {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 /* ── 05 Stepper ───────────────────────────────────────────────────────────── */
@@ -1845,28 +2050,34 @@
 }
 
 @media (max-width: 860px) {
-  /* No room to lie the copy across the film at this width — it stacks, and the
-     scrim comes off with the overlap that made it necessary. */
+  /* No room to lie the copy across the film at this width — both mirrored
+     beats stack, film first, and the scrim comes off with the overlap that
+     made it necessary. The right-variant's alignment goes with it: stacked,
+     everything reads left like the rest of the page. */
+  .lp-cover-stage,
   .lp-diptych-stage {
     display: grid;
     gap: var(--space-xl);
   }
 
+  .lp-cover-frame,
   .lp-diptych-film {
     width: 100%;
   }
 
-  .lp-diptych-copy {
+  .lp-overcopy {
     position: static;
     max-width: none;
+    align-items: flex-start;
+    text-align: left;
   }
 
-  .lp-diptych-copy::before {
+  .lp-overcopy::before {
     display: none;
   }
 
-  .lp-diptych-copy .lp-h2,
-  .lp-diptych-copy .lp-body {
+  .lp-overcopy .lp-h2,
+  .lp-overcopy .lp-body {
     text-shadow: none;
   }
 
@@ -1879,7 +2090,7 @@
 @media (prefers-reduced-motion: reduce) {
   .lp-cover-media,
   .lp-diptych-film,
-  .lp-diptych-copy,
+  .lp-overcopy,
   .lp-closing-inner,
   .lp-stepper-frame {
     transition: none;

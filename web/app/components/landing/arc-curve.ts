@@ -140,6 +140,18 @@ export function nightDate(): string {
   });
 }
 
+/**
+ * The POIs the page actually annotates. Both ends are dropped, for the same
+ * reason from opposite sides: the closing marker would sit under the tracklist
+ * column, and the opening marker sits exactly where the captions live — its
+ * label ("11:09 PM · first track") duplicates the axis tick at t=0 and the
+ * column header anyway. One list, shared by the canvas (which projects them)
+ * and the DOM layer (which renders them), so their indexes can never disagree.
+ */
+export function getLandmarks(): ArcPoi[] {
+  return arc.poi.filter((poi) => poi.t >= 0.05 && poi.t <= 0.9);
+}
+
 export type AxisTick = { t: number; label: string };
 
 /**

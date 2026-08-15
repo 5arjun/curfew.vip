@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useMediaQuery, usePrefersReducedMotion } from "@/app/components/ui/metal-hooks";
-import { arc, clockAt, getArcCurve, getAxisTicks, SAMPLES, toSvgPath } from "./arc-curve";
+import { arc, clockAt, getArcCurve, getAxisTicks, getLandmarks, SAMPLES, toSvgPath } from "./arc-curve";
 import type { Projected } from "./ArcRibbonCanvas";
 
 // Wrapper around the WebGL ribbon (Story 6.1). Owns everything the canvas
@@ -385,32 +385,31 @@ export function ArcRibbon({ section }: { section: React.RefObject<HTMLElement | 
           a thicket. Everything else here is DOM and renders against either. */}
       {useCanvas && !compact && (
         <div className="lp-poi-layer" aria-hidden="true">
-          {/* The closing marker is dropped: the ribbon now runs under the
-              tracklist column, so a label at t=1 would sit beneath it. The
-              axis already labels 2:26 AM at that exact x, and the column
-              header states the night's span, so nothing is lost. */}
-          {arc.poi
-            .filter((poi) => poi.t <= 0.9)
-            .map((poi, i) => (
-              <div
-                key={poi.id}
-                className="lp-poi"
-                data-shown="false"
-                data-alt={i % 2 === 0 ? "up" : "down"}
-                data-anchor={poi.t > 0.9 ? "end" : "start"}
-                style={{ transitionDelay: `${i * 70}ms` }}
-                ref={(node) => {
-                  poiNodes.current[i] = node;
-                }}
-              >
-                <span className="lp-poi-dot" />
-                <span className="lp-poi-stem" />
-                <span className="lp-poi-text">
-                  {poi.label && <em className="lp-poi-label">{poi.label}</em>}
-                  <span className="lp-poi-caption">{poi.caption}</span>
-                </span>
-              </div>
-            ))}
+          {/* getLandmarks drops both end markers — the closing one would sit
+              under the tracklist column, the opening one under the captions —
+              and keeps this list and the canvas's projection loop indexed off
+              the same array. No stagger delay: the bead reveals each marker
+              individually as it reaches it, so a per-index delay would only
+              make every label trail the moment it belongs to. */}
+          {getLandmarks().map((poi, i) => (
+            <div
+              key={poi.id}
+              className="lp-poi"
+              data-shown="false"
+              data-alt={i % 2 === 0 ? "up" : "down"}
+              data-anchor="start"
+              ref={(node) => {
+                poiNodes.current[i] = node;
+              }}
+            >
+              <span className="lp-poi-dot" />
+              <span className="lp-poi-stem" />
+              <span className="lp-poi-text">
+                {poi.label && <em className="lp-poi-label">{poi.label}</em>}
+                <span className="lp-poi-caption">{poi.caption}</span>
+              </span>
+            </div>
+          ))}
         </div>
       )}
 

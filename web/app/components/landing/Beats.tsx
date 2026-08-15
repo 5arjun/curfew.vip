@@ -286,28 +286,112 @@ export function LandingActions({
   );
 }
 
+/**
+ * The cover's arrival: a slow settle from 0.955 to 1, driven by where the
+ * section stands in the viewport rather than by a one-shot transition — the
+ * frame grows as you carry it toward centre stage and is exactly full size
+ * when it gets there, so the reveal belongs to the reader's own scroll the way
+ * everything else on this page does. Same discipline as useParallax: written
+ * straight to style.transform on a rAF, never through React state, off under
+ * prefers-reduced-motion.
+ */
+function useSettleScale<T extends HTMLElement>(section: React.RefObject<HTMLElement | null>) {
+  const node = useRef<T>(null);
+  const reduced = usePrefersReducedMotion();
+
+  useEffect(() => {
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      const host = section.current;
+      if (!host || !node.current) return;
+      if (reduced) {
+        node.current.style.transform = "";
+        return;
+      }
+      const rect = host.getBoundingClientRect();
+      // 0 as the section's top clears the viewport bottom, 1 once its middle
+      // reaches the viewport's middle — the settle finishes on arrival, not
+      // somewhere past it.
+      const p = Math.min(
+        1,
+        Math.max(
+          0,
+          (window.innerHeight - rect.top) / ((window.innerHeight + rect.height) * 0.5),
+        ),
+      );
+      const eased = p * p * (3 - 2 * p);
+      node.current.style.transform = `scale(${(0.955 + 0.045 * eased).toFixed(4)})`;
+    };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(measure);
+    };
+    measure();
+    if (reduced) return;
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+    };
+  }, [reduced, section]);
+
+  return node;
+}
+
 /* ── Beat 03 — the handoff ─────────────────────────────────────────────────
-   The ribbon's last frame should mask-wipe into this. Waiting on V1 (the arc
-   drawing itself in, camera-free); until then this is the V2 sweep, which
-   carries its own auto-zoom and so cannot yet be scrubbed against scroll. */
+   FRAMED, NOT FULL-BLEED (Arjun, 2026-08-15: "i'm not sure if im the biggest
+   fan of the large video in the middle"). The full-viewport treatment was the
+   problem stated precisely: a 16:9 recording pushed through object-fit:cover
+   meant the browser cropped the interface to whatever the viewport's aspect
+   happened to be — a huge cursor, tracklist rows sliced mid-word, and hard
+   full-width seams where the video's edges met the beats on either side.
+   Nothing about that said "see everything"; it showed a third of everything,
+   enlarged.
+
+   Now the film sits whole in the same hairline-and-radius frame the stepper
+   and /features use — the page has one way of holding product footage, and
+   this is it at its largest: near full-width, capped so it can never crop.
+   The ribbon beat above dissolves out (--lp-stage-fade), the mesh breathes
+   for a moment, and the interface arrives as an object settling into place
+   (useSettleScale) rather than a wall of pixels already mid-play. */
 export function CoverMedia() {
   const [ref, inView] = useInView<HTMLElement>(0.2);
+  const frame = useSettleScale<HTMLDivElement>(ref);
+  const copy = useParallax<HTMLDivElement>(ref, 150);
   return (
     <section className="lp-cover" ref={ref} data-shown={inView ? "true" : "false"}>
-      <BeatVideo
-        className="lp-cover-media"
-        src="/landing/set-detail-3.mp4"
-        poster="/landing/set-detail-3-poster.jpg"
-      />
-      {/* An invitation, not a slate (Arjun, 2026-08-14). This position has now
-          held three things: the product's own UI vocabulary ("Set detail · 3h
-          17m · 44 tracks"), then the night's date and hours stamped like an
-          archive reel. Both described the footage. Two words that ask the
-          reader forward do more over a shot that already speaks for itself.
-          It carries its own ground — the same scrim + backdrop-blur treatment
-          beat 04's copy uses — because a phrase this size has to survive
-          whatever frame the film happens to be on. */}
-      <p className="lp-cover-tag">See everything</p>
+      {/* The same editorial grammar as beat 04, mirrored (Arjun, 2026-08-15:
+          "do the same with See Everything but then move you don't do anything
+          to the right"). Film pushed right, the copy standing over its left
+          edge on the shared .lp-overcopy ground, travelling on the same
+          parallax — the two beats are now one composition and its reflection,
+          which is what makes them read as a sequence rather than two ideas. */}
+      <div className="lp-cover-stage">
+        <div className="lp-cover-frame" ref={frame}>
+          <BeatVideo
+            className="lp-cover-media"
+            src="/landing/set-detail-3.mp4"
+            /* Its own poster, cut at the same timestamp the video enters
+               (9.3s ≈ 0.3 × 31s), so the reader who never gets the film —
+               reduced motion, Save-Data — gets the beat's actual frame, not
+               the take's zoomed-in head. */
+            poster="/landing/set-detail-3-cover-poster.jpg"
+            /* The take opens on its own auto-zoomed close-up and does not
+               pull back to the whole screen until ~a third in. 0.3 is where
+               the sweep shows the entire night — arc, tracklist, panels —
+               which is the one frame that IS "see everything". The stepper
+               enters the same file at 0.5, inside the tracklist, so the two
+               beats still show different moments. */
+            start={0.3}
+          />
+        </div>
+        <div className="lp-overcopy lp-overcopy--left" ref={copy}>
+          <h2 className="lp-h2">See everything.</h2>
+          <p className="lp-body">All of your statistics, finally visible.</p>
+        </div>
+      </div>
     </section>
   );
 }
@@ -316,8 +400,10 @@ export function CoverMedia() {
    NOT a diptych any more (Arjun, 2026-08-13). The left panel was the
    AI-generated booth photograph, and dropping it costs nothing: the beat's
    claim is "the machine does the work," which the film says on its own and the
-   photograph never said. One large film, the copy layered over its left edge —
-   the class name stays so the beat keeps its number. */
+   photograph never said. The class name stays so the beat keeps its number.
+   MIRRORED (Arjun, 2026-08-15): beat 03 now holds this composition on the
+   left, so this one crosses to the right — film pushed left, copy over its
+   right edge — and the pair alternate the way /features rows do. */
 export function Diptych() {
   const [ref, inView] = useInView<HTMLElement>(0.3);
   const copy = useParallax<HTMLDivElement>(ref, 150);
@@ -331,7 +417,7 @@ export function Diptych() {
           src="/landing/dashboard-3.mp4"
           poster="/landing/dashboard-3-poster.jpg"
         />
-        <div className="lp-diptych-copy" ref={copy}>
+        <div className="lp-overcopy lp-overcopy--right" ref={copy}>
           <h2 className="lp-h2">You don&rsquo;t do anything.</h2>
           <p className="lp-body">
             Curfew reads Serato the moment you finish the set. No plugin, no upload, no ritual.

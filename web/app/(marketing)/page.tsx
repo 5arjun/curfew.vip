@@ -50,6 +50,18 @@ function useStage(section: React.RefObject<HTMLElement | null>) {
       const rect = node.getBoundingClientRect();
       const travel = rect.height - window.innerHeight;
       const p = travel <= 0 ? 0 : Math.min(1, Math.max(0, -rect.top / travel));
+      // The exit dissolve. Without it the stage releases mid-composition — the
+      // genre strip, half a tracklist and two axis labels scrolling off as
+      // stranded furniture — and the next beat opens against that debris. The
+      // last stretch of travel fades the whole sticky layer to nothing, so the
+      // beat ends on a held breath of the mesh instead of a chop. Scroll-linked
+      // (an UNREGISTERED property, per ref-property-setproperty-bug), so there
+      // is no transition to lag behind the wheel.
+      // Finishes at 0.96, not right at release: the cover beat now rises into
+      // the stage's last screenful (its negative margin, landing.css), and the
+      // frame should be arriving over a ghost, not over a still-lit scene.
+      const exit = Math.min(1, Math.max(0, (p - 0.86) / 0.1));
+      node.style.setProperty("--lp-stage-fade", (1 - exit * exit * (3 - 2 * exit)).toFixed(4));
       let next = -1;
       // The hero holds the stage to itself until the ribbon starts inflating.
       if (p > 0.14) {
@@ -71,6 +83,50 @@ function useStage(section: React.RefObject<HTMLElement | null>) {
     };
   }, [section]);
   return stage;
+}
+
+// The decks Curfew can read, stated in the hero rather than discovered three
+// beats later (Arjun, 2026-08-15: the Serato-only fact was buried in beat 04's
+// body copy, and a Rekordbox DJ had no way to know they were being told to
+// wait, not told no). Serato and Rekordbox are the real wordmarks
+// (public/brand/*.svg, masked like the Curfew mark); Traktor has no public
+// vector, so it is set typographically — uppercase Inter at logo weight — until
+// a real mark replaces it.
+const PLATFORMS = [
+  { id: "serato", name: "Serato", live: true },
+  { id: "rekordbox", name: "Rekordbox", live: false },
+  { id: "traktor", name: "Traktor", live: false },
+] as const;
+
+function SupportRail({ shown }: { shown: boolean }) {
+  return (
+    <aside
+      className="lp-support"
+      data-shown={shown ? "true" : "false"}
+      aria-label="DJ software Curfew works with"
+    >
+      <p className="lp-support-head">Works with</p>
+      <ul className="lp-support-list">
+        {PLATFORMS.map((platform) => (
+          <li key={platform.id} className="lp-support-row" data-live={platform.live}>
+            {platform.id === "traktor" ? (
+              <span className="lp-support-logo lp-support-logo--traktor">Traktor</span>
+            ) : (
+              <span
+                className={`lp-support-logo lp-support-logo--${platform.id}`}
+                role="img"
+                aria-label={platform.name}
+              />
+            )}
+            <span className="lp-support-status">
+              <span className="lp-support-dot" aria-hidden="true" />
+              {platform.live ? "Supported" : "Coming soon"}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </aside>
+  );
 }
 
 /** Word-by-word rise. The split is per word, not per character — at display
@@ -130,6 +186,12 @@ export default function LandingPage() {
               <span className="lp-cue-line" />
             </p>
           </div>
+
+          {/* A sibling of the hero, not a child: the hero's box is capped at
+              62rem and left-anchored, and this belongs on the viewport's right
+              gutter — the empty half of the opening frame. It fades on the
+              hero's own gate so the two leave together. */}
+          <SupportRail shown={active < 0} />
 
           <div className="lp-captions">
             {STAGES.map((s, i) => (

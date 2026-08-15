@@ -3,7 +3,7 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { arc, getArcCurve, getAxisTicks, getColumnGenres, SAMPLES } from "./arc-curve";
+import { arc, getArcCurve, getAxisTicks, getColumnGenres, getLandmarks, SAMPLES } from "./arc-curve";
 
 // The Landing hero ribbon (Story 6.1, D-1): one night's energy arc as a
 // physical object. Scroll turns a flat horizon into the set's own shape and
@@ -227,10 +227,18 @@ function buildStrip(genreColors: Record<string, string>): THREE.BufferGeometry {
   const colors = new Float32Array(count * 3);
   const scratch = new THREE.Color();
 
+  const hsl = { h: 0, s: 0, l: 0 };
   for (let c = 0; c < SAMPLES; c += 1) {
     const u = c / (SAMPLES - 1);
     const hex = genreColors[columns[c]] || genreColors["--chart-cat-other"];
     scratch.set(hex);
+    // The chart palette at chart saturation. In the app these colours sit in
+    // 20px swatches beside labels; here the strip is a 4px band on the abyss,
+    // where full chroma reads as primary-coloured tape stuck under the night.
+    // Same hue per genre — the identity survives — at half the saturation, so
+    // the strip sits in the ribbon's own register instead of on top of it.
+    scratch.getHSL(hsl);
+    scratch.setHSL(hsl.h, hsl.s * 0.48, hsl.l * 0.92);
     for (let r = 0; r < 2; r += 1) {
       const i = c * 2 + r;
       positions[i * 3] = (u - 0.5) * WIDTH;
@@ -544,7 +552,8 @@ function Ribbon({ colors, progress, reduced, compact, onProject }: SceneProps) {
   // thing the hero shows, so it has to be on screen at progress 0.
   const born = useRef(0);
   const axisTicks = useMemo(() => getAxisTicks(), []);
-  const projectedPoi = useRef<Projected[]>(arc.poi.map(() => ({ x: 0, y: 0, visible: false })));
+  const landmarks = useMemo(() => getLandmarks(), []);
+  const projectedPoi = useRef<Projected[]>(landmarks.map(() => ({ x: 0, y: 0, visible: false })));
   const projectedAxis = useRef<Projected[]>(axisTicks.map(() => ({ x: 0, y: 0, visible: false })));
   const stripGeometry = useMemo(() => buildStrip(colors.genre), [colors.genre]);
   const scratch = useRef(new THREE.Vector3());
@@ -662,15 +671,22 @@ function Ribbon({ colors, progress, reduced, compact, onProject }: SceneProps) {
       }
     };
 
-    for (let i = 0; i < arc.poi.length; i += 1) {
-      const poi = arc.poi[i];
+    // Each landmark lights when the bead reaches it, not all at once at a
+    // magic progress number. The old gate (p > 0.62) fired every label on the
+    // same frame the second caption arrived — four texts landing together, two
+    // of them under the caption's own box. Walking them in with the bead
+    // spreads the reveals across the scroll and means a label can only appear
+    // at the moment the night has actually got there.
+    const beadWalk = Math.min(1, Math.max(0, (p - 0.3) / 0.62));
+    for (let i = 0; i < landmarks.length; i += 1) {
+      const poi = landmarks[i];
       const column = Math.round(poi.t * (SAMPLES - 1));
       place(
         projectedPoi.current,
         i,
         (poi.t - 0.5) * WIDTH * fit.x,
         (heights[column] * HEIGHT * amp + BAND * 0.5) * fit.y,
-        p > 0.62,
+        p > 0.3 && beadWalk >= poi.t,
       );
     }
 
