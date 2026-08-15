@@ -1,6 +1,7 @@
 "use server";
 
 import { headers } from "next/headers";
+import { checkBotId } from "botid/server";
 import { createClient } from "@/lib/supabase/server";
 import {
   AUTH_FAILURE_COPY,
@@ -17,10 +18,27 @@ function readCredentials(formData: FormData) {
   };
 }
 
+// Both credential actions run this before touching Supabase, so a bot costs us
+// nothing downstream. It returns the ordinary `generic` failure rather than a
+// distinct "bot detected" line on purpose: the Failure Register has no line for
+// this, and an honest one would tell a scripted attacker exactly what tripped.
+// The client half is registered in instrumentation-client.ts — the two must stay
+// in sync or the challenge is issued and never read.
+//
+// checkBotId() reports HUMAN in local dev, so this does not gate `pnpm dev`.
+async function botRejection(): Promise<AuthActionState | null> {
+  const { isBot } = await checkBotId();
+  if (!isBot) return null;
+  return { status: "error", fieldErrors: { form: AUTH_FAILURE_COPY.generic } };
+}
+
 export async function signUp(
   _prevState: AuthActionState,
   formData: FormData,
 ): Promise<AuthActionState> {
+  const rejected = await botRejection();
+  if (rejected) return rejected;
+
   const { email, password } = readCredentials(formData);
   const supabase = await createClient();
   // Server Actions run as same-origin POSTs, so the browser-sent Origin header
@@ -57,6 +75,9 @@ export async function signIn(
   _prevState: AuthActionState,
   formData: FormData,
 ): Promise<AuthActionState> {
+  const rejected = await botRejection();
+  if (rejected) return rejected;
+
   const { email, password } = readCredentials(formData);
   const supabase = await createClient();
 

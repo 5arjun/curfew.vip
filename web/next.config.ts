@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withBotId } from "botid/next/config";
 
 const nextConfig: NextConfig = {
   // Consume the workspace sync contract (@curfew/shared) directly from source.
@@ -20,4 +21,8 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// withBotId adds the rewrites that proxy BotID's challenge script through this
+// origin. Routing it through our own domain (rather than a third-party host) is
+// what keeps the check working with Cloudflare proxying DNS in front of Vercel —
+// see instrumentation-client.ts for the protected paths.
+export default withBotId(nextConfig);
