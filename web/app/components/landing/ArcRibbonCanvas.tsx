@@ -108,12 +108,15 @@ const COMPACT_FIT: Omit<Fit, "x" | "shiftX"> = {
   // puts the crest around 52vh — clear of a caption that ends near 28vh.
   restY: -1.15,
   liftY: 0.45,
-  // Half the desktop's pitch. Yaw is where the depth comes from and it keeps
-  // all of it; pitch is what swings everything BELOW the baseline out of the
-  // object — and the axis is DOM text that cannot rotate with the plane it is
-  // pinned to, so at the desktop's 0.20 the three clock labels stagger
-  // diagonally down the screen and read as a fault rather than as perspective.
-  turnX: 0.11,
+  // NO pitch at all on a phone (Arjun, 2026-08-15, with screenshots: "the
+  // ribbon and tracklist looks so weird"). Half the desktop's pitch was still
+  // enough to run the genre strip diagonally across a 390px frame with the
+  // three clock labels staggering down after it — on a portrait screen the
+  // tilted under-baseline furniture reads as a fault, not as perspective.
+  // Yaw is where the depth comes from and it keeps all of it: the ribbon
+  // still turns, still has its lit cross-section; only the ground under it
+  // stays level.
+  turnX: 0,
   turnY: -0.44,
 };
 
@@ -224,6 +227,7 @@ function buildStrip(genreColors: Record<string, string>): THREE.BufferGeometry {
   const columns = getColumnGenres();
   const count = SAMPLES * 2;
   const positions = new Float32Array(count * 3);
+  const uvs = new Float32Array(count * 2);
   const colors = new Float32Array(count * 3);
   const scratch = new THREE.Color();
 
@@ -244,6 +248,8 @@ function buildStrip(genreColors: Record<string, string>): THREE.BufferGeometry {
       positions[i * 3] = (u - 0.5) * WIDTH;
       positions[i * 3 + 1] = r === 0 ? STRIP_BOTTOM : STRIP_TOP;
       positions[i * 3 + 2] = 0;
+      uvs[i * 2] = u;
+      uvs[i * 2 + 1] = r;
       colors[i * 3] = scratch.r;
       colors[i * 3 + 1] = scratch.g;
       colors[i * 3 + 2] = scratch.b;
@@ -266,6 +272,7 @@ function buildStrip(genreColors: Record<string, string>): THREE.BufferGeometry {
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
   geometry.setAttribute("aColor", new THREE.BufferAttribute(colors, 3));
   geometry.setIndex(new THREE.BufferAttribute(index, 1));
   return geometry;
@@ -274,9 +281,11 @@ function buildStrip(genreColors: Record<string, string>): THREE.BufferGeometry {
 const STRIP_VERTEX = /* glsl */ `
 attribute vec3 aColor;
 varying vec3 vColor;
+varying vec2 vUv;
 
 void main() {
   vColor = aColor;
+  vUv = uv;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }
 `;
@@ -284,11 +293,17 @@ void main() {
 const STRIP_FRAGMENT = /* glsl */ `
 precision highp float;
 varying vec3 vColor;
+varying vec2 vUv;
 uniform float uReveal;
 uniform float uAmp;
 
 void main() {
-  gl_FragColor = vec4(vColor, uReveal * uAmp * 0.42);
+  // The band and the fill both dissolve at their ends; the strip never did,
+  // because on a desktop its ends are off the side of the screen. On a phone
+  // the whole night is in frame and the strip stopped in a hard coloured cut
+  // at both edges — the same wall the fill fixed, one mesh down.
+  float ends = smoothstep(0.0, 0.06, vUv.x) * (1.0 - smoothstep(0.94, 1.0, vUv.x));
+  gl_FragColor = vec4(vColor, uReveal * uAmp * 0.42 * ends);
 }
 `;
 

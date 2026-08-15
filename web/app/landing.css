@@ -500,6 +500,13 @@
   position: sticky;
   top: 0;
   height: 100vh;
+  /* The small viewport, where it exists (Arjun, 2026-08-15, with screenshots):
+     on iOS Safari 100vh includes the strip behind the collapsing URL bar, so
+     the beat's bottom furniture — the "now" line and the BPM readout, pinned
+     at bottom: 4.5vh — sat under browser chrome whenever the bar was up.
+     100svh is the viewport that is ALWAYS visible; when the bar collapses the
+     composition simply rides a little higher, which nothing here minds. */
+  height: 100svh;
   overflow: hidden;
   isolation: isolate;
   /* The exit dissolve — written per scroll frame by useStage (page.tsx), 1 for
@@ -2053,10 +2060,19 @@
   /* No room to lie the copy across the film at this width — both mirrored
      beats stack, film first, and the scrim comes off with the overlap that
      made it necessary. The right-variant's alignment goes with it: stacked,
-     everything reads left like the rest of the page. */
+     everything reads left like the rest of the page.
+
+     The column is stated as minmax(0, 1fr), not left to auto-placement: the
+     base rule's justify-content survives into grid mode, where it packs an
+     auto-sized column against one edge — and an auto column takes its width
+     from the copy's text, so the cover (one short sentence) collapsed to a
+     260px sliver pushed right (Arjun's 2026-08-15 phone screenshot) while
+     the diptych only LOOKED right because its paragraph happened to be wide.
+     One explicit full-width track ends the question for both. */
   .lp-cover-stage,
   .lp-diptych-stage {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--space-xl);
   }
 
