@@ -35,8 +35,12 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // Into the app, not back onto the marketing landing — same change as
+  // confirm/route.ts. A first-time OAuth signup has no phone yet and takes
+  // the /phone-required branch into the onboarding corridor; a returning
+  // sign-in lands on the dashboard.
   if (exchanged) {
-    redirect(phoneRequired ? "/phone-required" : "/");
+    redirect(phoneRequired ? "/phone-required" : "/dashboard");
   }
 
   redirect("/login?error=confirmation-failed");

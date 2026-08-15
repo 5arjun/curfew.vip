@@ -51,8 +51,12 @@ export async function GET(request: NextRequest) {
     confirmed = false;
   }
 
+  // Into the app, not back onto the marketing landing (which is where "/"
+  // goes) — a just-confirmed account either owes a phone number or belongs
+  // on its dashboard. New signups always take the /phone-required branch and
+  // continue down the onboarding corridor (→ /welcome) from there.
   if (confirmed) {
-    redirect(phoneRequired ? "/phone-required" : "/");
+    redirect(phoneRequired ? "/phone-required" : "/dashboard");
   }
 
   redirect("/login?error=confirmation-failed");

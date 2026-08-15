@@ -5,7 +5,6 @@ import { useSearchParams } from "next/navigation";
 import { useActionState, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { AppleSignInButton } from "@/app/components/auth/AppleSignInButton";
-import { BiometricAnchor } from "@/app/components/auth/BiometricAnchor";
 import { Button } from "@/app/components/auth/Button";
 import { GhostInput } from "@/app/components/auth/GhostInput";
 import { GoogleSignInButton } from "@/app/components/auth/GoogleSignInButton";
@@ -49,12 +48,11 @@ export function LoginClient() {
   const searchParams = useSearchParams();
   // The Landing's "Join" and "Start your archive" land here rather than on a
   // separate signup route — one auth surface, opened on the right side of its
-  // own toggle. Read once, as the initial state, so the toggle below still
+  // own toggle. Initial state comes from the URL, but the toggle below still
   // owns the mode afterwards: a reader who arrives via Join and decides they
   // already have an account must not be snapped back to signup on re-render.
-  const [mode, setMode] = useState<Mode>(
-    searchParams.get("intent") === "join" ? "signup" : "login",
-  );
+  const intentParam = searchParams.get("intent");
+  const [mode, setMode] = useState<Mode>(intentParam === "join" ? "signup" : "login");
   const [authStatus, setAuthStatus] = useState<AuthActionState["status"]>("idle");
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [passkeySignedIn, setPasskeySignedIn] = useState(false);
@@ -68,6 +66,23 @@ export function LoginClient() {
   const authMethodPending = passkeyPending || oauthPending !== null;
   const confirmationFailed = searchParams.get("error") === "confirmation-failed";
   const [shellRef, shellShown] = useInView<HTMLDivElement>(0.1);
+
+  // The nav's "Log in" (/login) and "Join" (/login?intent=join) are the SAME
+  // route, so clicking one while on the other client-navigates without a
+  // remount and the initial-state read above never re-runs — the mode was
+  // stuck on whichever side loaded first (Arjun, 2026-08-15: "when i click
+  // login it goes to intent join"). Track the last-seen param and follow the
+  // URL only when it actually changes, so the in-page toggle (which moves
+  // mode while the param stays put) is never clobbered. Render-phase
+  // adjustment per React's "adjusting state when props change" pattern.
+  const [seenIntent, setSeenIntent] = useState(intentParam);
+  if (intentParam !== seenIntent) {
+    setSeenIntent(intentParam);
+    const urlMode: Mode = intentParam === "join" ? "signup" : "login";
+    if (urlMode !== mode) {
+      switchMode(urlMode);
+    }
+  }
 
   // Task 5.2 (deferred-work.md, 2.3a/2.3b reviews): a stale failure message
   // from one mode/method must not persist across an unrelated interaction.
@@ -134,6 +149,18 @@ export function LoginClient() {
           <p className="lp-body lp-auth-tag">
             Check your email to confirm your account. The link brings you straight back.
           </p>
+          {/* The two ways this screen dead-ends — a slow send, a typo in the
+              address — each get one quiet line. "Go back" resets the local
+              status so the signup card returns and the address can be
+              re-entered; signUp() is safe to repeat (auth-copy.ts already
+              names the already-registered case). */}
+          <p className="lp-auth-switch">
+            Nothing arriving? Check spam — or if the address was wrong,{" "}
+            <button type="button" onClick={() => setAuthStatus("idle")}>
+              go back
+            </button>{" "}
+            and fix it.
+          </p>
         </div>
       </main>
     );
@@ -174,8 +201,10 @@ export function LoginClient() {
             {/* The BiometricAnchor row read as a gadget next to the OAuth
                 buttons (Arjun, 2026-08-15: "it doesn't look professional") —
                 here the passkey is simply the third provider, same geometry
-                as the two above it. The anchor treatment survives where it
-                belongs, on the post-sign-in enable prompt. */}
+                as the two above it. Later the same day the anchor left the
+                post-sign-in enable prompt too ("make the passkey look like
+                the other on the sign in page"), so this button's treatment
+                is now the passkey's one look everywhere. */}
             <button
               type="button"
               className="lp-auth-passkey-btn"
@@ -259,7 +288,9 @@ export function LoginClient() {
 
           {mode === "signup" && (
             <p className="lp-auth-fineprint">
-              One plan. $6.99/month billed yearly, or $7.99 month to month. Cancel whenever.
+              One plan. $6.99/month billed yearly, or $7.99 month to month. Cancel whenever. By
+              creating an account you agree to the <Link href="/terms">Terms</Link> and{" "}
+              <Link href="/privacy">Privacy Policy</Link>.
             </p>
           )}
         </section>
@@ -428,12 +459,15 @@ function EnablePasskeyPrompt() {
             <p className="lp-body lp-auth-tag">
               Add a passkey for faster sign-in next time — optional.
             </p>
-            <BiometricAnchor
-              primaryLabel={registering ? "Adding passkey…" : "Enable Passkey"}
-              secondaryLabel="Biometric bypass"
+            <button
+              type="button"
+              className="lp-auth-passkey-btn"
               onClick={handleRegister}
               disabled={registering}
-            />
+            >
+              <PasskeyIcon />
+              {registering ? "Adding passkey…" : "Enable Passkey"}
+            </button>
             {error && (
               <p className="lp-auth-error" role="alert">
                 {error}
@@ -444,7 +478,10 @@ function EnablePasskeyPrompt() {
 
         {registered && <p className="lp-body lp-auth-tag">Passkey added.</p>}
 
-        <Link href="/" className="lp-auth-continue">
+        {/* Into the app, not back onto the sales page — the middleware's
+            phone gate still owns the detour to /phone-required if this
+            account has no phone on file yet. */}
+        <Link href="/dashboard" className="lp-auth-continue">
           Continue to Curfew
         </Link>
       </div>

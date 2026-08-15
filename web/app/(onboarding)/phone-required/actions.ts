@@ -46,7 +46,10 @@ export async function setPhone(
   }
 
   if (succeeded) {
-    redirect("/");
+    // Step 2 of the setup corridor: the account is contactable, the archive
+    // is still empty — /welcome is where the agent gets introduced (UJ-3
+    // step 3, the "the account alone can't do anything yet" prompt).
+    redirect("/welcome");
   }
 
   return { status: "error", error: AUTH_FAILURE_COPY.generic };

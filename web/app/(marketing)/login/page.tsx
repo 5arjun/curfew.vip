@@ -15,7 +15,21 @@ export const metadata: Metadata = {
     "One plan, everything in it: $6.99/month billed yearly, or $7.99 month to month. Create the account tonight's set will land in, or sign back in.",
 };
 
-export default function LoginPage() {
+// Dynamic on purpose (Arjun, 2026-08-15: "when i click login it goes to
+// intent join"). As a static route, the client router cache keyed this page
+// by pathname alone — /login and /login?intent=join shared one entry, and
+// clicking the nav's "Log in" restored whichever URL variant was cached
+// first, address bar and all. Awaiting searchParams makes the route dynamic,
+// so the two URLs are distinct cache entries and the Log in / Join links
+// actually move between them. LoginClient still reads the param itself via
+// useSearchParams (and follows changes to it); nothing here consumes the
+// value — the await exists for the routing semantics.
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  await searchParams;
   return (
     <Suspense fallback={null}>
       <LoginClient />

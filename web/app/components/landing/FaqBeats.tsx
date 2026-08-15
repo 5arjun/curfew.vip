@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { LandingActions, useInView } from "./Beats";
+import { MarketingFooter } from "./MarketingFooter";
 
 // /faq (Arjun, 2026-08-15: "easy to view, navigate, and understand... avoid
 // using ambiguous terminology"). Sectioned questions under a rail of anchors,
@@ -365,10 +366,7 @@ export function FaqClose() {
       <h2 className="lp-feat-title">That&rsquo;s everything. Tonight counts.</h2>
       <LandingActions className="lp-feat-close-actions" secondary={false} />
       <p className="lp-feat-price">$6.99/month, billed yearly</p>
-      <footer className="lp-footer lp-feat-footer">
-        <span>Curfew</span>
-        <span>Privacy · Terms</span>
-      </footer>
+      <MarketingFooter className="lp-feat-footer" />
     </section>
   );
 }

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { MetalButton } from "@/app/components/dashboard/MetalButton";
 import { useMediaQuery, usePrefersReducedMotion } from "@/app/components/ui/metal-hooks";
+import { MarketingFooter } from "./MarketingFooter";
 
 // Beats 03-10 (Story 6.1). MOCKUP PASS, 2026-08-13: assembled from the assets
 // that exist today so the whole page can be judged end to end. Everything here
@@ -522,10 +523,7 @@ export function Closing() {
         <p className="lp-body lp-closing-body">Billed yearly. One plan. Cancel whenever.</p>
         <LandingActions className="lp-closing-actions" secondary={false} />
       </div>
-      <footer className="lp-footer">
-        <span>Curfew</span>
-        <span>Privacy · Terms</span>
-      </footer>
+      <MarketingFooter />
     </section>
   );
 }

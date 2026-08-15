@@ -581,4 +581,15 @@
   --landing-auth-deep: #180a12;
   --landing-auth-accent: #b04568;
   --landing-auth-floor: #e98aa2;
+
+  /* /welcome mesh ramp (Arjun, 2026-08-15: each onboarding screen gets its
+     own room). Same darkest-first contract and hex-for-the-shader rule as
+     the ramps above; read by MeshDrift via OnboardingMesh. The spark-gold
+     family — --color-spark's register — so the corridor moves ember (phone)
+     → gold (agent) → the landing's glacial (linked, done). Decorative only,
+     behind a 0.55-opacity layer; never carries text. */
+  --landing-welcome-atmos: #1f1509;
+  --landing-welcome-deep: #170f06;
+  --landing-welcome-accent: #a9752c;
+  --landing-welcome-floor: #e0a44a;
 }

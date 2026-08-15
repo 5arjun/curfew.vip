@@ -2606,18 +2606,45 @@
   margin-bottom: var(--space-md);
 }
 
+/* The one action on the signed-in card — an underlined aside until Arjun
+   called it (2026-08-15, "make 'continue to curfew' look better"): now the
+   Ember primary in link form, the same gradient the submit buttons wear
+   (globals.css .auth-button-primary), full-width so the card ends on a
+   button the way the signup side does. */
 .lp-auth-continue {
-  display: inline-block;
-  margin-top: var(--space-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin-top: var(--space-lg);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--btn-gradient-border);
+  background: radial-gradient(
+    circle at 30% 20%,
+    var(--btn-gradient-1),
+    var(--btn-gradient-2) 55%,
+    var(--btn-gradient-3)
+  );
+  font-family: var(--font-geist-mono);
   font-size: 0.9375rem;
-  color: var(--color-abyss-accent);
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  color: var(--color-on-background);
+  text-decoration: none;
+  touch-action: manipulation;
+  transition: background var(--motion-duration-gradient) var(--motion-ease-standard);
+}
+
+.lp-auth-continue:hover {
+  background: radial-gradient(
+    circle at 30% 20%,
+    var(--btn-gradient-hover-1),
+    var(--btn-gradient-hover-2) 55%,
+    var(--btn-gradient-hover-3)
+  );
 }
 
 .lp-auth-continue:focus-visible {
   outline: none;
-  border-radius: var(--radius-sm);
   box-shadow:
     0 0 0 2px var(--color-primary),
     0 0 0 6px var(--color-primary-glow);
@@ -2931,6 +2958,361 @@
   .lp-faq-hero,
   .lp-faq-section {
     opacity: 1;
+    transform: none;
+  }
+}
+
+/* ═══ Footer nav — the links the three inline footers never had ═════════════
+   MarketingFooter.tsx renders the same mono register the old spans wore;
+   only now the words go somewhere. Color states stay inside the footer's
+   own quiet ramp — 45 at rest, full ink on hover — so the footer never
+   competes with a close beat sitting right above it. */
+
+.lp-footer-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-md);
+}
+
+.lp-footer-nav a {
+  color: inherit;
+  text-decoration: none;
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lp-footer-nav a:hover {
+  color: var(--color-abyss-text);
+}
+
+.lp-footer-nav a:focus-visible {
+  outline: none;
+  border-radius: var(--radius-sm);
+  box-shadow:
+    0 0 0 2px var(--color-primary),
+    0 0 0 6px var(--color-primary-glow);
+}
+
+/* ═══ /terms + /privacy — the reading rooms (LegalDoc.tsx) ═══════════════════
+   Everything structural is borrowed from the FAQ's shell; these few rules are
+   only what a static document needs that a disclosure page didn't. */
+
+.lp-legal-updated {
+  margin: var(--space-md) 0 0;
+  font-family: var(--font-geist-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-abyss-text-45);
+}
+
+/* Sections carry prose, not fold-out items — give the heading its own air
+   and rule the section top the way faq items rule themselves. */
+.lp-legal-section {
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--color-abyss-hairline);
+}
+
+.lp-legal-section .lp-faq-h {
+  margin-bottom: var(--space-md);
+}
+
+/* The fact-list, recut for document flow: it sits between paragraphs, so the
+   /features-sized top margin comes off and a paragraph gap goes below. */
+.lp-legal-facts {
+  margin: 0 0 var(--space-md);
+  max-width: 62ch;
+}
+
+.lp-faq-p a,
+.lp-legal-facts a {
+  color: var(--color-abyss-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lp-faq-p a:hover,
+.lp-legal-facts a:hover {
+  color: var(--color-abyss-accent-soft);
+}
+
+.lp-faq-p a:focus-visible,
+.lp-legal-facts a:focus-visible {
+  outline: none;
+  border-radius: var(--radius-sm);
+  box-shadow:
+    0 0 0 2px var(--color-primary),
+    0 0 0 6px var(--color-primary-glow);
+}
+
+.lp-faq-p strong {
+  font-weight: 500;
+  color: var(--color-abyss-text);
+}
+
+/* ═══ /contact — one address, three doors ════════════════════════════════════
+   Cards in the plan block's material (hairline + ink gradient, no glass —
+   glass is the auth card's move), the mail link in mono like every address
+   the product prints. */
+
+.lp-contact-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-lg);
+  padding-bottom: clamp(32px, 5vh, 56px);
+}
+
+.lp-contact-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  padding: var(--space-lg);
+  border: 1px solid var(--color-abyss-hairline);
+  border-radius: var(--radius-xl);
+  background: linear-gradient(180deg, var(--shadow-ink-0) 0%, var(--shadow-ink-20) 100%);
+}
+
+.lp-contact-h {
+  margin: 0;
+}
+
+.lp-contact-body {
+  flex: 1;
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.lp-contact-link {
+  margin-top: var(--space-sm);
+  font-family: var(--font-geist-mono);
+  font-size: 0.8125rem;
+  letter-spacing: 0.04em;
+  color: var(--color-abyss-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lp-contact-link:hover {
+  color: var(--color-abyss-accent-soft);
+}
+
+.lp-contact-link:focus-visible {
+  outline: none;
+  border-radius: var(--radius-sm);
+  box-shadow:
+    0 0 0 2px var(--color-primary),
+    0 0 0 6px var(--color-primary-glow);
+}
+
+@media (max-width: 860px) {
+  .lp-contact-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ═══ Onboarding corridor — (onboarding)/layout.tsx ═════════════════════════
+   /phone-required, /welcome, /link-agent. The auth card's room (ember mesh,
+   glass card) without the marketing nav: just the wordmark pinned where the
+   nav's brand would sit, as the one way out. */
+
+.lp-ob-head {
+  position: fixed;
+  top: clamp(16px, 3vh, 28px);
+  left: var(--space-gutter);
+  z-index: 10;
+}
+
+.lp-ob-home {
+  display: inline-block;
+}
+
+.lp-ob-home:focus-visible {
+  outline: none;
+  border-radius: var(--radius-sm);
+  box-shadow:
+    0 0 0 2px var(--color-primary),
+    0 0 0 6px var(--color-primary-glow);
+}
+
+.lp-ob-mark {
+  width: clamp(84px, 7vw, 104px);
+}
+
+/* The corridor's solo cards sit a touch higher than the auth page's — there
+   is no nav pill to clear, only the wordmark. */
+.lp-auth--ob {
+  padding-top: clamp(110px, 18vh, 200px);
+}
+
+/* /welcome carries four steps and a download CTA — it earns a wider card
+   than the form screens. */
+.lp-ob-card {
+  width: min(560px, 100%);
+}
+
+.lp-auth--solo .lp-auth-card.lp-ob-card {
+  width: min(560px, 100%);
+}
+
+.lp-ob-steps {
+  list-style: none;
+  margin: 0 0 var(--space-lg);
+  padding: 0;
+  display: grid;
+  gap: var(--space-md);
+}
+
+.lp-ob-steps li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-md);
+  align-items: baseline;
+  font-family: var(--font-inter);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--color-abyss-text-72);
+}
+
+.lp-ob-n {
+  font-family: var(--font-geist-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  color: var(--color-abyss-accent);
+}
+
+/* The download CTA — the startcta's geometry with the arrow pointed the way
+   the file goes. An <a>, so the whole block resets link styling. */
+.lp-ob-dl {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: var(--space-md);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-abyss-hairline);
+  background: linear-gradient(180deg, var(--shadow-ink-0) 0%, var(--shadow-ink-20) 100%);
+  text-decoration: none;
+  touch-action: manipulation;
+  transition: border-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lp-ob-dl:hover {
+  border-color: var(--color-primary-glow);
+}
+
+.lp-ob-dl:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-primary),
+    0 0 0 6px var(--color-primary-glow);
+}
+
+.lp-ob-dl-line {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-family: var(--font-inter);
+  font-size: 0.9375rem;
+  color: var(--color-abyss-text);
+}
+
+.lp-ob-dl-line strong {
+  font-weight: 500;
+}
+
+.lp-ob-dl-arrow {
+  display: inline-block;
+  color: var(--color-primary);
+  transition: transform var(--motion-duration-base) var(--motion-ease-liquid);
+}
+
+.lp-ob-dl:hover .lp-ob-dl-arrow {
+  transform: translateY(3px);
+}
+
+.lp-ob-dl-sub {
+  font-family: var(--font-geist-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  color: var(--color-abyss-text-45);
+}
+
+/* Leaving is allowed here (the opposite of /phone-required) but it is the
+   quiet path — same underline idiom as lp-auth-continue, stepped down to
+   the 45 ramp. */
+.lp-ob-skip {
+  display: inline-block;
+  margin-top: var(--space-md);
+  font-size: 0.875rem;
+  color: var(--color-abyss-text-45);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lp-ob-skip:hover {
+  color: var(--color-abyss-text);
+}
+
+.lp-ob-skip:focus-visible {
+  outline: none;
+  border-radius: var(--radius-sm);
+  box-shadow:
+    0 0 0 2px var(--color-primary),
+    0 0 0 6px var(--color-primary-glow);
+}
+
+/* Links inside the switch line (link-handoff's "Get set up", the
+   check-email screen) — same ink as the switch's button. */
+.lp-auth-switch a {
+  color: var(--color-abyss-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lp-auth-switch a:hover {
+  color: var(--color-abyss-accent-soft);
+}
+
+.lp-auth-switch a:focus-visible {
+  outline: none;
+  border-radius: var(--radius-sm);
+  box-shadow:
+    0 0 0 2px var(--color-primary),
+    0 0 0 6px var(--color-primary-glow);
+}
+
+/* The consent line's links — the fineprint stays mono and quiet; the links
+   read one step brighter so they are findable without shouting. */
+.lp-auth-fineprint a {
+  color: var(--color-abyss-text-72);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lp-auth-fineprint a:hover {
+  color: var(--color-abyss-text);
+}
+
+.lp-auth-fineprint a:focus-visible {
+  outline: none;
+  border-radius: var(--radius-sm);
+  box-shadow:
+    0 0 0 2px var(--color-primary),
+    0 0 0 6px var(--color-primary-glow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-ob-dl-arrow {
+    transition: none;
+  }
+
+  .lp-ob-dl:hover .lp-ob-dl-arrow {
     transform: none;
   }
 }

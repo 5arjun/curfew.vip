@@ -9,6 +9,12 @@ import { PhoneForm } from "./phone-form";
 // blank-page flash, no dependency on client JS running successfully.
 // Not skippable per EXPERIENCE.md's State Patterns "Phone number required"
 // row — no cancel/skip control anywhere on this page.
+//
+// Onboarding pass (2026-08-15): joined the (onboarding) shell — same URL,
+// now the ember room and the auth card instead of a bare <main>. A visitor
+// who already has a phone goes to /dashboard (the app home), not the
+// marketing landing; the flow's next step after a successful save is
+// /welcome (actions.ts).
 export default async function PhoneRequiredPage() {
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
@@ -18,16 +24,21 @@ export default async function PhoneRequiredPage() {
   }
 
   if (!(await needsPhone(supabase, data.user.id))) {
-    redirect("/");
+    redirect("/dashboard");
   }
 
   return (
-    <main style={{ maxWidth: "var(--container-max)", margin: "var(--space-xxl) auto", padding: "0 var(--space-lg)" }}>
-      <h1 className="text-headline-md" style={{ marginBottom: "var(--space-lg)" }}>
-        Add a phone number.
-      </h1>
+    <main className="lp-main lp-auth lp-auth--solo lp-auth--ob">
+      <div className="lp-auth-card" data-shown="true">
+        <p className="lp-feat-eyebrow">Set up — step 1 of 2</p>
+        <h1 className="lp-auth-title">Add a phone number.</h1>
+        <p className="lp-body lp-auth-tag">
+          If your archive ever needs attention, a person can reach you. That&rsquo;s the whole use
+          — never marketing, never shared.
+        </p>
 
-      <PhoneForm />
+        <PhoneForm />
+      </div>
     </main>
   );
 }

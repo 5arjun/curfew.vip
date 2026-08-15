@@ -4,10 +4,6 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-const errorStyle: React.CSSProperties = {
-  color: "var(--color-error)",
-};
-
 // Reads the *browser* Supabase client's already-issued session (this page
 // does not itself authenticate anyone — Stories 2.3a/2.3b/2.3d already did,
 // or the DJ just signed in via the server guard's /login redirect) and hands
@@ -60,7 +56,7 @@ export function LinkHandoff() {
 
   if (status === "no-session") {
     return (
-      <p className="text-body-md" style={errorStyle} role="alert">
+      <p className="lp-auth-error" role="alert">
         Your session expired. Go back and sign in, then return to this page.
       </p>
     );
@@ -68,7 +64,7 @@ export function LinkHandoff() {
 
   if (status === "error") {
     return (
-      <p className="text-body-md" style={errorStyle} role="alert">
+      <p className="lp-auth-error" role="alert">
         Something went wrong checking your session. Please try again.
       </p>
     );
@@ -81,16 +77,15 @@ export function LinkHandoff() {
           redirect silently does nothing in most browsers — no reliable
           cross-browser "app not installed" callback exists for custom
           schemes. Calm, Console-Voice-style copy plus a manual fallback is
-          the whole mitigation; there is no way to engineer around it. */}
-      <p className="text-body-lg" style={{ marginBottom: "var(--space-sm)" }}>
-        Opening Curfew Agent — if nothing happens, make sure it&apos;s installed and running.
+          the whole mitigation; there is no way to engineer around it. The
+          fallback now points at /welcome — the setup screen with the actual
+          download — instead of the marketing landing it pointed at when no
+          such screen existed. */}
+      <p className="lp-body lp-auth-tag">
+        Opening Curfew Agent — if nothing happens, make sure it&rsquo;s installed and running.
       </p>
-      <p className="text-body-md">
-        Don&apos;t have the agent yet?{" "}
-        <Link href="/" className="text-body-md">
-          Get Curfew
-        </Link>
-        .
+      <p className="lp-auth-switch">
+        Don&rsquo;t have the agent yet? <Link href="/welcome">Get set up</Link>.
       </p>
     </div>
   );

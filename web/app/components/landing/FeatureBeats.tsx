@@ -1,6 +1,7 @@
 "use client";
 
 import { BeatVideo, LandingActions, useInView } from "./Beats";
+import { MarketingFooter } from "./MarketingFooter";
 
 // /features (Arjun, 2026-08-14): the feature reference. Editorial rows — film
 // on one side, name + claim + fact-list on the other, alternating — under a
@@ -167,10 +168,7 @@ export function FeatureClose() {
       {/* No "See features" here — you are on it. */}
       <LandingActions className="lp-feat-close-actions" secondary={false} />
       <p className="lp-feat-price">$6.99/month, billed yearly</p>
-      <footer className="lp-footer lp-feat-footer">
-        <span>Curfew</span>
-        <span>Privacy · Terms</span>
-      </footer>
+      <MarketingFooter className="lp-feat-footer" />
     </section>
   );
 }

@@ -7,6 +7,11 @@ import { LinkHandoff } from "./link-handoff";
 // the DJ clicks back to `/link-agent` manually after signing in, same
 // documented limitation that page's own comment carries). No phone-gate
 // check needed here (unrelated to Story 2.3c's concern).
+//
+// Onboarding pass (2026-08-15): joined the (onboarding) shell — same URL
+// (the route group doesn't change the path, so phone-gate.ts's
+// GATED_PREFIXES entry for /link-agent still matches), now the ember room
+// and the auth card instead of a bare <main>.
 export default async function LinkAgentPage() {
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
@@ -16,14 +21,13 @@ export default async function LinkAgentPage() {
   }
 
   return (
-    <main
-      style={{ maxWidth: "var(--container-max)", margin: "var(--space-xxl) auto", padding: "0 var(--space-lg)" }}
-    >
-      <h1 className="text-headline-md" style={{ marginBottom: "var(--space-lg)" }}>
-        Link Curfew Agent
-      </h1>
+    <main className="lp-main lp-auth lp-auth--solo lp-auth--ob">
+      <div className="lp-auth-card" data-shown="true">
+        <p className="lp-feat-eyebrow">Curfew Agent</p>
+        <h1 className="lp-auth-title">Linking the agent.</h1>
 
-      <LinkHandoff />
+        <LinkHandoff />
+      </div>
     </main>
   );
 }
