@@ -23,9 +23,6 @@ import { arc, getArcCurve, getAxisTicks, getColumnGenres, SAMPLES } from "./arc-
 
 const WIDTH = 6.4;
 const HEIGHT = 1.15;
-// Shifted left so the ribbon clears the tracklist column on the right rather
-// than running underneath it.
-const OFFSET_X = 0;
 
 // The camera never moves, so one world unit is a fixed share of the viewport's
 // HEIGHT on every device — which is what makes BAND, the bead's radius and the
@@ -70,6 +67,17 @@ type Fit = {
   liftY: number;
   turnX: number;
   turnY: number;
+  /**
+   * Leftward slide as the night turns (Arjun, 2026-08-15: "I don't like how
+   * the ribbon is so far from the left side of the screen"). The gap was the
+   * yaw's own perspective: the turn swings the first track AWAY from the
+   * camera, and the recession pulled the night's start a sixth of the screen
+   * in from the left while the last track overflowed the right. This walks
+   * the group back toward the gutter by exactly that recession, keyed to
+   * `turn` because the recession is the turn's doing — at rest the horizon
+   * stays centred and this contributes nothing.
+   */
+  shiftX: number;
 };
 
 const DESKTOP_FIT: Fit = {
@@ -80,9 +88,15 @@ const DESKTOP_FIT: Fit = {
   liftY: 0.50,
   turnX: 0.20,
   turnY: -0.44,
+  // Tuned at 1440×900 (aspect 1.6): the first track lands ~4% from the left
+  // edge at full turn, where it sat ~15% before — clear of the gutter but
+  // not kissing the edge (-0.38 put the bead at ~1% and its POI label under
+  // the headline). Wider aspects keep a little more margin, which reads
+  // fine — the failure mode was the gap at 16:10.
+  shiftX: -0.28,
 };
 
-const COMPACT_FIT: Omit<Fit, "x"> = {
+const COMPACT_FIT: Omit<Fit, "x" | "shiftX"> = {
   y: COMPACT_HEIGHT / HEIGHT,
   // The band's cross-section rides the same y scale as the curve, which would
   // take it from ~12px to ~8 — thin enough that the lit top edge lands on a
@@ -516,7 +530,14 @@ function Ribbon({ colors, progress, reduced, compact, onProject }: SceneProps) {
   const fit = useMemo<Fit>(() => {
     if (!compact) return DESKTOP_FIT;
     const visibleWidth = VIEW_HEIGHT * (size.width / Math.max(1, size.height));
-    return { ...COMPACT_FIT, x: (visibleWidth * COMPACT_FILL) / WIDTH };
+    return {
+      ...COMPACT_FIT,
+      x: (visibleWidth * COMPACT_FILL) / WIDTH,
+      // Proportional rather than the desktop constant: 0.38 units is a third
+      // of a short phone's whole visible width. A tenth of the visible width
+      // matches the desktop correction's effect at the phone's own scale.
+      shiftX: -0.10 * visibleWidth,
+    };
   }, [compact, size.width, size.height]);
   const eased = useRef(0);
   // Mount fade. Deliberately NOT tied to scroll: the flat horizon is the first
@@ -587,7 +608,7 @@ function Ribbon({ colors, progress, reduced, compact, onProject }: SceneProps) {
       group.current.rotation.x = fit.turnX * turn;
       // Sits low like a horizon at rest, lifting only as the arc needs room.
       group.current.position.y = fit.restY + fit.liftY * amp;
-      group.current.position.x = OFFSET_X * amp;
+      group.current.position.x = fit.shiftX * turn;
       group.current.position.z = -0.55 * turn;
     }
 

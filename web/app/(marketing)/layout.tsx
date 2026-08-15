@@ -12,7 +12,7 @@ import "../landing.css";
 export const metadata: Metadata = {
   title: "Curfew — compared to what?",
   description:
-    "Curfew reads the sets you already played and gives you the only baseline that means anything: your own.",
+    "Curfew reads the sets you play and gives you the only baseline that means anything: your own.",
 };
 
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {

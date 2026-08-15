@@ -62,7 +62,7 @@ type Travel = { dx: number; dy: number; scale: number };
 
 export function LandingNav() {
   const headerRef = useRef<HTMLElement>(null);
-  const markRef = useRef<HTMLSpanElement>(null);
+  const markRef = useRef<HTMLAnchorElement>(null);
   const [open, setOpen] = useState(false);
   const [hot, setHot] = useState(false);
   const reduced = usePrefersReducedMotion();
@@ -236,7 +236,14 @@ export function LandingNav() {
         )}
         <span aria-hidden className="lp-nav-plate" />
         <span className="lp-nav-slot">
-          <span className="lp-nav-mark" ref={markRef} role="img" aria-label="Curfew" />
+          {/* The mark is the way home (Arjun, 2026-08-15) — a link, not an
+              emblem. It stays clickable mid-flight; the travel only moves it. */}
+          <Link className="lp-nav-mark" ref={markRef} href="/" aria-label="Curfew — home">
+            {/* The ink is a child because the mark is masked: a mask clips
+                everything the element paints, focus ring included, so the
+                ring lives on the link and the mask on this span. */}
+            <span className="lp-nav-mark-ink" aria-hidden="true" />
+          </Link>
         </span>
 
         <div className="lp-nav-links">{links}</div>

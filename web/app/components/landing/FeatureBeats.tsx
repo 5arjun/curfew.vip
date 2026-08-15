@@ -19,8 +19,11 @@ import { BeatVideo, LandingActions, useInView } from "./Beats";
 // same capture, all three deleted). When the film lands, add { src, poster }
 // to the entry below and the row becomes a normal one.
 
+// "Reads Serato", not the mechanism behind it (Arjun, 2026-08-15: "I'm
+// trying to avoid spilling to the user how we actually get this data") —
+// the same rule holds across this page and the FAQ.
 const CHIPS = [
-  "Reads Serato sessions",
+  "Reads Serato",
   "Reads your tags",
   "No plugin",
   "No upload",
@@ -35,26 +38,34 @@ type Feature = {
   film?: { src: string; poster: string };
 };
 
+// Value bullets, not spec bullets (Arjun, 2026-08-15: "list bullets that
+// show the value in Curfew and what they can do with it", 4-5 per part).
+// Every line is a built feature wearing its benefit: the dancefloor engine
+// and its edit-and-learn loop, the genre share stream and Camelot wheel,
+// the offline queue, the aging shelf and prep crate, time-to-first-play.
 const FEATURES: Feature[] = [
   {
     n: "01",
     name: "The set",
     claim: "Every night comes back as it actually happened — not as you remember it.",
     facts: [
-      "The full tracklist, in order, against the clock, from Serato’s own session file",
-      "Dancefloor detection — estimated by the engine, editable by you, and it learns",
+      "Every track in order, against the clock — the whole night on one screen",
       "The night’s arc: energy, keys and BPM as the hours move",
+      "The dancefloor detection engine marks the stretch that mattered — drag to correct it, and it learns",
+      "Stats measured on the real dancefloor, not the soundcheck",
+      "Step back into any night, months later, exactly as you played it",
     ],
     film: { src: "/landing/set-detail-3.mp4", poster: "/landing/set-detail-3-poster.jpg" },
   },
   {
     n: "02",
     name: "Style evolution",
-    claim: "What you played tonight, against every set you have ever played.",
+    claim: "What you played tonight, against every night before it.",
     facts: [
-      "Your drift over months, made visible — genres, keys, tempo",
-      "Never ranked, never against another DJ. Only against you, last month",
-      "Not better. Different — Curfew shows the change; what it means is yours",
+      "Watch your sound move month by month — genres, keys, tempo",
+      "See your genre mix shift set by set, and when a new sound enters the rotation",
+      "Your keys on a real Camelot wheel — where your harmonic comfort zone sits",
+      "Catch the drift while it’s happening, not a year later",
     ],
     film: { src: "/landing/style-evolution.mp4", poster: "/landing/style-evolution-poster.jpg" },
   },
@@ -63,9 +74,11 @@ const FEATURES: Feature[] = [
     name: "The archive",
     claim: "Every set files itself the night you play it.",
     facts: [
-      "Curfew’s agent reads Serato when the set ends — no export, no ritual",
+      "Curfew reads Serato when the set ends — no export, no ritual",
       "Your whole history in one place, newest night on top",
-      "Open any night and step back into it",
+      "Jump to any set or track with one search",
+      "No signal at the gig? The set is captured on the spot and syncs when you’re back",
+      "A crashed laptop can’t take your history with it",
     ],
     film: { src: "/landing/dashboard-3.mp4", poster: "/landing/dashboard-3-poster.jpg" },
   },
@@ -74,9 +87,11 @@ const FEATURES: Feature[] = [
     name: "The library",
     claim: "You keep buying music. Curfew shows you what never leaves the shelf.",
     facts: [
-      "Utilization: what you own against what you actually play",
-      "The records you reach for every night, and the ones you never have",
-      "Read from your library’s own tags — nothing to catalogue by hand",
+      "See what you own against what you actually play",
+      "The records you bought and never reached for, surfaced",
+      "Send forgotten records to a prep crate and give them a night out",
+      "Know your workhorses — the tracks that earn a slot every set",
+      "How long new music waits before its first play",
     ],
   },
 ];
@@ -88,8 +103,8 @@ export function FeatureHero() {
       <p className="lp-feat-eyebrow">Features</p>
       <h1 className="lp-feat-title">Fully automatic.</h1>
       <p className="lp-sub lp-feat-sub">
-        Curfew reads Serato&rsquo;s session files and your library&rsquo;s own tags. No plugin, no
-        upload, no manual work — you play the way you already play, and the archive builds itself.
+        Curfew reads Serato and your library&rsquo;s own tags. No plugin, no upload, no manual work
+        — you play the way you already play, and the archive builds itself.
       </p>
       <ul className="lp-feat-chips" aria-label="How Curfew stays automatic">
         {CHIPS.map((chip) => (

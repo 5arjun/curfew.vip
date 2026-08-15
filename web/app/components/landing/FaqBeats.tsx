@@ -5,11 +5,15 @@ import { LandingActions, useInView } from "./Beats";
 
 // /faq (Arjun, 2026-08-15: "easy to view, navigate, and understand... avoid
 // using ambiguous terminology"). Sectioned questions under a rail of anchors,
-// each answer a plain-language disclosure. Every claim below is checked
-// against what is actually built — Serato-only, history backfill (3.3b), the
-// raw-data wire guarantee (2.7), export/deletion on request not self-serve
-// (2.11), one plan at the two real prices — so the page can stay flat and
-// declarative without hedging.
+// each answer a plain-language disclosure.
+//
+// Two content rules, both Arjun's (2026-08-15):
+//   * No mechanism spillage. The page never says HOW Curfew gets the data —
+//     no session files, no folder names, no wire-contract talk. "Curfew
+//     reads Serato" is the whole public story.
+//   * The archive starts at purchase. Curfew files sets from the day a DJ
+//     joins onward; nights from before are not imported. The old backfill
+//     claim is gone — do not resurrect it from git history.
 //
 // The section rail mirrors the stepper’s rail idiom: a hairline with the
 // current section lit. Position is tracked from scroll, not clicks, so the
@@ -24,10 +28,18 @@ const SECTIONS: Section[] = [
     title: "The basics",
     qs: [
       {
+        id: "who-is-curfew-for",
+        q: "Who is Curfew for?",
+        a: [
+          "Working DJs who play real rooms in Serato — clubs, weddings, corporate nights, private events, bars, radio. If you finish a set wondering how the night actually went, Curfew is built for you.",
+          "It fits wedding and private-event DJs especially well: long nights where cocktail hour, dinner and the real dancefloor blur together are exactly what Curfew was built to pull apart.",
+        ],
+      },
+      {
         id: "what-is-curfew",
         q: "What is Curfew?",
         a: [
-          "Curfew is an archive of your DJ sets that builds itself. A small desktop app — the Curfew agent — reads the session records Serato already writes, and every night you play shows up on your dashboard: the full tracklist in order against the clock, the arc of the night, and how the set sits against everything you have played before.",
+          "Curfew is an archive of your DJ sets that builds itself. It connects to Serato through a small desktop app — the Curfew agent — and every night you play shows up on your dashboard: the full tracklist in order against the clock, the arc of the night, and how the set sits against the nights before it.",
           "You never file anything, upload anything, or press record. You play; the archive keeps.",
         ],
       },
@@ -43,14 +55,15 @@ const SECTIONS: Section[] = [
         id: "change-how-i-play",
         q: "Do I have to change how I play?",
         a: [
-          "No. The agent works after the fact: when a set ends, it reads the session record Serato has already written. Nothing runs inside Serato, nothing touches your decks, and there is no button to remember mid-set.",
+          "No. Curfew picks the night up on its own once the set ends. Nothing runs inside Serato, nothing touches your decks, and there is no button to remember mid-set.",
         ],
       },
       {
         id: "old-sets",
         q: "Will my old sets show up, or only new ones?",
         a: [
-          "Both. On first run the agent reads the play history Serato already keeps on your laptop, so the nights you played before Curfew existed come back too. For most DJs that is years of sets, in the archive the same day you install it.",
+          "Your archive starts the day you join. Curfew files every set you play from then on; nights from before Curfew are not imported.",
+          "The value compounds from night one — after a month you can already see a month of your own history moving.",
         ],
       },
     ],
@@ -63,20 +76,21 @@ const SECTIONS: Section[] = [
         id: "where-data-comes-from",
         q: "Where does the data come from?",
         a: [
-          "From Serato’s own records. Serato writes a session file for every set you play; the agent reads those files, plus the tags already on the tracks in your library — artist, title, BPM, key, genre.",
-          "Curfew never listens to audio and never needs the music files themselves. It reads what your software already wrote down.",
+          "From Serato, and from the tags already on the tracks in your library — artist, title, BPM, key, genre. When a set ends, Curfew has the night: what you played, in what order, at what time.",
+          "Curfew never listens to audio and never needs the music files themselves.",
         ],
       },
       {
         id: "dancefloor-detection",
-        q: "What is dancefloor detection?",
+        q: "What is the dancefloor detection engine?",
         a: [
-          "Most session records include the soundcheck, the empty first hour, the pack-down. Curfew’s engine estimates when the real dancefloor was — the stretch of the night your stats should be measured against — and draws that window on the set where you can see it.",
+          "A night is longer than its dancefloor. If you play weddings or private events you know the shape: cocktail hour, dinner, speeches — and then the part everyone came for. Club nights have their own version: the empty first hour, the pack-down.",
+          "The dancefloor detection engine finds the stretch that actually mattered and draws that window on the set, so your stats are measured on the real dancefloor — not on the dinner hour.",
         ],
       },
       {
         id: "dancefloor-wrong",
-        q: "What if it gets the dancefloor wrong?",
+        q: "What if the engine gets the dancefloor wrong?",
         a: [
           "Drag the edges. Your correction stands — the night’s stats recalculate against it — and the engine learns from what you fixed for next time. It is an estimate you can always overrule, never a verdict.",
         ],
@@ -86,13 +100,6 @@ const SECTIONS: Section[] = [
         q: "What happens if I play somewhere with no internet?",
         a: [
           "The set is captured on your laptop the moment it ends, and syncs on its own when you are back online. Nothing about a night is lost to a bad connection.",
-        ],
-      },
-      {
-        id: "compared-to-other-djs",
-        q: "Does Curfew compare me to other DJs?",
-        a: [
-          "No — deliberately. Nothing in Curfew ranks you, scores you against anyone, or shows your sets to another DJ. The only baseline is your own history: what you played tonight, against what you used to play.",
         ],
       },
     ],
@@ -105,8 +112,8 @@ const SECTIONS: Section[] = [
         id: "music-files-uploaded",
         q: "Do my music files get uploaded?",
         a: [
-          "No. Your audio files and your library never leave your laptop — the agent’s sync messages are built so they cannot carry a file or a file path, and a test in the codebase fails if anyone ever tries to add one.",
-          "What syncs is the derived record of a set: track titles, times, keys, BPMs, and the stats built from them.",
+          "No. Your music and your library never leave your laptop.",
+          "What syncs is the record of the set: track titles, times, keys, BPMs, and the stats built from them. Nothing else.",
         ],
       },
       {
@@ -134,21 +141,21 @@ const SECTIONS: Section[] = [
         id: "what-is-the-agent",
         q: "What exactly is the agent?",
         a: [
-          "A small app that sits in your menu bar on macOS, or the system tray on Windows. It watches for finished sets, reads them, syncs the derived record, and stays out of the way. Builds are signed, and it updates itself.",
+          "A small app that sits in your menu bar on macOS, or the system tray on Windows. It keeps your archive up to date on its own and stays out of the way. Builds are signed, and it updates itself.",
         ],
       },
       {
         id: "slow-serato-down",
         q: "Does it run during my set, or slow Serato down?",
         a: [
-          "It never attaches to Serato and never touches audio. It waits for Serato to finish writing a session, then reads the file — its work happens after the night, not during it.",
+          "It never attaches to Serato and never touches audio. Its work happens after the night, not during it — while you play, it stays out of the way.",
         ],
       },
       {
         id: "usb-library",
         q: "My library lives on a USB drive — does that work?",
         a: [
-          "Yes. Point the agent at the drive’s _Serato_ folder and it reads from there. If the drive is unplugged the agent says so plainly, and picks up where it left off when the drive comes back.",
+          "Yes. Tell the agent where your library lives and it works from there. If the drive is unplugged the agent says so plainly, and picks up where it left off when the drive comes back.",
         ],
       },
     ],
@@ -168,7 +175,7 @@ const SECTIONS: Section[] = [
         id: "why-paid",
         q: "Why is Curfew paid?",
         a: [
-          "Because the plan is the product. The subscription pays for the agent, the sync, and the archive — which means your playing history is never the thing being sold.",
+          "The subscription keeps the archive running: it covers database, server and hosting costs, plus the engineering and support behind the agent and the site.",
         ],
       },
       {

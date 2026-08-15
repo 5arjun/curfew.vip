@@ -41,15 +41,8 @@ const appleSignInAvailable = process.env.NEXT_PUBLIC_APPLE_SIGNIN_AVAILABLE === 
 const PITCH_FACTS = [
   "Every set files itself the night you play it — no export, no ritual",
   "The full tracklist against the clock, the night’s arc, the real dancefloor",
-  "Your drift over months — genres, keys, tempo — against no one but you",
+  "Watch your sound move month by month — genres, keys, tempo",
   "Your library: what you own against what you actually play",
-];
-
-const PITCH_ASSURANCES = [
-  "Cancel whenever",
-  "Music files never leave your laptop",
-  "Export or delete on request",
-  "Never ranked against another DJ",
 ];
 
 export function LoginClient() {
@@ -178,12 +171,20 @@ export function LoginClient() {
               disabled={!appleSignInAvailable || authMethodPending}
               unavailableReason={appleSignInAvailable ? undefined : "coming soon"}
             />
-            <BiometricAnchor
-              primaryLabel="Sign in with Passkey"
-              secondaryLabel="use an existing passkey"
+            {/* The BiometricAnchor row read as a gadget next to the OAuth
+                buttons (Arjun, 2026-08-15: "it doesn't look professional") —
+                here the passkey is simply the third provider, same geometry
+                as the two above it. The anchor treatment survives where it
+                belongs, on the post-sign-in enable prompt. */}
+            <button
+              type="button"
+              className="lp-auth-passkey-btn"
               onClick={handlePasskeySignIn}
               disabled={authMethodPending}
-            />
+            >
+              <PasskeyIcon />
+              {passkeyPending ? "Waiting for your passkey…" : "Sign in with Passkey"}
+            </button>
           </div>
 
           {(oauthError || passkeyError) && (
@@ -232,23 +233,29 @@ export function LoginClient() {
             </div>
           </div>
 
-          <p className="lp-auth-switch">
-            {mode === "login" ? (
-              <>
-                New here?{" "}
-                <button type="button" onClick={() => switchMode("signup")}>
-                  Start your archive
-                </button>
-              </>
-            ) : (
-              <>
-                Already archiving?{" "}
-                <button type="button" onClick={() => switchMode("login")}>
-                  Log in
-                </button>
-              </>
-            )}
-          </p>
+          {/* Two different weights on purpose: toward signup is the business
+              (a real bordered CTA carrying the price); toward login is an
+              escape hatch (one quiet line). */}
+          {mode === "login" ? (
+            <button type="button" className="lp-auth-startcta" onClick={() => switchMode("signup")}>
+              <span className="lp-auth-startcta-line">
+                <strong>Start your archive tonight</strong>
+                <span className="lp-auth-startcta-arrow" aria-hidden="true">
+                  →
+                </span>
+              </span>
+              <span className="lp-auth-startcta-sub">
+                Every set you play from tonight on, kept. $6.99/month.
+              </span>
+            </button>
+          ) : (
+            <p className="lp-auth-switch">
+              Already archiving?{" "}
+              <button type="button" onClick={() => switchMode("login")}>
+                Log in
+              </button>
+            </p>
+          )}
 
           {mode === "signup" && (
             <p className="lp-auth-fineprint">
@@ -264,8 +271,8 @@ export function LoginClient() {
             <p className="lp-feat-eyebrow">Join Curfew</p>
             <h2 className="lp-auth-claim">Every night you play, kept.</h2>
             <p className="lp-sub lp-auth-sub">
-              Curfew reads the sets you already played and gives you the only baseline that means
-              anything: your own. Here is what the plan buys, all of it, for every DJ on it.
+              Curfew turns the sets you play into the only baseline that means anything: your own.
+              Here is what the plan buys, all of it, for every DJ on it.
             </p>
             <ul className="lp-feat-facts lp-auth-facts">
               {PITCH_FACTS.map((fact) => (
@@ -279,15 +286,28 @@ export function LoginClient() {
               </p>
               <p className="lp-auth-plan-terms">Billed yearly — or $7.99 month to month.</p>
             </div>
-            <ul className="lp-feat-chips lp-auth-chips" aria-label="What you can count on">
-              {PITCH_ASSURANCES.map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </ul>
           </div>
         </section>
       </div>
     </main>
+  );
+}
+
+// The FIDO passkey silhouette — a person and a key, nothing biometric or
+// gadget-like. Token fill, same rule as every inline icon in the app.
+function PasskeyIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="var(--color-abyss-text)"
+        fillRule="evenodd"
+        d="M17.5 9.5a3.25 3.25 0 0 1 1.25 6.25v3.05l-1.25 1.7-1.25-1.7v-.55l.65-.85-.65-.85v-.8A3.25 3.25 0 0 1 17.5 9.5Zm0 2a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5Z"
+      />
+      <path
+        fill="var(--color-abyss-text)"
+        d="M9.5 3.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm0 9.75c1.52 0 2.94.33 4.1.9a5.23 5.23 0 0 0-1.35 3.52c0 .95.25 1.87.71 2.66l-.06.17H2.75v-2.2c0-2.8 3.02-5.05 6.75-5.05Z"
+      />
+    </svg>
   );
 }
 

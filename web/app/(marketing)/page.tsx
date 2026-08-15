@@ -115,7 +115,7 @@ export default function LandingPage() {
               </em>
             </h1>
             <p className="lp-sub">
-              Curfew reads the sets you already played and gives you the only baseline that means
+              Curfew reads the sets you play and gives you the only baseline that means
               anything - your own.
             </p>
             {/* The page's only CTA used to be 3,000px down, at the close

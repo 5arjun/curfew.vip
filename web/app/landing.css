@@ -146,10 +146,17 @@
   top: 0;
   bottom: 0;
   margin: auto 0;
+  display: block;
   width: var(--lp-nav-mark-w);
   aspect-ratio: 1302 / 308;
   transform-origin: 0 0;
   will-change: transform;
+}
+
+.lp-nav-mark-ink {
+  position: absolute;
+  inset: 0;
+  display: block;
   background: linear-gradient(
     180deg,
     var(--color-abyss-text-72) 0%,
@@ -157,6 +164,16 @@
   );
   -webkit-mask: url("/brand/curfew-wordmark.png") left center / contain no-repeat;
   mask: url("/brand/curfew-wordmark.png") left center / contain no-repeat;
+}
+
+/* A link now — home from anywhere on the marketing side. The ring is the
+   nav's shared focus treatment; the mask keeps painting the mark itself. */
+.lp-nav-mark:focus-visible {
+  outline: none;
+  border-radius: var(--radius-lg);
+  box-shadow:
+    0 0 0 2px var(--color-primary),
+    0 0 0 6px var(--color-primary-glow);
 }
 
 /* While the mark is in flight it IS the hero's wordmark, so the hero's own is
@@ -1996,10 +2013,6 @@
   column-gap: var(--space-xl);
 }
 
-.lp-feat-row--bare .lp-feat-facts li:last-child {
-  border-bottom: 0;
-}
-
 .lp-feat-media {
   position: relative;
   aspect-ratio: 16 / 9;
@@ -2033,24 +2046,21 @@
   padding: 0;
 }
 
+/* No rule between bullets (Arjun, 2026-08-15) — the dots carry the rhythm
+   and the list reads as one claim-set rather than a spreadsheet. */
 .lp-feat-facts li {
   position: relative;
-  padding: 12px 0 12px 22px;
-  border-top: 1px solid var(--color-abyss-hairline);
+  padding: 8px 0 8px 22px;
   font-size: 0.9375rem;
   line-height: 1.5;
   color: var(--color-abyss-text-72);
-}
-
-.lp-feat-facts li:last-child {
-  border-bottom: 1px solid var(--color-abyss-hairline);
 }
 
 .lp-feat-facts li::before {
   content: "";
   position: absolute;
   left: 4px;
-  top: calc(12px + 0.75em - 2.5px);
+  top: calc(8px + 0.75em - 2.5px);
   width: 5px;
   height: 5px;
   border-radius: 50%;
@@ -2104,10 +2114,6 @@
      stacked list every other row uses. */
   .lp-feat-row--bare .lp-feat-facts {
     grid-template-columns: 1fr;
-  }
-
-  .lp-feat-row--bare .lp-feat-facts li:last-child {
-    border-bottom: 1px solid var(--color-abyss-hairline);
   }
 }
 
@@ -2244,10 +2250,6 @@
   color: var(--color-abyss-text-45);
 }
 
-.lp-auth-chips {
-  margin-top: var(--space-lg);
-}
-
 /* ── The card ── the checkout form. Liquid-glass shell over the mesh, same
    material family as the nav plate. */
 .lp-auth-card {
@@ -2261,6 +2263,26 @@
   box-shadow:
     inset 0 1px 0 var(--color-nav-rim),
     0 24px 60px var(--shadow-ink-30);
+  overflow: hidden;
+}
+
+/* An ember seam along the card's top edge — the one warm line on the shell,
+   tying the form to the buttons that submit it and to this page's own mesh. */
+.lp-auth-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 8%;
+  right: 8%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    var(--color-primary-glow-fade) 0%,
+    var(--color-primary-glow) 30%,
+    var(--color-primary-glow) 70%,
+    var(--color-primary-glow-fade) 100%
+  );
+  pointer-events: none;
 }
 
 @media (prefers-reduced-transparency: reduce) {
@@ -2293,6 +2315,46 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
+}
+
+.lp-auth-passkey-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  width: 100%;
+  min-height: 40px;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-abyss-hairline);
+  background: var(--color-abyss-raised);
+  font-family: var(--font-inter);
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-abyss-text);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    opacity var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lp-auth-passkey-btn:hover:not(:disabled) {
+  background: var(--color-abyss-shell);
+  border-color: var(--color-outline-variant);
+}
+
+.lp-auth-passkey-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.lp-auth-passkey-btn:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-primary),
+    0 0 0 6px var(--color-primary-glow);
 }
 
 .lp-auth-error {
@@ -2422,6 +2484,63 @@
 .lp-auth-submit {
   width: 100%;
   margin-top: var(--space-sm);
+}
+
+.lp-auth-startcta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  margin-top: var(--space-lg);
+  padding: var(--space-md);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-abyss-hairline);
+  background: linear-gradient(180deg, var(--shadow-ink-0) 0%, var(--shadow-ink-20) 100%);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: border-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lp-auth-startcta:hover {
+  border-color: var(--color-primary-glow);
+}
+
+.lp-auth-startcta:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-primary),
+    0 0 0 6px var(--color-primary-glow);
+}
+
+.lp-auth-startcta-line {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-family: var(--font-inter);
+  font-size: 0.9375rem;
+  color: var(--color-abyss-text);
+}
+
+.lp-auth-startcta-line strong {
+  font-weight: 500;
+}
+
+.lp-auth-startcta-arrow {
+  display: inline-block;
+  color: var(--color-primary);
+  transition: transform var(--motion-duration-base) var(--motion-ease-liquid);
+}
+
+.lp-auth-startcta:hover .lp-auth-startcta-arrow {
+  transform: translateX(4px);
+}
+
+.lp-auth-startcta-sub {
+  font-family: var(--font-geist-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  color: var(--color-abyss-text-45);
 }
 
 .lp-auth-switch {
@@ -2798,6 +2917,7 @@
   .lp-auth-email-inner,
   .lp-auth-alt-mark::before,
   .lp-auth-alt-mark::after,
+  .lp-auth-startcta-arrow,
   .lp-faq-hero,
   .lp-faq-section,
   .lp-faq-rail-link::before,
