@@ -120,10 +120,10 @@ export default function LandingPage() {
             </p>
             {/* The page's only CTA used to be 3,000px down, at the close
                 (Arjun, 2026-08-14). A reader who is already sold has nowhere to
-                act until they have scrolled the whole film. The secondary is an
-                anchor rather than a button because it genuinely navigates — it
-                lands on beat 05, the feature tour — so it works without JS and
-                takes focus and middle-click like a link should. */}
+                act until they have scrolled the whole film. The secondary is a
+                link because it genuinely navigates — to /features, the full
+                feature reference — so it works without JS and takes focus and
+                middle-click like a link should. */}
             <LandingActions className="lp-hero-actions" />
             <p className="lp-cue">
               <span>Scroll</span>

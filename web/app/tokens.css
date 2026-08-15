@@ -558,4 +558,16 @@
      rather than stopping short. ~80% of the page base, faded in from the left
      so the ribbon dissolves under the text instead of being cut off by it. */
   --landing-scrim: #04060acc;
+
+  /* /features mesh ramp (Arjun, 2026-08-14: "change the color of the animated
+     orb type of background"). Same darkest-first contract and the same
+     hex-for-the-shader rule as the ribbon set above; read by MeshDrift via
+     MarketingMesh. One family warmer than the landing's glacial cyan —
+     ultraviolet, the after-hours half of the same night — so the two marketing
+     surfaces read as rooms of one venue rather than two brands. Decorative
+     only, behind a 0.55-opacity layer; never carries text. */
+  --landing-features-atmos: #150b24;
+  --landing-features-deep: #120a1e;
+  --landing-features-accent: #7e5bd4;
+  --landing-features-floor: #c99df0;
 }

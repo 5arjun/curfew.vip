@@ -369,14 +369,14 @@ function parseHex(value: string): [number, number, number] | null {
  * getSnapshot has to return a stable value across calls — a fresh array would
  * loop. Same contract as useArcColors/useMetalColors.
  */
-function usePaletteSnapshot(): string {
+function usePaletteSnapshot(tokens: readonly string[]): string {
   return useSyncExternalStore(
     () => () => {},
     () => {
       const root = getComputedStyle(document.documentElement);
-      return PALETTE_TOKENS.map((name) => root.getPropertyValue(name).trim()).join("|");
+      return tokens.map((name) => root.getPropertyValue(name).trim()).join("|");
     },
-    () => PALETTE_TOKENS.map(() => "").join("|"),
+    () => tokens.map(() => "").join("|"),
   );
 }
 
@@ -385,9 +385,22 @@ function usePaletteSnapshot(): string {
 // canvas comes back.
 const pendingContextReleases = new WeakMap<HTMLCanvasElement, number>();
 
-export function MeshDrift({ className }: { className?: string }) {
+/**
+ * `palette` swaps the field's colour family per surface — token NAMES, not
+ * values, so the hex stays in tokens.css with the rest of the --landing-*
+ * block. The landing keeps the default glacial ramp; /features passes its
+ * ultraviolet one (MarketingMesh.tsx). Same darkest-first contract as
+ * PALETTE_TOKENS above.
+ */
+export function MeshDrift({
+  className,
+  palette = PALETTE_TOKENS,
+}: {
+  className?: string;
+  palette?: readonly string[];
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const snapshot = usePaletteSnapshot();
+  const snapshot = usePaletteSnapshot(palette);
   const still = usePrefersReducedMotion();
 
   // Eight slots, whatever the token count: WebGL1 wants the array filled, and

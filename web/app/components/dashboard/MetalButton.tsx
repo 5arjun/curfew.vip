@@ -29,11 +29,13 @@ import { useMetalColors, usePrefersReducedMotion } from "@/app/components/ui/met
 // Arjun 2026-08-03). Never map it over a list.
 //
 // Added 2026-08-14 (Arjun): the landing page's CTA, in all three of its
-// placements — hero, stepper, close — via <LandingActions>. That is 3 contexts
-// on a route that already spends one on the arc ribbon, so /landing sits at 4
-// of the browser's ~16. It is the ceiling for that page: the "See features"
-// secondary is deliberately plain CSS, and any further landing CTA should
-// reuse LandingActions rather than mount a fourth shader.
+// placements — hero, stepper, close — via <LandingActions>, and (later the
+// same day, Arjun again) the landing nav bar's rim in LandingNav.tsx, built on
+// the FloatingNav rail-rim pattern and gated to ≥761px. With the mesh and the
+// arc ribbon that puts the landing at 6 contexts of the browser's ~16 on
+// desktop. That IS the ceiling for the page: the "See features" secondary is
+// deliberately CSS-only (chrome ring + sheen, no shader), and any further
+// landing CTA should reuse LandingActions rather than mount another shader.
 const LiquidMetal = dynamic(
   () => import("@paper-design/shaders-react").then((m) => m.LiquidMetal),
   { ssr: false },

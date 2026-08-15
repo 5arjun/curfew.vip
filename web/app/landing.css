@@ -13,9 +13,10 @@
 .lp-root {
   --lp-gutter: clamp(20px, 5vw, 72px);
   /* Every display rule on this page reads --lp-display, so the face is one
-     line to re-decide rather than eleven. D-4 settled on Bricolage Grotesque
-     (Arjun, 2026-08-14) — see fonts.ts for why the serif direction lost. */
-  --lp-display: var(--font-bricolage-var), system-ui, sans-serif;
+     line to re-decide rather than eleven. D-4, round three: Clash Display
+     (Arjun, 2026-08-14) — see fonts.ts for the history of the serif and
+     Bricolage rounds. */
+  --lp-display: var(--font-clash-var), system-ui, sans-serif;
   --lp-mesh-opacity: 0.55;
   background: var(--color-abyss-base);
   color: var(--color-abyss-text);
@@ -69,20 +70,60 @@
   pointer-events: none;
 }
 
+/* The bar is metal now (Arjun, 2026-08-14): LandingNav mounts the LiquidMetal
+   ring in .lp-nav-rim and the glass moved down onto .lp-nav-plate, inset 2px,
+   so the shader shows as a 2px chrome rim exactly the way the dashboard rail's
+   does. The bar itself keeps only geometry and the outer shadow. */
 .lp-nav-bar {
+  position: relative;
+  isolation: isolate;
   pointer-events: auto;
   display: flex;
   align-items: center;
   max-width: 100%;
   padding: 6px 6px 6px 18px;
   border-radius: 999px;
-  border: 1px solid var(--color-abyss-hairline);
+  box-shadow: 0 18px 40px var(--shadow-ink-20);
+}
+
+.lp-nav-rim {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+/* Same canvas pinning as .nav-rail-rim canvas — the shader lib sizes its own
+   canvas; these keep it glued to the rim's box. */
+.lp-nav-rim canvas {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.lp-nav-plate {
+  position: absolute;
+  inset: 2px;
+  z-index: -1;
+  border-radius: 999px;
   background: var(--color-abyss-shell-glass);
   -webkit-backdrop-filter: blur(24px) saturate(1.15);
   backdrop-filter: blur(24px) saturate(1.15);
-  box-shadow:
-    inset 0 1px 0 var(--shadow-ink-0),
-    0 18px 40px var(--shadow-ink-20);
+  box-shadow: inset 0 1px 0 var(--shadow-ink-0);
+}
+
+/* Below the metal breakpoint the rim never mounts (LandingNav gates it at
+   761px), so the plate hugs the bar's edge and carries the hairline the rim
+   would otherwise be. */
+@media (max-width: 760.98px) {
+  .lp-nav-plate {
+    inset: 0;
+    border: 1px solid var(--color-abyss-hairline);
+  }
 }
 
 /* The slot is a hole in the layout that opens as the mark arrives — this is
@@ -120,8 +161,10 @@
 
 /* While the mark is in flight it IS the hero's wordmark, so the hero's own is
    hidden rather than duplicated. visibility, not display: the hero's eyebrow
-   keeps its box, so nothing under it shifts when the bar takes over. */
-.lp-root:has(.lp-nav[data-travel="true"]) .lp-wordmark {
+   keeps its box, so nothing under it shifts when the bar takes over. Scoped to
+   the hero's — the bare .lp-wordmark selector also caught the closing beat's
+   wordmark 3,000px further down and quietly deleted the page's final mark. */
+.lp-root:has(.lp-nav[data-travel="true"]) .lp-hero .lp-wordmark {
   visibility: hidden;
 }
 
@@ -386,7 +429,8 @@
 }
 
 @media (prefers-reduced-transparency: reduce) {
-  .lp-nav-bar,
+  /* The bar's glass lives on .lp-nav-plate now — the opaque fallback follows it. */
+  .lp-nav-plate,
   .lp-nav-sheet,
   .lp-nav-sheet[data-open="true"] {
     background: var(--color-abyss-shell);
@@ -944,16 +988,17 @@
   mask: url("/brand/curfew-wordmark.png") left center / contain no-repeat;
 }
 
-/* Set for a grotesque, not for the serif this started as: less size, tighter
-   tracking and a real weight. A display serif can carry 100px because its
-   contrast does the work; a grotesque at that size just reads as a system
-   dialog. */
+/* Set for a grotesque, not for the serif this started as: less size and a real
+   weight. The tracking is barely negative now — Bricolage ran -0.035em here and
+   at that fit the words fused ("twentwell", Arjun 2026-08-14); Clash Display is
+   already tightly fitted, so the air between words has to come from the
+   tracking staying close to zero and from .lp-word's gap below. */
 .lp-headline {
   font-family: var(--lp-display);
   font-weight: 500;
   font-size: clamp(2.25rem, 5.6vw, 4.5rem);
   line-height: 1.06;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.01em;
   margin: 0;
 }
 
@@ -962,8 +1007,9 @@
   color: var(--color-abyss-text-72);
 }
 
-/* The turn holds its emphasis by weight and colour, not by slope — Bricolage
-   has no italic worth setting a headline in. */
+/* The turn holds its emphasis by weight and colour, not by slope — Clash
+   Display, like Bricolage before it, has no italic worth setting a headline
+   in. */
 .lp-headline-turn {
   display: block;
   font-style: normal;
@@ -971,11 +1017,15 @@
   color: var(--color-abyss-text);
 }
 
+/* The word gap is this padding, not a space character — Split() discards the
+   spaces when it wraps each word for the rise animation. 0.28em ≈ a full word
+   space for Clash's fit; anything under ~0.22em is where "It went well." starts
+   reading as one word. */
 .lp-word {
   display: inline-block;
   overflow: hidden;
   vertical-align: bottom;
-  padding-right: 0.22em;
+  padding-right: 0.28em;
 }
 
 .lp-word-inner {
@@ -1036,18 +1086,37 @@
   outline: none;
 }
 
-/* The secondary wears the same metal, thinned to an edge: a steel hairline and
-   a face that is barely there, so it reads as the same material seen from the
-   side rather than as a different component. */
+/* The secondary is still the same metal seen from the side — but no longer a
+   plain hairline (Arjun, 2026-08-14: "i dont like how plain it is"). Three
+   layers, all CSS: a conic chrome ring whose glint circles the pill slowly
+   (the dashboard shells' dz-glint treatment, thinned to a CTA), a glass face,
+   and a sheen that sweeps across once on hover. Deliberately NOT a fourth
+   LiquidMetal mount: MetalButton.tsx caps this page's WebGL budget, and the
+   secondary reading as "the same material, unpowered" is the hierarchy.
+
+   The glint angle is a REGISTERED @property, sanctioned by the same rule as
+   --dz-glint-angle and --nav-shine-angle: it animates via @keyframes only and
+   never goes through setProperty, so the Lightning CSS runtime-write bug
+   (ref-property-setproperty-bug) cannot reach it. */
+@property --lp-ghost-glint {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 210deg;
+}
+
 .lp-ghost-cta {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-height: 52px;
   padding: 0 28px;
   border-radius: var(--radius-xl);
-  border: 1px solid var(--color-abyss-hairline);
   background: linear-gradient(180deg, var(--shadow-ink-0) 0%, var(--shadow-ink-20) 100%);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
   font-family: var(--font-inter);
   font-size: 0.9375rem;
   line-height: 1;
@@ -1055,13 +1124,91 @@
   text-decoration: none;
   cursor: pointer;
   transition:
-    border-color var(--motion-duration-fast) var(--motion-ease-standard),
-    color var(--motion-duration-fast) var(--motion-ease-standard);
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    transform var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+/* The ring: a 1px conic border cut out with the same mask-composite trick as
+   .dz-shell::before. Two bright arcs — steel near the top, the dimmed cyan
+   glint opposite — so the edge reads as chrome catching two lights, and the
+   rotation keeps it from reading as a static border. */
+.lp-ghost-cta::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+      from var(--lp-ghost-glint),
+      var(--color-abyss-hairline),
+      var(--metal-abyss-label) 10%,
+      var(--color-abyss-hairline) 24%,
+      var(--color-abyss-hairline) 48%,
+      var(--color-abyss-glint) 60%,
+      var(--color-abyss-hairline) 74%
+    )
+    border-box;
+  mask:
+    linear-gradient(var(--color-surface-void) 0 0) content-box,
+    linear-gradient(var(--color-surface-void) 0 0);
+  mask-composite: exclude;
+  -webkit-mask-composite: xor;
+  animation: lp-ghost-glint 7s linear infinite;
+  pointer-events: none;
+}
+
+/* The hover sheen: one diagonal sweep, not a loop — a glance of light as the
+   hand arrives, matching the MetalButton's speed-up rather than competing
+   with its shader. */
+.lp-ghost-cta::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(
+    115deg,
+    var(--shadow-ink-0) 35%,
+    var(--color-abyss-glint) 50%,
+    var(--shadow-ink-0) 65%
+  );
+  opacity: 0.5;
+  transform: translateX(-130%);
+  pointer-events: none;
 }
 
 .lp-ghost-cta:hover {
-  border-color: var(--metal-abyss-label);
   color: var(--color-abyss-text);
+}
+
+.lp-ghost-cta:hover::after {
+  animation: lp-ghost-sheen 800ms var(--motion-ease-standard) forwards;
+}
+
+/* The same 1px press the MetalButton stack takes, so the pair feel like one
+   family under the finger. */
+.lp-ghost-cta:active {
+  transform: translateY(1px);
+}
+
+@keyframes lp-ghost-glint {
+  to {
+    --lp-ghost-glint: 570deg;
+  }
+}
+
+@keyframes lp-ghost-sheen {
+  to {
+    transform: translateX(130%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-ghost-cta::before,
+  .lp-ghost-cta:hover::after {
+    animation: none;
+  }
 }
 
 .lp-cue {
@@ -1265,12 +1412,16 @@
 
 /* ═══ BEATS 03-10 (mockup pass, 2026-08-13) ════════════════════════════════ */
 
+/* Same words-fusing watch as .lp-headline: Clash's fit is tight, so the
+   tracking stays near zero and the word gap is widened explicitly — "The
+   night" was reading as "Thenight" at -0.03em with default word spacing. */
 .lp-h2 {
   font-family: var(--lp-display);
   font-weight: 500;
   font-size: clamp(1.625rem, 3vw, 2.625rem);
   line-height: 1.1;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.01em;
+  word-spacing: 0.08em;
   margin: 0 0 var(--space-md);
   color: var(--color-abyss-text);
 }
@@ -1491,30 +1642,73 @@
   display: block;
   font-family: var(--lp-display);
   font-weight: 500;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.02em;
   font-size: clamp(2.25rem, 4.2vw, 3.75rem);
   line-height: 1;
   color: var(--color-abyss-text-22);
   margin-bottom: var(--space-md);
 }
 
-.lp-stepper-dots {
-  list-style: none;
+/* The copy column is a fixed-height flex box rather than a bare grid child so
+   the rail beside it has a stable span: the four bodies are different lengths,
+   and a rail sized to the copy's natural height would breathe with every step
+   change. Contents stay vertically centred inside the stable box. */
+.lp-stepper-copy {
+  position: relative;
   display: flex;
-  gap: var(--space-sm);
-  margin: var(--space-xl) 0 0;
-  padding: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: clamp(320px, 52vh, 460px);
+  padding-left: 30px;
 }
 
-.lp-stepper-dots li {
-  width: 22px;
-  height: 2px;
-  background: var(--color-abyss-text-22);
-  transition: background var(--motion-duration-base) var(--motion-ease-standard);
+/* ── The scroll rail ─────────────────────────────────────────────────────────
+   Replaces the dot tabs, which read as click targets (Arjun, 2026-08-14). One
+   hairline track; a fill that brightens the distance already travelled; an orb
+   at the boundary between them. Everything rides --lp-step-p (0..1, written by
+   Stepper's scroll handler), so there are no transitions here at all — a
+   transition on a scroll-linked value is lag, not easing (same rule as
+   --lp-dock above). The three faint notches mark where the four steps hand
+   over, so the line also says "there are four of these". */
+.lp-stepper-rail {
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 2px;
+  border-radius: 1px;
+  background:
+    radial-gradient(circle at 50% 25%, var(--color-abyss-text-45) 0 2px, var(--shadow-ink-0) 2.5px),
+    radial-gradient(circle at 50% 50%, var(--color-abyss-text-45) 0 2px, var(--shadow-ink-0) 2.5px),
+    radial-gradient(circle at 50% 75%, var(--color-abyss-text-45) 0 2px, var(--shadow-ink-0) 2.5px),
+    var(--color-abyss-text-22);
 }
 
-.lp-stepper-dots li[data-active="true"] {
+/* The travelled portion of the track. Scales rather than resizes: height is
+   fixed at 100% and scaleY carries the progress, so the paint never relayouts. */
+.lp-stepper-rail::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
   background: var(--color-abyss-accent);
+  transform-origin: 0 0;
+  transform: scaleY(var(--lp-step-p, 0));
+}
+
+.lp-stepper-rail-orb {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--lp-step-p, 0) * 100%);
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: var(--color-abyss-accent);
+  box-shadow:
+    0 0 14px var(--color-abyss-accent-glow),
+    0 0 4px var(--color-abyss-accent);
 }
 
 .lp-stepper-media {
@@ -1688,6 +1882,248 @@
   }
 
   .lp-stepper-frame[data-shown="true"] {
+    opacity: 1;
+  }
+}
+
+/* ══ /features — the feature reference (Arjun, 2026-08-14) ═══════════════════
+   Editorial rows over the ultraviolet mesh: film on one side; the feature's
+   number, name, claim and fact-list on the other; alternating. Same reveal
+   grammar as the landing beats (data-shown + the liquid ease), one register
+   calmer — the landing is a film, this page is the catalogue. The page's own
+   accent is --landing-features-accent, the same violet the mesh runs, so the
+   surface and its marks agree. */
+
+.lp-features {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 var(--lp-gutter);
+}
+
+.lp-feat-hero {
+  padding: clamp(120px, 18vh, 180px) 0 clamp(48px, 8vh, 96px);
+  opacity: 0;
+  transform: translateY(20px);
+  transition:
+    opacity var(--motion-duration-liquid-grand) var(--motion-ease-liquid),
+    transform var(--motion-duration-liquid-grand) var(--motion-ease-liquid);
+}
+
+.lp-feat-hero[data-shown="true"] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.lp-feat-eyebrow {
+  margin: 0 0 var(--space-md);
+  font-family: var(--font-geist-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--color-abyss-text-45);
+}
+
+.lp-feat-title {
+  margin: 0;
+  font-family: var(--lp-display);
+  font-weight: 500;
+  font-size: clamp(2.25rem, 5vw, 4rem);
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  word-spacing: 0.08em;
+  color: var(--color-abyss-text);
+}
+
+.lp-feat-sub {
+  max-width: 52ch;
+}
+
+.lp-feat-chips {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin: var(--space-xl) 0 0;
+  padding: 0;
+}
+
+.lp-feat-chips li {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--color-abyss-hairline);
+  background: linear-gradient(180deg, var(--shadow-ink-0) 0%, var(--shadow-ink-20) 100%);
+  font-family: var(--font-geist-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-abyss-text-72);
+}
+
+.lp-feat-row {
+  display: grid;
+  grid-template-columns: minmax(0, 58%) minmax(0, 42%);
+  gap: clamp(var(--space-lg), 4vw, 72px);
+  align-items: center;
+  padding: clamp(40px, 7vh, 84px) 0;
+  opacity: 0;
+  transform: translateY(24px);
+  transition:
+    opacity var(--motion-duration-liquid-grand) var(--motion-ease-liquid),
+    transform var(--motion-duration-liquid-grand) var(--motion-ease-liquid);
+}
+
+.lp-feat-row[data-shown="true"] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Alternation: even rows swap the wide/narrow columns and send the media to
+   the second one. order participates in grid auto-placement, so the copy
+   (order 0) takes column one and the film follows it. */
+.lp-feat-row[data-flip="true"] {
+  grid-template-columns: minmax(0, 42%) minmax(0, 58%);
+}
+
+.lp-feat-row[data-flip="true"] .lp-feat-media {
+  order: 2;
+}
+
+/* A row with no film yet (the library, until its take is recorded) runs bare:
+   full-width copy with the facts fanned into three columns. No stand-in image
+   — see the note in FeatureBeats.tsx about what happened to the "stills". */
+.lp-feat-row--bare {
+  grid-template-columns: 1fr;
+}
+
+.lp-feat-row--bare .lp-feat-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: var(--space-xl);
+}
+
+.lp-feat-row--bare .lp-feat-facts li:last-child {
+  border-bottom: 0;
+}
+
+.lp-feat-media {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  border: 1px solid var(--color-abyss-hairline);
+}
+
+.lp-feat-film {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.lp-feat-n {
+  display: block;
+  margin-bottom: var(--space-sm);
+  font-family: var(--lp-display);
+  font-weight: 500;
+  font-size: clamp(1.75rem, 3vw, 2.5rem);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--color-abyss-text-22);
+}
+
+.lp-feat-facts {
+  list-style: none;
+  margin: var(--space-lg) 0 0;
+  padding: 0;
+}
+
+.lp-feat-facts li {
+  position: relative;
+  padding: 12px 0 12px 22px;
+  border-top: 1px solid var(--color-abyss-hairline);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--color-abyss-text-72);
+}
+
+.lp-feat-facts li:last-child {
+  border-bottom: 1px solid var(--color-abyss-hairline);
+}
+
+.lp-feat-facts li::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: calc(12px + 0.75em - 2.5px);
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--landing-features-accent);
+}
+
+.lp-feat-close {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-lg);
+  padding: clamp(64px, 12vh, 140px) 0 var(--space-xl);
+  text-align: center;
+  opacity: 0;
+  transform: translateY(20px);
+  transition:
+    opacity var(--motion-duration-liquid-grand) var(--motion-ease-liquid),
+    transform var(--motion-duration-liquid-grand) var(--motion-ease-liquid);
+}
+
+.lp-feat-close[data-shown="true"] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.lp-feat-price {
+  margin: 0;
+  font-family: var(--font-geist-mono);
+  font-size: 0.8125rem;
+  letter-spacing: 0.08em;
+  color: var(--color-abyss-text-45);
+}
+
+.lp-feat-footer {
+  justify-self: stretch;
+  margin-top: clamp(48px, 10vh, 120px);
+}
+
+@media (max-width: 860px) {
+  .lp-feat-row,
+  .lp-feat-row[data-flip="true"] {
+    grid-template-columns: 1fr;
+  }
+
+  /* Stacked, the film always leads — the alternation is a two-column idea. */
+  .lp-feat-row[data-flip="true"] .lp-feat-media {
+    order: 0;
+  }
+
+  /* The bare row's three fact columns are a wide-layout idea too: at phone
+     widths they squeeze into word-per-line slivers, so it rejoins the plain
+     stacked list every other row uses. */
+  .lp-feat-row--bare .lp-feat-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .lp-feat-row--bare .lp-feat-facts li:last-child {
+    border-bottom: 1px solid var(--color-abyss-hairline);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-feat-hero,
+  .lp-feat-row,
+  .lp-feat-close {
+    transition: none;
+    transform: none;
     opacity: 1;
   }
 }

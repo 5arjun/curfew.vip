@@ -1,8 +1,29 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
-import { usePrefersReducedMotion } from "@/app/components/ui/metal-hooks";
+import {
+  useMediaQuery,
+  useMetalColors,
+  usePrefersReducedMotion,
+} from "@/app/components/ui/metal-hooks";
+
+// The bar wears the liquid metal now (Arjun, 2026-08-14: "the nav bar at the
+// top, lets give it that metallic look... the same pill animation style as the
+// 'start your archive' button"). Same construction as FloatingNav's rail rim —
+// shader ring under a dark glass plate inset 2px — and the rail's long-thin-
+// surface params (repetition 1.5, distortion 0.2), not the button's, because a
+// ~600px pill shows the same periodic-beads artefact the rail did. Speed runs
+// the CTA's state machine minus the click burst: idle 0.35 → hover 1.0.
+// Mounted only at sheet-free widths (≥761px), so a phone never pays the WebGL
+// context — its pill keeps the plain glass. That makes this the landing's
+// sixth context on desktop (mesh + ribbon + three CTAs + this) of the
+// browser's ~16; the placement note in MetalButton.tsx records it.
+const LiquidMetal = dynamic(
+  () => import("@paper-design/shaders-react").then((m) => m.LiquidMetal),
+  { ssr: false },
+);
 
 // The Landing's nav (Arjun, 2026-08-14). A floating glass pill, and one idea:
 // the hero's wordmark is the nav's wordmark. On load the bar carries only its
@@ -42,8 +63,12 @@ export function LandingNav() {
   const headerRef = useRef<HTMLElement>(null);
   const markRef = useRef<HTMLSpanElement>(null);
   const [open, setOpen] = useState(false);
+  const [hot, setHot] = useState(false);
   const reduced = usePrefersReducedMotion();
+  const colors = useMetalColors();
+  const metal = useMediaQuery("(min-width: 761px)");
   const panelId = useId();
+  const speed = reduced ? 0 : hot ? 1 : 0.35;
 
   useEffect(() => {
     const header = headerRef.current;
@@ -164,7 +189,7 @@ export function LandingNav() {
 
   const links = (
     <>
-      <Link className="lp-nav-link" href="/#features" onClick={() => setOpen(false)}>
+      <Link className="lp-nav-link" href="/features" onClick={() => setOpen(false)}>
         Features
       </Link>
       {/* Not a link on purpose: the FAQ has not been written yet (Arjun,
@@ -177,7 +202,34 @@ export function LandingNav() {
 
   return (
     <header className="lp-nav" ref={headerRef}>
-      <nav className="lp-nav-bar" aria-label="Main">
+      <nav
+        className="lp-nav-bar"
+        aria-label="Main"
+        onMouseEnter={() => setHot(true)}
+        onMouseLeave={() => setHot(false)}
+      >
+        {metal && colors && (
+          <span aria-hidden className="lp-nav-rim">
+            <LiquidMetal
+              style={{ width: "100%", height: "100%" }}
+              colorBack={colors.back}
+              colorTint={colors.tint}
+              speed={speed}
+              repetition={1.5}
+              softness={0.6}
+              shiftRed={0.3}
+              shiftBlue={0.3}
+              distortion={0.2}
+              contour={0}
+              angle={45}
+              scale={8}
+              offsetX={0.1}
+              offsetY={-0.1}
+              shape="none"
+            />
+          </span>
+        )}
+        <span aria-hidden className="lp-nav-plate" />
         <span className="lp-nav-slot">
           <span className="lp-nav-mark" ref={markRef} role="img" aria-label="Curfew" />
         </span>

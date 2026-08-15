@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { MetalButton } from "@/app/components/dashboard/MetalButton";
 import { useMediaQuery, usePrefersReducedMotion } from "@/app/components/ui/metal-hooks";
@@ -10,7 +11,7 @@ import { useMediaQuery, usePrefersReducedMotion } from "@/app/components/ui/meta
 // three shots are still outstanding (V1 the arc draw, V3 the segment editor,
 // V9 the agent tray) and the beats that want them are noted inline.
 
-function useInView<T extends HTMLElement>(threshold = 0.35) {
+export function useInView<T extends HTMLElement>(threshold = 0.35) {
   const ref = useRef<T>(null);
   const [inView, setInView] = useState(false);
   useEffect(() => {
@@ -147,7 +148,7 @@ function phoneCut(src: string): string {
  *   3. Save-Data still gets the poster, because a reader who has asked for less
  *      data has said something about their connection that a byte count cannot.
  */
-function BeatVideo({
+export function BeatVideo({
   src,
   poster,
   className,
@@ -240,10 +241,25 @@ function BeatVideo({
  * new stylesheet; only the pill's size is overridden, through its own
  * --mtl-* custom properties.
  *
- * The secondary stays plain: an <a>, not a button, because it genuinely
- * navigates to beat 05 — so it works with JS off and keeps middle-click and
- * focus order. It is also what keeps the WebGL budget honest; see the
+ * The secondary navigates to /features — a real page now, not the #features
+ * anchor it pointed at when the stepper was the only feature surface. One
+ * label, one destination, in every placement. It stays CSS-only (chrome ring +
+ * sheen, no shader), which is what keeps the WebGL budget honest; see the
  * placement note in MetalButton.tsx.
+ *
+ * WHERE IT GOES (Arjun, 2026-08-14). It went nowhere for a day: this rendered
+ * with no `href` and no `onClick`, and `MetalButton` falls back to a plain
+ * `<button type="button">` when it has neither — so the page's primary call to
+ * action, in all three of these placements, pressed and rippled and ran its
+ * shader and did not navigate. It shipped that way. The lesson worth keeping is
+ * that the failure was invisible to every gate: a button with no handler is
+ * valid TSX, valid a11y, and renders perfectly.
+ *
+ * `/login?intent=join` — the same destination as the nav's Join, deliberately,
+ * so the page has ONE front door rather than a CTA and a nav item that disagree
+ * about what starting means. Passing `href` also turns the hit target into a
+ * <Link>, which is what restores middle-click, "open in new tab" and the status
+ * bar preview that a <button> cannot have.
  */
 export function LandingActions({
   className,
@@ -254,11 +270,16 @@ export function LandingActions({
 }) {
   return (
     <div className={["lp-actions", className].filter(Boolean).join(" ")}>
-      <MetalButton mode="text" label="Start your archive" className="lp-metal-cta" />
+      <MetalButton
+        mode="text"
+        label="Start your archive"
+        href="/login?intent=join"
+        className="lp-metal-cta"
+      />
       {secondary && (
-        <a className="lp-ghost-cta" href="#features">
+        <Link className="lp-ghost-cta" href="/features">
           See features
-        </a>
+        </Link>
       )}
     </div>
   );
@@ -339,8 +360,10 @@ const FILMS: Film[] = [
   { src: "/landing/set-detail-3.mp4", poster: "/landing/set-detail-3-poster.jpg", start: 0.5 },
   // 03-04 — style evolution, recorded 2026-08-14. NOTE: this take never leaves
   // the Style Evolution screen, so step 04 ("The library") plays footage of a
-  // different feature. Flagged to Arjun; `library.jpg` is still in
-  // public/landing if step 04 should go back to its own still.
+  // different feature. Flagged to Arjun. There is no still to fall back to:
+  // `library.jpg` turned out to be a stray browser screenshot of an old
+  // landing build, not a product still, and was deleted 2026-08-14 — step 04
+  // waits on the real library-utilization film like /features does.
   { src: "/landing/style-evolution.mp4", poster: "/landing/style-evolution-poster.jpg" },
 ];
 
@@ -391,6 +414,10 @@ export function Stepper() {
       const rect = node.getBoundingClientRect();
       const travel = rect.height - window.innerHeight;
       const p = travel <= 0 ? 0 : Math.min(1, Math.max(0, -rect.top / travel));
+      // The rail's orb rides this var (landing.css .lp-stepper-rail-orb) — an
+      // UNREGISTERED custom property on purpose; registered ones silently drop
+      // setProperty in this stack (see ref-property-setproperty-bug).
+      node.style.setProperty("--lp-step-p", p.toFixed(4));
       const next = Math.min(STEPS.length - 1, Math.floor(p * STEPS.length));
       setActive((current) => (current === next ? current : next));
     };
@@ -413,19 +440,25 @@ export function Stepper() {
     <section className="lp-stepper" id="features" ref={section}>
       <div className="lp-stepper-sticky">
         <div className="lp-stepper-copy">
+          {/* The scroll rail, replacing the dot tabs (Arjun, 2026-08-14: "the
+              little tabs make it seem like its a click to go to the next step,
+              not a scroll"). A vertical hairline left of the copy with an orb
+              that travels down as the section scrolls — the affordance of a
+              scrollbar, not of tabs. Position is continuous (--lp-step-p, set
+              in measure above), so the orb moves WITH the scroll rather than
+              stepping, which is the whole message. */}
+          <span className="lp-stepper-rail" aria-hidden="true">
+            <span className="lp-stepper-rail-orb" />
+          </span>
           <span className="lp-stepper-n">{STEPS[active].n}</span>
           <h2 className="lp-h2">{STEPS[active].title}</h2>
           <p className="lp-body">{STEPS[active].body}</p>
-          <ol className="lp-stepper-dots" aria-hidden="true">
-            {STEPS.map((step, i) => (
-              <li key={step.n} data-active={i === active ? "true" : "false"} />
-            ))}
-          </ol>
           {/* The second of three placements (Arjun, 2026-08-14). The stepper is
               where the page finishes making its case, and it is pinned for four
               screenfuls — the longest stretch on the page with nowhere to act.
-              No "See features" here: you are standing in them. */}
-          <LandingActions className="lp-stepper-actions" secondary={false} />
+              "See features" returned here the day /features became a real page
+              (Arjun): the tour shows four beats, the page holds the full list. */}
+          <LandingActions className="lp-stepper-actions" />
         </div>
         <div className="lp-stepper-media">
           {/* Keyed by film, not by step: crossing 01→02 leaves the same element
@@ -460,9 +493,12 @@ export function Stepper() {
    The three-still panel ("The details are the point") is gone: it showed three
    screens the stepper had just shown as film, under a caption that asserted
    what the beat above had already demonstrated. The page now runs steps →
-   close. Its three stills (genre-key.jpg, style-evolution.jpg, library.jpg)
-   are still in public/landing and unreferenced — left there deliberately,
-   since step 04's film is the open question. */
+   close. POSTSCRIPT (2026-08-14, /features build): its three "stills"
+   (genre-key.jpg, style-evolution.jpg, library.jpg) were opened for reuse and
+   all three were the same stray browser screenshot of an old landing build —
+   URL bar, macOS dock — committed as if they were product captures, and
+   publicly served under /landing/. Deleted. The binary-hides-from-review
+   lesson again: nothing on any gate looks inside a .jpg. */
 
 /* ── Beat 10 — close ──────────────────────────────────────────────────────── */
 export function Closing() {
@@ -477,10 +513,13 @@ export function Closing() {
         <h2 className="lp-closing-title">
           <span className="lp-wordmark lp-wordmark--closing" role="img" aria-label="Curfew" />
         </h2>
+        {/* The yearly rate, deliberately (Arjun, 2026-08-14): $6.99/month
+            billed yearly here; the $7.99 month-to-month price appears inside
+            the signup flow, not on the landing page. */}
         <p className="lp-closing-price">
-          $6<span>/month</span>
+          $6.99<span>/month</span>
         </p>
-        <p className="lp-body lp-closing-body">One plan. Cancel whenever.</p>
+        <p className="lp-body lp-closing-body">Billed yearly. One plan. Cancel whenever.</p>
         <LandingActions className="lp-closing-actions" secondary={false} />
       </div>
       <footer className="lp-footer">

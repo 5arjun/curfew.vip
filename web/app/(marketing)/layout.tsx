@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { LandingNav } from "@/app/components/landing/LandingNav";
-import { MeshDrift } from "@/app/components/landing/MeshDrift";
-import { bricolageGrotesque } from "../fonts";
+import { MarketingMesh } from "@/app/components/landing/MarketingMesh";
+import { clashDisplay } from "../fonts";
 import "../landing.css";
 
 // Marketing route group (Story 6.1). Separate from the authenticated layout so
@@ -17,12 +17,13 @@ export const metadata: Metadata = {
 
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className={`${bricolageGrotesque.variable} lp-root`}>
+    <div className={`${clashDisplay.variable} lp-root`}>
       {/* One fixed atmosphere behind every beat, mounted at the layout rather
           than inside the hero so it survives the whole scroll on one WebGL
           context. Full-bleed film beats cover it; the hero, the stepper and
-          the close let it through. */}
-      <MeshDrift className="lp-mesh" />
+          the close let it through. MarketingMesh swaps the palette per route
+          (/features runs the ultraviolet ramp) without remounting the canvas. */}
+      <MarketingMesh className="lp-mesh" />
       <LandingNav />
       {children}
     </div>
