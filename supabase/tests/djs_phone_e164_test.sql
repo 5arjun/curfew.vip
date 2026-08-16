@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(7);
+select plan(9);
 
 -- `djs_phone_e164` (20260816170000) is the enforcement point for the E.164
 -- invariant, not `normalizePhone()` in the web app. That is the whole reason
@@ -80,6 +80,20 @@ select throws_ok(
   23514,
   null,
   'rejects more than E.164''s 15 digits'
+);
+
+-- Case 7: the accept-side edges of the same {6,14} quantifier -- 7 total
+-- digits is the floor, 15 is the ceiling, and both must still be accepted.
+select lives_ok(
+  $$ update public.djs set phone = '+1234567'
+     where id = '33333333-3333-3333-3333-333333333333' $$,
+  'accepts the 7-digit floor'
+);
+
+select lives_ok(
+  $$ update public.djs set phone = '+123456789012345'
+     where id = '33333333-3333-3333-3333-333333333333' $$,
+  'accepts the 15-digit ceiling'
 );
 
 select * from finish();

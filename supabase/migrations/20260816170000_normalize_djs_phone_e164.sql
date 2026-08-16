@@ -21,22 +21,24 @@
 -- exists to correct.
 
 -- Step 1: bare NANP numbers (with or without the leading country digit).
--- The `[2-9]` area-code test is a real NANP rule, not a heuristic -- area
--- and exchange codes never begin with 0 or 1 -- so it is what keeps a
--- non-US number typed bare from being silently stamped +1. Mirrors
--- normalizePhone()'s branch of the same name.
+-- The `[2-9]` area-code and exchange-code test is a real NANP rule, not a
+-- heuristic -- area and exchange codes never begin with 0 or 1 -- so it is
+-- what keeps a non-US number typed bare from being silently stamped +1.
+-- Mirrors normalizePhone()'s branch of the same name. `btrim` on the `like`
+-- checks (here and in step 2) means outer whitespace can't hide a row from
+-- either branch and strand it for the CHECK to reject outright.
 update public.djs
 set phone = '+1' || right(regexp_replace(phone, '\D', '', 'g'), 10)
 where phone is not null
-  and phone not like '+%'
-  and regexp_replace(phone, '\D', '', 'g') ~ '^1?[2-9]\d{9}$';
+  and btrim(phone) not like '+%'
+  and regexp_replace(phone, '\D', '', 'g') ~ '^1?[2-9]\d{2}[2-9]\d{6}$';
 
 -- Step 2: values already international but carrying spaces or punctuation.
 -- Separate from step 1 because it must not infer a country -- it only strips.
 update public.djs
 set phone = '+' || regexp_replace(phone, '\D', '', 'g')
 where phone is not null
-  and phone like '+%'
+  and btrim(phone) like '+%'
   and phone <> '+' || regexp_replace(phone, '\D', '', 'g');
 
 -- Step 3: pin it. Deliberately a validated (not NOT VALID) constraint: if a

@@ -58,7 +58,7 @@ export function normalizePhone(rawPhone: string): string | null {
   // Treat 11-digits-led-by-1 as the same NANP number wearing its country
   // code, so both spellings converge on one stored form.
   const nanp = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
-  if (nanp.length === 10 && /^[2-9]/.test(nanp)) {
+  if (nanp.length === 10 && /^[2-9]\d{2}[2-9]/.test(nanp)) {
     return `+1${nanp}`;
   }
 

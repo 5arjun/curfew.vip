@@ -30,7 +30,7 @@ export async function setPhone(
     // is the whole ask, so the copy shows one.
     return {
       status: "error",
-      error: "Add your country code, like +44 20 7946 0958.",
+      error: "Add a country code before your number, like +1 267 555 0199.",
     };
   }
 
@@ -42,6 +42,12 @@ export async function setPhone(
   // of surfacing a raw 500. Same discipline as auth/callback and
   // auth/confirm's route handlers.
   let succeeded = false;
+  // Set only on a djs_phone_e164 CHECK violation (23514) — normalizedPhone
+  // always satisfies that constraint today, so this only fires if a stale
+  // pre-normalization deploy is still live against an already-migrated DB,
+  // or the app-side and column-side rules ever drift. Worth a specific
+  // message either way, rather than the generic fallback below.
+  let checkViolation = false;
   try {
     const { data, error: userError } = await supabase.auth.getUser();
     if (!userError && data.user) {
@@ -54,6 +60,7 @@ export async function setPhone(
         .eq("id", data.user.id)
         .select("id");
       succeeded = !error && (updated?.length ?? 0) > 0;
+      checkViolation = error?.code === "23514";
     }
   } catch {
     succeeded = false;
@@ -64,6 +71,13 @@ export async function setPhone(
     // is still empty — /welcome is where the agent gets introduced (UJ-3
     // step 3, the "the account alone can't do anything yet" prompt).
     redirect("/welcome");
+  }
+
+  if (checkViolation) {
+    return {
+      status: "error",
+      error: "Add a country code before your number, like +1 267 555 0199.",
+    };
   }
 
   return { status: "error", error: AUTH_FAILURE_COPY.generic };

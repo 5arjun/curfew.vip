@@ -72,6 +72,13 @@ describe("normalizePhone", () => {
     expect(normalizePhone("1207946095")).toBeNull();
   });
 
+  it("refuses a valid-area-code number with an invalid exchange code", () => {
+    // Exchange codes never start with 0 or 1 either — a valid area code
+    // (267) paired with an invalid exchange (012) is not NANP-shaped.
+    expect(normalizePhone("2670123456")).toBeNull();
+    expect(normalizePhone("2671123456")).toBeNull();
+  });
+
   it("refuses a country code starting with zero", () => {
     expect(normalizePhone("+0207946095")).toBeNull();
   });
@@ -89,5 +96,12 @@ describe("normalizePhone", () => {
     for (const input of ["2677772111", "+44 20 7946 0958", "12677772111"]) {
       expect(normalizePhone(input)).toMatch(/^\+[1-9]\d{6,14}$/);
     }
+  });
+
+  it("accepts at the 7-digit floor and 15-digit ceiling", () => {
+    // Both bounds are E.164's own (mirrored in the CHECK's {6,14}); a value
+    // right at either edge must not be rejected by an off-by-one.
+    expect(normalizePhone("+1234567")).toBe("+1234567");
+    expect(normalizePhone("+123456789012345")).toBe("+123456789012345");
   });
 });
