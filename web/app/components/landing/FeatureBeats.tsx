@@ -31,8 +31,11 @@ const CHIPS = [
   "Nothing to maintain",
 ];
 
+// No numbers on the rows (Arjun, 2026-08-16: "from the features page remove
+// the number 01-04, thats unneeded"). They were counting a list nobody reads as
+// a sequence — the rows alternate sides and each stands on its own name, so an
+// index only added a second display-size glyph above every heading.
 type Feature = {
-  n: string;
   name: string;
   claim: string;
   facts: string[];
@@ -46,7 +49,6 @@ type Feature = {
 // the offline queue, the aging shelf and prep crate, time-to-first-play.
 const FEATURES: Feature[] = [
   {
-    n: "01",
     name: "The set",
     claim: "Every night comes back as it actually happened — not as you remember it.",
     facts: [
@@ -59,7 +61,6 @@ const FEATURES: Feature[] = [
     film: { src: "/landing/set-detail-3.mp4", poster: "/landing/set-detail-3-poster.jpg" },
   },
   {
-    n: "02",
     name: "Style evolution",
     claim: "What you played tonight, against every night before it.",
     facts: [
@@ -71,7 +72,6 @@ const FEATURES: Feature[] = [
     film: { src: "/landing/style-evolution.mp4", poster: "/landing/style-evolution-poster.jpg" },
   },
   {
-    n: "03",
     name: "The archive",
     claim: "Every set files itself the night you play it.",
     facts: [
@@ -84,7 +84,6 @@ const FEATURES: Feature[] = [
     film: { src: "/landing/dashboard-3.mp4", poster: "/landing/dashboard-3-poster.jpg" },
   },
   {
-    n: "04",
     name: "The library",
     claim: "You keep buying music. Curfew shows you what never leaves the shelf.",
     facts: [
@@ -135,9 +134,6 @@ function FeatureRow({ feature, flip }: { feature: Feature; flip: boolean }) {
         </div>
       )}
       <div className="lp-feat-copy">
-        <span className="lp-feat-n" aria-hidden="true">
-          {feature.n}
-        </span>
         <h2 className="lp-h2">{feature.name}</h2>
         <p className="lp-body">{feature.claim}</p>
         <ul className="lp-feat-facts">
@@ -154,7 +150,7 @@ export function FeatureRows() {
   return (
     <>
       {FEATURES.map((feature, i) => (
-        <FeatureRow key={feature.n} feature={feature} flip={i % 2 === 1} />
+        <FeatureRow key={feature.name} feature={feature} flip={i % 2 === 1} />
       ))}
     </>
   );

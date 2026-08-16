@@ -1492,9 +1492,47 @@
     transform: none;
   }
 
+  /* THE CTA PAIR LANDED ON THE WORKS-WITH RAIL (Arjun, 2026-08-16, with a
+     phone screenshot: "See features" boxed over the Serato/Rekordbox/Traktor
+     row). Two independent causes, both fixed here rather than by moving the
+     rail, which is where it belongs:
+
+     1. The pair wrapped. At 402px the gutters leave 362px and the row needs
+        208 (the metal pill) + 16 (gap) + 146 (the ghost) = 370 — eight pixels
+        over, so the secondary dropped to a second line 68px further down. The
+        phone gets a smaller pair: 176 + 10 + 128 = 314, which still fits the
+        320px-wide worst case.
+     2. Even unwrapped there was no daylight left. The hero opened at 16vh and
+        its last line ended ~60px above a rail pinned at bottom: 17vh, so any
+        line that grew — a wrapped headline, a longer sub — closed the gap.
+        12vh buys back a screenful-eighth at the top, where there is nothing
+        but mesh, and the two blocks now clear each other by ~90px even if the
+        pair does wrap on a 320px phone. */
   .lp-hero {
     justify-content: flex-start;
-    padding-top: 16vh;
+    /* The floor is the nav: the pill ends 62px down whatever the viewport is,
+       and on a 568px-tall phone 12vh is 68 — six pixels of clearance that the
+       wordmark loses the moment the pill grows. 72px is that clearance stated
+       instead of coincided with; on any phone taller than 600px the vh term
+       wins and nothing changes. */
+    padding-top: max(12vh, 72px);
+  }
+
+  .lp-hero-actions {
+    margin-top: var(--space-lg);
+    gap: 10px;
+  }
+
+  .lp-hero .lp-metal-cta {
+    --mtl-w: 176px;
+    --mtl-h: 48px;
+    --mtl-iw: 172px;
+    --mtl-ih: 44px;
+  }
+
+  .lp-hero .lp-ghost-cta {
+    min-height: 48px;
+    padding: 0 20px;
   }
 
   .lp-caption {
@@ -1576,6 +1614,48 @@
 
   .lp-support-logo--traktor {
     font-size: 0.78125rem;
+  }
+}
+
+/* ── The smallest phones ────────────────────────────────────────────────────
+   320-360px, where the opening frame runs out of BOTH axes at once: the CTA
+   pair is 8px too wide even at the reduced size above, and the hero's last
+   line lands on a rail pinned 17vh off the bottom of a 568px-tall viewport.
+   Both are the same shortage, so they are answered together — one notch off
+   the display type, one notch off the vertical rhythm, and the rail moved down
+   into the space that frees up. Measured against 320×568 (the shortest phone
+   viewport still in use): the hero clears the rail, and the rail clears the
+   scroll cue. */
+@media (max-width: 374.98px) {
+  .lp-headline {
+    font-size: 2rem;
+  }
+
+  .lp-sub {
+    margin-top: var(--space-md);
+    font-size: 0.9375rem;
+  }
+
+  .lp-hero-actions {
+    margin-top: var(--space-md);
+    gap: 8px;
+  }
+
+  .lp-hero .lp-metal-cta {
+    --mtl-w: 158px;
+    --mtl-h: 46px;
+    --mtl-iw: 154px;
+    --mtl-ih: 42px;
+  }
+
+  .lp-hero .lp-ghost-cta {
+    min-height: 46px;
+    padding: 0 14px;
+    font-size: 0.875rem;
+  }
+
+  .lp-support {
+    bottom: 13vh;
   }
 }
 
@@ -2256,16 +2336,8 @@
   object-fit: cover;
 }
 
-.lp-feat-n {
-  display: block;
-  margin-bottom: var(--space-sm);
-  font-family: var(--lp-display);
-  font-weight: 500;
-  font-size: clamp(1.75rem, 3vw, 2.5rem);
-  line-height: 1;
-  letter-spacing: -0.02em;
-  color: var(--color-abyss-text-22);
-}
+/* .lp-feat-n is gone (Arjun, 2026-08-16) — the rows no longer carry 01-04, so
+   the rule went with the markup rather than sitting here unmatched. */
 
 .lp-feat-facts {
   list-style: none;

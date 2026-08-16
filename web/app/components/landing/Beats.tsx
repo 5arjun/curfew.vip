@@ -389,7 +389,14 @@ export function CoverMedia() {
         </div>
         <div className="lp-overcopy lp-overcopy--left" ref={copy}>
           <h2 className="lp-h2">See everything.</h2>
-          <p className="lp-body">All of your statistics, finally visible.</p>
+          {/* Two sentences, not one (Arjun, 2026-08-16). The first states what
+              is on screen; the second says why it matters — the beat was one
+              caption long and read as a label for the film rather than a claim
+              about the reader's own nights. */}
+          <p className="lp-body">
+            All of your statistics, finally visible. Something every DJ needs to see, and
+            never gets to.
+          </p>
         </div>
       </div>
     </section>
