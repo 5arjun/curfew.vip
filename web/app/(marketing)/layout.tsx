@@ -10,7 +10,7 @@ import "../landing.css";
 // D-2 only overrides the Landing's own restraint.
 
 export const metadata: Metadata = {
-  title: "Curfew — compared to what?",
+  title: "Curfew",
   description:
     "Curfew reads the sets you play and gives you the only baseline that means anything: your own.",
 };
