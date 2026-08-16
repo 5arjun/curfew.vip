@@ -158,6 +158,9 @@ jobs:
           CURFEW_WEB_URL: https://curfew.vip
         with:
           projectPath: agent
-          args: --config agent/src-tauri/tauri.windows-release.conf.json
+          # Relative to `projectPath` (agent/), not the repo root — see the
+          # identical note in release-macos.yml, where this same doubled-path
+          # bug failed a real release run.
+          args: --config src-tauri/tauri.windows-release.conf.json
           tagName: ${{ github.ref_name }}
           releaseName: 'Curfew Agent ${{ github.ref_name }}'

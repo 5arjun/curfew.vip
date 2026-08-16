@@ -140,6 +140,11 @@ jobs:
           CURFEW_WEB_URL: https://curfew.vip
         with:
           projectPath: agent
-          args: --target universal-apple-darwin --config agent/src-tauri/tauri.macos-release.conf.json
+          # `--config` is resolved relative to `projectPath` (agent/), NOT the
+          # repo root — the tauri CLI runs with its cwd set there. Spelling it
+          # `agent/src-tauri/...` produces `agent/agent/src-tauri/...` and the
+          # run dies with "Provided config path does not exist". Keep this path
+          # relative to agent/, and keep it in step with release-windows.yml.
+          args: --target universal-apple-darwin --config src-tauri/tauri.macos-release.conf.json
           tagName: ${{ github.ref_name }}
           releaseName: 'Curfew Agent ${{ github.ref_name }}'
