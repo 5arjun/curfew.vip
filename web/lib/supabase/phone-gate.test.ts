@@ -26,6 +26,16 @@ describe("isPhoneGatedPath", () => {
     expect(isPhoneGatedPath("/phone-required")).toBe(false);
   });
 
+  it("exempts /subscribe — Checkout now runs BEFORE the phone step", () => {
+    // Arjun's ruling, 2026-08-16: the corridor is subscribe -> phone -> agent.
+    // Phone-gating the Checkout step would invert that order and deadlock a
+    // brand-new DJ, who by definition has neither a phone on file nor a
+    // subscription: sent to /subscribe by the billing gate, then straight back
+    // to /phone-required by this one.
+    expect(isPhoneGatedPath("/subscribe")).toBe(false);
+    expect(isPhoneGatedPath("/subscribe/return")).toBe(false);
+  });
+
   it("exempts the auth surface and the public landing", () => {
     expect(isPhoneGatedPath("/")).toBe(false);
     expect(isPhoneGatedPath("/login")).toBe(false);

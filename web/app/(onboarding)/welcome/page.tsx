@@ -1,7 +1,14 @@
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { billingEnabled } from "@/lib/billing/checkout";
+import {
+  CHECKOUT_PENDING_COOKIE,
+  mustSubscribeFirst,
+  readSetupState,
+  setupStepLabel,
+} from "@/lib/onboarding/corridor";
 import { createClient } from "@/lib/supabase/server";
-import { needsPhone } from "@/lib/supabase/phone-gate";
 import { AGENT_DOWNLOAD_URL } from "@/lib/agent-downloads";
 
 // /welcome — UJ-3 step 3, built at last: "Curfew prompts Devon to download
@@ -18,6 +25,14 @@ import { AGENT_DOWNLOAD_URL } from "@/lib/agent-downloads";
 // is behind them and they go straight to the dashboard. The read fails
 // open to showing the page: worst case a set-up DJ sees setup steps and a
 // working "go to the dashboard" link, never a block.
+//
+// Billing pass (2026-08-16): the corridor grew a step in front of this one, so
+// the guard checks /subscribe before /phone-required — the corridor runs in
+// order and this page is now last of three. Note what is NOT added here: the
+// agent download stays reachable for a LAPSED subscriber, because AD-19 is
+// explicit that a lapsed DJ's agent keeps working and they keep being able to
+// link one. `mustSubscribeFirst` is false for them by construction; only a DJ
+// who has never subscribed at all is sent back.
 export default async function WelcomePage() {
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
@@ -26,7 +41,16 @@ export default async function WelcomePage() {
     redirect("/login");
   }
 
-  if (await needsPhone(supabase, data.user.id)) {
+  const sellsSubscriptions = billingEnabled(process.env);
+  const state = await readSetupState(supabase, data.user.id);
+  const checkoutPending =
+    (await cookies()).get(CHECKOUT_PENDING_COOKIE)?.value === data.user.id;
+
+  if (mustSubscribeFirst({ sellsSubscriptions, checkoutPending, state })) {
+    redirect("/subscribe");
+  }
+
+  if (state.phone === "missing") {
     redirect("/phone-required");
   }
 
@@ -43,7 +67,7 @@ export default async function WelcomePage() {
   return (
     <main className="lp-main lp-auth lp-auth--solo lp-auth--ob">
       <div className="lp-auth-card lp-ob-card" data-shown="true">
-        <p className="lp-feat-eyebrow">Set up — step 2 of 2</p>
+        <p className="lp-feat-eyebrow">{setupStepLabel("agent", sellsSubscriptions)}</p>
         <h1 className="lp-auth-title">Now, the agent.</h1>
         <p className="lp-body lp-auth-tag">
           Your account is ready — and empty. The agent is the part that fills it: a small app on

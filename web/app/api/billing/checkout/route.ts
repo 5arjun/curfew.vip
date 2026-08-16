@@ -1,7 +1,15 @@
 import { headers } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 import { getStripe } from "@/lib/billing/stripe";
-import { billingEnabled, offersSubscribeCta, parseInterval, resolvePriceId } from "@/lib/billing/checkout";
+import {
+  INTEGRATION_IDENTIFIER,
+  billingEnabled,
+  checkoutReturnUrls,
+  offersSubscribeCta,
+  parseCheckoutSource,
+  parseInterval,
+  resolvePriceId,
+} from "@/lib/billing/checkout";
 import { createClient } from "@/lib/supabase/server";
 
 // Checkout Session creation (Story 7.2, AD-18). The DJ's card never touches
@@ -20,12 +28,6 @@ import { createClient } from "@/lib/supabase/server";
 // Pinned to Node, not Edge (AD-18): the Stripe SDK's crypto isn't Edge-safe.
 // Story 7.3's webhook needs the same pin for signature verification.
 export const runtime = "nodejs";
-
-// Stable Dashboard label for this checkout flow, so sessions started from
-// Settings stay distinguishable from any later entry point (a Pricing page,
-// Story 6.3). Stable on purpose — a per-request value would make the Dashboard
-// comparison it exists for meaningless.
-const INTEGRATION_IDENTIFIER = "curfew-settings-subscribe-hqvbnjxt";
 
 export async function POST(request: NextRequest) {
   // Same gate as the Settings CTA, so a hidden button and a live endpoint can
@@ -49,11 +51,20 @@ export async function POST(request: NextRequest) {
   // Untrusted body. A malformed JSON payload is the same class of answer as a
   // bad interval, so both land on one flat 400.
   const body: unknown = await request.json().catch(() => null);
-  const interval = parseInterval(
-    typeof body === "object" && body !== null ? (body as Record<string, unknown>).interval : null,
-  );
+  const fields = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
+  const interval = parseInterval(fields.interval);
   if (!interval) {
     return NextResponse.json({ error: "Unknown billing interval" }, { status: 400 });
+  }
+
+  // Which entry point is asking — Settings, or the /subscribe step of setup.
+  // It selects a `success_url` from a closed server-side map and nothing else;
+  // the client never names a return URL, because Stripe will send a browser
+  // wherever `success_url` points AFTER a real payment has gone through.
+  // Absent means "settings" (an old tab); present-but-unrecognized is a 400.
+  const source = parseCheckoutSource(fields.source);
+  if (!source) {
+    return NextResponse.json({ error: "Unknown checkout source" }, { status: 400 });
   }
 
   // Existing Stripe Customer, if Story 7.3's webhook has already recorded one,
@@ -112,9 +123,8 @@ export async function POST(request: NextRequest) {
       // No `payment_method_types`: omitting it lets Stripe serve whatever
       // methods are enabled in the Dashboard, which is both the recommended
       // integration and strictly better conversion than hardcoding `card`.
-      success_url: `${origin}/settings`,
-      cancel_url: `${origin}/settings`,
-      integration_identifier: INTEGRATION_IDENTIFIER,
+      ...checkoutReturnUrls(source, origin),
+      integration_identifier: INTEGRATION_IDENTIFIER[source],
     });
 
     if (!session.url) {

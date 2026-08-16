@@ -62,6 +62,74 @@ export function resolvePriceId(interval: unknown, env: PriceEnv): string {
   return priceId;
 }
 
+/**
+ * Which entry point started this Checkout Session. Two, and adding a third is
+ * a deliberate act rather than a query param someone passes through.
+ *
+ * It exists because Checkout stopped having one caller (Arjun's ruling,
+ * 2026-08-16): `/subscribe` now sells to a brand-new DJ mid-setup, alongside
+ * Settings selling to a lapsed one. The two need different `success_url`s —
+ * Settings returns to Settings, onboarding continues down the corridor — and
+ * the safe way to pick between them is a closed set the server maps to URLs,
+ * never a return URL the client hands over. A client-supplied `success_url`
+ * would be an open redirect wearing a Stripe costume: whatever a caller posts,
+ * Stripe sends the browser there after a real payment.
+ */
+export type CheckoutSource = "settings" | "onboarding";
+
+/**
+ * Narrows an untrusted body value to a source. Same exact-match discipline as
+ * `parseInterval` one function up, with one difference: `undefined`/`null`
+ * resolve to `"settings"` rather than failing. That is back-compatibility with
+ * a body shape that shipped without this field — a Settings tab left open
+ * across the deploy that adds it still posts `{interval}` alone, and must not
+ * meet a 400 on a button that worked a minute ago. A *present but wrong* value
+ * is still a flat rejection, because that is a bug or a probe, not an old tab.
+ */
+export function parseCheckoutSource(value: unknown): CheckoutSource | null {
+  if (value === undefined || value === null) return "settings";
+  return value === "settings" || value === "onboarding" ? value : null;
+}
+
+/**
+ * Where Stripe returns the browser, per entry point. Pure, so the mapping is
+ * testable without a Stripe key — and it is worth testing, because a wrong
+ * `success_url` here is invisible until someone has actually paid.
+ *
+ * `{CHECKOUT_SESSION_ID}` is Stripe's own template token and must reach Stripe
+ * un-encoded; it is substituted server-side by Stripe when it builds the
+ * redirect. `/subscribe/return` needs it to ask Stripe directly whether the
+ * session completed, which is the only answer available before Story 7.3's
+ * webhook lands (see CHECKOUT_PENDING_COOKIE).
+ *
+ * The onboarding CANCEL url carries no marker: a DJ who backs out of Stripe
+ * lands on /subscribe exactly as they left it, with both CTAs live. Nothing to
+ * apologize for and nothing to explain — they simply didn't finish.
+ */
+export function checkoutReturnUrls(
+  source: CheckoutSource,
+  origin: string,
+): { success_url: string; cancel_url: string } {
+  if (source === "onboarding") {
+    return {
+      success_url: `${origin}/subscribe/return?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${origin}/subscribe`,
+    };
+  }
+  return { success_url: `${origin}/settings`, cancel_url: `${origin}/settings` };
+}
+
+/**
+ * Stable per-entry-point Dashboard labels, so sessions started mid-setup stay
+ * distinguishable from sessions started by a lapsed DJ in Settings — which is
+ * the comparison the identifier was introduced for. Stable on purpose: a
+ * per-request value would make it meaningless.
+ */
+export const INTEGRATION_IDENTIFIER: Record<CheckoutSource, string> = {
+  settings: "curfew-settings-subscribe-hqvbnjxt",
+  onboarding: "curfew-onboarding-subscribe-hqvbnjxt",
+};
+
 export type BillingEnv = PriceEnv & {
   VERCEL_ENV?: string;
   BILLING_LIVE?: string;

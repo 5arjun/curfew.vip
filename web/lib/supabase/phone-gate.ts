@@ -67,15 +67,11 @@ export async function phoneOnFile(
   }
 }
 
-// Shared by auth/callback/route.ts (OAuth) and auth/confirm/route.ts
-// (email+password) — both gate their "account becomes usable" redirect on
-// whether this DJ has a phone on file yet (Story 2.3c AC-1). Errors are
-// swallowed and treated as "no phone needed" — the least-blocking path
-// (Task 5.4); callers still don't need their own extra try/catch around
-// this call as a result.
-export async function needsPhone(
-  supabase: SupabaseClient,
-  userId: string,
-): Promise<boolean> {
-  return (await phoneOnFile(supabase, userId)) === "missing";
-}
+// `needsPhone()` lived here until 2026-08-16 and is deliberately gone rather
+// than left as an unused export. It wrapped `phoneOnFile(...) === "missing"`
+// for the two auth routes and the corridor pages, all five of which now read
+// `readSetupState` (lib/onboarding/corridor.ts) instead — one query for phone
+// AND billing, because the corridor has to decide between them in one pass.
+// Keeping the wrapper would have kept a doc comment naming callers that no
+// longer call it, which is how a file starts lying about its own use.
+// `phoneOnFile` above is unchanged and is still the middleware gate's read.
