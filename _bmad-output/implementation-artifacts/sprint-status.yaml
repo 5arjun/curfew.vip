@@ -1483,7 +1483,7 @@ development_status:
   7-3-payment-webhook-route-handler: done
   7-4-customer-portal-manage-cancel: done
   7-5-web-access-gate-on-subscription: review
-  7-6-production-cutover-live-billing-launch-ready: backlog
+  7-6-production-cutover-live-billing-launch-ready: ready-for-dev
   epic-7-retrospective: optional
 
 # Action items — carried into the Epic 1 retrospective / Epic 2 story creation.
