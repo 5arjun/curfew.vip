@@ -1440,7 +1440,7 @@ development_status:
   epic-7: in-progress
   7-1-billing-columns-write-scoped-security-definer-function: done
   7-2-stripe-checkout-subscribe-flow: done
-  7-3-payment-webhook-route-handler: review
+  7-3-payment-webhook-route-handler: done
   7-4-customer-portal-manage-cancel: done
   7-5-web-access-gate-on-subscription: backlog
   7-6-production-cutover-live-billing-launch-ready: backlog

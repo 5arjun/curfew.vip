@@ -279,7 +279,7 @@ export function LoginClient() {
             </button>
           ) : (
             <p className="lp-auth-switch">
-              Already archiving?{" "}
+              Already have an account?{" "}
               <button type="button" onClick={() => switchMode("login")}>
                 Log in
               </button>

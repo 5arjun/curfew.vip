@@ -68,7 +68,12 @@
       "mcp__plugin_vercel_vercel__get_project",
       "mcp__plugin_vercel_vercel__list_projects",
       "mcp__plugin_vercel_vercel__get_project_deployment_protection",
-      "mcp__supabase__search_docs"
+      "mcp__supabase__search_docs",
+      "mcp__plugin_vercel_vercel__search_vercel_documentation",
+      "mcp__plugin_vercel_vercel__list_deployments",
+      "mcp__plugin_vercel_vercel__get_deployment",
+      "Bash(rm -rf ~/.cargo/registry/src)",
+      "Bash(rm -rf ~/.cache/puppeteer)"
     ],
     "additionalDirectories": [
       "/Users/arjun/Documents/name-pending/_bmad-output/planning-artifacts/architecture"
