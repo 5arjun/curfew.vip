@@ -1,4 +1,6 @@
-# Curfew
+<div align="center">
+  <img src=".github/logo.png" alt="Curfew" width="360">
+</div>
 
 **A Serato-first reflection dashboard for DJs.** Curfew reads a DJ's local Serato
 library and session history after a set is over — no in-the-moment tagging, no
@@ -7,7 +9,18 @@ library utilization) plus a privacy-first feed for sharing sets with their scene
 
 Production app: **[curfew.vip](https://curfew.vip)**
 
+<div align="center">
+
 [![CI](https://github.com/5arjun/curfew.vip/actions/workflows/ci.yml/badge.svg)](https://github.com/5arjun/curfew.vip/actions/workflows/ci.yml)
+[![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=next.js&logoColor=white)](https://nextjs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Rust](https://img.shields.io/badge/Rust-stable-000000?logo=rust&logoColor=white)](https://www.rust-lang.org)
+[![Tauri](https://img.shields.io/badge/Tauri-2-FFC131?logo=tauri&logoColor=white)](https://tauri.app)
+[![Supabase](https://img.shields.io/badge/Supabase-Postgres-3ECF8E?logo=supabase&logoColor=white)](https://supabase.com)
+[![pnpm](https://img.shields.io/badge/pnpm-10-F69220?logo=pnpm&logoColor=white)](https://pnpm.io)
+[![Turborepo](https://img.shields.io/badge/Turborepo-monorepo-EF4444?logo=turborepo&logoColor=white)](https://turbo.build)
+
+</div>
 
 ---
 
