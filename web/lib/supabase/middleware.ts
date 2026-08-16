@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { PHONE_ON_FILE_COOKIE, isPhoneGatedPath, phoneOnFile } from "./phone-gate";
 import { isSubscriptionGatedPath, readSubscriptionStatus } from "./subscription-gate";
 import { hasWebAccess } from "@/lib/billing/access";
+import { billingEnabled } from "@/lib/billing/checkout";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -118,7 +119,31 @@ export async function updateSession(request: NextRequest) {
     // proxy.ts matcher and never an `/api/:path*` pattern. That is precisely
     // how a paywall written for the dashboard could net the AD-4 set-sync
     // endpoint by accident. The agent is never gated by subscription_status.
-    if (userId && isSubscriptionGatedPath(request.nextUrl.pathname)) {
+    //
+    // Fourth condition, added after 7.5 shipped: the paywall exists exactly
+    // where Checkout exists. An environment that cannot sell a subscription
+    // must not restrict access for the lack of one — otherwise a DJ is sent
+    // to /subscription-required, told to visit /settings, and finds nothing
+    // there, because BillingSection is behind this same `billingEnabled`.
+    // That closed loop was live on curfew.vip: production carries no Price
+    // ids and no BILLING_LIVE, so every real account was gated out with no
+    // way to pay. Binding both to one predicate means the paywall switches
+    // on in the same deploy that makes the Subscribe CTA appear (Story 7.6
+    // Task 5) — it can never be enabled without a way out of it.
+    //
+    // Spelled-out properties, not `process.env` passed whole: proxy.ts
+    // exports no `runtime`, so this runs on Edge, where Next inlines
+    // `process.env.FOO` literals at build time. Dynamic indexing inside
+    // billingEnabled would read undefined there and silently disable the
+    // gate everywhere, which is the failure this line must not have.
+    const sellsSubscriptions = billingEnabled({
+      STRIPE_PRICE_ID_MONTHLY: process.env.STRIPE_PRICE_ID_MONTHLY,
+      STRIPE_PRICE_ID_ANNUAL: process.env.STRIPE_PRICE_ID_ANNUAL,
+      VERCEL_ENV: process.env.VERCEL_ENV,
+      BILLING_LIVE: process.env.BILLING_LIVE,
+    });
+
+    if (sellsSubscriptions && userId && isSubscriptionGatedPath(request.nextUrl.pathname)) {
       const status = await readSubscriptionStatus(supabase, userId);
       if (!hasWebAccess(status)) {
         const url = request.nextUrl.clone();

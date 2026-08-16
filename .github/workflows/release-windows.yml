@@ -1,51 +1,46 @@
 name: Release Windows
 
-# Signed Windows release build (Story 2.9b, AR-14). Separate from ci.yml on
+# Unsigned Windows release build (Story 2.9b, AR-14). Separate from ci.yml on
 # purpose, same reasoning as release-macos.yml: ci.yml's agent job is
 # Linux-only, and release workflows are per-OS, tag-triggered only, so a
 # Windows runner never slows down the regular CI gate. Runs alongside
 # release-macos.yml on the same `agent-v*.*.*` tag push — both publish to the
 # same GitHub Release.
 #
-# Signing method: Azure Artifact Signing (renamed from "Trusted Signing" in
-# January 2026), via the `artifact-signing-cli` CLI. Chosen over a
-# traditional CA-purchased OV/EV cert + physical HSM token because, since the
-# CA/Browser Forum's June 1, 2023 Baseline Requirements, the private key for
-# any publicly-trusted code-signing cert (OV or EV) must live on
-# HSM-certified hardware and cannot be exported — there is no `.p12`-style
-# flat file to base64 into a secret the way release-macos.yml does with
-# APPLE_CERTIFICATE. What becomes the CI secret instead is a service
-# principal's credentials, authorized to request signatures from Azure's
-# HSM-backed signing service; the private key itself never leaves Azure.
+# NOT code-signed — a deliberate ruling by Arjun on 2026-08-16, not an
+# oversight or a temporary state. Windows has no equivalent of the Apple
+# membership that already covers macOS signing + notarization: the only real
+# options were Azure Artifact Signing (~$120/yr, and what this file was
+# originally built around) or a traditional CA cert (~$200-400/yr plus HSM
+# hardware, since the CA/Browser Forum's June 2023 Baseline Requirements bar
+# an exportable private key). Neither was judged worth buying before real
+# signups show whether Curfew's DJs are on Windows at all — Serato skews
+# heavily Mac. The Azure wiring (artifact-signing-cli install step, five
+# AZURE_* secrets, and the signCommand in tauri.windows-release.conf.json) was
+# removed rather than left in place, so nothing here looks provisioned when it
+# is not.
 #
-# Required GitHub Actions secrets (not yet provisioned — see
-# pre-launch-services-checklist.md rows 30 and 32):
-#   AZURE_CLIENT_ID                             - App Registration client ID
-#   AZURE_CLIENT_SECRET                          - App Registration client secret
-#   AZURE_TENANT_ID                              - Azure AD tenant ID
-#   AZURE_ARTIFACT_SIGNING_ACCOUNT               - Artifact Signing account name
-#   AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE   - certificate profile name
-#   TAURI_SIGNING_PRIVATE_KEY                    - Story 2.9c: updater-signing
-#                                                  private key (`tauri signer
-#                                                  generate` output), the same
-#                                                  shared keypair release-macos.yml
-#                                                  uses — distinct from the Azure
-#                                                  code-signing credentials above
-#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD           - optional; empty/unset if the
-#                                                  keypair was generated without
-#                                                  a password
+# What that costs the user, stated plainly so nobody has to rediscover it:
+# SmartScreen shows a full-screen "Windows protected your PC" block on first
+# run, and the installer is only reachable via "More info" -> "Run anyway".
+# The download page should say so before the user meets it.
 #
-# Local dev is unaffected: the signCommand lives only in
-# tauri.windows-release.conf.json, merged in via --config at release time
-# (Task 2) — a plain local `cargo tauri build` never sees it, so it isn't
-# forced to have artifact-signing-cli installed or Azure credentials present.
+# What it does NOT cost: update integrity. TAURI_SIGNING_PRIVATE_KEY below is
+# the updater keypair (minisign, Story 2.9c) and is unrelated to Authenticode
+# — update payloads stay cryptographically verified either way.
 #
-# Open item (see pre-launch-services-checklist.md row 30): the CLI's signing
-# endpoint (-e/--endpoint) has no environment-variable equivalent, so it is
-# baked into tauri.windows-release.conf.json as a literal value — but that
-# value is region-specific to wherever the Azure Artifact Signing account
-# gets provisioned, which hasn't happened yet. The placeholder there must be
-# replaced once Arjun provisions the account.
+# To reverse this, restore the Azure block from git history at this commit's
+# parent; the workflow was fully written and only ever lacked provisioning.
+#
+# Required GitHub Actions secrets:
+#   TAURI_SIGNING_PRIVATE_KEY          - updater-signing private key (`tauri
+#                                        signer generate` output), the same
+#                                        shared keypair release-macos.yml uses
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD - optional; empty/unset if the keypair
+#                                        was generated without a password
+#
+# Local dev is unaffected, as before: tauri.windows-release.conf.json is merged
+# in via --config only at release time.
 
 on:
   push:
@@ -58,7 +53,7 @@ concurrency:
 
 jobs:
   release:
-    name: Build and sign (Windows x64)
+    name: Build unsigned (Windows x64)
     runs-on: windows-latest
     timeout-minutes: 30
     permissions:
@@ -89,19 +84,11 @@ jobs:
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
 
-      - name: Check signing endpoint is provisioned
-        shell: bash
-        run: |
-          if grep -q '<AZURE_ARTIFACT_SIGNING_ENDPOINT>' agent/src-tauri/tauri.windows-release.conf.json; then
-            echo "::error::agent/src-tauri/tauri.windows-release.conf.json still has the <AZURE_ARTIFACT_SIGNING_ENDPOINT> placeholder — replace it with the real regional endpoint once the Azure Artifact Signing account is provisioned (see pre-launch-services-checklist.md row 30)."
-            exit 1
-          fi
-
-      # Pinned to an exact version, matching this file's tauri-action pin
-      # below — a future artifact-signing-cli release could otherwise change
-      # CLI flags/behavior at the next tag push with no warning.
-      - name: Install artifact-signing-cli
-        run: cargo install artifact-signing-cli --version 0.11.0 --locked
+      # The "Check signing endpoint is provisioned" step that stood here was
+      # removed with the Azure signing path: it grepped for a placeholder that
+      # no longer exists in tauri.windows-release.conf.json, so it could only
+      # ever pass — a guard that cannot fail is worse than none, because it
+      # reads as coverage.
 
       # Story 2.9c: same version-sync step as release-macos.yml — derives the
       # real version from the pushed tag, ephemeral-checkout-only. windows-latest
@@ -137,15 +124,14 @@ jobs:
       # release-macos.yml's pin exactly — same tag, same resolved commit, so
       # the two sibling release workflows never drift onto different
       # tauri-action versions.
-      - name: Build and sign
+      # NOT code-signed — deliberate, see this file's header. TAURI_SIGNING_*
+      # below is the updater keypair, which is a different thing and is still
+      # required: it signs the update payload so an installed agent will accept
+      # it. Dropping it would break auto-update, not just the install prompt.
+      - name: Build (unsigned)
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_ARTIFACT_SIGNING_ACCOUNT: ${{ secrets.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
-          AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE: ${{ secrets.AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}

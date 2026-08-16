@@ -93,6 +93,19 @@ describe("billingEnabled", () => {
   it("will not let BILLING_LIVE alone paper over missing Prices", () => {
     expect(billingEnabled({ VERCEL_ENV: "production", BILLING_LIVE: "1" })).toBe(false);
   });
+
+  it("also governs the dashboard paywall, not just the Subscribe CTA", () => {
+    // Second consumer, added after Story 7.5 shipped: `updateSession()` in
+    // lib/supabase/middleware.ts runs its subscription gate only when this
+    // returns true. Widening this predicate therefore widens the PAYWALL, not
+    // only the CTA — the two are deliberately one decision so a DJ can never
+    // be restricted in an environment that has no way to sell them a way out.
+    //
+    // The production-without-BILLING_LIVE case below is the exact shape that
+    // was live on curfew.vip and locked every real account out of /dashboard.
+    expect(billingEnabled({ ...ENV, VERCEL_ENV: "production" })).toBe(false);
+    expect(billingEnabled({ VERCEL_ENV: "production" })).toBe(false);
+  });
 });
 
 describe("offersSubscribeCta", () => {
