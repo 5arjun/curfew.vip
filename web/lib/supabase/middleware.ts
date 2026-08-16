@@ -1,6 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { PHONE_ON_FILE_COOKIE, isPhoneGatedPath, phoneOnFile } from "./phone-gate";
+import { isSubscriptionGatedPath, readSubscriptionStatus } from "./subscription-gate";
+import { hasWebAccess } from "@/lib/billing/access";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -84,6 +86,50 @@ export async function updateSession(request: NextRequest) {
           sameSite: "lax",
           httpOnly: true,
         });
+      }
+    }
+
+    // Subscription access gate (Story 7.5, AD-19). Runs SECOND, after the
+    // phone gate above — a phone-less DJ should land on /phone-required
+    // before ever learning about billing, matching the existing onboarding
+    // sequence (phone -> welcome -> link-agent; billing is a Settings-initiated
+    // action, never a forced onboarding step).
+    //
+    // Three deliberate differences from the phone gate it sits beside:
+    //
+    // 1. **No cookie cache — this reads on every request to a gated path.**
+    //    Not an oversight, and PHONE_ON_FILE_COOKIE must not be copied here.
+    //    `phoneOnFile` only ever moves missing -> present within a DJ's
+    //    lifetime, so caching "present" for a session is sound.
+    //    `subscription_status` is bidirectionally mutable WHILE a session is
+    //    open: a webhook (Story 7.3) can flip active -> past_due for dunning,
+    //    or canceled -> active the moment a DJ resubscribes through the
+    //    Portal. AC-4 requires reactivation to restore the dashboard
+    //    immediately; a cached "no access" surviving until the browser closes
+    //    would lock out a DJ who has already paid again. A later optimization
+    //    needs a short TTL or webhook-driven invalidation — not this shape.
+    // 2. **Fails closed.** `readSubscriptionStatus` collapses read errors to
+    //    `null`, which `hasWebAccess` denies. The phone gate fails open for
+    //    the request; a paywall must not.
+    // 3. **Its own read**, never folded into the phone gate's `djs` query.
+    //
+    // Unchanged from the phone gate, and load-bearing (AD-19): the scope is a
+    // narrow prefix allow-list checked inside this block — never a widened
+    // proxy.ts matcher and never an `/api/:path*` pattern. That is precisely
+    // how a paywall written for the dashboard could net the AD-4 set-sync
+    // endpoint by accident. The agent is never gated by subscription_status.
+    if (userId && isSubscriptionGatedPath(request.nextUrl.pathname)) {
+      const status = await readSubscriptionStatus(supabase, userId);
+      if (!hasWebAccess(status)) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/subscription-required";
+        url.search = "";
+        // Carry any refreshed auth cookies over, exactly as above.
+        const redirectResponse = NextResponse.redirect(url);
+        supabaseResponse.cookies
+          .getAll()
+          .forEach((cookie) => redirectResponse.cookies.set(cookie));
+        return redirectResponse;
       }
     }
   } catch {

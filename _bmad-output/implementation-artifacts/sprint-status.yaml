@@ -81,7 +81,47 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-21
-last_updated: 2026-08-15
+last_updated: 2026-08-16
+# 2026-08-16: story 7-5 dev-story session (web access-gate on subscription,
+# Claude Opus 5): all 5 tasks complete. New web/lib/billing/access.ts
+# (hasWebAccess -- allow-list of exactly active/trialing, deliberately
+# NARROWER than checkout.ts's SUBSCRIPTION_ATTACHED, which counts
+# past_due/incomplete/paused as attached; the two predicates answer
+# different questions and disagreeing on those three is the point). New
+# web/lib/supabase/subscription-gate.ts: isSubscriptionGatedPath (prefix
+# allow-list -- /dashboard, /style-evolution, /library-utilization, /set,
+# /track; /settings and /link-agent deliberately EXCLUDED so a lapsed DJ
+# can still reach BillingSection and still link an agent) plus this gate's
+# own readSubscriptionStatus(), which fails CLOSED by collapsing read
+# errors/missing rows into null rather than adding a phoneOnFile-style
+# third state. middleware.ts gained a second gate block after the phone
+# gate, 46 additive lines, zero deletions -- NO cookie cache, uncached read
+# per gated request, the deliberate inverse of PHONE_ON_FILE_COOKIE because
+# subscription_status is bidirectionally mutable mid-session and a cached
+# "no" would break AC-4. proxy.ts untouched (AD-19 names a widened matcher
+# as the exact mistake to avoid). New top-level /subscription-required page
+# carrying its own lp-root/landing.css shell (the cited /reset-password
+# precedent) since lp-auth--solo's classes live in a group-layout-only
+# stylesheet; zero new CSS. EXPERIENCE.md gained a Failure Register row --
+# no spec existed for this screen. 18 new unit tests (web 947 total, zero
+# regressions), lint/typecheck/production build all green.
+# LIVE PASS ACHIEVED -- THE FIRST IN EPIC 7: the Docker/Stripe-CLI blocker
+# that stopped 7.2/7.3/7.4 was re-checked per Task 5.1 rather than assumed,
+# and the local stack is back up. Real @supabase/ssr auth cookies for the
+# seeded dev DJ drove real requests through the real middleware, with
+# subscription_status flipped in the local DB between probes and THE SAME
+# COOKIE JAR REUSED THROUGHOUT (nothing cleared -- the thing AC-4 needs
+# proven). Full matrix: null/canceled/past_due/incomplete all 307 to
+# /subscription-required from every gated route incl. /set/<id> and
+# /track/<id>; active/trialing 200; /settings and /link-agent 200 in EVERY
+# state incl. null; /subscription-required itself 307s to /dashboard once
+# access returns (the stale-bookmark guard). AC-2/AC-3 proven not reasoned:
+# while canceled and every dashboard route 307ing, the same DJ with the
+# same credentials synced a NEW set via rpc/sync_set -> HTTP 200, sets
+# 58 -> 59. AC-4: canceled -> active reopened /dashboard on the very next
+# request, no cache/cookie cleared. Test rows deleted, DB restored to seed
+# baseline (58/58/2294, status back to canceled). Zero agent/, shared/ or
+# supabase/migrations/ files touched. -> review
 # 2026-08-15: story 7-3 dev-story session (payment webhook route handler,
 # Claude Sonnet 5): all 6 tasks complete. New web/lib/supabase/service.ts
 # (getSupabaseAdmin() -- lazy, RPC-only service-role client via
@@ -1442,7 +1482,7 @@ development_status:
   7-2-stripe-checkout-subscribe-flow: done
   7-3-payment-webhook-route-handler: done
   7-4-customer-portal-manage-cancel: done
-  7-5-web-access-gate-on-subscription: backlog
+  7-5-web-access-gate-on-subscription: review
   7-6-production-cutover-live-billing-launch-ready: backlog
   epic-7-retrospective: optional
 
