@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { AUTH_FAILURE_COPY } from "@/app/(marketing)/login/auth-copy";
-import { isValidPhone } from "./phone-validation";
+import { isValidPhone, normalizePhone } from "./phone-validation";
 import type { PhoneActionState } from "./phone-state";
 
 export async function setPhone(
@@ -18,6 +18,20 @@ export async function setPhone(
 
   if (!isValidPhone(phone)) {
     return { status: "error", error: "Enter a valid phone number." };
+  }
+
+  // Stored in E.164, always — never the DJ's own spelling. Two formats in
+  // one column is a bug that only shows up much later, at the first thing
+  // that has to dial or text the number.
+  const normalizedPhone = normalizePhone(phone);
+  if (!normalizedPhone) {
+    // Reachable only for a well-formed but country-ambiguous number, since
+    // isValidPhone already cleared the input above. Naming the country code
+    // is the whole ask, so the copy shows one.
+    return {
+      status: "error",
+      error: "Add your country code, like +44 20 7946 0958.",
+    };
   }
 
   const supabase = await createClient();
@@ -36,7 +50,7 @@ export async function setPhone(
       // .select() reports no error either way.
       const { data: updated, error } = await supabase
         .from("djs")
-        .update({ phone })
+        .update({ phone: normalizedPhone })
         .eq("id", data.user.id)
         .select("id");
       succeeded = !error && (updated?.length ?? 0) > 0;
