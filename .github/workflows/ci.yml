@@ -48,6 +48,17 @@ jobs:
       - name: Test
         run: pnpm test
 
+      # release-*.yml only ever run on a tag push, so nothing here or in any PR
+      # executes them and breakage accumulates unseen — on 2026-08-16 they had
+      # been broken since July by two separate commits, and both surfaced only
+      # when the first real release was attempted. This is a one-second static
+      # check of the invariants those runs depend on, deliberately a hard
+      # failure: a warning about something that only bites on release day is a
+      # warning nobody reads. Lives in the js job rather than its own, since a
+      # dedicated job's setup would cost far more than the check.
+      - name: Check release workflow invariants
+        run: ./.github/scripts/check-release-workflows.sh
+
   agent:
     name: Agent (Rust core)
     runs-on: ubuntu-latest
