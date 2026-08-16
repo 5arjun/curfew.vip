@@ -134,10 +134,10 @@ Same check found `STRIPE_WEBHOOK_SECRET` absent from all three environments too,
   - [ ] 5.3 **Redeploy.** Vercel env-var changes apply only to *new* deployments — each deployment is an immutable artifact, so nothing you added above reaches the running site until a redeploy. Use the **Dashboard's Redeploy button** on the current production deployment (same commit, no working-tree upload). Confirm the new deployment is `Ready` and promoted before verifying anything.
   - [ ] 5.4 Re-run `vercel env ls production/preview/development --project curfew.vip` and paste the resulting matrix into Dev Notes. Baseline as of story creation, for the diff: Production had only `SENTRY_AUTH_TOKEN` + the four Marketplace vars + `NEXT_PUBLIC_APPLE_SIGNIN_AVAILABLE` + the two Supabase vars; Preview had `STRIPE_PRICE_ID_*` (sandbox) + `SENTRY_AUTH_TOKEN` + the Marketplace four; Development had `STRIPE_PRICE_ID_*` + the Marketplace four.
 
-- [ ] **Task 6: Tax decision** (AC: #4) — Arjun's call, and it must be *made*, not defaulted
-  - [ ] 6.1 Present the mechanic plainly: Stripe only calculates tax where you hold an **active registration**; with no registration the calculation returns **zero tax, silently, with no error**. So "enable `automatic_tax` and move on" and "do nothing" produce an identical customer experience today — which is exactly why AC-4 forbids leaving it unset by accident rather than by decision.
-  - [ ] 6.2 Whichever way he rules, record it in Dev Notes **with the reasoning and a revisit trigger** (e.g. a revenue or nexus threshold). If the ruling is "collect": set a product tax code on Curfew Pro (SaaS-appropriate, e.g. the `txcd_10103000`-family general-SaaS code — confirm the current code in the Dashboard's picker rather than trusting this note), register in at least the home jurisdiction, and add `automatic_tax: { enabled: true }` to the Checkout Session in `web/app/api/billing/checkout/route.ts` — that last part is a code change, so it lands with Task 1's diff, not after it.
-  - [ ] 6.3 If the ruling is "not yet," say so in the Dev Notes **and** add a line to `pre-launch-services-checklist.md`'s Stripe row so it has an owner outside this story file.
+- [x] **Task 6: Tax decision** — **RULED 2026-08-16: do not collect yet.** (AC: #4) — Arjun's call, and it must be *made*, not defaulted
+  - [x] 6.1 Present the mechanic plainly: Stripe only calculates tax where you hold an **active registration**; with no registration the calculation returns **zero tax, silently, with no error**. So "enable `automatic_tax` and move on" and "do nothing" produce an identical customer experience today — which is exactly why AC-4 forbids leaving it unset by accident rather than by decision.
+  - [x] 6.2 Whichever way he rules, record it in Dev Notes **with the reasoning and a revisit trigger** (e.g. a revenue or nexus threshold). If the ruling is "collect": set a product tax code on Curfew Pro (SaaS-appropriate, e.g. the `txcd_10103000`-family general-SaaS code — confirm the current code in the Dashboard's picker rather than trusting this note), register in at least the home jurisdiction, and add `automatic_tax: { enabled: true }` to the Checkout Session in `web/app/api/billing/checkout/route.ts` — that last part is a code change, so it lands with Task 1's diff, not after it.
+  - [x] 6.3 If the ruling is "not yet," say so in the Dev Notes **and** add a line to `pre-launch-services-checklist.md`'s Stripe row so it has an owner outside this story file.
 
 - [ ] **Task 7: End-to-end live verification** (AC: #5) — the honest method, per correction (a)
   - [ ] 7.1 Signed in as Arjun's own production account on `curfew.vip`, confirm `/settings` now renders the Billing section with both interval CTAs. (Before Task 5 it rendered nothing — that delta is itself the proof `billingEnabled` flipped.)
@@ -293,6 +293,19 @@ Two pre-existing `BillingSection` guards were **rewritten, not deleted**: both a
 **Ordering constraint restated:** #38 must land *before* Task 5.2. Merged after, and the window between them is a period where pausing sales would withdraw a paying DJ's only cancel path.
 
 **Branch hygiene note (shared checkout).** A concurrent session committed its README work (`931155a`) onto this session's branch mid-task, so `story/7-6-gate-split` carries an unrelated README redesign that conflicts with `main`'s own README rewrite. PR #38 was therefore opened from `story/7-6-manage-gate`, a clean single-commit branch built directly on `origin/main` containing only the five billing files. `story/7-6-gate-split` was left alone rather than rewritten — the other session's commit is not this session's to move.
+
+**Arjun's four rulings, 2026-08-16 — all four story questions closed.**
+
+1. **Tax (AC-4, Task 6): DO NOT COLLECT YET — decided, not defaulted.**
+   Reasoning: Curfew is pre-launch with no live revenue, one $7.99/mo plan, and no jurisdiction where a registration obligation has been triggered. Registering is a multi-day process that would block the cutover to no customer-visible benefit — with no active registration, `automatic_tax: true` and doing nothing produce an identical result (zero tax, silently). Enabling the flag without a registration would therefore be theatre, not compliance.
+   **No code change:** `automatic_tax` stays absent from the Checkout Session in `web/app/api/billing/checkout/route.ts`.
+   **Revisit trigger:** first of — (a) any single jurisdiction's economic-nexus threshold coming into view as real subscriber volume appears, or (b) the first non-US subscriber, where VAT/GST rules bite at far lower volumes than US state thresholds. Owner recorded outside this story in `pre-launch-services-checklist.md`'s Stripe row (Task 6.3).
+
+2. **Live verification (AC-5, Task 7): REAL CHARGE APPROVED.** One real subscription on the live $7.99 monthly Price using Arjun's own card, verified end-to-end, then cancelled via the Portal and refunded in full. Confirms correction (a)'s method; the annual Price is CTA-checked only, never paid.
+
+3. **Marketplace resource (AC-6, Task 8): KEEP `stripe-bistre-ribbon` CONNECTED**, documented as permanently sandbox/test-only, relying on name separation. Confirms correction (b) — no `disconnect`, no `remove`. Both destroy Preview/Development test-mode billing.
+
+4. **`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` (Task 8.4): ATTEMPT REMOVAL FROM PRODUCTION.** If the integration permits per-environment scoping, drop it from Production only, leaving Preview/Development untouched. If it does not, fall back to documenting it as knowingly-present-and-unused — **do not hand-edit an integration-owned var**, per Scope Boundaries. Removal takes effect only at the Task 5.3 redeploy, so it is sequenced into the cutover rather than done as a separate deploy.
 
 **Live Stripe artifacts (AC-1/AC-2 require these recorded here):**
 
