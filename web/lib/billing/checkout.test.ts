@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   SUBSCRIPTION_ATTACHED,
   billingEnabled,
+  billingManageEnabled,
   offersSubscribeCta,
   parseInterval,
   resolvePriceId,
@@ -105,6 +106,62 @@ describe("billingEnabled", () => {
     // was live on curfew.vip and locked every real account out of /dashboard.
     expect(billingEnabled({ ...ENV, VERCEL_ENV: "production" })).toBe(false);
     expect(billingEnabled({ VERCEL_ENV: "production" })).toBe(false);
+  });
+});
+
+describe("billingManageEnabled", () => {
+  // The manage gate (Story 7.6 Task 1). Everything here is about what it
+  // DELIBERATELY ignores — the two cases below are the whole point of splitting
+  // it out of billingEnabled, and if either ever starts returning false, a
+  // paying DJ has silently lost their only self-serve cancel.
+  it("is on with either key name, matching resolveApiKey's two owners", () => {
+    expect(billingManageEnabled({ STRIPE_RESTRICTED_KEY: "rk_live_x" })).toBe(true);
+    expect(billingManageEnabled({ STRIPE_SECRET_KEY: "sk_test_x" })).toBe(true);
+  });
+
+  it("stays on in production with BILLING_LIVE unset", () => {
+    // Pausing sales must not withdraw an existing subscriber's cancel path.
+    expect(
+      billingManageEnabled({ ...ENV, STRIPE_RESTRICTED_KEY: "rk_live_x", VERCEL_ENV: "production" }),
+    ).toBe(true);
+    expect(
+      billingManageEnabled({
+        ...ENV,
+        STRIPE_RESTRICTED_KEY: "rk_live_x",
+        VERCEL_ENV: "production",
+        BILLING_LIVE: "0",
+      }),
+    ).toBe(true);
+  });
+
+  it("stays on with both Price ids absent", () => {
+    // The Portal sells nothing, so rotating or clearing the Prices is not its
+    // business.
+    expect(billingManageEnabled({ STRIPE_RESTRICTED_KEY: "rk_live_x" })).toBe(true);
+    expect(
+      billingManageEnabled({
+        STRIPE_SECRET_KEY: "sk_test_x",
+        STRIPE_PRICE_ID_MONTHLY: "",
+        STRIPE_PRICE_ID_ANNUAL: undefined,
+      }),
+    ).toBe(true);
+  });
+
+  it("is off with no usable key at all", () => {
+    expect(billingManageEnabled({})).toBe(false);
+    expect(billingManageEnabled({ ...ENV, VERCEL_ENV: "production", BILLING_LIVE: "1" })).toBe(
+      false,
+    );
+  });
+
+  it("treats an empty-string key as unconfigured, falling through like resolveApiKey", () => {
+    // `||` not `??` — an env line with no value is the realistic
+    // misconfiguration, and it must not read as a configured key.
+    expect(billingManageEnabled({ STRIPE_RESTRICTED_KEY: "" })).toBe(false);
+    expect(billingManageEnabled({ STRIPE_RESTRICTED_KEY: "", STRIPE_SECRET_KEY: "" })).toBe(false);
+    expect(billingManageEnabled({ STRIPE_RESTRICTED_KEY: "", STRIPE_SECRET_KEY: "sk_test_x" })).toBe(
+      true,
+    );
   });
 });
 

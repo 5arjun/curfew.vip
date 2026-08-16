@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { getStripe } from "@/lib/billing/stripe";
-import { billingEnabled, offersSubscribeCta } from "@/lib/billing/checkout";
+import { billingManageEnabled, offersSubscribeCta } from "@/lib/billing/checkout";
 import { createClient } from "@/lib/supabase/server";
 
 // Customer Portal session creation (Story 7.4, AD-18). The sibling of Story
@@ -20,22 +20,19 @@ import { createClient } from "@/lib/supabase/server";
 export const runtime = "nodejs";
 
 export async function POST() {
-  // Same gate as the Checkout route, checked first: whether billing exists in
-  // this environment is not a fact about the caller, and keeps all three
-  // billing routes self-defending the same way.
+  // Environment gate, checked first: whether billing exists here is not a fact
+  // about the caller, and keeps all three billing routes self-defending the
+  // same way.
   //
-  // CAUTION (7.4 review, Decision 2 — deferred to Story 7.6): this gate covers
-  // "may we sell?" and "may we let you manage what you already bought?" with
-  // one flag, and those are not the same question. An earlier version of this
-  // comment called the gate belt-and-braces on the grounds that Checkout is
-  // itself billingEnabled()-gated, so no DJ could hold a stripe_customer_id
-  // where this mattered. That is false: the webhook — the ONLY writer of
-  // stripe_customer_id — is deliberately NOT billingEnabled()-gated (see
-  // webhook/route.ts). So once live subscribers exist, flipping BILLING_LIVE
-  // off or rotating a Price id withdraws their only self-serve cancel, under
-  // Settings copy that promises "Cancel whenever." Cannot fire before 7.6
-  // creates live subscribers; 7.6 owns splitting the two gates.
-  if (!billingEnabled(process.env)) {
+  // The MANAGE gate, not the sell gate (Story 7.6 Task 1 — the split 7.4's
+  // review deferred). Managing an existing subscription needs a Stripe key and
+  // nothing else: no Price ids, because the Portal sells nothing, and no
+  // BILLING_LIVE, because a DJ who already paid is past the "may we sell here?"
+  // question. Sharing billingEnabled() here meant pausing sales also withdrew a
+  // paying DJ's only self-serve cancel, under Settings copy promising "Cancel
+  // whenever" — reachable because the webhook, the only writer of
+  // stripe_customer_id, is itself ungated. See billingManageEnabled's note.
+  if (!billingManageEnabled(process.env)) {
     return NextResponse.json({ error: "Billing unavailable" }, { status: 503 });
   }
 

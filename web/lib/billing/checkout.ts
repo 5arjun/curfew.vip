@@ -68,31 +68,71 @@ export type BillingEnv = PriceEnv & {
 };
 
 /**
- * Whether this environment may offer Checkout at all — gates both the Settings
- * CTA and the route handler, so hiding the button and refusing the endpoint
- * can never disagree.
+ * The SELL gate: whether this environment may offer Checkout at all — gates the
+ * Settings Subscribe CTA, the Checkout route handler, and Story 7.5's dashboard
+ * paywall, so hiding the button, refusing the endpoint, and restricting the
+ * dashboard can never disagree.
+ *
+ * Its sibling is `billingManageEnabled`, the MANAGE gate. Read that one's note
+ * for why the two are separate; the short version is that this predicate
+ * answers "may we sell here?", which is not the same question as "may a DJ who
+ * already paid cancel?".
  *
  * Two independent conditions, deliberately:
  *
  * 1. **Prices must be configured.** Without them `resolvePriceId` throws and
  *    the DJ gets a 502 from a button that looked live.
- * 2. **Production needs an explicit opt-in** (`BILLING_LIVE=1`). Curfew's
- *    Stripe resource is still an unclaimed *sandbox* — test-mode keys are
- *    already on the production environment via the Vercel Marketplace
- *    integration. A hosted Checkout backed by those keys looks completely real
- *    and charges nothing, so a visitor to curfew.vip could enter card details
- *    and believe they had subscribed. Silence is the only safe answer until
- *    live keys exist.
+ * 2. **Production needs an explicit opt-in** (`BILLING_LIVE=1`) — a deliberate
+ *    sales switch, not a configuration side effect. It exists because
+ *    production carries the Vercel Marketplace integration's *sandbox*
+ *    test-mode keys under `STRIPE_SECRET_KEY` in every environment, and a
+ *    hosted Checkout backed by those looks completely real while charging
+ *    nothing. Story 7.6's cutover adds live Prices and a live `rk_live_` key to
+ *    Production, so after it the flag is what separates "live billing is
+ *    configured" from "we are actually selling today".
  *
- * Condition 2 is not redundant with condition 1. Today production simply has
- * no price ids, so condition 1 alone would hide the CTA — but that is an
- * accident of configuration, and someone adding the ids later would silently
- * ship a fake checkout. The flag makes going live a deliberate act.
+ * Condition 2 is not redundant with condition 1: someone adding Price ids
+ * without the flag would otherwise silently ship a checkout nobody decided to
+ * turn on. Going the other way, setting `BILLING_LIVE=0` after live subscribers
+ * exist is a clean pause on NEW sales and nothing more — the Portal, and so a
+ * paying DJ's cancel path, hangs off `billingManageEnabled` instead.
  */
 export function billingEnabled(env: BillingEnv): boolean {
   if (!env.STRIPE_PRICE_ID_MONTHLY || !env.STRIPE_PRICE_ID_ANNUAL) return false;
   if (env.VERCEL_ENV === "production") return env.BILLING_LIVE === "1";
   return true;
+}
+
+/**
+ * The MANAGE gate: whether a DJ who already has a subscription can reach the
+ * Customer Portal to change or cancel it. Gates the Portal route and the
+ * Settings Manage row (Story 7.6 Task 1; deferred here at Story 7.4's review).
+ *
+ * A Stripe API key, full stop. That is genuinely everything the Portal path
+ * needs — `billingPortal.sessions.create` takes a `stripe_customer_id` and a
+ * return URL, and both come from the caller's own `djs` row, not from the
+ * environment. In particular it deliberately does **not** require:
+ *
+ * - **Price ids.** The Portal sells nothing. Rotating or clearing
+ *   `STRIPE_PRICE_ID_*` must not strand an existing subscriber.
+ * - **`BILLING_LIVE`.** A DJ who already paid is past the "may we sell here?"
+ *   question. Gating cancel on the sales switch meant that pausing sales would
+ *   withdraw their only self-serve cancel — under Settings copy that promises
+ *   "Cancel whenever." That is the exact failure this split exists to remove.
+ *
+ * Note the webhook — the only writer of `stripe_customer_id` — is itself
+ * ungated, so subscribers can and do exist in states where `billingEnabled` is
+ * false. That is what makes this a real gap rather than a theoretical one.
+ *
+ * `||` not `??`, matching `resolveApiKey` one file over: a var set to the empty
+ * string is the realistic misconfiguration and must not count as configured.
+ */
+export function billingManageEnabled(env: {
+  STRIPE_RESTRICTED_KEY?: string;
+  STRIPE_SECRET_KEY?: string;
+  [key: string]: string | undefined;
+}): boolean {
+  return Boolean(env.STRIPE_RESTRICTED_KEY || env.STRIPE_SECRET_KEY);
 }
 
 /**
