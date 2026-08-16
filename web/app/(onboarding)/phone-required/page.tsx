@@ -33,8 +33,7 @@ export default async function PhoneRequiredPage() {
         <p className="lp-feat-eyebrow">Set up — step 1 of 2</p>
         <h1 className="lp-auth-title">Add a phone number.</h1>
         <p className="lp-body lp-auth-tag">
-          If your archive ever needs attention, a person can reach you. That&rsquo;s the whole use
-          — never marketing, never shared.
+          If your archive ever needs attention, a person can reach you.
         </p>
 
         <PhoneForm />

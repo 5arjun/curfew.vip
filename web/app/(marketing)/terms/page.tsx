@@ -23,7 +23,7 @@ export default function TermsPage() {
       title="The agreement."
       sub="What you're agreeing to when you use Curfew, in plain words. The short version is
         first, and the long version says the same things."
-      updated="Effective August 15, 2026"
+      updated="Effective August 16, 2026"
       sections={[
         {
           id: "short-version",
@@ -77,6 +77,13 @@ export default function TermsPage() {
                 yourself. What happens under your account is yours to answer for, so tell us
                 straight away if you think someone else has gotten in.
               </LegalP>
+              <LegalP>
+                By giving Curfew that email and number you agree Curfew can contact you at both:
+                account mail, and messages about the product itself — new features, offers. The
+                second kind you can stop any time, by the means the{" "}
+                <Link href="/privacy">privacy policy</Link> sets out. Message rates from your
+                carrier are yours.
+              </LegalP>
               <LegalP>You need to be at least 16 to hold an account.</LegalP>
             </>
           ),
@@ -128,7 +135,8 @@ export default function TermsPage() {
                 The record of every set you play belongs to you. Curfew takes only the license it
                 needs to run the service: to store your sets, compute your stats, and show them
                 back to you. Sets are private to your account — no public profiles, no feed, and
-                Curfew never sells your data or uses it to advertise.
+                Curfew never sells your data or hands it to advertisers. How Curfew itself contacts
+                you, and how to stop it, is in the <Link href="/privacy">privacy policy</Link>.
               </LegalP>
             </>
           ),

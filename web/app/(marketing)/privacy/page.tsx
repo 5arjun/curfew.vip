@@ -26,7 +26,7 @@ export default function PrivacyPage() {
       title="What Curfew knows."
       sub="Exactly what Curfew collects, why, who touches it, and how you get it out. No tracking
         confessions buried in section nine — there's nothing to bury."
-      updated="Effective August 15, 2026"
+      updated="Effective August 16, 2026"
       sections={[
         {
           id: "short-version",
@@ -37,6 +37,7 @@ export default function PrivacyPage() {
                 "Your music files never leave your laptop. Curfew syncs the record of a set — titles, times, keys, BPMs — never audio.",
                 "Your sets are private to your account. No public profiles, no feed.",
                 "Curfew doesn't sell your data, and runs no advertising trackers.",
+                "Curfew may email or text you about Curfew — new features, offers. One reply stops it.",
                 "Export everything or delete everything, any time, by asking.",
               ]}
             />
@@ -103,11 +104,18 @@ export default function PrivacyPage() {
           body: (
             <>
               <LegalP>
-                To run your archive — that is the use. Your email carries account mail:
+                To run your archive, and to talk to you about it. Your email carries account mail:
                 confirmation links, password resets, notices about the service. Your phone number
-                exists so a person can reach you if your archive needs attention; it is never used
-                for marketing and never shared. Nothing you give Curfew is sold, rented, or used to
-                advertise to you or anyone else.
+                is how a person reaches you if your archive needs attention.
+              </LegalP>
+              <LegalP>
+                Curfew may also use your email or your number to tell you about the product itself
+                — new features, offers, things worth knowing. That is Curfew writing to you about
+                Curfew, and nothing more: your details are never sold, rented, or handed to anyone
+                else to advertise with. Stop those messages any time — reply STOP to a text, use
+                the unsubscribe link in an email, or write to{" "}
+                <a href="mailto:support@curfew.vip?subject=Unsubscribe">support@curfew.vip</a>.
+                Account mail keeps coming, because it is how the service reaches you.
               </LegalP>
             </>
           ),
