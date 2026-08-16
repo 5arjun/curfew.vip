@@ -44,7 +44,17 @@ jobs:
   release:
     name: Build, sign, and notarize (universal macOS)
     runs-on: macos-latest
-    timeout-minutes: 45
+    # 120, not 45. Raised 2026-08-16 after the first real release run was killed
+    # at the 45-minute cap. The build itself is not the cost — signing finished
+    # ~9 minutes in — it is Apple's notary service, which has no guaranteed
+    # turnaround: that submission sat "In Progress" for over two hours before
+    # returning Accepted, while a 14KB probe signed with the same certificate
+    # went Accepted in about two minutes. So the slow case is an Apple-side
+    # anomaly on a single submission rather than anything about this bundle, and
+    # the only defence is headroom. Runner minutes are free on a public repo, so
+    # the generous cap costs nothing; a cap that kills a build Apple was about
+    # to accept costs a whole release cycle.
+    timeout-minutes: 120
     permissions:
       contents: write
     steps:
