@@ -2,23 +2,24 @@
 
 Story 2.11's own text describes this runbook against the **full, eventual**
 schema (`sessions`, `sets`, `plays`, `segments`, enrichment overlays, a Stripe
-customer). As of Story 5.1, the live schema is `public.djs` (`id`,
-`created_at`, `phone`) plus `sessions`/`sets`/`plays`/`segments` — Epic 7's
-billing columns and Story 5.5's Layer 2 enrichment overlay are still
-backlog. This runbook is written accurate to **today's** schema, with an
-explicit forward-hook section (a clearly marked TODO, not a fabricated
-step) for the future stories that will still need to extend it.
+customer). As of Story 7.1, the live schema is `public.djs` (`id`,
+`created_at`, `phone`, `dj_name`, plus Epic 7's four billing columns) plus
+`sessions`/`sets`/`plays`/`segments` — Story 5.5's Layer 2 enrichment overlay
+is still backlog. This runbook is written accurate to **today's** schema,
+with an explicit forward-hook section (a clearly marked TODO, not a
+fabricated step) for the future stories that will still need to extend it.
 
-**Status as of 2026-08-10:** this is a pure manual/operator runbook — no
+**Status as of 2026-08-15:** this is a pure manual/operator runbook — no
 self-serve in-app deletion or export exists (MVP scope, AC-3). Today's
-deletion procedure is one step: deleting the `auth.users` row cascades
-through `public.djs` and, as of Story 5.1, transitively through
+deletion procedure cascades automatically once the Stripe customer is
+handled first (§2 step 3 below, Story 7.1): deleting the `auth.users` row
+cascades through `public.djs` and, as of Story 5.1, transitively through
 `sessions`/`sets`/`plays`/`segments` too — confirmed for real against local
 Postgres (insert a DJ's full row set, delete their `auth.users` row, all
 five tables' rows are gone). The export procedure now joins those four
-tables as well. Both will grow again once Epic 7 lands billing columns or
-Story 5.5 lands its enrichment overlay — see the forward-hook TODO inline
-below.
+tables as well, plus the billing columns on `djs` itself. This will grow
+again once Story 5.5 lands its enrichment overlay — see the forward-hook
+TODO inline below.
 
 ## 1. Requesting a deletion or export
 
@@ -91,13 +92,20 @@ this section describing a channel Story 3.10 has since replaced.
    succeeded:** verify via a direct query (`select count(*) from auth.users
    where id = '<uuid>'`) before retrying — do not assume success or blindly
    retry a call that may have already taken effect.
-3. **Stripe customer: N/A today.** No billing integration exists yet (Epic 7
-   is backlog, no `stripe_customer_id` column exists on `djs`).
+3. **Stripe customer: run this BEFORE step 2** (the `stripe_customer_id`
+   column disappears the moment the cascading `auth.users` delete runs).
 
-   **Forward-hook, TODO for whichever Epic 7 story lands
-   `stripe_customer_id`:** add a step here, run **before** step 2 above (the
-   column disappears with the row), to delete or cancel the Stripe customer
-   via the Stripe Dashboard or API.
+   As of Story 7.1, `djs` carries `stripe_customer_id`, but no Stripe API
+   call exists in code yet (Story 7.3 is still backlog) — this remains a
+   manual step, just now a real one instead of "N/A":
+
+   1. Pull the DJ's Stripe customer id before deleting anything:
+      ```sql
+      select stripe_customer_id from public.djs where id = '<uuid>';
+      ```
+   2. If it is non-null, delete or cancel that Stripe customer via the
+      Stripe Dashboard or API before proceeding to step 2 below. If it is
+      null, the DJ never completed Checkout — nothing to do here.
 4. **Local agent SQLite: no automatic purge exists.** The agent has no way
    to learn its account was deleted — there is no sync/auth-check path today
    (Story 3.2/3.3, backlog) and Story 2.10's token-refresh work does not add
@@ -132,9 +140,10 @@ this section describing a channel Story 3.10 has since replaced.
 
 ## 3. Export procedure (today's schema)
 
-As of Story 5.1, a DJ's derived data is their `public.djs` row (`id`,
-`created_at`, `phone`) plus every `sessions`/`sets`/`plays`/`segments` row
-scoped to their `dj_id`.
+As of Story 7.1, a DJ's derived data is their `public.djs` row (`id`,
+`created_at`, `phone`, `dj_name`, `stripe_customer_id`,
+`stripe_subscription_id`, `subscription_status`, `current_period_end`) plus
+every `sessions`/`sets`/`plays`/`segments` row scoped to their `dj_id`.
 
 1. **Identify the DJ's `uuid`.** Same matching step as §2.1 (match on
    verified email against `auth.users`) — if zero rows or more than one row

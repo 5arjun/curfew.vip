@@ -2,14 +2,18 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
--- 53 = two set-wide blocks of 8 tables (INSERT, DELETE -- 16) + two
+-- 60 = two set-wide blocks of 8 tables (INSERT, DELETE -- 16) + two
 -- set-wide blocks of 7 tables (TRUNCATE x2 -- 14, unchanged: the
 -- catalog-driven generic TRUNCATE sweep at the bottom of this file already
 -- covers any new table automatically, so `segments` was deliberately not
 -- added to these two hardcoded arrays) + 6 intended-write assertions
 -- + 4 on deleted_sets + 6 function-revoke + 4 agent-write-path
--- + 3 generic SECURITY DEFINER / trigger-function sweeps.
-select plan(53);
+-- + 3 generic SECURITY DEFINER / trigger-function sweeps
+-- + 4 billing-column negative-grant (Story 7.1: djs.stripe_customer_id/
+-- stripe_subscription_id/subscription_status/current_period_end) + 3
+-- apply_subscription_event execute-grant assertions (anon negative,
+-- authenticated negative, service_role positive) = 60.
+select plan(60);
 
 -- Story 4.6 code review (2026-08-07): pins the ACL matrix the migration history
 -- has always described in prose but never asserted.
@@ -56,6 +60,14 @@ select ok(has_column_privilege('authenticated', 'public.djs', 'phone', 'UPDATE')
 select ok(has_column_privilege('authenticated', 'public.djs', 'dj_name', 'UPDATE'), 'authenticated can update djs.dj_name (column-scoped, AD-19)');
 select ok(not has_table_privilege('authenticated', 'public.djs', 'UPDATE'), 'authenticated has NO table-wide UPDATE on djs -- the grant stays column-scoped');
 
+-- Story 7.1: the four billing columns land with zero new grants -- every
+-- existing UPDATE grant on djs is already column-scoped (phone, dj_name
+-- only), so these are unwritable by authenticated by construction. Mirrors
+-- lines 55-57's positive pattern, negated, looped via unnest (this file's
+-- own idiom for a same-shape assertion repeated per item).
+select ok(not has_column_privilege('authenticated', 'public.djs', c, 'UPDATE'), 'authenticated cannot update djs.' || c || ' (Story 7.1 billing column, zero new grants)')
+from unnest(array['stripe_customer_id','stripe_subscription_id','subscription_status','current_period_end']) c;
+
 -- `deleted_sets` tombstones are observable by their owner, never by anon, and
 -- never writable by a client (the recording trigger is SECURITY DEFINER).
 select ok(has_table_privilege('authenticated', 'public.deleted_sets', 'SELECT'), 'authenticated can read their own tombstones');
@@ -73,6 +85,7 @@ select ok(not has_function_privilege('anon', 'public.set_agent_status(text, text
 select ok(not has_function_privilege('anon', 'public.sync_library_roster(jsonb)', 'EXECUTE'), 'anon cannot execute sync_library_roster');
 select ok(not has_function_privilege('anon', 'public.handle_new_dj()', 'EXECUTE'), 'anon cannot execute handle_new_dj');
 select ok(not has_function_privilege('authenticated', 'public.handle_new_dj()', 'EXECUTE'), 'authenticated cannot execute handle_new_dj either -- it is a trigger function');
+select ok(not has_function_privilege('anon', 'public.apply_subscription_event(uuid, text, text, text, timestamptz, timestamptz)', 'EXECUTE'), 'anon cannot execute apply_subscription_event');
 
 -- The agent's write path must still work: it is EXECUTE on SECURITY DEFINER
 -- RPCs, never table grants (AD-19/AD-20).
@@ -80,6 +93,20 @@ select ok(has_function_privilege('authenticated', 'public.sync_set(text, bigint,
 select ok(has_function_privilege('authenticated', 'public.sync_library_add_events(jsonb)', 'EXECUTE'), 'authenticated CAN execute sync_library_add_events');
 select ok(has_function_privilege('authenticated', 'public.set_agent_status(text, text)', 'EXECUTE'), 'authenticated CAN execute set_agent_status');
 select ok(has_function_privilege('authenticated', 'public.sync_library_roster(jsonb)', 'EXECUTE'), 'authenticated CAN execute sync_library_roster (AD-22 write path)');
+
+-- apply_subscription_event (Story 7.1, AD-18) is the first function in this
+-- suite that needs the OPPOSITE of every assertion above: authenticated
+-- must NOT be able to execute it (it is called only by the Stripe webhook,
+-- authenticating as service_role -- dj_id is a parameter, not derived from
+-- auth.uid(), so authenticated access would be a spoofing hole). Don't
+-- pattern-match the positive block above blindly for this one.
+select ok(not has_function_privilege('authenticated', 'public.apply_subscription_event(uuid, text, text, text, timestamptz, timestamptz)', 'EXECUTE'), 'authenticated cannot execute apply_subscription_event (sole caller is service_role)');
+
+-- The positive half of Story 7.1's deviation: service_role has an explicit,
+-- PUBLIC-independent EXECUTE grant, proving the migration's revoke/grant
+-- pair actually closed deferred-work.md's "service_role has no CRUD grants
+-- on a fresh replay" gap for this one function.
+select ok(has_function_privilege('service_role', 'public.apply_subscription_event(uuid, text, text, text, timestamptz, timestamptz)', 'EXECUTE'), 'service_role CAN execute apply_subscription_event');
 
 -- GENERIC SWEEPS. The per-function assertions above only catch functions
 -- somebody remembered to list — which is precisely how `record_deleted_set()`

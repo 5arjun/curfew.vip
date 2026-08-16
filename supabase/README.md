@@ -14,12 +14,14 @@ supabase/
     20260810153813_create_segments.sql             # segments overlay table, select-only RLS (Story 5.1)
     20260810193000_add_segments_source_confirmed.sql # segments.source/confirmed + sync_set writes suggestions (Story 5.2)
     20260811120000_add_segments_write_path.sql     # segments DJ write grants + boundary trigger + sync_set capture/rebind (Story 5.3)
+    20260815211733_add_djs_billing_columns.sql     # djs billing columns + apply_subscription_event() (Story 7.1)
   tests/                             # pgTAP suites (`supabase test db`)
     djs_isolation_test.sql
     sessions_sets_plays_isolation_test.sql
     segments_isolation_test.sql
     segments_write_path_test.sql
     sync_set_isolation_test.sql
+    apply_subscription_event_test.sql
   scripts/
     check-additive-only-migrations.sh    # CI guard, see below
   PROVISIONING.md                    # runbook for the real cloud project

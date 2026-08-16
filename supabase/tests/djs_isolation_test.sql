@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(23);
+select plan(24);
 
 -- Seed two auth users; the AFTER INSERT trigger (handle_new_dj) should create
 -- exactly one matching public.djs row for each.
@@ -88,6 +88,18 @@ select throws_ok(
   '42501'::char(5),
   NULL,
   'authenticated cannot delete from djs (no delete grant)'
+);
+
+-- Case 3c-bis (Story 7.1, AD-19): the four billing columns land with zero
+-- new grants -- every existing UPDATE grant on djs is already column-scoped
+-- (phone, dj_name only), so authenticated has no write access to these
+-- columns by construction. One representative column is enough; the
+-- missing-grant mechanism protects all four identically.
+select throws_ok(
+  $$ update public.djs set subscription_status = 'active' where id = '11111111-1111-1111-1111-111111111111' $$,
+  '42501'::char(5),
+  NULL,
+  'authenticated cannot update djs.subscription_status (no grant exists -- same protection covers all four billing columns)'
 );
 
 reset role;
