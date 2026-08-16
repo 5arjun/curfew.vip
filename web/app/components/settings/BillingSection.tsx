@@ -1,4 +1,4 @@
-import { billingEnabled, offersSubscribeCta } from "@/lib/billing/checkout";
+import { billingEnabled, billingManageEnabled, offersSubscribeCta } from "@/lib/billing/checkout";
 import { formatSubscriptionStatus } from "@/lib/billing/portal";
 import { SubscribeActions } from "./SubscribeActions";
 import { ManageBillingActions } from "./ManageBillingActions";
@@ -27,12 +27,6 @@ export function BillingSection({
   /** True when the `djs` read failed — the status is UNKNOWN, not absent. */
   statusUnknown: boolean;
 }) {
-  // Environment gate first — it's the cheapest check and the least about this
-  // particular DJ. Production stays silent until Curfew's Stripe sandbox is
-  // claimed and live keys exist (see `billingEnabled`), so pushing this to
-  // curfew.vip ships nothing user-visible.
-  if (!billingEnabled(process.env)) return null;
-
   // A failed read is not a confirmed "no subscription". Pitching Subscribe to
   // someone who may already be paying is the worse of the two wrong answers,
   // so an unknown status renders nothing — the same discipline the Account
@@ -47,6 +41,18 @@ export function BillingSection({
   // than this one card, so narrow here instead of asserting `as string`.
   const status = subscriptionStatus ?? "";
   const offersSubscribe = offersSubscribeCta(status);
+
+  // The env gate follows the branch rather than preceding it (Story 7.6 Task
+  // 1), because the two halves answer to two different gates. Selling needs
+  // `billingEnabled` — Price ids, plus an explicit BILLING_LIVE in production.
+  // Managing needs only `billingManageEnabled` — a Stripe key — so pausing
+  // sales leaves an existing subscriber's cancel path intact instead of
+  // stranding them under copy that promises "Cancel whenever."
+  //
+  // A section with nothing true to say still does not render (Story 3.10 AC-3).
+  if (offersSubscribe ? !billingEnabled(process.env) : !billingManageEnabled(process.env)) {
+    return null;
+  }
 
   return (
     <section className="st-card dz-shell" aria-labelledby="st-billing-label">

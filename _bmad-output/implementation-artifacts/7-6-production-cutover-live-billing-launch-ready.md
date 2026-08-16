@@ -85,45 +85,46 @@ Same check found `STRIPE_WEBHOOK_SECRET` absent from all three environments too,
 
 ## Tasks / Subtasks
 
-- [ ] **Task 0: Surface the live lockout and get a ruling** (see the 🚨 section above)
-  - [ ] 0.1 Show Arjun the closed loop (`/dashboard` → `/subscription-required` → `/settings` → nothing) and confirm whether curfew.vip has real signed-up DJs today. The pre-launch checklist records a real Google sign-up → dashboard verified by Arjun on 2026-08-16, so assume at least one.
-  - [ ] 0.2 Record his ruling in Dev Notes: ship the full cutover as the fix, or land an interim mitigation first. **Do not implement a mitigation without an explicit instruction** — it would mean touching 7.5's merged, reviewed gate.
+- [x] **Task 0: Surface the live lockout and get a ruling** — **RESOLVED 2026-08-16, before the cutover** (see the 🚨 section above)
+  - [x] 0.1 Surfaced. Arjun's ruling was to mitigate immediately rather than wait for the cutover.
+  - [x] 0.2 Ruling: **interim mitigation shipped first.** `web/lib/supabase/middleware.ts`'s gate now runs only when `billingEnabled(process.env)` is true, so an environment with no way to sell cannot restrict. PR #37, merged, live on curfew.vip as commit `05130bd`. Verified signed-in on 2026-08-16: `https://curfew.vip/dashboard` renders the dashboard (empty state, "Good afternoon, Arjun") with no redirect to `/subscription-required`. Note an anonymous check proves nothing here — the gate sits inside `if (userId && …)`, so signed-out requests return 200 either way.
+        Consequence for the rest of this story: **the paywall now turns on as a side effect of Task 5.2's `BILLING_LIVE=1`.** From that redeploy onward, production DJs are gated on `subscription_status` for real. That makes Task 7's live pass the thing standing between the flag and a locked-out user, not a formality after it.
 
-- [ ] **Task 1: Split the sell gate from the manage gate** (code — the one real code change; closes `deferred-work.md`'s "Split the sell gate from the manage gate", deferred here by Arjun at 7.4's review)
-  - [ ] 1.1 In `web/lib/billing/checkout.ts`, add a second predicate beside `billingEnabled`:
+- [x] **Task 1: Split the sell gate from the manage gate** (code — the one real code change; closes `deferred-work.md`'s "Split the sell gate from the manage gate", deferred here by Arjun at 7.4's review)
+  - [x] 1.1 In `web/lib/billing/checkout.ts`, add a second predicate beside `billingEnabled`:
         `export function billingManageEnabled(env: { STRIPE_RESTRICTED_KEY?: string; STRIPE_SECRET_KEY?: string; [k: string]: string | undefined }): boolean` — returns `Boolean(env.STRIPE_RESTRICTED_KEY || env.STRIPE_SECRET_KEY)`.
         **Why exactly that and nothing more:** the Portal path needs a Stripe API key and a `stripe_customer_id`, and nothing else. It does **not** need Price ids (it sells nothing) and it does **not** need `BILLING_LIVE` (a DJ who already paid is past the "may we sell here" question). Use `||` not `??`, matching `resolveApiKey`'s reasoning about empty-string vars one file over.
         Do **not** rename or change `billingEnabled` — it stays the sell gate, and its two conditions stay exactly as they are.
-  - [ ] 1.2 `web/app/api/billing/portal/route.ts:38` — swap `billingEnabled(process.env)` for `billingManageEnabled(process.env)`. Replace the `CAUTION (7.4 review, Decision 2 — deferred to Story 7.6)` comment block at lines 27-37 with a short note recording that the split happened here and why the manage gate is key-only. Leave the 401/502/404 gates untouched.
-  - [ ] 1.3 `web/app/components/settings/BillingSection.tsx` — the current shape (`if (!billingEnabled(...)) return null` at line 34, before the branch) applies the sell gate to both halves. Restructure so the gate follows the branch:
+  - [x] 1.2 `web/app/api/billing/portal/route.ts:38` — swap `billingEnabled(process.env)` for `billingManageEnabled(process.env)`. Replace the `CAUTION (7.4 review, Decision 2 — deferred to Story 7.6)` comment block at lines 27-37 with a short note recording that the split happened here and why the manage gate is key-only. Leave the 401/502/404 gates untouched.
+  - [x] 1.3 `web/app/components/settings/BillingSection.tsx` — the current shape (`if (!billingEnabled(...)) return null` at line 34, before the branch) applies the sell gate to both halves. Restructure so the gate follows the branch:
         keep the `statusUnknown` early return as-is; compute `const offersSubscribe = offersSubscribeCta(status)`; then render the Subscribe half only when `billingEnabled(process.env)`, and the Manage half only when `billingManageEnabled(process.env)`; render `null` when the applicable gate is false.
         Careful with ordering: `formatSubscriptionStatus` throws on `null`, and the existing `const status = subscriptionStatus ?? ""` narrowing at line 48 is what prevents that — keep it, and keep its comment.
-  - [ ] 1.4 Tests, in the two files that already cover these:
+  - [x] 1.4 Tests, in the two files that already cover these:
         `web/lib/billing/checkout.test.ts` — `billingManageEnabled` is true with only `STRIPE_RESTRICTED_KEY`, true with only `STRIPE_SECRET_KEY`, **true in production with `BILLING_LIVE` unset**, **true with both Price ids absent** (these two are the whole point of the split), false with neither key, false with an empty-string key.
         `web/app/components/settings/billing-section.test.tsx` — the regression this closes: a subscriber with `subscription_status: "active"` in a production-shaped env (`VERCEL_ENV: "production"`, no `BILLING_LIVE`, no Price ids) still renders the Manage row and `ManageBillingActions`; a non-subscriber in that same env still renders nothing. Follow the file's existing `vi.stubEnv` setup (lines ~15-25).
-  - [ ] 1.5 Update `billingEnabled`'s own doc comment (`checkout.ts:70-91`) — its condition-2 paragraph describes the sandbox situation in the present tense and will be stale the moment Task 5 lands. State what the flag means going forward (an explicit production sales switch), and point at `billingManageEnabled` for why flipping it off no longer strands a subscriber.
-  - [ ] 1.6 `pnpm lint && pnpm typecheck && pnpm test` in `web/` — green, no regressions. Baseline is 947 web tests (Story 7.5).
+  - [x] 1.5 Update `billingEnabled`'s own doc comment (`checkout.ts:70-91`) — its condition-2 paragraph describes the sandbox situation in the present tense and will be stale the moment Task 5 lands. State what the flag means going forward (an explicit production sales switch), and point at `billingManageEnabled` for why flipping it off no longer strands a subscriber.
+  - [x] 1.6 `pnpm lint && pnpm typecheck && pnpm test` in `web/` — green, no regressions. Baseline is 947 web tests (Story 7.5).
 
-- [ ] **Task 2: Restricted key for test mode** (AC: #7) — completes the pattern before anything live exists, so a mistake here costs nothing
-  - [ ] 2.1 Arjun mints a **test-mode** restricted key in the `stripe-bistre-ribbon` sandbox's Stripe Dashboard (Developers → API keys → Create restricted key). Permission grid — write implies read, so grant exactly:
+- [x] **Task 2: Restricted key for test mode** — grid rehearsed and proven; **2.4 parked, see notes** (AC: #7) — completes the pattern before anything live exists, so a mistake here costs nothing
+  - [x] 2.1 Arjun mints a **test-mode** restricted key in the `stripe-bistre-ribbon` sandbox's Stripe Dashboard (Developers → API keys → Create restricted key). Permission grid — write implies read, so grant exactly:
         **Write:** Checkout Sessions, Billing Portal Sessions, Webhook Endpoints. **Read:** Customers, Subscriptions, Invoices, Products, Prices. **None:** everything else.
         (Invoices read: `invoice.payment_failed` is one of `RELEVANT_EVENT_TYPES`. Billing Portal Sessions write: `billingPortal.sessions.create` is a POST. Webhook Endpoints write: only if you intend to manage endpoints via API rather than Dashboard — drop it if not.)
-  - [ ] 2.2 `vercel env add STRIPE_RESTRICTED_KEY preview --project curfew.vip` and the same for `development`. **Do not delete `STRIPE_SECRET_KEY`** — `resolveApiKey`'s precedence makes it inert, and deleting an integration-owned var invites resync churn (Scope Boundaries).
-  - [ ] 2.3 Swap `web/.env.local`'s `STRIPE_SECRET_KEY` for `STRIPE_RESTRICTED_KEY` locally and re-run a local `stripe listen` + `stripe trigger customer.subscription.updated` pass to prove the restricted key's permission grid is actually sufficient. **This is the cheap rehearsal for the live key** — a permission you forgot shows up here for free instead of on a real customer. Record any permission you had to add.
+  - [x] 2.2 `vercel env add STRIPE_RESTRICTED_KEY preview --project curfew.vip` and the same for `development`. **Do not delete `STRIPE_SECRET_KEY`** — `resolveApiKey`'s precedence makes it inert, and deleting an integration-owned var invites resync churn (Scope Boundaries).
+  - [x] 2.3 Swap `web/.env.local`'s `STRIPE_SECRET_KEY` for `STRIPE_RESTRICTED_KEY` locally and re-run a local `stripe listen` + `stripe trigger customer.subscription.updated` pass to prove the restricted key's permission grid is actually sufficient. **This is the cheap rehearsal for the live key** — a permission you forgot shows up here for free instead of on a real customer. Record any permission you had to add.
   - [ ] 2.4 Also add the two vars Story 7.3 specified but never set (verified absent from Preview *and* Development): `STRIPE_WEBHOOK_SECRET` (from a **test-mode** Dashboard webhook endpoint — see Task 4's shape, pointed at a preview URL) and `SUPABASE_SECRET_KEY`. Without these the webhook has never run in a deployed environment at all, and Preview is where you would rather discover that.
 
-- [ ] **Task 3: Live Stripe account artifacts** (AC: #1, #2) — Arjun's Dashboard, in his real account
-  - [ ] 3.1 **Confirm the account is genuinely activated before creating anything in it.** An unactivated real account and a Marketplace sandbox present identically in the UI — both show `charges_enabled: false` with no obvious difference. Check `Settings → Account details`, or `stripe get /v1/account` with a live key, and confirm **both** `charges_enabled: true` and `payouts_enabled: true`. Record the account id (`acct_…`) in Dev Notes. If it is not activated, that is a multi-day identity/bank-verification wait (pre-launch checklist §3 flagged this lead time) — stop here and report; the rest of the story is blocked.
-  - [ ] 3.2 Create the live-mode Product **"Curfew Pro"** and two live Prices — `$7.99` recurring monthly, and `$83.88` recurring **yearly** (one annual charge, marketed as "$6.99/mo billed yearly"; not a $6.99 monthly price). Record `prod_…` and both `price_…` ids in Dev Notes. For contrast, the sandbox's ids (do **not** reuse): Product `prod_V4ypvhvzT1I2Xs`, monthly `price_1U4ozEElER8A0CA2lWlMbQ1n`, annual `price_1U4ozFElER8A0CA2VNb7iYRk`.
-  - [ ] 3.3 Mint the **live-mode** restricted key (`rk_live_…`) with the identical grid from Task 2.1, adjusted for anything Task 2.3 proved was missing. Never a live `sk_`.
-  - [ ] 3.4 Save the **Customer Portal** configuration in the Dashboard — **in live mode, and in test mode too**. This is not optional polish: `billingPortal.sessions.create()` is called with no `configuration` id, so it opens the default configuration, which **does not exist until someone saves those settings once, per mode**. Until then every Portal call throws and the DJ gets a 502 that retrying never clears. `web/README.md:87-107` documents this as an explicit unticked 7.6 step, and it was never done in *either* mode. Enable at minimum: cancel subscription, update payment method, invoice history — **what you toggle there is literally the feature set of Story 7.4's AC-1/AC-3**; none of it is code in this repo.
+- [x] **Task 3: Live Stripe account artifacts** — all four done, ids verified `livemode: true` by API (AC: #1, #2) — Arjun's Dashboard, in his real account
+  - [x] 3.1 **Confirm the account is genuinely activated before creating anything in it.** An unactivated real account and a Marketplace sandbox present identically in the UI — both show `charges_enabled: false` with no obvious difference. Check `Settings → Account details`, or `stripe get /v1/account` with a live key, and confirm **both** `charges_enabled: true` and `payouts_enabled: true`. Record the account id (`acct_…`) in Dev Notes. If it is not activated, that is a multi-day identity/bank-verification wait (pre-launch checklist §3 flagged this lead time) — stop here and report; the rest of the story is blocked.
+  - [x] 3.2 Create the live-mode Product **"Curfew Pro"** and two live Prices — `$7.99` recurring monthly, and `$83.88` recurring **yearly** (one annual charge, marketed as "$6.99/mo billed yearly"; not a $6.99 monthly price). Record `prod_…` and both `price_…` ids in Dev Notes. For contrast, the sandbox's ids (do **not** reuse): Product `prod_V4ypvhvzT1I2Xs`, monthly `price_1U4ozEElER8A0CA2lWlMbQ1n`, annual `price_1U4ozFElER8A0CA2VNb7iYRk`.
+  - [x] 3.3 Mint the **live-mode** restricted key (`rk_live_…`) with the identical grid from Task 2.1, adjusted for anything Task 2.3 proved was missing. Never a live `sk_`.
+  - [x] 3.4 Save the **Customer Portal** configuration in the Dashboard — **in live mode, and in test mode too**. This is not optional polish: `billingPortal.sessions.create()` is called with no `configuration` id, so it opens the default configuration, which **does not exist until someone saves those settings once, per mode**. Until then every Portal call throws and the DJ gets a 502 that retrying never clears. `web/README.md:87-107` documents this as an explicit unticked 7.6 step, and it was never done in *either* mode. Enable at minimum: cancel subscription, update payment method, invoice history — **what you toggle there is literally the feature set of Story 7.4's AC-1/AC-3**; none of it is code in this repo.
 
-- [ ] **Task 4: Live webhook endpoint** (AC: #3)
-  - [ ] 4.1 Register a **live-mode** webhook endpoint at `https://curfew.vip/api/billing/webhook`, subscribed to exactly the four types in `RELEVANT_EVENT_TYPES` (`web/lib/billing/webhook.ts`): `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed`. Subscribing to more is harmless (the handler no-ops on unknown types) but muddies the delivery log; subscribing to fewer silently breaks a path.
-  - [ ] 4.2 Record its `whsec_…` signing secret for Task 5. Note it is a *persistent Dashboard artifact* here, unlike the session-scoped one `stripe listen` prints locally.
+- [x] **Task 4: Live webhook endpoint** — registered by Arjun; delivery still to be proven in Task 7 (AC: #3)
+  - [x] 4.1 Register a **live-mode** webhook endpoint at `https://curfew.vip/api/billing/webhook`, subscribed to exactly the four types in `RELEVANT_EVENT_TYPES` (`web/lib/billing/webhook.ts`): `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed`. Subscribing to more is harmless (the handler no-ops on unknown types) but muddies the delivery log; subscribing to fewer silently breaks a path.
+  - [x] 4.2 Record its `whsec_…` signing secret for Task 5. Note it is a *persistent Dashboard artifact* here, unlike the session-scoped one `stripe listen` prints locally.
 
 - [ ] **Task 5: Vercel Production env** (AC: #3, #5) — **order matters; `BILLING_LIVE` goes last**
-  - [ ] 5.1 Add to **Production only** (`vercel env add <NAME> production --project curfew.vip`), in this order:
+  - [x] 5.1 Add to **Production only** (`vercel env add <NAME> production --project curfew.vip`), in this order:
         1. `STRIPE_RESTRICTED_KEY` = the `rk_live_` from 3.3
         2. `STRIPE_PRICE_ID_MONTHLY`, `STRIPE_PRICE_ID_ANNUAL` = the live ids from 3.2
         3. `STRIPE_WEBHOOK_SECRET` = the live `whsec_` from 4.2
@@ -133,10 +134,10 @@ Same check found `STRIPE_WEBHOOK_SECRET` absent from all three environments too,
   - [ ] 5.3 **Redeploy.** Vercel env-var changes apply only to *new* deployments — each deployment is an immutable artifact, so nothing you added above reaches the running site until a redeploy. Use the **Dashboard's Redeploy button** on the current production deployment (same commit, no working-tree upload). Confirm the new deployment is `Ready` and promoted before verifying anything.
   - [ ] 5.4 Re-run `vercel env ls production/preview/development --project curfew.vip` and paste the resulting matrix into Dev Notes. Baseline as of story creation, for the diff: Production had only `SENTRY_AUTH_TOKEN` + the four Marketplace vars + `NEXT_PUBLIC_APPLE_SIGNIN_AVAILABLE` + the two Supabase vars; Preview had `STRIPE_PRICE_ID_*` (sandbox) + `SENTRY_AUTH_TOKEN` + the Marketplace four; Development had `STRIPE_PRICE_ID_*` + the Marketplace four.
 
-- [ ] **Task 6: Tax decision** (AC: #4) — Arjun's call, and it must be *made*, not defaulted
-  - [ ] 6.1 Present the mechanic plainly: Stripe only calculates tax where you hold an **active registration**; with no registration the calculation returns **zero tax, silently, with no error**. So "enable `automatic_tax` and move on" and "do nothing" produce an identical customer experience today — which is exactly why AC-4 forbids leaving it unset by accident rather than by decision.
-  - [ ] 6.2 Whichever way he rules, record it in Dev Notes **with the reasoning and a revisit trigger** (e.g. a revenue or nexus threshold). If the ruling is "collect": set a product tax code on Curfew Pro (SaaS-appropriate, e.g. the `txcd_10103000`-family general-SaaS code — confirm the current code in the Dashboard's picker rather than trusting this note), register in at least the home jurisdiction, and add `automatic_tax: { enabled: true }` to the Checkout Session in `web/app/api/billing/checkout/route.ts` — that last part is a code change, so it lands with Task 1's diff, not after it.
-  - [ ] 6.3 If the ruling is "not yet," say so in the Dev Notes **and** add a line to `pre-launch-services-checklist.md`'s Stripe row so it has an owner outside this story file.
+- [x] **Task 6: Tax decision** — **RULED 2026-08-16: do not collect yet.** (AC: #4) — Arjun's call, and it must be *made*, not defaulted
+  - [x] 6.1 Present the mechanic plainly: Stripe only calculates tax where you hold an **active registration**; with no registration the calculation returns **zero tax, silently, with no error**. So "enable `automatic_tax` and move on" and "do nothing" produce an identical customer experience today — which is exactly why AC-4 forbids leaving it unset by accident rather than by decision.
+  - [x] 6.2 Whichever way he rules, record it in Dev Notes **with the reasoning and a revisit trigger** (e.g. a revenue or nexus threshold). If the ruling is "collect": set a product tax code on Curfew Pro (SaaS-appropriate, e.g. the `txcd_10103000`-family general-SaaS code — confirm the current code in the Dashboard's picker rather than trusting this note), register in at least the home jurisdiction, and add `automatic_tax: { enabled: true }` to the Checkout Session in `web/app/api/billing/checkout/route.ts` — that last part is a code change, so it lands with Task 1's diff, not after it.
+  - [x] 6.3 If the ruling is "not yet," say so in the Dev Notes **and** add a line to `pre-launch-services-checklist.md`'s Stripe row so it has an owner outside this story file.
 
 - [ ] **Task 7: End-to-end live verification** (AC: #5) — the honest method, per correction (a)
   - [ ] 7.1 Signed in as Arjun's own production account on `curfew.vip`, confirm `/settings` now renders the Billing section with both interval CTAs. (Before Task 5 it rendered nothing — that delta is itself the proof `billingEnabled` flipped.)
@@ -275,25 +276,137 @@ Every Epic 7 story recorded its live-verification status explicitly rather than 
 
 ### Agent Model Used
 
+claude-opus-5 (Claude Code)
+
 ### Debug Log References
 
 ### Completion Notes List
 
+**Task 0 — live lockout: RESOLVED 2026-08-16, ahead of the cutover.**
+Arjun ruled for an interim mitigation rather than waiting. `web/lib/supabase/middleware.ts`'s gate is now bound to `billingEnabled(process.env)`, so an environment that cannot sell a subscription cannot restrict access either. PR #37, merged, live as `05130bd`. Verified signed-in on production the same day: `/dashboard` renders (empty state, greeting by name), no redirect to `/subscription-required`. An anonymous check is not evidence here — the gate sits inside `if (userId && …)`.
+**Carry-forward:** this makes `BILLING_LIVE=1` (Task 5.2) the switch that *arms the paywall* as well as the one that opens sales. Task 7 is therefore load-bearing, not a post-hoc formality.
+
+**Task 1 — sell/manage gate split: DONE, PR #38 (`story/7-6-manage-gate`), awaiting merge.**
+`billingManageEnabled(env)` added beside `billingEnabled` in `web/lib/billing/checkout.ts` — `Boolean(env.STRIPE_RESTRICTED_KEY || env.STRIPE_SECRET_KEY)`, `||` not `??` per `resolveApiKey`. Consumed by `POST /api/billing/portal` and `BillingSection`'s Manage branch; the section's env gate moved to *after* the status branch so each half answers to its own gate. `billingEnabled` is behavior-identical and still gates the Subscribe CTA, the Checkout route, and 7.5's paywall; its doc comment was rewritten off the now-obsolete present-tense sandbox framing.
+Gates: **962 web tests pass** (baseline 947, +15); `pnpm typecheck` clean; `pnpm lint` fails only on the pre-existing `web/app/global-error.tsx:70` `no-html-link-for-pages` from `103fec0`, untouched here.
+Two pre-existing `BillingSection` guards were **rewritten, not deleted**: both asserted "renders nothing" using `subscription_status: "active"`, which is exactly the case that must now still render Manage. They now assert the same fact about the Subscribe half using a non-subscriber status, and a new describe block pins the regression — every `SUBSCRIPTION_ATTACHED` status still renders Manage in a production-shaped env with no `BILLING_LIVE` and no Price ids, while a non-subscriber in that env still renders nothing.
+**Ordering constraint restated:** #38 must land *before* Task 5.2. Merged after, and the window between them is a period where pausing sales would withdraw a paying DJ's only cancel path.
+
+**Branch hygiene note (shared checkout).** A concurrent session committed its README work (`931155a`) onto this session's branch mid-task, so `story/7-6-gate-split` carries an unrelated README redesign that conflicts with `main`'s own README rewrite. PR #38 was therefore opened from `story/7-6-manage-gate`, a clean single-commit branch built directly on `origin/main` containing only the five billing files. `story/7-6-gate-split` was left alone rather than rewritten — the other session's commit is not this session's to move.
+
+**Arjun's four rulings, 2026-08-16 — all four story questions closed.**
+
+1. **Tax (AC-4, Task 6): DO NOT COLLECT YET — decided, not defaulted.**
+   Reasoning: Curfew is pre-launch with no live revenue, one $7.99/mo plan, and no jurisdiction where a registration obligation has been triggered. Registering is a multi-day process that would block the cutover to no customer-visible benefit — with no active registration, `automatic_tax: true` and doing nothing produce an identical result (zero tax, silently). Enabling the flag without a registration would therefore be theatre, not compliance.
+   **No code change:** `automatic_tax` stays absent from the Checkout Session in `web/app/api/billing/checkout/route.ts`.
+   **Revisit trigger:** first of — (a) any single jurisdiction's economic-nexus threshold coming into view as real subscriber volume appears, or (b) the first non-US subscriber, where VAT/GST rules bite at far lower volumes than US state thresholds. Owner recorded outside this story in `pre-launch-services-checklist.md`'s Stripe row (Task 6.3).
+
+2. **Live verification (AC-5, Task 7): REAL CHARGE APPROVED.** One real subscription on the live $7.99 monthly Price using Arjun's own card, verified end-to-end, then cancelled via the Portal and refunded in full. Confirms correction (a)'s method; the annual Price is CTA-checked only, never paid.
+
+3. **Marketplace resource (AC-6, Task 8): KEEP `stripe-bistre-ribbon` CONNECTED**, documented as permanently sandbox/test-only, relying on name separation. Confirms correction (b) — no `disconnect`, no `remove`. Both destroy Preview/Development test-mode billing.
+
+4. **`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` (Task 8.4): ATTEMPT REMOVAL FROM PRODUCTION.** If the integration permits per-environment scoping, drop it from Production only, leaving Preview/Development untouched. If it does not, fall back to documenting it as knowingly-present-and-unused — **do not hand-edit an integration-owned var**, per Scope Boundaries. Removal takes effect only at the Task 5.3 redeploy, so it is sequenced into the cutover rather than done as a separate deploy.
+
+**Task 2 — test-mode restricted key and the grid rehearsal: DONE 2026-08-16 (AC-7).**
+
+Key minted in the `stripe-bistre-ribbon` sandbox with the six-row grid above. **Rehearsed by probing each of the four API calls the code actually makes, directly, with only that key** — a sharper method than the story's `stripe trigger` suggestion, because it names the exact endpoint rather than inferring from a flow:
+
+| Probe | Endpoint | Result |
+| --- | --- | --- |
+| Prices read | `GET /v1/prices/price_1U4ozE…` | 200, `livemode: false` |
+| Checkout Sessions write | `POST /v1/checkout/sessions` (subscription mode, no `customer`) | 200, session `cs_test_a1cdNWS…`, `customer: null` |
+| Subscriptions read | `GET /v1/subscriptions/sub_1U4vDHElER8A0CA20QaywuMX` | 200 — the exact call `webhook/route.ts:73` makes, retrieve-by-id not list |
+| Customers write | `POST /v1/customers` | 200, `cus_V5MiU1EFFiJd4b` (deleted again after) |
+| Billing Portal Sessions write | `POST /v1/billing_portal/sessions` | 200, `bps_1U5BzXElER8A0CA2EfEHOkYU` |
+
+**No permission had to be added — the grid as designed is sufficient**, including the two departures from the story's list (Invoices read and Webhook Endpoints write both dropped, and neither was missed).
+
+Two findings worth keeping:
+- **`checkout.sessions.create` returns `customer: null`.** Stripe mints the Customer at session *completion*, not at creation, so the Customers-write uncertainty could not be settled by the create call alone — it was settled by probing `POST /v1/customers` directly. Whether Checkout's own internal customer creation consumes the key's permission at all remains untested; Task 7's real checkout is what will actually exercise it, and Customers write is granted either way.
+- **The Portal session succeeded**, which independently proves the sandbox's **default Customer Portal configuration exists** — a missing config throws on `create()`. That is the test-mode half of Task 3.4 confirmed as a side effect. Live mode still needs its own.
+
+`STRIPE_RESTRICTED_KEY` added to Vercel **Preview** (Sensitive) and **Development** (non-sensitive). `STRIPE_SECRET_KEY` deliberately left in place in both — `resolveApiKey`'s precedence makes it inert, and it is the integration's var to own. Same in `web/.env.local`, where the restricted key is now the one in use locally.
+**Platform limitation worth recording:** Vercel refuses `--sensitive` on Development (`sensitive_not_allowed_on_development` — Sensitive is Production/Preview only), so the Development copy is stored non-sensitive. Test-mode key, so this is acceptable; it would not be for anything live, and **`BILLING_LIVE`/live keys must never be scoped to Development for this reason.**
+
+**Task 2.4 is NOT done and is deliberately parked** — see the open items at the end of these notes.
+
 **Live Stripe artifacts (AC-1/AC-2 require these recorded here):**
 
-- Stripe account id: _(pending — Task 3.1)_
-- `charges_enabled` / `payouts_enabled`: _(pending)_
-- Live Product id ("Curfew Pro"): _(pending — Task 3.2)_
-- Live Price id, $7.99/month: _(pending)_
-- Live Price id, $83.88/year: _(pending)_
-- Live restricted key permission grid as actually minted: _(pending — Task 3.3)_
+- Stripe account id: **`acct_1U4or1DzCRR30f2f`** ("Arjun Patel") — confirmed activated 2026-08-16, Task 3.1.
+- `charges_enabled` / `payouts_enabled`: **both effectively true.** Dashboard → Settings → Business → **Account status** lists `Payments` *and* `Payouts` under **Active**, with **no active tasks to complete**. Supporting evidence on the same account: business address on file (Bensalem PA), a real settlement bank account (PENN COMMUNITY BANK, USD default), and a Treasury financial account. One capability shows **Paused — Cartes Bancaires payments**; that is the French domestic card network and is irrelevant to Curfew, which sells USD subscriptions. To be precise about method: the Dashboard does not display the literal `charges_enabled`/`payouts_enabled` booleans, so this is the capability list rather than the raw fields. **Re-confirm by API (`stripe get /v1/account`) once the `rk_live_` from Task 3.3 exists** — that is the reading AC-1 actually names.
+
+**AC-1 correction (d): there are TWO real accounts, not one, and the story assumed one.**
+The account switcher lists `Arjun` = `acct_1Q7pQfD7PgWz2H1X` and `Arjun Patel` = `acct_1U4or1DzCRR30f2f`, plus an unrelated `Posh` org. Arjun does not know what `acct_1Q7pQf…` is, when he created it, or what it is for, and considers it unneeded — so it is **explicitly not** the account this story provisions into, and nothing should ever be created in it.
+**Chosen: `acct_1U4or1DzCRR30f2f`**, for two reasons beyond activation. It holds the settlement bank account, and the `stripe-bistre-ribbon` **sandbox is nested underneath it** (visible in the switcher's "Switch to sandbox" submenu). That last point resolves a latent confusion in this story's framing: the sandbox is not a sibling account that needed replacing — it is a sandbox *inside* this real account. Test-mode and live-mode artifacts therefore sit in one Dashboard under one login, and "the separate real account" AC-1 asks for is the **live mode of this same account**, not a different one. AC-1's substance is unchanged (a Sandbox still can never take live payments); only the topology is.
+- Live Product id ("Curfew Pro"): **`prod_V5LiZ73reEfsKS`** — created 2026-08-16, status Active, 2 prices.
+- Live Price id, $7.99/month: **`price_1U5B1YDzCRR30f2fc9ByYpTU`** (marked Default on the Product)
+- Live Price id, $83.88/year: **`price_1U5B2ODzCRR30f2fFKG7pNLX`**
+- **Account-scoping check:** both Price ids carry the `DzCRR30f2f` suffix, matching `acct_1U4or1DzCRR30f2f`. The sandbox's Prices carry `ElER8A0CA2` instead. So these are provably objects of the real account, not the sandbox. That check does **not** distinguish live mode from test mode *within* the account — ids are formatted identically — so `livemode: true` is still to be confirmed by API in Task 3.3, by retrieving one of these Prices with the `rk_live_` key.
+- Live restricted key permission grid as actually minted: **the six-row grid above** (Checkout Sessions / Billing Portal Sessions / Customers = Write; Subscriptions / Products / Prices = Read; everything else None). `rk_live_…`, never an `sk_live_`. Minted 2026-08-16 after the test-mode rehearsal proved the grid, so it was copied from something verified rather than guessed.
+
+**AC-1/AC-3 verified by API against the live key — the three ids are provably live-mode, not test-mode:**
+
+| Object | id | `livemode` | Details |
+| --- | --- | --- | --- |
+| Product | `prod_V5LiZ73reEfsKS` | **true** | name `Curfew Pro`, active |
+| Monthly Price | `price_1U5B1YDzCRR30f2fc9ByYpTU` | **true** | `unit_amount: 799`, usd, `interval: month`, active |
+| Annual Price | `price_1U5B2ODzCRR30f2fFKG7pNLX` | **true** | `unit_amount: 8388`, usd, `interval: year`, active |
+
+This was the check worth doing early: live and test ids are formatted identically, so a Product accidentally created in test mode is invisible until a real customer hits a broken checkout. It isn't — all three read `livemode: true`, both amounts are exactly right, and the annual is a single yearly charge rather than a monthly one.
+
+**Task 3.4 — live Customer Portal configuration: ALREADY PROVISIONED, and the story's premise here is now wrong.**
+Probed by creating a throwaway live Customer, opening a Portal session against it, and deleting the customer again. The session succeeded (`bps_1U5C4IDzCRR30f2fXanjHCEW`, `livemode: true`) and returned configuration **`bpc_1U5C4IDzCRR30f2fnSgpb4cu`, `is_default: true`**. Its features:
+
+| Feature | State |
+| --- | --- |
+| `subscription_cancel` | **enabled**, `mode: at_period_end`, `proration_behavior: none` |
+| `payment_method_update` | **enabled** |
+| `invoice_history` | **enabled** |
+| `customer_update` | enabled (name, email, address, phone) |
+| `subscription_pause` / `subscription_update` | disabled |
+
+All three of Task 3.4's minimums are on. **The story asserted the default configuration "does not exist until someone saves those settings once, per mode," and that no longer holds** — Stripe provisioned a default automatically. The `web/README.md:87-107` note and `portal/route.ts`'s comment both state the old behavior and should be corrected in Task 9, not merely ticked.
+
+**🚨 Correction (e) — `mode: at_period_end` breaks Task 7.5 as written.**
+Cancelling from the Portal does **not** delete the subscription. It sets `cancel_at_period_end`, emitting `customer.subscription.updated` with `status` still `active` until the period actually ends — a month away. So Task 7.5's three assertions (a `customer.subscription.deleted` delivery, `subscription_status → canceled`, and `/dashboard` redirecting again) **cannot be observed at cancel time**, and waiting a month is not a verification plan.
+This is correct product behavior and must not be "fixed" by switching the config to cancel immediately — that would strip a paying DJ of access mid-period they already paid for. It also is not a code bug: `cancel_at_period_end` modelling is explicitly *not* this story's scope per `deferred-work.md`.
+**Revised Task 7.5, in two steps:** (1) cancel via the Portal to satisfy Task 7.4/Story 7.4's AC-1, and verify the resulting `customer.subscription.updated` round-trips 200 with `subscription_status` still `active` — which is itself the correct answer, and worth asserting rather than glossing; then (2) cancel **immediately from the Dashboard** to force `customer.subscription.deleted`, and verify *that* flips `subscription_status → canceled` and re-closes the paywall. Then refund.
+Note the DJ keeping dashboard access after a Portal cancel is `hasWebAccess("active")` behaving exactly as designed — worth stating explicitly in the notes so a later reader does not file it as a bug.
+
+**Permission grid, derived from the code rather than assumed (revises Task 2.1/3.3's list).**
+Every Stripe API call this codebase makes, exhaustively — `checkout.sessions.create` (`checkout/route.ts:92`), `billingPortal.sessions.create` (`portal/route.ts:93`), `subscriptions.retrieve` (`webhook/route.ts:73`), and `webhooks.constructEvent` (`webhook/route.ts:46`). That is the whole surface.
+
+| Resource | Grant | Why |
+| --- | --- | --- |
+| Checkout Sessions | **Write** | `checkout.sessions.create` is a POST |
+| Billing Portal Sessions | **Write** | `billingPortal.sessions.create` is a POST |
+| Customers | **Write** | Checkout mints a Customer when the DJ has no `stripe_customer_id` yet; write implies the read the reuse path needs |
+| Subscriptions | **Read** | the webhook's canonical re-fetch, the only Subscription call |
+| Products, Prices | **Read** | referenced by the Checkout Session; not called directly, granted as cheap insurance |
+| Everything else | **None** | — |
+
+**Two departures from the grid the story's Task 2.1 wrote, both deliberate:**
+- **Invoices read dropped.** The story reasoned it was needed because `invoice.payment_failed` is one of `RELEVANT_EVENT_TYPES`. It isn't: `resolveSubscriptionId` reads `invoice.parent.subscription_details.subscription` **off the event payload** (`webhook.ts:45-49`) and never calls the Invoices API. Receiving a webhook needs no permission at all. AC-2 says "only the permissions Curfew's code actually calls," so this one goes.
+- **Webhook Endpoints write dropped.** Endpoints are managed in the Dashboard (Task 4), not via API — the story itself says to drop it in that case.
+- **Customers write added.** Not in the story's list, which had Customers as read-only. Checkout creating a Customer for a first-time subscriber is the likeliest thing a read-only grant would break.
+`checkout.sessions.create` implicitly creating a Customer is the one genuinely uncertain entry here, which is exactly what Task 2.3's test-mode rehearsal exists to settle before a live key guards real money.
 - Live webhook endpoint id + subscribed events: _(pending — Task 4.1)_
 - Tax ruling + reasoning + revisit trigger: _(pending — Task 6)_
 
 ### File List
+
+Task 1 (PR #38, branch `story/7-6-manage-gate`, commit `b0ae964`):
+
+- Modified: `web/lib/billing/checkout.ts` — new `billingManageEnabled`; `billingEnabled` doc comment rewritten, behavior unchanged
+- Modified: `web/app/api/billing/portal/route.ts` — predicate swap + the deferred-CAUTION block replaced
+- Modified: `web/app/components/settings/BillingSection.tsx` — env gate moved after the status branch
+- Modified: `web/lib/billing/checkout.test.ts` — `billingManageEnabled` suite
+- Modified: `web/app/components/settings/billing-section.test.tsx` — Stripe-key stub in `beforeEach`; two guards rewritten; new stranded-subscriber regression block
 
 ## Change Log
 
 | Date | Change |
 | --- | --- |
 | 2026-08-16 | Story created via bmad-create-story. |
+| 2026-08-16 | Task 0 resolved — paywall bound to `billingEnabled()` (PR #37, `05130bd`), verified signed-in on production. |
+| 2026-08-16 | Task 1 done — sell/manage gate split, PR #38 open. 962 web tests green. |
