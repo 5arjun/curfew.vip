@@ -7,34 +7,61 @@ import { useState } from "react";
 // Structurally mirrors SubscribeActions — a client island for the onClick,
 // with the render-or-not decision staying on the server in BillingSection.
 
-type State = "idle" | "starting" | "failed";
+// Failure is not one thing. The route already distinguishes four cases by
+// status code; telling a DJ to "retry" is right for exactly one of them, and
+// actively misleading for the rest — an expired session needs a re-login, a
+// stale tab needs a reload, and a disabled-billing environment will never
+// succeed no matter how many times the button is pressed.
+type Failure = "retry" | "signedOut" | "gone" | "unavailable";
+
+type State = { kind: "idle" } | { kind: "starting" } | { kind: "failed"; why: Failure };
+
+const FAILURE_COPY: Record<Failure, string> = {
+  retry: "Couldn't open billing management — retry.",
+  signedOut: "Your session expired — sign in again to manage billing.",
+  gone: "This subscription is no longer active — reload the page.",
+  unavailable: "Billing management is unavailable right now.",
+};
+
+function failureFor(status: number): Failure {
+  if (status === 401) return "signedOut";
+  if (status === 404) return "gone";
+  if (status === 503) return "unavailable";
+  return "retry";
+}
 
 export function ManageBillingActions() {
-  const [state, setState] = useState<State>("idle");
+  const [state, setState] = useState<State>({ kind: "idle" });
 
   async function start() {
-    setState("starting");
+    setState({ kind: "starting" });
     try {
       const response = await fetch("/api/billing/portal", { method: "POST" });
       const payload: unknown = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        setState({ kind: "failed", why: failureFor(response.status) });
+        return;
+      }
+
       const url =
-        response.ok && typeof payload === "object" && payload !== null
+        typeof payload === "object" && payload !== null
           ? (payload as { url?: unknown }).url
           : null;
 
       if (typeof url !== "string" || url === "") {
-        setState("failed");
+        setState({ kind: "failed", why: "retry" });
         return;
       }
       // Deliberately NOT resetting state here, same reasoning as
       // SubscribeActions: the navigation is already committed.
       window.location.assign(url);
     } catch {
-      setState("failed");
+      setState({ kind: "failed", why: "retry" });
     }
   }
 
-  const busy = state === "starting";
+  const busy = state.kind === "starting";
 
   return (
     <div className="st-row">
@@ -48,9 +75,9 @@ export function ManageBillingActions() {
         >
           {busy ? "Opening…" : "Manage billing"}
         </button>
-        {state === "failed" && (
+        {state.kind === "failed" && (
           <p className="st-inline-error" role="alert">
-            Couldn&apos;t open billing management — retry.
+            {FAILURE_COPY[state.why]}
           </p>
         )}
       </div>

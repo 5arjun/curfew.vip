@@ -21,10 +21,20 @@ export const runtime = "nodejs";
 
 export async function POST() {
   // Same gate as the Checkout route, checked first: whether billing exists in
-  // this environment is not a fact about the caller. Belt-and-braces here —
-  // Checkout itself is billingEnabled()-gated, so no DJ can hold a
-  // stripe_customer_id where this would otherwise matter — but keeps all
-  // three billing routes self-defending the same way.
+  // this environment is not a fact about the caller, and keeps all three
+  // billing routes self-defending the same way.
+  //
+  // CAUTION (7.4 review, Decision 2 — deferred to Story 7.6): this gate covers
+  // "may we sell?" and "may we let you manage what you already bought?" with
+  // one flag, and those are not the same question. An earlier version of this
+  // comment called the gate belt-and-braces on the grounds that Checkout is
+  // itself billingEnabled()-gated, so no DJ could hold a stripe_customer_id
+  // where this mattered. That is false: the webhook — the ONLY writer of
+  // stripe_customer_id — is deliberately NOT billingEnabled()-gated (see
+  // webhook/route.ts). So once live subscribers exist, flipping BILLING_LIVE
+  // off or rotating a Price id withdraws their only self-serve cancel, under
+  // Settings copy that promises "Cancel whenever." Cannot fire before 7.6
+  // creates live subscribers; 7.6 owns splitting the two gates.
   if (!billingEnabled(process.env)) {
     return NextResponse.json({ error: "Billing unavailable" }, { status: 503 });
   }
@@ -52,11 +62,19 @@ export async function POST() {
   }
 
   // Server-side mirror of BillingSection's Manage-branch gate: the client not
-  // rendering the button is a display decision, not enforcement. Requires
-  // both a Stripe Customer to attach the session to and a subscription state
-  // Story 7.2's own vocabulary considers "attached" (active/trialing/
-  // past_due/incomplete/paused) — offersSubscribeCta already encodes that
-  // list's inverse, so a status that offers Checkout is never here.
+  // rendering the button is a display decision, not enforcement. Requires a
+  // Stripe Customer to attach the session to, plus a status that doesn't offer
+  // Checkout.
+  //
+  // Note what that second half actually admits: !offersSubscribeCta(s) is
+  // WIDER than SUBSCRIPTION_ATTACHED, not equal to it. offersSubscribeCta
+  // returns true only for null/undefined/"" and the three terminal statuses,
+  // so every unrecognized string — including any status Stripe ships after
+  // this code — lands here and gets a Portal session. That is the intended
+  // failure direction (it inherits Story 7.2's "silence beats a duplicate
+  // subscription" posture: an unknown status means a subscription object
+  // probably exists, so managing it is safer than selling another), but it is
+  // deliberately not the narrow SUBSCRIPTION_ATTACHED check it resembles.
   if (!dj?.stripe_customer_id || offersSubscribeCta(dj.subscription_status)) {
     return NextResponse.json({ error: "No subscription to manage" }, { status: 404 });
   }
@@ -64,6 +82,14 @@ export async function POST() {
   const origin = (await headers()).get("origin") ?? "http://localhost:3000";
 
   try {
+    // No `configuration` id: a bare session opens the Portal's DEFAULT
+    // configuration, which is what AC-1/AC-3 ask for (self-serve manage and
+    // cancel, nothing hand-built). The catch: that default does not exist
+    // until someone saves the Customer Portal settings once in the Stripe
+    // Dashboard, per mode. Until they do, create() throws and the DJ gets an
+    // ordinary-looking 502 that retrying never clears. The Portal's cancel and
+    // payment-method features live in that Dashboard config, not in this file
+    // — see web/README.md's Customer Portal note. Story 7.6 cutover step.
     const session = await getStripe().billingPortal.sessions.create({
       customer: dj.stripe_customer_id,
       return_url: `${origin}/settings`,
@@ -73,9 +99,14 @@ export async function POST() {
     // Session.url is typed non-nullable — a successful create() always
     // returns a usable URL, verified against the installed SDK.
     return NextResponse.json({ url: session.url });
-  } catch {
-    // Calm failure, same discipline as the Checkout route: never leak
-    // Stripe's own error text to the client.
+  } catch (error) {
+    // Calm failure, same discipline as the Checkout route: never leak Stripe's
+    // own error text to the client. But log it server-side — with Sentry
+    // unprovisioned, this is the only trace, and the failures that land here
+    // are mostly PERMANENT (missing Portal configuration, a customer id minted
+    // in the other Stripe mode, a customer deleted in Stripe) while the client
+    // presents all of them as retryable.
+    console.error("[billing/portal] Portal session creation failed", error);
     return NextResponse.json({ error: "Billing unavailable" }, { status: 502 });
   }
 }

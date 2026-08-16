@@ -105,9 +105,9 @@ export default async function SettingsPage() {
 
         {/* Billing slot (D-1): reserved between Account and Privacy, and
             shared by two stories — the Subscribe CTA for a DJ who isn't
-            subscribed (7.2, live) and the manage/cancel Customer Portal link
-            for one who is (7.4, pending). It renders nothing while neither
-            half has anything true to say. */}
+            subscribed (7.2) and the manage/cancel Customer Portal link for
+            one who is (7.4). Both halves are live. It renders nothing while
+            neither has anything true to say. */}
         <BillingSection
           subscriptionStatus={profile.subscriptionStatus}
           statusUnknown={profile.djsReadFailed}

@@ -84,6 +84,28 @@ Both are Preview/Development-only, matching this repo's Stripe Price id
 precedent (Story 7.2) — sandbox keys must never reach Production ahead of
 `BILLING_LIVE=1`.
 
+### Customer Portal: a Dashboard prerequisite, not an env var
+
+The Portal route (`/api/billing/portal`, Story 7.4) needs **no new env vars**,
+but it does have a setup step that lives entirely outside this repo and is
+easy to mistake for a bug:
+
+`billingPortal.sessions.create()` is called without a `configuration` id, so
+it opens the Portal's **default configuration** — which does not exist until
+someone saves the Customer Portal settings once in the Stripe Dashboard, **per
+mode** (test and live are separate). Until that happens, every call throws,
+the route returns its ordinary `502 { error: "Billing unavailable" }`, and the
+DJ sees "Couldn't open billing management" no matter how often they retry. The
+server log line (`[billing/portal] Portal session creation failed`) is the only
+way to tell this apart from a Stripe outage.
+
+Configure it at **Dashboard → Settings → Billing → Customer portal**, and note
+that what you enable there *is* the feature set of Story 7.4's AC-1/AC-3 —
+cancel, payment-method update, and invoice history are Dashboard toggles, not
+code in this repo. This was never exercised live during Story 7.4 (no Stripe
+CLI available in that session), so treat it as an unticked **Story 7.6 cutover
+step** for both test and live mode.
+
 ## Notes
 
 - `@curfew/shared` is consumed **from source** via `transpilePackages` — no build of

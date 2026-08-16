@@ -11,6 +11,12 @@ import { ManageBillingActions } from "./ManageBillingActions";
 // Server-rendered off a status the page already read, so the section can
 // decide not to exist at all — the same "a section with nothing true to say
 // does not render" rule the rest of this page follows (AC-3, Story 3.10).
+//
+// The Manage half is the ELSE of offersSubscribeCta, which is wider than the
+// five SUBSCRIPTION_ATTACHED statuses: an unrecognized status Stripe ships
+// later also renders Manage, with its raw value formatted as the plan. That's
+// the intended direction (an unknown status most likely means a subscription
+// exists), but it means this row can display a string no one has seen before.
 
 export function BillingSection({
   subscriptionStatus,
@@ -33,7 +39,14 @@ export function BillingSection({
   // section's phone row applies when it shows "—" instead of "Not on file".
   if (statusUnknown) return null;
 
-  const offersSubscribe = offersSubscribeCta(subscriptionStatus);
+  // Both halves below need a definite string. `offersSubscribeCta` returns
+  // true for null/undefined/"", so the Manage branch is unreachable without a
+  // status today — but that is a coupling across two modules TypeScript cannot
+  // see, and formatSubscriptionStatus(null) would throw. With no error.tsx
+  // anywhere in web/app, that throw takes out the whole Settings page rather
+  // than this one card, so narrow here instead of asserting `as string`.
+  const status = subscriptionStatus ?? "";
+  const offersSubscribe = offersSubscribeCta(status);
 
   return (
     <section className="st-card dz-shell" aria-labelledby="st-billing-label">
@@ -58,9 +71,7 @@ export function BillingSection({
           <div className="st-row">
             <span className="st-row-label">Plan</span>
             <div className="st-row-cell">
-              <span className="st-row-value">
-                {formatSubscriptionStatus(subscriptionStatus as string)}
-              </span>
+              <span className="st-row-value">{formatSubscriptionStatus(status)}</span>
               <p className="st-row-note">Manage your plan or cancel anytime via Stripe.</p>
             </div>
           </div>
