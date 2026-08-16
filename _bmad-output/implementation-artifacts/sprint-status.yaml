@@ -81,7 +81,131 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-21
-last_updated: 2026-08-11
+last_updated: 2026-08-15
+# 2026-08-15: story 7-2 CODE REVIEW (bmad-code-review). review -> done.
+# Blind Hunter + Edge Case Hunter + Acceptance Auditor run in parallel against
+# the story's exact diff (7 modified + 6 new files, scoped by File List --
+# excluded 7.1's own migration/pgTAP files and unrelated concurrent-session
+# noise). One Blind Hunter "critical" finding (integration_identifier an
+# invalid Stripe param) was verified FALSE against the installed stripe@22.5.0
+# SDK's actual type defs and dismissed -- a reminder that subagent findings get
+# read against real code before they're trusted, not taken at face value.
+# 4 patches applied same-session: (1) the route now re-checks
+# subscription_status server-side via offersSubscribeCta before creating a
+# session -- previously only the client hid the CTA, so a stale tab/replay
+# could double-subscribe an already-paying DJ; (2) the stripe_customer_id
+# lookup now captures its query error instead of silently discarding it,
+# matching profile.ts's "unknown != absent" discipline, closing a
+# duplicate-Stripe-Customer risk on a transient read failure; (3)-(4) two
+# Completion Notes corrected against the actual code -- Note 7 called the
+# STRIPE_RESTRICTED_KEY fallback "not yet implemented" when stripe.ts already
+# had it, and Note 5 undercounted its own disclosed deviations by one
+# (offersSubscribeCta's terminal set also includes incomplete_expired).
+# 4 more findings deferred to deferred-work.md (Origin-header redirect
+# fallback -- pre-existing codebase pattern, not novel; no idempotency key on
+# session creation; success_url racing Story 7.3's webhook; static "Not
+# subscribed" copy for lapsed subscribers -- Story 7.4 territory). 8 findings
+# dismissed as noise/already-intentional/already-justified. Full gate re-run
+# clean after patches: typecheck 3/3, lint 3/3, web tests 896/896, web build
+# green (route still registers as dynamic (fD8) /api/billing/checkout).
+# 2026-08-15: story 7-2 dev-story session (Stripe Checkout subscribe flow,
+# Claude Opus 5): all 4 tasks complete. stripe@22.5.0 added, API version
+# pinned to 2026-07-29.dahlia (simultaneously the SDK default Task 1.1 asked
+# for and the latest version the stripe-best-practices skill asks for). New
+# web/lib/billing/stripe.ts (lazy client -- a module-level `new Stripe()`
+# throws at BUILD time, not just request time, since next build loads the
+# route's module graph) and web/lib/billing/checkout.ts (parseInterval /
+# resolvePriceId / offersSubscribeCta, 9 new unit tests). New POST
+# /api/billing/checkout: nodejs-pinned, auth-guarded (401), interval-validated
+# (400), reuses stripe_customer_id when present, writes NOTHING to djs (AD-19),
+# calm 502. Settings Billing slot (D-1) now renders its first live state via
+# BillingSection + SubscribeActions; getSettingsProfile() extended with
+# subscription_status; settings.css gained .st-action-pair/.st-action-primary
+# and a 7th cascade step (the stagger only defined delays 2-6, so a 7th card
+# would have animated at 0ms).
+# THREE DELIBERATE ADDITIONS BEYOND THE LITERAL AC, all disclosed in the story:
+# (1) subscription_data.metadata.dj_id set alongside the session's own metadata
+# -- session metadata rides only checkout.session.* events, so without this
+# Story 7.3 could not attribute customer.subscription.updated/deleted to a DJ;
+# (2) offersSubscribeCta also suppresses `incomplete`/`paused` and fails CLOSED
+# on any unrecognized status, since subscription_status is a verbatim Stripe
+# passthrough and reading a future status as "no subscription" would mint a
+# duplicate; (3) window.location.assign() instead of the story's `.href =`,
+# which this repo's React Compiler lint rejects. `server-only` deliberately NOT
+# added (not a dependency here; followed profile.ts's comment-seam convention).
+# VERIFIED END-TO-END against real Stripe test mode, not just asserted: both
+# CTAs reach checkout.stripe.com with the correct Price, client_reference_id +
+# metadata.dj_id = the DJ's uuid, mode=subscription, customer=null for a
+# first-time DJ. Route guards exercised live: signed-out 401; "yearly"/
+# "MONTHLY"/{}/malformed all 400; monthly+annual 200 with a url. Omitting
+# payment_method_types confirmed load-bearing -- Stripe offered Card, Cash App
+# Pay, Klarna and Bank.
+# TWO ARJUN RULINGS AFTER THE FIRST PASS, both implemented and re-verified:
+# (1) NO FREE TRIAL. trial_period_days:14 was built and proven (Stripe rendered
+# "14 days free" + "starting August 29, 2026", exactly 14 days out) and then
+# REMOVED -- "we're not doing that for now". Stripe now renders "Subscribe to
+# Curfew Pro / $83.88 per year" and amount_total=799 on the monthly session:
+# a real charge at checkout. epics.md AC-1/AC-3 annotated as reversed.
+# (2) PRODUCTION GATED OFF. New billingEnabled(env) requires the two Price ids
+# AND an explicit BILLING_LIVE=1 when VERCEL_ENV=production; it guards BOTH the
+# Settings section and the route (503) so a hidden button and a live endpoint
+# can never disagree. Reason: the Vercel Marketplace integration had ALREADY
+# put the unclaimed sandbox's test-mode keys on the production environment, so
+# an ungated push would have put a real-looking Checkout on curfew.vip that
+# takes card details and charges nothing. Proven live: with VERCEL_ENV=
+# production the section vanishes and the route 503s; the same build without it
+# renders and returns 200. Price ids added to Vercel Preview + Development
+# ONLY, deliberately not Production. Go-live = claim the sandbox, add live keys
+# + Price ids to Production, set BILLING_LIVE=1.
+# FOLLOW-UP FIX PASS (Arjun: "the things worth my attention, can you fix?"):
+# (a) BotID's off-Vercel throw fixed in login/actions.ts -- botRejection() now
+# returns early unless process.env.VERCEL is set, restoring local production-
+# build sign-in (verified: "You're signed in", zero 5xx). Not a try/catch, which
+# would also hide a real BotID misconfig in prod. (b) sprint-status.yaml parsed
+# for the FIRST time -- the breakage was two stray `]` after the closing quote
+# of ai-6 and ai-17's `item:` scalars, NOT an unterminated quote as first
+# guessed; 2 characters removed, 79 development_status keys + 22 action_items
+# now load. (c) stale $6/mo corrected across epics.md incl. UX-DR14 (whose "no
+# plan picker" now reads "no TIER comparison" -- one plan on two intervals does
+# need an interval choice); Story 7.2's epics.md ACs gained the 3 criteria found
+# during implementation; the dated 2026-07-20 billing decision was ANNOTATED,
+# not rewritten. (d) Story 7.1's "single $6/mo plan, no Price selection" Dev
+# Note annotated: premise false, conclusion (no stripe_price_id column) still
+# holds. STILL OPEN, needs Arjun not code: sk_ -> restricted rk_ key (no Stripe
+# API mints those, Dashboard only, and these vars are integration-owned);
+# Stripe Tax (collects NOTHING with no error until a registration exists, so
+# it's a business decision).
+# 2026-08-15 (later): SANDBOX CLAIMED by Arjun. stripe-bistre-ribbon is now
+# Ownership:Linked, and the claim LINKED THE EXISTING ACCOUNT rather than
+# migrating -- acct_1U4k9vElER8A0CA2 and both Price ids survived unchanged, so
+# Preview needed no rewiring. The account is NOT activated though
+# (charges_enabled/payouts_enabled/details_submitted all false, both Prices
+# livemode:false), so going live is NOT a key swap: test and live objects are
+# separate in Stripe, meaning "Curfew Pro" and both Prices must be RECREATED in
+# live mode and WILL GET DIFFERENT IDS. Sequence: activate account -> recreate
+# Product+Prices live -> create live-mode restricted key -> add key + live
+# price ids to Vercel Production -> BILLING_LIVE=1.
+# FOUND, PRE-EXISTING, NOT THIS STORY: Vercel BotID (commit 56775eb) throws
+# "Must be deployed on Vercel to set response headers" on the /login POST under
+# `next start`, so local prod-build sign-in 500s -- i.e. the documented
+# "measure against a production build" path is broken on main. Worked around by
+# minting the Supabase session cookie directly. Also flagged: no shipped
+# marketing copy mentions the 14-day trial Checkout now advertises; sk_ key
+# should become a restricted rk_ key; Stripe Tax unset (needs a registration to
+# do anything); the 4 Stripe env vars are local-only and must reach Vercel
+# before deploy; stripe-bistre-ribbon is still an unclaimed sandbox.
+# Also found: sprint-status.yaml itself is NOT valid YAML and already wasn't at
+# HEAD -- an action_items ai-6 entry opens a double-quoted scalar that never
+# closes, so js-yaml dies. Invisible only because the workflows read this file
+# as text. development_status parses clean (79 keys); damage is confined to
+# action_items. Not fixed here (untouched section, shared file, concurrent
+# session active).
+# Gate: lint 3/3, typecheck 3/3, web build green, web tests 875/875 (+13, zero
+# regressions) and shared 39/39. A mid-session red on web/app/landing.css:1357 was a CONCURRENT
+# session's uncommitted `color: transparent`, not in HEAD and never touched
+# here; that session fixed it and the final run is green.
+# -> review
+# 2026-08-15: story 7-2 dev-story started -> in-progress
 # 2026-08-10: story 5-2 DEV SESSION (bmad-dev-story, Claude Opus 5).
 # ready-for-dev -> review. All 7 tasks complete; the epic's first
 # three-workspace diff (42 files, ~4,400 insertions). Detection ported to
@@ -1266,12 +1390,13 @@ development_status:
   epic-6-retrospective: optional
 
   # ---- Epic 7: Subscription & Billing ----
-  epic-7: backlog
-  7-1-billing-columns-write-scoped-security-definer-function: backlog
-  7-2-stripe-checkout-subscribe-flow: backlog
-  7-3-payment-webhook-route-handler: backlog
+  epic-7: in-progress
+  7-1-billing-columns-write-scoped-security-definer-function: done
+  7-2-stripe-checkout-subscribe-flow: done
+  7-3-payment-webhook-route-handler: in-progress
   7-4-customer-portal-manage-cancel: backlog
   7-5-web-access-gate-on-subscription: backlog
+  7-6-production-cutover-live-billing-launch-ready: backlog
   epic-7-retrospective: optional
 
 # Action items — carried into the Epic 1 retrospective / Epic 2 story creation.
@@ -1306,7 +1431,7 @@ action_items:
     status: done
     source: epic-1-review 2026-07-25
     trigger: Epic 3 story-creation (attach-to-trigger, RETRO D3)
-    item: "DECISION A — launch ingestion is GO-FORWARD ONLY (no historical backfill). Propagate to PRD §1/§3 + Glossary 'played', Architecture Spine (AR-2 backfill framing), epics.md Overview + Epic 3 UX (design sparse-first). Empty/sparse dashboard IS the launch experience. [RETRO 2026-07-25 D3: propagate at Epic 3 story-creation, NOT now; decisions doc is source of truth.] [CLOSED 2026-08-06 at the Epic 3 retrospective: never actually propagated during Epic 3 story-creation as triggered — epics.md Overview already carried it (added during design-epics authoring), but PRD §1 Vision/§3 Glossary and Architecture Spine had zero trace. Same failure shape as ai-2 (Epic 1→2): a carried item's trigger fires and nobody checks it landed. Fixed this session: PRD §1 gained a Decision A callout, §3 Glossary gained a 'Played' term entry; Architecture Spine's AD-4 gained a note distinguishing reprocess-backfill (AD-13, in scope) from historical-import backfill (Decision A, explicitly out of scope at launch) — also surfaced that AD-4's own 'backfill' language was ambiguous between the two meanings before this fix."]
+    item: "DECISION A — launch ingestion is GO-FORWARD ONLY (no historical backfill). Propagate to PRD §1/§3 + Glossary 'played', Architecture Spine (AR-2 backfill framing), epics.md Overview + Epic 3 UX (design sparse-first). Empty/sparse dashboard IS the launch experience. [RETRO 2026-07-25 D3: propagate at Epic 3 story-creation, NOT now; decisions doc is source of truth.] [CLOSED 2026-08-06 at the Epic 3 retrospective: never actually propagated during Epic 3 story-creation as triggered — epics.md Overview already carried it (added during design-epics authoring), but PRD §1 Vision/§3 Glossary and Architecture Spine had zero trace. Same failure shape as ai-2 (Epic 1→2): a carried item's trigger fires and nobody checks it landed. Fixed this session: PRD §1 gained a Decision A callout, §3 Glossary gained a 'Played' term entry; Architecture Spine's AD-4 gained a note distinguishing reprocess-backfill (AD-13, in scope) from historical-import backfill (Decision A, explicitly out of scope at launch) — also surfaced that AD-4's own 'backfill' language was ambiguous between the two meanings before this fix."
   - id: ai-7
     status: open
     source: epic-1-review 2026-07-25
@@ -1367,7 +1492,7 @@ action_items:
     status: done
     source: epic-3-retro 2026-08-06
     trigger: before further Epic 4 or sprint-status.yaml work
-    item: "RECONCILE the concurrent Epic 4 Story 4.1 session discovered live mid-retrospective: sprint-status.yaml's epic-4 and 4-1-style-evolution-trend-view-excludes-low-confidence fields were found changed (backlog -> in-progress / ready-for-dev) by an edit this retro session did not make, while Epic 3's retro was still in progress. Confirm what that session did before Epic 4 work or further sprint-status.yaml edits proceed — third instance of the concurrent-session-collision pattern this project has hit (see 3.6/3.10 shared working tree, 3.4's stray concurrent commit). [CLOSED 2026-08-06: confirmed legitimate — a real create-story session with Arjun, 8 locked design decisions (D-1..D-8) resolving the PRD's own flagged genre-diversity/key-usage definition gap. No scope collision with deferred-work.md's dashboard low-confidence-exclusion entry (surfaced by 3.7): that entry covers the dashboard's SetListPanel, this story covers Style Evolution's trend view only — the story's own Context section already names the distinction and Task 9 leaves a pointer rather than closing the dashboard entry. Story file committed."]
+    item: "RECONCILE the concurrent Epic 4 Story 4.1 session discovered live mid-retrospective: sprint-status.yaml's epic-4 and 4-1-style-evolution-trend-view-excludes-low-confidence fields were found changed (backlog -> in-progress / ready-for-dev) by an edit this retro session did not make, while Epic 3's retro was still in progress. Confirm what that session did before Epic 4 work or further sprint-status.yaml edits proceed — third instance of the concurrent-session-collision pattern this project has hit (see 3.6/3.10 shared working tree, 3.4's stray concurrent commit). [CLOSED 2026-08-06: confirmed legitimate — a real create-story session with Arjun, 8 locked design decisions (D-1..D-8) resolving the PRD's own flagged genre-diversity/key-usage definition gap. No scope collision with deferred-work.md's dashboard low-confidence-exclusion entry (surfaced by 3.7): that entry covers the dashboard's SetListPanel, this story covers Style Evolution's trend view only — the story's own Context section already names the distinction and Task 9 leaves a pointer rather than closing the dashboard entry. Story file committed."
 
 # Action items — carried into the Epic 4 retrospective / Epic 5 story creation.
 # Full rationale + decisions: implementation-artifacts/epic-4-retro-2026-08-10.md

@@ -25,8 +25,22 @@ function readCredentials(formData: FormData) {
 // The client half is registered in instrumentation-client.ts — the two must stay
 // in sync or the challenge is issued and never read.
 //
-// checkBotId() reports HUMAN in local dev, so this does not gate `pnpm dev`.
+// Off Vercel there is no BotID infrastructure to consult, and the two
+// off-platform modes fail DIFFERENTLY: under `next dev`, checkBotId() reports
+// HUMAN and everything works, but under a local production build
+// (`next build && next start`) it THROWS "Must be deployed on Vercel to set
+// response headers" — which made every local prod-build sign-in a blank 500.
+// That is the exact configuration the repo's own browser-verification recipe
+// calls for, so the breakage was invisible in dev and total in the one mode
+// used to check work before shipping.
+//
+// Skipping off-platform cannot weaken production: Vercel always sets VERCEL=1
+// in its runtime, so the check still runs on every deploy. Deliberately NOT a
+// try/catch — swallowing the throw would also hide a genuine BotID
+// misconfiguration in production, where it should stay loud.
 async function botRejection(): Promise<AuthActionState | null> {
+  if (!process.env.VERCEL) return null;
+
   const { isBot } = await checkBotId();
   if (!isBot) return null;
   return { status: "error", fieldErrors: { form: AUTH_FAILURE_COPY.generic } };

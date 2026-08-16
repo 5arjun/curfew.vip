@@ -14,9 +14,18 @@ export type SettingsProfile = {
   phone: string | null;
   djName: string | null;
   /**
-   * True when the `djs` row read failed — phone/djName are UNKNOWN, not
-   * absent, and the phone row must render "—", never the confirmed-null
-   * copy "Not on file" (§5 reserves that for a truly phone-less DJ).
+   * Stripe's own subscription status verbatim, or `null` when the DJ has
+   * never subscribed (Story 7.1's column, AD-19 — a thin passthrough, never
+   * a second state machine). Read here rather than in a second query so the
+   * Settings page keeps its single `djs` read. UNKNOWN, not `null`, when
+   * `djsReadFailed` is true — see that field.
+   */
+  subscriptionStatus: string | null;
+  /**
+   * True when the `djs` row read failed — phone/djName/subscriptionStatus are
+   * UNKNOWN, not absent, and the phone row must render "—", never the
+   * confirmed-null copy "Not on file" (§5 reserves that for a truly
+   * phone-less DJ).
    */
   djsReadFailed: boolean;
   /** OAuth display name (`user_metadata.full_name ?? name`), if any. */
@@ -49,8 +58,12 @@ export async function getSettingsProfile(): Promise<SettingsProfile | null> {
     // is the filter (same note as getAgentStatus).
     const { data: dj, error: djError } = await supabase
       .from("djs")
-      .select("dj_name, phone")
-      .maybeSingle<{ dj_name: string | null; phone: string | null }>();
+      .select("dj_name, phone, subscription_status")
+      .maybeSingle<{
+        dj_name: string | null;
+        phone: string | null;
+        subscription_status: string | null;
+      }>();
 
     const meta = user.user_metadata as Record<string, unknown> | undefined;
     // Trim-tested like djName in resolveFirstName: a whitespace-only
@@ -78,6 +91,7 @@ export async function getSettingsProfile(): Promise<SettingsProfile | null> {
       email: user.email ?? null,
       phone: dj?.phone ?? null,
       djName: dj?.dj_name ?? null,
+      subscriptionStatus: dj?.subscription_status ?? null,
       djsReadFailed: Boolean(djError),
       oauthName,
       avatarUrl,

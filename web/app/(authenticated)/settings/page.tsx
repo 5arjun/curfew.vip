@@ -5,6 +5,7 @@ import { maskPhone } from "@/lib/account/phone-mask";
 import { SilkBackdrop } from "@/app/components/dashboard/SilkBackdrop";
 import { Avatar } from "@/app/components/ui/Avatar";
 import { AgentSection } from "@/app/components/settings/AgentSection";
+import { BillingSection } from "@/app/components/settings/BillingSection";
 import { settingsAgentLine } from "@/app/components/settings/agent-status-copy";
 import { DjNameRow } from "@/app/components/settings/DjNameRow";
 import { PasswordResetRow } from "@/app/components/settings/PasswordResetRow";
@@ -102,8 +103,15 @@ export default async function SettingsPage() {
           <ProvidersRow providers={profile.providers} />
         </section>
 
-        {/* Billing slot (D-1): reserved between Account and Privacy; renders
-            nothing until Story 7.4 populates it. */}
+        {/* Billing slot (D-1): reserved between Account and Privacy, and
+            shared by two stories — the Subscribe CTA for a DJ who isn't
+            subscribed (7.2, live) and the manage/cancel Customer Portal link
+            for one who is (7.4, pending). It renders nothing while neither
+            half has anything true to say. */}
+        <BillingSection
+          subscriptionStatus={profile.subscriptionStatus}
+          statusUnknown={profile.djsReadFailed}
+        />
 
         <AgentSection snapshot={agentStatus} />
 

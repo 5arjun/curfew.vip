@@ -67,6 +67,11 @@
 .st-main > :nth-child(4 of .st-card) { animation-delay: 165ms; }
 .st-main > :nth-child(5 of .st-card) { animation-delay: 220ms; }
 .st-main > :nth-child(6 of .st-card) { animation-delay: 275ms; }
+/* 7th step exists because the Billing section (Story 7.2) is conditional: with
+   it rendered there are seven cards, without it six. `of .st-card` recounts
+   either way, so the cascade stays contiguous instead of dropping the last
+   card to a 0ms delay and breaking the stagger. */
+.st-main > :nth-child(7 of .st-card) { animation-delay: 330ms; }
 
 @keyframes st-rise {
   from {
@@ -219,6 +224,38 @@
   cursor: default;
   background: none;
   border-color: var(--color-abyss-hairline);
+}
+
+/* Two intervals of one plan, side by side (Story 7.2). Wraps rather than
+   squeezing: at phone width the two labels carry prices and must stay
+   readable, so they stack right-aligned instead of shrinking. */
+.st-action-pair {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+}
+
+/* The emphasized half of a pair — the yearly price the marketing surfaces
+   lead with. Same accent treatment as the modal's confirm button, so the
+   surface has one "this is the affirmative action" language, not two. */
+.st-action-primary {
+  color: var(--color-abyss-on-accent);
+  background: var(--color-abyss-accent);
+  border-color: var(--color-abyss-accent);
+}
+
+.st-action-primary:hover:not(:disabled) {
+  color: var(--color-abyss-on-accent);
+  background: var(--color-abyss-accent-soft);
+  border-color: var(--color-abyss-accent-soft);
+}
+
+.st-action-primary:disabled {
+  background: var(--color-abyss-accent);
+  border-color: var(--color-abyss-accent);
+  color: var(--color-abyss-on-accent);
+  opacity: 0.6;
 }
 
 /* Inline mailto/link styled as a value, not a button. */

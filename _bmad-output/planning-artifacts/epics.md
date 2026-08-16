@@ -111,7 +111,7 @@ This document provides the complete epic and story breakdown for Curfew, decompo
 - **UX-DR11 — Progress pips / Conversion-rate meter**: Conversion rate, harmonic alignment, etc. render as filled/empty square "pips" (hardware-LED-meter style), not bars or a bare percentage.
 - **UX-DR12 — Aging-shelf list**: Sortable by days-unplayed; each row carries an explicit "add to prep crate" action (UJ-6) — the one place the product nudges toward action rather than reporting.
 - **UX-DR13 — Chips (Tags)**: Genre/mood tags — near-rectangular `rounded.sm` ("label on a vinyl sleeve"), dark `surface-container-high` fill, mid-grey text.
-- **UX-DR14 — Pricing Card**: Single-tier display ($6/mo), no comparison table, plan picker, ribbon, or discount badge (one plan, nothing to compare). Large `display-lg` price + mono "/month" unit; primary-button CTA to Signup/Login.
+- **UX-DR14 — Pricing Card**: Single-*tier* display — one plan, so no comparison table, ribbon, or discount badge (nothing to compare). But the one plan bills on **two intervals**, so an interval choice IS required: **$6.99/month billed yearly** ($83.88 as one annual charge) and **$7.99 month to month**, with the yearly option carrying the emphasis. Large `display-lg` price + mono "/month" unit; primary-button CTA to Signup/Login. *(Corrected 2026-08-15 during Story 7.2 — this entry previously read "$6/mo … no plan picker", which contradicted the pricing already shipped in marketing copy and now live in Stripe. The "no plan picker" instruction specifically meant no tier comparison; it must not be read as forbidding the interval toggle.)*
 - **UX-DR15 — Avatar**: Circular (`rounded.full`), hairline border, image only; the floating nav's Profile/Settings trigger — no other interaction.
 
 **Information architecture & screens**
@@ -175,7 +175,7 @@ This document provides the complete epic and story breakdown for Curfew, decompo
 > - **Code-signing is a day-zero procurement action, not an Epic-2 coding task** (AR-14). Apple Developer Program enrollment and (especially) a Windows **EV** certificate's identity verification can take **1–3 weeks of wall-clock time** with no code involved. Start it in parallel with Epic 1 so the Epic-2 installer story isn't blocked waiting on a cert.
 > - **The `shared/` derived contract is frozen-forever (additive-only, AR-1/AR-15) yet designed in Epic 1, before Epic 3 renders it.** Epic 1's contract stories must take the **Set Detail + Style Evolution UX specs as explicit inputs**; this contract is the one artifact to over-invest in getting right.
 > - **FR-27's classification signal is computed in Epic 1 but has no Phase-1 consumer** unless **Epic 4** uses it to exclude likely-rehearsal sessions from Style Evolution trends (a Phase-1 data-quality concern the PRD leaves open). **Open design decision** — carry into Epic 4 story design.
-> - **✅ RESOLVED — billing scope (Arjun, 2026-07-20): paid launch.** Phase 1 charges $6/mo from launch, so **Epic 7: Subscription & Billing** is added below. Two follow-ups: (a) billing sits **outside the current architecture spine's FR-1..29 scope** — the payment-provider integration + webhook handler likely warrants a brief **architecture addendum**, and is the one sanctioned exception to AD-8's "no bespoke write path" (scoped to billing events, user-visible subscription state still RLS-guarded); (b) consider a **free-trial window** so SM-2 ("personal value stands alone") can still be observed before the paywall converts.
+> - **✅ RESOLVED — billing scope (Arjun, 2026-07-20): paid launch.** *(Superseded on price and trial: the figure below is the 2026-07-20 decision as taken and is left unedited as a record. The shipped price is **$6.99/mo billed yearly or $7.99 month to month**, and follow-up (b)'s "consider a free-trial window" was answered **no, not for now** (Arjun, 2026-08-15) — a 14-day trial was built in Story 7.2 and then removed before merge; billing starts at checkout.)* Phase 1 charges $6/mo from launch, so **Epic 7: Subscription & Billing** is added below. Two follow-ups: (a) billing sits **outside the current architecture spine's FR-1..29 scope** — the payment-provider integration + webhook handler likely warrants a brief **architecture addendum**, and is the one sanctioned exception to AD-8's "no bespoke write path" (scoped to billing events, user-visible subscription state still RLS-guarded); (b) consider a **free-trial window** so SM-2 ("personal value stands alone") can still be observed before the paywall converts.
 >
 > - **✅ Doc-sync debt CLEARED (2026-07-21, implementation-readiness pass):** decisions made in *this* epics doc that were owed back to their source specs are now synced — **(a)** FR-27 "exclude-**visibly**" from Style Evolution (Stories 1.8, 4.1) → synced to **PRD** FR-9/FR-27; **(b)** `session_identity` must be a stable intrinsic session property, not file mtime/name (Story 3.2 AC-6) → synced to **Architecture Spine AD-16**; **(c)** the 30-day recently-downloaded-nudge threshold (Story 4.4) → synced to **PRD** UJ-1 note; **(d)** FR-11's 90-day conversion-rate window (Story 4.3, confirmed 2026-07-21) → synced to **PRD** FR-11/Glossary. NFR-1 stat-engine targets (Story 1.7) are synced to **PRD** §5.1 as a still-**pending** `[ASSUMPTION]` (proposed targets, not yet confirmed by Arjun) — the numbers themselves remain open, only the tracking is now in one place. Also newly added to the PRD in this pass, not previously tracked as debt: an accessibility NFR (§5.5, from UX-DR21) and the production-side format-drift-monitoring half of NFR-4 (§5.4, from AD-13/Story 3.4).
 
@@ -208,12 +208,12 @@ A DJ can add meaning on top of an immutable as-played set — split it into labe
 
 ### Epic 6: Marketing & Entry Surfaces
 
-A prospective DJ can discover Curfew through a public marketing Landing page (the "compared to what?" hook, with restrained scroll-driven motion used on the Landing only), read a Features walkthrough and a single-tier Pricing page ($6/mo, no comparison grid), and enter the signup/login flow. Launch-facing; sequenced last since SM-1/SM-2 can be validated on the builder's own use before it exists.
+A prospective DJ can discover Curfew through a public marketing Landing page (the "compared to what?" hook, with restrained scroll-driven motion used on the Landing only), read a Features walkthrough and a single-tier Pricing page ($6.99/mo billed yearly, or $7.99 month to month — one plan, no comparison grid), and enter the signup/login flow. Launch-facing; sequenced last since SM-1/SM-2 can be validated on the builder's own use before it exists.
 **FRs covered:** — *(authentication is FR-29, delivered in Epic 2)*. **UX:** UX-DR14 (pricing card), UX-DR16 (landing / features / pricing + login-signup overlay).
 
 ### Epic 7: Subscription & Billing
 
-A DJ can subscribe to Curfew ($6/mo) from the Pricing/entry flow via a payment provider (e.g. Stripe Checkout), manage or cancel through a provider-hosted customer portal, and the product gates the authenticated experience on subscription status — a lapsed/inactive subscription restricts the web experience while the **local agent keeps capturing sets locally** (nothing is lost; data resumes syncing on reactivation). Subscription state lives on the `djs` account as **additive columns** (AR-12); the payment webhook is handled by a Next.js Route Handler pinned to the Node.js runtime (not Edge) — the one sanctioned exception to AD-8's "no bespoke write path," scoped to billing events only. Launch-gating: **must ship before public paid launch, but is not required to validate SM-1/SM-2** on the builder's own use.
+A DJ can subscribe to Curfew ($6.99/mo billed yearly, or $7.99 month to month) from the Pricing/entry flow via a payment provider (e.g. Stripe Checkout), manage or cancel through a provider-hosted customer portal, and the product gates the authenticated experience on subscription status — a lapsed/inactive subscription restricts the web experience while the **local agent keeps capturing sets locally** (nothing is lost; data resumes syncing on reactivation). Subscription state lives on the `djs` account as **additive columns** (AR-12); the payment webhook is handled by a Next.js Route Handler pinned to the Node.js runtime (not Edge) — the one sanctioned exception to AD-8's "no bespoke write path," scoped to billing events only. Launch-gating: **must ship before public paid launch, but is not required to validate SM-1/SM-2** on the builder's own use.
 **FRs covered:** — *(no numbered FR; realizes PRD §7 monetization + the UX-DR14 pricing CTA)*. **Consideration:** a free-trial window so SM-2 can be observed before the paywall. **🔒 Hard invariant:** the subscription gate restricts the **web experience only — never the local agent's capture**; a lapsed subscriber keeps parsing sets into local SQLite, and they resume syncing on reactivation, so the "nothing is lost" promise holds. **✅ Architecture resolved (2026-07-20):** the billing addendum is now in the Architecture Spine (**AD-18** Stripe Checkout + Node-runtime webhook Route Handler as the one sanctioned AD-8 exception, writing via a single `SECURITY DEFINER` `apply_subscription_event(...)` scoped to four columns; **AD-19** additive `djs` billing columns, `subscription_status` = Stripe's verbatim text, DJ-write-excluded, web-only access gate) and SOLUTION-DESIGN §3.7. Story creation for this epic proceeds against AD-18/AD-19.
 
 ---
@@ -1156,7 +1156,7 @@ So that I see the one plan without a confusing comparison grid.
 
 **Acceptance Criteria:**
 
-1. **Given** the Pricing page, **Then** it shows a single-tier Pricing Card ($6/mo) with a large `display-lg` price + mono "/month" unit and a primary-button CTA to Signup/Login. *(UX-DR14)*
+1. **Given** the Pricing page, **Then** it shows a single-tier Pricing Card with a large `display-lg` price + mono "/month" unit, an interval choice (**$6.99/mo billed yearly** emphasized, **$7.99 month to month**), and a primary-button CTA to Signup/Login. *(UX-DR14)*
 2. **Given** the card, **Then** there is no comparison table, plan picker, ribbon, or discount badge. *(UX-DR14)*
 3. **Given** the CTA, **When** clicked, **Then** it routes into the auth overlay (Story 6.4).
 
@@ -1174,7 +1174,9 @@ So that entering never dumps me on a blank page.
 
 ## Epic 7: Subscription & Billing
 
-A DJ subscribes ($6/mo, with a free trial) via Stripe Checkout, manages/cancels via the hosted Customer Portal, and the web experience is access-gated on subscription status while the **local agent keeps capturing sets regardless** — nothing is lost, and data resumes syncing on reactivation. Grounded in AD-18/AD-19 (Architecture Spine) + SOLUTION-DESIGN §3.7. Launch-gating but not required to validate SM-1/SM-2.
+A DJ subscribes ($6.99/mo billed yearly or $7.99 month to month) via Stripe Checkout, manages/cancels via the hosted Customer Portal, and the web experience is access-gated on subscription status while the **local agent keeps capturing sets regardless** — nothing is lost, and data resumes syncing on reactivation. Grounded in AD-18/AD-19 (Architecture Spine) + SOLUTION-DESIGN §3.7. Launch-gating but not required to validate SM-1/SM-2.
+
+**Stories 7.1–7.5 build the billing system entirely in Stripe test mode against a Vercel Marketplace-provisioned Stripe Sandbox — none of them make Curfew able to charge a real customer.** Story 7.6 is the separate, final story that actually cuts over to live billing; it is intentionally sequenced last so the sandbox-vs-real-account distinction (see its Dev Notes) doesn't block 7.1–7.5's code from being built and tested.
 
 ### Story 7.1: Billing columns + write-scoped `SECURITY DEFINER` function
 
@@ -1192,7 +1194,7 @@ So that subscription state lives on the account with a database-enforced, minima
 ### Story 7.2: Stripe Checkout subscribe flow
 
 As a DJ,
-I want to subscribe ($6/mo, with a free trial) via Stripe's hosted Checkout from the pricing/entry flow,
+I want to subscribe ($6.99/mo billed yearly or $7.99 month to month) via Stripe's hosted Checkout,
 So that I can pay without Curfew ever handling my card.
 
 **Acceptance Criteria:**
@@ -1200,6 +1202,17 @@ So that I can pay without Curfew ever handling my card.
 1. **Given** an authenticated DJ, **When** they start checkout, **Then** the app creates a Stripe Checkout Session carrying `client_reference_id`/`metadata.dj_id` = that DJ's id and `trial_period_days` (default 14). *(AD-18)*
 2. **Given** the session, **Then** the DJ is sent to Stripe's hosted Checkout page — no bespoke payment UI. *(AD-18)*
 3. **Given** trial config, **Then** trial length is a Stripe business parameter, not hard-coded app logic. *(AD-18)*
+4. **Given** the DJ picked an interval, **Then** the session uses `STRIPE_PRICE_ID_MONTHLY` ($7.99/mo) or `STRIPE_PRICE_ID_ANNUAL` ($83.88/yr) accordingly — two Stripe Prices on one Product, not one. *(Added 2026-08-15; AD-18's single-price assumption was wrong)*
+5. **Given** a DJ who already has a `stripe_customer_id`, **Then** session creation reuses it via `customer` rather than minting a duplicate Stripe Customer (and with it a second trial). *(AD-18)*
+6. **Given** the entry point, **Then** it lives in the Settings Billing slot and renders only when the DJ has no subscription attached — Story 6.3's Pricing page is a later, additional entry point, not a prerequisite. *(Resolved 2026-08-15: Epic 6 is `backlog`, so gating 7.2 on the Pricing page would have blocked it on unrelated work.)*
+
+> **Delivered 2026-08-15** (`7-2-stripe-checkout-subscribe-flow.md`, status `review`). ACs 4–6 were discovered during implementation and are recorded here so this file stops disagreeing with the code. The `$6/mo` figure this story's ACs originally carried was never correct — see the pricing correction at the top of the story file.
+>
+> **AC-1's `trial_period_days` and AC-3 are REVERSED (Arjun, 2026-08-15): there is no free trial for now.** A 14-day trial was built and verified against Stripe, then removed before merge; billing starts at checkout. AC-5's parenthetical "(and with it a second trial)" is likewise moot — Customer reuse still matters, just for identity rather than trial-farming. Reinstating a trial is a one-line change in `web/app/api/billing/checkout/route.ts`.
+>
+> **Also gated:** the Settings CTA and the route are both behind `billingEnabled()`, which needs an explicit `BILLING_LIVE=1` in production, because Curfew's Stripe resource is a sandbox whose test-mode keys are already on the production environment.
+>
+> **Correction (Arjun, 2026-08-15):** the sandbox was since claimed, but claiming a Stripe Sandbox only attaches Stripe-side ownership to a login — it does not and cannot produce live keys; a Sandbox has no activation path, confirmed by Vercel's own CLI (`vercel integration resource claim --help`: "Claim a **sandbox** marketplace resource"). The real go-live path — a separate real Stripe account, live Product/Prices, a live restricted key, and a tax decision — is **Story 7.6**, not a claim on this sandbox.
 
 ### Story 7.3: Payment webhook route handler
 
@@ -1238,3 +1251,19 @@ So that lapsing restricts the website but never loses my data.
 2. **Given** the agent, **Then** its local capture (parse → local SQLite → sync-queue) and the idempotent `PUT /sets/:set_id` endpoint are never gated by `subscription_status` — billing state is invisible to the agent. *(AD-19 hard invariant)*
 3. **Given** a lapsed subscriber, **Then** their agent keeps parsing and queuing sets locally with no data loss. *(AD-19)*
 4. **Given** reactivation, **When** the next webhook flips status to active, **Then** already-synced sets appear immediately (no backfill needed). *(AD-19, §3.7)*
+
+### Story 7.6: Production cutover — live billing, launch-ready
+
+As the business,
+I want Curfew's billing wired to a real, activated Stripe account with tax handling explicitly decided and the sandbox fully retired from the production path,
+So that Epic 7 is not just code-complete but actually able to safely charge real customers at launch.
+
+**Acceptance Criteria:**
+
+1. **Given** Arjun's separate, pre-existing, already-activated Stripe account (**not** the Vercel Marketplace-provisioned `stripe-bistre-ribbon` sandbox, which has no activation path and can never take live payments — see Story 7.2's Dev Notes correction), **Then** a live-mode "Curfew Pro" Product and both live Prices ($7.99/mo, $83.88/yr) exist in it, with their ids recorded in this story's Dev Notes — they will differ from the sandbox's test-mode ids. *(Human/Dashboard action; verified, not automated)*
+2. **Given** that real account, **Then** a live-mode restricted API key (`rk_live_`) is minted, scoped to only the permissions Curfew's code actually calls (Checkout Session create, Customer read, Subscription read, webhook endpoint management) — never a live `sk_` secret key. *(Human/Dashboard action — Stripe has no API for minting restricted keys; code already prefers `STRIPE_RESTRICTED_KEY` per Story 7.2)*
+3. **Given** the live key, both live Price ids, and Story 7.3's live-mode webhook signing secret, **Then** all three are added to Vercel **Production only** — Preview and Development stay pointed at the sandbox so test-mode work keeps working unchanged.
+4. **Given** Curfew's tax obligations, **Then** a decision is made and recorded: either `automatic_tax` is enabled with an active Stripe Tax registration and a product tax code set on Curfew Pro, or a documented decision not to collect tax yet with the business reasoning — **never left silently unset** (Stripe Tax collects nothing, with no error, until a registration exists). *(Business decision, not a default)*
+5. **Given** all of the above, **Then** `BILLING_LIVE=1` is set in Vercel Production, and end-to-end verification confirms: the Settings Billing section renders in production, both interval CTAs reach a live-mode Stripe Checkout page, and a live-mode webhook event round-trips to `subscription_status` — verified without a real charge (Stripe's live-mode dashboard test tooling, or a fully refunded transaction), never left unverified.
+6. **Given** the Vercel Marketplace Stripe integration (`stripe-bistre-ribbon`), **Then** it is explicitly disconnected from the `curfew.vip` project, or documented as permanently sandbox/test-only with its env vars scoped away from Production — so a future `vercel env pull`/resync can never silently overwrite the live values set in AC-3.
+7. **Given** Story 7.2 left `STRIPE_SECRET_KEY` (`sk_test_`) in place for Preview/Development as a flagged, low-urgency gap, **Then** this story also replaces it there with a scoped `STRIPE_RESTRICTED_KEY` (`rk_test_`), completing the restricted-key pattern in every environment, not just production.
