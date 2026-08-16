@@ -1,11 +1,12 @@
 import { billingEnabled, offersSubscribeCta } from "@/lib/billing/checkout";
+import { formatSubscriptionStatus } from "@/lib/billing/portal";
 import { SubscribeActions } from "./SubscribeActions";
+import { ManageBillingActions } from "./ManageBillingActions";
 
-// Billing section (Story 7.2, AC-6) — the Settings slot D-1 reserved between
-// Account and Agent. This story fills exactly one of its two states: the
-// Subscribe CTA for a DJ who isn't subscribed. The subscriber's state (a
-// Customer Portal link to manage or cancel) is Story 7.4's half of the same
-// slot.
+// Billing section (Story 7.2 AC-6, Story 7.4 AC-1/AC-3) — the Settings slot
+// D-1 reserved between Account and Agent. Fills both of its two states: the
+// Subscribe CTA for a DJ who isn't subscribed, and a Customer Portal link to
+// manage or cancel for one who is.
 //
 // Server-rendered off a status the page already read, so the section can
 // decide not to exist at all — the same "a section with nothing true to say
@@ -31,23 +32,41 @@ export function BillingSection({
   // so an unknown status renders nothing — the same discipline the Account
   // section's phone row applies when it shows "—" instead of "Not on file".
   if (statusUnknown) return null;
-  if (!offersSubscribeCta(subscriptionStatus)) return null;
+
+  const offersSubscribe = offersSubscribeCta(subscriptionStatus);
 
   return (
     <section className="st-card dz-shell" aria-labelledby="st-billing-label">
       <h2 id="st-billing-label" className="st-section-label">
         Billing
       </h2>
-      <div className="st-row">
-        <span className="st-row-label">Plan</span>
-        <div className="st-row-cell">
-          <span className="st-row-value">Not subscribed</span>
-          <p className="st-row-note">
-            One plan, everything in it. Cancel whenever.
-          </p>
-        </div>
-      </div>
-      <SubscribeActions />
+      {offersSubscribe ? (
+        <>
+          <div className="st-row">
+            <span className="st-row-label">Plan</span>
+            <div className="st-row-cell">
+              <span className="st-row-value">Not subscribed</span>
+              <p className="st-row-note">
+                One plan, everything in it. Cancel whenever.
+              </p>
+            </div>
+          </div>
+          <SubscribeActions />
+        </>
+      ) : (
+        <>
+          <div className="st-row">
+            <span className="st-row-label">Plan</span>
+            <div className="st-row-cell">
+              <span className="st-row-value">
+                {formatSubscriptionStatus(subscriptionStatus as string)}
+              </span>
+              <p className="st-row-note">Manage your plan or cancel anytime via Stripe.</p>
+            </div>
+          </div>
+          <ManageBillingActions />
+        </>
+      )}
     </section>
   );
 }
