@@ -6,7 +6,10 @@ import { LegalDoc, LegalList, LegalP } from "@/app/components/landing/LegalDoc";
 // music never leaves the laptop, sets are private, export/deletion on
 // request. Every claim here is grounded in how the product actually works —
 // the processor list matches what's really wired (Supabase, Vercel, Resend,
-// Sentry in the agent; see EMAIL-PROVISIONING.md and agent/src-tauri), the
+// Sentry in both the agent and web/ as of 2026-08-16 — see
+// EMAIL-PROVISIONING.md, agent/src-tauri, and web/lib/sentry-shared.ts; that
+// last one pins sendDefaultPii:false, which is what keeps this page's
+// collection claims true, so it and this file move together), the
 // cookies section names the real cookies (Supabase session +
 // curfew_phone_on_file), and the rights section matches
 // ACCOUNT-DELETION-EXPORT-RUNBOOK.md's manual, person-handled process. The
@@ -63,9 +66,9 @@ export default function PrivacyPage() {
                 attention.
               </LegalP>
               <LegalP>
-                <strong>Crash reports.</strong> If the agent hits an error, a technical report of
-                what went wrong may be sent so it can be fixed. Those reports are about the
-                software, not about your sets.
+                <strong>Crash reports.</strong> If the agent or the website hits an error, a
+                technical report of what went wrong may be sent so it can be fixed. Those reports
+                are about the software, not about your sets.
               </LegalP>
             </>
           ),
@@ -133,7 +136,7 @@ export default function PrivacyPage() {
                   "Supabase — the database and sign-in.",
                   "Vercel — hosting for the site and dashboard.",
                   "Resend — delivery of account email.",
-                  "Sentry — crash reports from the agent.",
+                  "Sentry — crash reports from the agent and the website.",
                 ]}
               />
               <LegalP>

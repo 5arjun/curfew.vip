@@ -15,7 +15,16 @@ packages:
 # gate requires an explicit decision per package. sharp and unrs-resolver (pulled
 # transitively by Next.js) ship prebuilt platform binaries via optional deps, so
 # their native build scripts are not needed — denied here for a reproducible install.
+#
+# @sentry/cli is the exception and is allowed: unlike the two below it does NOT
+# ship a prebuilt binary as an optional dep — its postinstall is what fetches the
+# sentry-cli executable, and @sentry/nextjs shells out to that binary to upload
+# source maps at build time. Denied, the install succeeds and the Vercel build
+# succeeds, and the only symptom is that every web stack trace in Sentry stays
+# minified — a silent failure, which is why this is spelled out rather than left
+# at pnpm's placeholder.
 allowBuilds:
+  '@sentry/cli': true
   sharp: false
   unrs-resolver: false
 ignoredBuiltDependencies:

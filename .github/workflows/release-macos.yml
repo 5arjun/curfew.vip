@@ -127,6 +127,17 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          # Baked into the binary by `agent/src-tauri/build.rs` via
+          # `cargo:rustc-env`. An unset var there compiles to an empty string
+          # rather than failing the build, so omitting these does not break CI
+          # — it ships an agent that silently cannot reach Supabase and whose
+          # "Link Account" item opens an empty origin. Keep all three set.
+          # The two URLs are hardcoded rather than stored as repo secrets:
+          # neither is secret, and inlining them keeps a release reproducible
+          # from the commit alone instead of from dashboard state.
+          SUPABASE_URL: https://jmitbnrofacxwsbwuxzs.supabase.co
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PROD_PUBLISHABLE_KEY }}
+          CURFEW_WEB_URL: https://curfew.vip
         with:
           projectPath: agent
           args: --target universal-apple-darwin --config agent/src-tauri/tauri.macos-release.conf.json
