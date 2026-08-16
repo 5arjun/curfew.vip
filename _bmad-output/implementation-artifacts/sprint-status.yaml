@@ -82,6 +82,53 @@
 
 generated: 2026-07-21
 last_updated: 2026-08-15
+# 2026-08-15: story 7-3 dev-story session (payment webhook route handler,
+# Claude Sonnet 5): all 6 tasks complete. New web/lib/supabase/service.ts
+# (getSupabaseAdmin() -- lazy, RPC-only service-role client via
+# @supabase/supabase-js, not @supabase/ssr; SUPABASE_SECRET_KEY per Task
+# 1.2's naming decision). New POST /api/billing/webhook: nodejs-pinned,
+# stripe.webhooks.constructEvent signature check (raw body, no Supabase
+# JWT -- the only auth this route has), unrecognized event.type/no-op
+# subscription id both calm 200s. New web/lib/billing/webhook.ts pure
+# helpers: resolveSubscriptionId (per-event-type field read, verified
+# against installed stripe@22.5.0: invoice.payment_failed reads
+# parent.subscription_details.subscription, NOT the removed top-level
+# Invoice.subscription) and extractBillingFields (always re-fetches the
+# canonical Subscription for all 4 event types per AC-3, reads
+# items.data[0].current_period_end not the removed top-level field, null
+# dj_id on missing/blank metadata -> caller no-ops). apply_subscription_event
+# RPC write: P0002 (no djs row) -> calm 200 not retried; any other RPC
+# error -> 500 (Stripe retry, might be transient); zero rows updated is
+# itself success (the ordering guard's own no-op, RPC raises nothing).
+# 17 new unit tests (896 web total, zero regressions). typecheck/lint both
+# clean. web/README.md Environment section gains STRIPE_WEBHOOK_SECRET +
+# SUPABASE_SECRET_KEY (flagged RLS-bypassing, same weight as the Google
+# OAuth secret), both Preview/Development-only per Story 7.2's precedent.
+# ONE NOTABLE TYPING GAP CLOSED: this codebase has no generated Database
+# type anywhere (every other Supabase call site types selects inline);
+# .rpc() has no equivalent per-call escape hatch, so service.ts declares a
+# minimal local Database type scoped to just apply_subscription_event --
+# incidentally also enforces the "RPC-only, never .from(...)" comment
+# discipline at the type level.
+# TASK 5.2 PARTIALLY VERIFIED LIVE, REST BLOCKED: `supabase status` and
+# `docker info` both hung past the tool timeout despite Docker Desktop's own
+# processes showing as running (sandbox's Docker socket unreachable), and the
+# Stripe CLI isn't installed here at all -- two independent blockers on the
+# full stripe listen/trigger + local-Supabase flow. What COULD be verified
+# live: a concurrent session already had `next dev` running against this
+# same working directory (port 3009 -- discovered because Next refuses a
+# second dev server per project dir) and had hot-reloaded this story's new
+# route via its file watcher. Real HTTP POST /api/billing/webhook with no
+# stripe-signature header -> 400 "Invalid signature" (logged: "Missing
+# stripe-signature header"); garbage signature header -> also 400 (logged:
+# "Missing STRIPE_WEBHOOK_SECRET", unset locally) -- confirms the fail-closed
+# design for real, not just by reading the code. GET -> 405. What's still
+# blocked: a validly-signed event actually reaching re-fetch/RPC, the real
+# apply_subscription_event write, P0002/zero-rows-is-success live, stripe
+# events resend idempotency -- substituted with the 17 pure-helper unit
+# tests plus hand-verification of the RPC error-code branch against the
+# migration's exact raised errcodes (20260815211733_add_djs_billing_columns.sql).
+# -> review
 # 2026-08-15: story 7-2 CODE REVIEW (bmad-code-review). review -> done.
 # Blind Hunter + Edge Case Hunter + Acceptance Auditor run in parallel against
 # the story's exact diff (7 modified + 6 new files, scoped by File List --
@@ -1393,7 +1440,7 @@ development_status:
   epic-7: in-progress
   7-1-billing-columns-write-scoped-security-definer-function: done
   7-2-stripe-checkout-subscribe-flow: done
-  7-3-payment-webhook-route-handler: in-progress
+  7-3-payment-webhook-route-handler: review
   7-4-customer-portal-manage-cancel: backlog
   7-5-web-access-gate-on-subscription: backlog
   7-6-production-cutover-live-billing-launch-ready: backlog

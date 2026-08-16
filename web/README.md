@@ -66,6 +66,24 @@ Production email delivery (signup confirmation outside local dev) is wired
 per-project via the Supabase dashboard, not an env var here — see
 `supabase/EMAIL-PROVISIONING.md`.
 
+The Stripe webhook (`/api/billing/webhook`, Story 7.3) needs two more vars,
+neither of which is provisioned by the Vercel Marketplace Stripe integration:
+
+- `STRIPE_WEBHOOK_SECRET` — locally, `stripe listen --forward-to
+  localhost:3000/api/billing/webhook` prints a fresh `whsec_...` each run
+  (session-scoped, not a static Dashboard value — don't treat it as one in
+  setup docs). In Preview/Development, it's the signing secret of the
+  test-mode webhook endpoint registered in the Stripe Dashboard.
+- `SUPABASE_SECRET_KEY` — `supabase status`'s secret/service key (older CLI
+  output may still label this differently; use whatever it actually shows).
+  **This key bypasses RLS on every table and must never reach a browser
+  bundle** — the same weight this file already gives the Google OAuth
+  Client Secret above.
+
+Both are Preview/Development-only, matching this repo's Stripe Price id
+precedent (Story 7.2) — sandbox keys must never reach Production ahead of
+`BILLING_LIVE=1`.
+
 ## Notes
 
 - `@curfew/shared` is consumed **from source** via `transpilePackages` — no build of

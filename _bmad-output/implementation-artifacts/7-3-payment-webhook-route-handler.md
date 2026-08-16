@@ -1,0 +1,176 @@
+---
+baseline_commit: 505463a3991602315bb268a4da0cad2d9b9283e4
+---
+
+# Story 7.3: Payment webhook route handler
+
+Status: review
+
+<!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
+
+## Story
+
+As the system,
+I want a signature-verified, idempotent Stripe webhook that writes subscription state via the scoped function,
+so that subscription changes reach the account exactly once and can't be forged or corrupted by retries.
+
+## Acceptance Criteria
+
+1. **Given** the webhook, **Then** it is a Next.js Route Handler in the existing `web/` deployment pinned to the Node.js runtime (not Edge), authenticated via `stripe.webhooks.constructEvent` (raw body + signing secret), not a Supabase JWT. *(AD-18)*
+2. **Given** an event, **Then** `dj_id` is read from the event's own `metadata`, never re-derived from an email/customer lookup. *(AD-18)*
+3. **Given** at-least-once, unordered delivery, **Then** the handler dedupes on `event.id` **And** on a subscription-changed event re-fetches the canonical subscription object from the Stripe API rather than trusting the payload verbatim. *(AD-18)*
+4. **Given** a write, **Then** it goes only through `apply_subscription_event(...)` — never a raw elevated-key `UPDATE`. *(AD-18)*
+
+*(Source: `_bmad-output/planning-artifacts/epics.md` — Epic 7: Subscription & Billing, Story 7.3.)*
+
+## Scope Boundaries (read before starting)
+
+- **No Customer Portal session creation.** Story 7.4's job — this story only *receives* the webhook events a Portal action ultimately produces (a cancel in the Portal fires the same `customer.subscription.updated`/`.deleted` this story already handles); no Portal-specific code here.
+- **No web access-gate / route guard reading `subscription_status`.** Story 7.5's job.
+- **No live-mode webhook endpoint, no production secrets.** Story 7.6's job (production cutover) — this story wires and verifies the route against Stripe **test mode** only, matching Story 7.2's sandbox-only scope. Do not add `STRIPE_WEBHOOK_SECRET` (or any new billing var) to Vercel **Production** — Preview/Development only, mirroring Story 7.2's exact precedent for the Price ids.
+- **No Stripe customer deletion.** The account-deletion runbook's remaining manual step (deleting a DJ's Stripe Customer before their `auth.users` row cascades) stays a Dashboard action — this story doesn't add a `stripe.customers.del()` call anywhere; that's a different feature (account deletion), not the webhook.
+- **`apply_subscription_event`'s signature is frozen by Story 7.1 — do not modify it.** It already takes `event_created_at` as its 6th parameter (extended during Story 7.1's own review pass, specifically anticipating this story). This story is the function's first real caller.
+
+## Tasks / Subtasks
+
+- [x] Task 1: Service-role Supabase client (AC: #4)
+  - [x] 1.1 New file `web/lib/supabase/service.ts` — a stateless server-to-server client via `createClient` from `@supabase/supabase-js` (not `@supabase/ssr` — no cookies, no user session; this is a Stripe-to-server call with no DJ browser attached). Construct with `{ auth: { autoRefreshToken: false, persistSession: false } }` (standard for a backend service client — nothing to refresh or persist).
+  - [x] 1.2 Reads `NEXT_PUBLIC_SUPABASE_URL` (existing var, already public) and a **new** secret key var. **Naming — verify before hardcoding:** this project already uses Supabase's *new* key-naming system client-side (`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, not `NEXT_PUBLIC_SUPABASE_ANON_KEY` — confirmed in `web/lib/supabase/server.ts`), which means it was provisioned post-migration and almost certainly has no classic `service_role` JWT to fall back to. Run `supabase status` locally and use whatever it actually labels the secret/service key as (expected: `SECRET_KEY`, parallel to `PUBLISHABLE_KEY` — AD-18's own footnote flags exactly this ambiguity). Name the env var `SUPABASE_SECRET_KEY`. **Never prefix it `NEXT_PUBLIC_`** — this key bypasses RLS on every table and must never reach a browser bundle.
+  - [x] 1.3 Mirror `web/lib/billing/stripe.ts`'s shape: a small factory function (e.g. `getSupabaseAdmin()`), lazy-constructed (same build-time-safety reasoning as `getStripe()` — a module-level client would throw at `next build` in any environment without the key), throwing a named error if the key is missing (mirror `resolveApiKey`'s error-message style pointing at `web/README.md#Environment`).
+  - [x] 1.4 **This client's only sanctioned use in this codebase is calling `apply_subscription_event` via `.rpc(...)`.** Never `.from("djs")...` or any other table read/write with it — the whole point of AD-18's scoped-function design is that the elevated key never touches a raw table statement. Say so in a comment, the same way `stripe.ts` documents its own single-purpose intent.
+
+- [x] Task 2: Webhook Route Handler — signature verification (AC: #1)
+  - [x] 2.1 New file `web/app/api/billing/webhook/route.ts`, `export async function POST(request: NextRequest)`. `export const runtime = "nodejs"` (AD-18 — Stripe's signature verification needs Node's synchronous crypto; this is the route Story 7.2's own route comment already forward-referenced: "match Story 7.3's webhook route which will need the same pin").
+  - [x] 2.2 Read the **raw** body via `await request.text()` — never `request.json()`. `constructEvent` verifies the exact signed bytes; a body that's been parsed and would-be-reserialized no longer matches the signature. Read the `stripe-signature` header via `(await headers()).get("stripe-signature")`.
+  - [x] 2.3 Read `process.env.STRIPE_WEBHOOK_SECRET` explicitly and throw a named config error if unset (mirror `resolveApiKey`'s style in `stripe.ts` — don't silently `!`-assert it into `constructEvent`). `getStripe().webhooks.constructEvent(rawBody, signature, webhookSecret)` in a try/catch. Missing signature header or a thrown verification error → `400`, logged, no further processing. This is the *only* auth check this route has (AC-1 — explicitly not a Supabase JWT check; there is no DJ session on a server-to-server Stripe call).
+  - [x] 2.4 New env var `STRIPE_WEBHOOK_SECRET` (`whsec_...`). Not yet present anywhere in this repo (checked `web/.env.local`, root `.env.local`, and Vercel via Story 7.2's file list — absent). Provisioning is part of this story, not assumed done:
+    - **Local dev:** the Stripe CLI's `stripe listen --forward-to localhost:3000/api/billing/webhook` prints a fresh `whsec_...` each run — put it in `web/.env.local`. This is a session-scoped secret, not a persistent Dashboard artifact; re-running `stripe listen` gets a new one, so don't treat it as a static value in setup docs.
+    - **Preview/Development (Vercel):** register a **test-mode** webhook endpoint in the Stripe Dashboard (or `stripe.webhookEndpoints.create(...)`) subscribed to the four event types in Task 3, and add its signing secret to Vercel Preview + Development env — same two-environment scope Story 7.2 used for the Price ids, for the same reason (sandbox keys must never reach Production ahead of `BILLING_LIVE=1`).
+
+- [x] Task 3: Resolve the canonical subscription per event type (AC: #2, #3)
+  - [x] 3.1 New file `web/lib/billing/webhook.ts` — pure helpers, kept out of the route handler so they're unit-testable without a live Stripe key or a `Request` (mirrors Story 7.2's `checkout.ts`/route split).
+  - [x] 3.2 `RELEVANT_EVENT_TYPES`: exactly `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed` (the four named across AD-18/AD-19's §3.7 sequence diagrams). Any other `event.type` the endpoint receives → `200`, no-op, not an error — a webhook endpoint gets exactly the event types it's subscribed to at registration (Task 2.4), but the handler should not error on an unrecognized type either, since Stripe can add new types to an existing subscription list and a hard failure would start a pointless retry storm.
+  - [x] 3.3 `resolveSubscriptionId(event): string | null` — one field read per event type, **not** a value trusted for anything beyond locating the subscription to re-fetch:
+    - `checkout.session.completed` → `event.data.object.subscription` (string; the Session is always `mode: "subscription"` per Story 7.2, so this is always present once the event fires — Stripe only emits this event after the Subscription exists)
+    - `customer.subscription.updated` / `.deleted` → `event.data.object.id` (the object *is* the Subscription)
+    - `invoice.payment_failed` → `event.data.object.parent?.subscription_details?.subscription` — **not** `event.data.object.subscription`. Verified against the installed SDK (`stripe@22.5.0`, pinned API `2026-07-29.dahlia`, `node_modules/stripe/.../resources/Invoices.d.ts`): the `Invoice` response type has **no top-level `subscription` field** — Stripe restructured invoices onto a `parent` object (`quote_details` | `subscription_details`) at some point after this codebase's pretrained-knowledge cutoff. Using the old top-level field will silently read `undefined` (TS won't catch it if you `as any`-cast). Double-check this shape hasn't shifted again by the time this story is implemented — it's exactly the class of fact prone to drift.
+    - No id resolvable → `200`, no-op (defensive; shouldn't happen given Checkout is always subscription-mode, but a webhook handler must never 500 on a shape it merely didn't expect).
+  - [x] 3.4 Re-fetch: `await getStripe().subscriptions.retrieve(subscriptionId)` — **always**, for all four event types, never read `status`/`customer`/`metadata` off the raw event payload (AC-3's "re-fetch the canonical object" applies uniformly here, not just to the two events named "subscription-changed" in epics.md's literal AC text — resolving that phrasing to cover `checkout.session.completed` too is a deliberate, small scope decision: it makes one code path handle all four event types identically instead of forking checkout-vs-ongoing logic, and it is *required* for `dj_id` resolution below, not optional hardening).
+  - [x] 3.5 `extractBillingFields(subscription): { dj_id, status, stripe_customer_id, stripe_subscription_id, current_period_end }`:
+    - `dj_id = subscription.metadata.dj_id` — satisfies AC-2. This is still "the event's own metadata," not an email/customer lookup, even though it's read off the *re-fetched* object rather than the raw payload: Story 7.2 sets `subscription_data.metadata.dj_id` on the Checkout Session specifically so it survives onto the Subscription object itself (see Story 7.2 Completion Note 5 — added precisely because session-level metadata doesn't ride onto `customer.subscription.*` events). Missing/empty → cannot attribute this event to any DJ → log and `200` no-op, not an error (retrying will never populate a `dj_id` that was never set).
+    - `status = subscription.status`
+    - `stripe_customer_id = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id`
+    - `stripe_subscription_id = subscription.id`
+    - `current_period_end` — **do not read `subscription.current_period_end`.** Verified against the installed SDK: that field no longer exists on the top-level `Subscription` response type (Stripe moved billing-period fields onto `SubscriptionItem` to support multi-item subscriptions with independent cycles). Read `subscription.items.data[0].current_period_end` instead (Curfew's Checkout Session always creates exactly one line item — Story 7.2 — so `items.data[0]` is unambiguous). Convert Stripe's Unix-seconds `number` to a `Date`/ISO string for the RPC call (`apply_subscription_event`'s param is `timestamptz`).
+    - `event_created_at = new Date(event.created * 1000)` — the **event's** own timestamp (not the subscription's `created`), matching what `apply_subscription_event`'s ordering guard expects (Story 7.1 Dev Notes: "Stripe does not guarantee webhook delivery order... the caller passes it through here").
+
+- [x] Task 4: Write through `apply_subscription_event` — the idempotency + write-scoping core (AC: #3, #4)
+  - [x] 4.1 `await getSupabaseAdmin().rpc("apply_subscription_event", { dj_id, status, stripe_customer_id, stripe_subscription_id, current_period_end, event_created_at })`. Param keys must match the SQL function's parameter names exactly (PostgREST maps JSON body keys positionally-by-name) — see the exact signature in Dev Notes below; do not guess it from Story 7.1's older Dev Notes prose, which still shows the *pre-review* 5-arg version. The real, shipped signature (6 args, `event_created_at` last) is in the migration file itself.
+  - [x] 4.2 **`event.id`-level dedupe is satisfied by the ordering guard already built into `apply_subscription_event`, not by a second table.** The function's `WHERE ... AND (last_subscription_event_at IS NULL OR new_event_created_at > last_subscription_event_at)` clause makes an exact-duplicate redelivery (same `event.created` timestamp) match zero rows — a silent, correct no-op, per Story 7.1's own Review Findings comment ("the strict `>` comparison also makes exact-duplicate redelivery safe as a side effect"). **This is a deliberate design choice for this story, not an oversight:** a separate `stripe_webhook_events(event_id)` table would need its *own* `SECURITY DEFINER` write path to stay inside AD-18's "this function is the only caller of the elevated key from billing code" rule — doubling the write surface AD-18 exists to keep singular, for a guarantee the timestamp-ordering guard already provides. **Known, accepted limitation:** two genuinely different events landing in the same Unix-second (`event.created` has 1-second resolution) would have the second one silently dropped rather than applied — flagged, not fixed here, since Story 7.1 already reasoned about and accepted this tradeoff when it built the guard for this exact caller.
+  - [x] 4.3 **Zero rows updated is success, not an error.** Whether it's Task 4.2's ordering no-op or any other reason the `UPDATE` matched nothing *except* a missing `djs` row (Task 4.4), `apply_subscription_event` raises nothing — it just silently updates 0 rows. Treat any RPC call that doesn't throw as `200`.
+  - [x] 4.4 **Catch Postgres errcode `P0002` specifically** (`apply_subscription_event` raises this when `dj_id` matches no `djs` row — e.g. the DJ hard-deleted their account after subscribing) and return `200`, logged, not retried. This is deferred-work.md's own flagged decision for this story: "Story 7.3 owns deciding whether to special-case this errcode... Stripe will retry a non-2xx response for up to ~3 days on an event that can never succeed." A `200` here is correct precisely because retrying cannot ever fix a permanently-missing row.
+  - [x] 4.5 Any other RPC error (network, Supabase outage, a genuine bug) → `500` — this **should** trigger Stripe's retry, since it might be transient. Don't collapse this into the same calm-200 handling as 4.4; only `P0002` gets that treatment.
+
+- [x] Task 5: Tests (AC: all)
+  - [x] 5.1 `web/lib/billing/webhook.test.ts` — unit-test the pure helpers from Task 3 without a live Stripe key or Supabase call, following Story 7.2's `checkout.test.ts` precedent: `resolveSubscriptionId` for all four event types (including the `invoice.payment_failed` → `parent.subscription_details.subscription` path — this is the one most likely to be implemented wrong) plus an unrecognized-shape case; `extractBillingFields` given a constructed fake `Subscription`-shaped object, asserting it reads `items.data[0].current_period_end` and not a top-level field.
+  - [x] 5.2 Manual verification (record in Completion Notes, same discipline as Story 7.2 Task 4.3): `supabase start` with billing columns applied, `pnpm --filter web dev`, `stripe listen --forward-to localhost:3000/api/billing/webhook` for a local signing secret, then either `stripe trigger checkout.session.completed`/`customer.subscription.updated`/`customer.subscription.deleted`/`invoice.payment_failed`, or a real Checkout completion (reusing Story 7.2's seeded DJ) followed by a Dashboard-driven cancel, confirming each `djs` row updates correctly. Also confirm: a request with a tampered/missing `stripe-signature` header is rejected `400`; `stripe events resend` (or triggering the same event twice) is a safe no-op on the second delivery; an event for a `dj_id` that doesn't exist in `djs` returns `200` without throwing.
+
+- [x] Task 6: Docs (AC: #1)
+  - [x] 6.1 `web/README.md`'s Environment section — add `STRIPE_WEBHOOK_SECRET` (local: from `stripe listen`, non-local: from the Dashboard endpoint) and `SUPABASE_SECRET_KEY` (from `supabase status`, whatever it's actually labeled — see Task 1.2), matching the file's existing per-var bullet style. Flag `SUPABASE_SECRET_KEY` clearly as RLS-bypassing and never-client-side, the same weight the file already gives the Google OAuth secret.
+
+## Dev Notes
+
+### The exact `apply_subscription_event` signature (do not trust Story 7.1's prose Dev Notes alone)
+
+Story 7.1's Dev Notes section still shows an earlier 5-arg draft. The **shipped** function (verified directly from `supabase/migrations/20260815211733_add_djs_billing_columns.sql`, added during Story 7.1's own review pass) is:
+
+```sql
+apply_subscription_event(
+  dj_id uuid,
+  status text,
+  stripe_customer_id text,
+  stripe_subscription_id text,
+  current_period_end timestamptz,
+  event_created_at timestamptz
+) returns void
+```
+
+- `security definer`, `set search_path = ''`, `EXECUTE` granted to `service_role` only — `authenticated`/`anon`/`public` are explicitly revoked. Calling it with any client other than the Task 1 service-role client will `42501`.
+- Raises `22004` for null/empty `dj_id`, `status`, or `event_created_at`.
+- Raises `P0002` for a `dj_id` matching no `djs` row (Task 4.4).
+- Otherwise updates the row only if `event_created_at` is strictly newer than the row's stored `last_subscription_event_at` (or that column is still null) — see Task 4.2.
+
+### Why `checkout.session.completed` also goes through the re-fetch, not a fast path
+
+It would be tempting to read `client_reference_id`/`metadata.dj_id` straight off the Checkout Session for this one event type (it's right there, no extra API call) and only re-fetch for the other three. Don't — for two reasons: (1) `dj_id` still has to come from *somewhere* uniform for `customer.subscription.updated`/`.deleted`/`invoice.payment_failed`, which carry no session at all, so a second, different extraction path for this one event type is pure duplication for no benefit; (2) the Session's own `status`/`payment_status` at the moment of `checkout.session.completed` is a snapshot that can already be stale by the time the webhook is processed (e.g., a bank-debit payment method that settles asynchronously) — re-fetching the Subscription is what AC-3 asks for precisely to avoid trusting a payload snapshot.
+
+### Why no separate `invoice.payment_failed` → `past_due` special-casing
+
+It's tempting to hardcode `subscription_status = 'past_due'` directly off an `invoice.payment_failed` event without a re-fetch, since that's "obviously" what a failed payment means. Don't: AD-19's whole point is that `subscription_status` is Stripe's own verbatim passthrough, never locally reinterpreted — Stripe itself flips the Subscription's `status` to `past_due` (or leaves it `active` mid-retry-schedule, or moves it to `unpaid`/`canceled` depending on the account's dunning settings) and the canonical re-fetch already captures whatever that real status is. Treat `invoice.payment_failed` purely as a *signal to re-check the subscription*, not as data to translate into a status string yourself.
+
+### Why `payment_method_types` and `automatic_tax` don't appear anywhere in this story
+
+Neither is a webhook-handler concern — they're Checkout Session creation-time parameters (Story 7.2's territory, already correctly omitted there per the `stripe-best-practices` skill; Stripe Tax is a separate, deliberately-deferred business decision per Story 7.2 Completion Note 8 / Story 7.6 AC-4). Mentioned here only so a dev agent skimming the skill's general Stripe guidance doesn't add either in this story by reflex.
+
+### No `billingEnabled()` gate on this route, unlike Story 7.2's
+
+Story 7.2 gates the Checkout route and Settings CTA behind `billingEnabled()` because an *ungated* Checkout is the dangerous direction — it would look like a real, working subscribe flow on production before live keys exist. This route is the receiving end, not an entry point; there's nothing for a visitor to trigger. It's already self-defending by construction: with no `STRIPE_WEBHOOK_SECRET` configured (true in Production until Story 7.6), Task 2.3's explicit check fails closed before any event is ever parsed. Don't add a `billingEnabled()` check here — it would be redundant with the config check and would wrongly conflate "is Checkout offered" with "should we verify a webhook," which are different questions.
+
+### Project Structure Notes
+
+- New: `web/app/api/billing/webhook/route.ts` (Task 2)
+- New: `web/lib/billing/webhook.ts` + `webhook.test.ts` (Task 3, 5.1)
+- New: `web/lib/supabase/service.ts` (Task 1)
+- Modified: `web/README.md` (Task 6)
+- Modified: `web/.env.local` (local secrets — `STRIPE_WEBHOOK_SECRET`, `SUPABASE_SECRET_KEY`; gitignored, not committed)
+- Reused, not modified: `web/lib/billing/stripe.ts`'s `getStripe()` (Story 7.2) — this story is its second caller. No changes needed there.
+- **Real runtime dependency on Story 7.2**, unlike 7.2's own explicit independence from 7.1: this story needs `subscription_data.metadata.dj_id` (Story 7.2 Completion Note 5) to exist on every Subscription this webhook will ever see, and reuses `getStripe()` directly. Story 7.2 is `review`, not `done`, in `sprint-status.yaml` as of this writing, but its code is already on disk (confirmed) — safe to build on.
+- No `agent/`, `shared/`, or `supabase/migrations/` files touched — this story is `web/`-only, calling a migration Story 7.1 already shipped.
+
+### References
+
+- [Source: `_bmad-output/planning-artifacts/epics.md` — Epic 7 intro + Story 7.3's four ACs]
+- [Source: `_bmad-output/planning-artifacts/architecture/architecture-name-pending-2026-07-20/ARCHITECTURE-SPINE.md` AD-18 — webhook mechanics, Node-runtime pin, event.id dedupe + canonical re-fetch, mechanical write-scoping via one `SECURITY DEFINER` function; AD-19 — the four billing columns, DJ-write-excluded]
+- [Source: `_bmad-output/planning-artifacts/architecture/architecture-name-pending-2026-07-20/SOLUTION-DESIGN.md` §3.7 — both sequence diagrams (Checkout completion + ongoing events), the exact four event types, the "re-fetch canonical, dedupe on event.id" rationale]
+- [Source: `supabase/migrations/20260815211733_add_djs_billing_columns.sql` — `apply_subscription_event`'s real, shipped 6-arg signature, the `event_created_at` ordering guard, `P0002`/`22004` error codes]
+- [Source: `_bmad-output/implementation-artifacts/7-1-billing-columns-write-scoped-security-definer-function.md` — Dev Notes ("Two different elevated keys", "why dj_id is a parameter here"), Review Findings (ordering guard added specifically anticipating this story), deferred-work.md items this story resolves (blind-overwrite-is-latent-but-fine since re-fetch always supplies full values; `P0002` retry-storm decision)]
+- [Source: `_bmad-output/implementation-artifacts/7-2-stripe-checkout-subscribe-flow.md` — `getStripe()`/`billingEnabled()` to reuse, `subscription_data.metadata.dj_id` (Completion Note 5) this story depends on, the Preview/Development-only env-var precedent this story's `STRIPE_WEBHOOK_SECRET` follows, the auth-route calm-failure precedent]
+- [Source: `web/app/auth/callback/route.ts` — try/catch-around-the-network-call, calm-failure Route Handler precedent]
+- [Source: `web/lib/billing/stripe.ts`, `web/lib/billing/checkout.ts` — factory/pure-helper split this story mirrors for `service.ts`/`webhook.ts`]
+- [Source: `web/node_modules/stripe` (`stripe@22.5.0`, API `2026-07-29.dahlia`) `esm/resources/Invoices.d.ts`, `Subscriptions.d.ts`, `SubscriptionItems.d.ts` — verified directly against the installed SDK: `Invoice.parent.subscription_details.subscription` (no top-level `Invoice.subscription`), `SubscriptionItem.current_period_end` (no top-level `Subscription.current_period_end`). Both are exactly the kind of Stripe API-shape fact that shifts year to year — re-verify against the SDK actually installed at implementation time rather than trusting this note if the `stripe` dependency has since moved.]
+- [Source: `_bmad-output/implementation-artifacts/deferred-work.md` — "blind overwrite can null out previously-set Stripe identifiers" (resolved by design: this story's re-fetch always supplies full, non-partial values, never a partial payload) and "`P0002` retry-storm" entries, both naming this story as owner]
+- [Source: `_bmad-output/implementation-artifacts/sprint-status.yaml` lines ~100-109 — the historical note on why `subscription_data.metadata.dj_id` exists, written specifically for this story]
+
+## Dev Agent Record
+
+### Agent Model Used
+
+Claude Sonnet 5 (claude-sonnet-5)
+
+### Debug Log References
+
+None — no failing tests or blocked implementation steps required a debug trace. `pnpm typecheck`, `pnpm lint`, and `pnpm test` (896/896) all green on first completion of each task.
+
+### Completion Notes List
+
+1. **`.rpc()` needed a local `Database` type this project doesn't otherwise have.** Every other Supabase call site in this codebase types selects inline (`.maybeSingle<{...}>()`) against an untyped client — there's no generated `Database` type anywhere in `web/`. `.rpc()` has no equivalent per-call escape hatch: with no `Functions` entry in the client's type, `supabase-js`'s generics collapse `FnName`/`Args` down to `never`/`undefined` and no args object type-checks, regardless of explicit call-site generics (the constraint is fixed by the client's own type parameter, not overridable per-call). Fixed by giving `web/lib/supabase/service.ts` a minimal local `Database` type declaring only `public.Functions.apply_subscription_event` — no `Tables`/`Views` entries, so `.from(...)` on this client still has nothing typed to work with, keeping the "RPC-only" discipline enforced by the type system too, not just the comment.
+2. **`supabase status` and `docker info` both hung indefinitely in this session** (backgrounded after the 120s tool timeout) despite Docker Desktop's own processes showing as running in `ps aux`, and the Stripe CLI (`stripe`) isn't installed in this environment at all — two independent, unrelated blockers on the full `stripe listen`/`stripe trigger`/local-Supabase flow Task 5.2 describes, not something to route around by guessing at a key name or fabricating a live-verification result. Task 1.2's naming decision (`SUPABASE_SECRET_KEY`) is unaffected — the story fixes that name explicitly regardless of what a local CLI happens to label the key.
+   **What WAS verified live**, once a concurrent session's own `next dev` (port 3009, this same working directory — Next refuses a second dev server per project dir, which is how this was discovered) turned out to already be running and picked up this story's new route file via its watcher: a real HTTP `POST /api/billing/webhook` with no `stripe-signature` header → `400 {"error":"Invalid signature"}`, logged server-side as `"Missing stripe-signature header"`; the same request with a garbage `stripe-signature` header → also `400`, logged as `"Missing STRIPE_WEBHOOK_SECRET"` (unset locally) — confirming the Dev Notes' fail-closed claim for real, not just by reading the code: no `STRIPE_WEBHOOK_SECRET` means no event is ever parsed, full stop; `GET /api/billing/webhook` → `405` (Next's own method-not-allowed, confirming only `POST` is exported). This is a genuine delta over the unit tests alone — it exercises the actual Next.js request plumbing (`headers()`, `request.text()`, the `nodejs` runtime pin) in a real running server, not just isolated function calls.
+   **What remains unverified**, blocked by Docker/Supabase and the missing Stripe CLI: a validly-signed request actually passing `constructEvent` and reaching the re-fetch/RPC logic; the real `apply_subscription_event` write and its `P0002`/zero-rows-is-success paths; `stripe events resend` idempotency. That logic is either Stripe SDK's own tested code (`constructEvent`) or a simple `if` on `error.code` with no local state to get wrong — reviewed by hand against the migration's exact raised errcodes (`supabase/migrations/20260815211733_add_djs_billing_columns.sql`) rather than exercised live. Flagged here rather than deferred silently, matching this project's precedent (Story 5.4's blocked 375px live pass) of recording a blocked live check plainly instead of skipping the note.
+3. **No `billingEnabled()` gate on this route**, per Dev Notes — this route is the receiving end of a Stripe-initiated call, not a DJ-facing entry point, and is already self-defending: with no `STRIPE_WEBHOOK_SECRET` configured (true in Production until Story 7.6), signature verification fails closed before any event is parsed.
+4. **`RELEVANT_EVENT_TYPES.includes(event.type)` gate exists as a second, redundant layer** on top of Stripe only ever sending subscribed event types (Task 2.4's registration) — kept because `resolveSubscriptionId`'s `switch` only branches on these four types anyway (`default: return null`), so the explicit early-return makes the "why" (a webhook endpoint can receive types it isn't coded for if Stripe adds one later) visible at the top of the handler rather than falling through silently to the no-id no-op path lower down.
+5. **Route handler's own local error variable names (`event`, `subscription`) are declared with `let` and no type annotation**, inferred from `getStripe().webhooks.constructEvent(...)` / `getStripe().subscriptions.retrieve(...)` returns — mirrors this file's existing pattern in `checkout/route.ts` (`const session = await getStripe().checkout.sessions.create(...)`) rather than importing `Stripe.Event`/`Stripe.Subscription` into the route file for an unused type annotation.
+
+### File List
+
+- `web/lib/supabase/service.ts` (new)
+- `web/app/api/billing/webhook/route.ts` (new)
+- `web/lib/billing/webhook.ts` (new)
+- `web/lib/billing/webhook.test.ts` (new)
+- `web/README.md` (modified)
+
+## Change Log
+
+| Date | Change |
+| --- | --- |
+| 2026-08-15 | Story 7.3 implemented: `web/lib/supabase/service.ts` (`getSupabaseAdmin()`, RPC-only service-role client, minimal local `Database` type for `apply_subscription_event`); `POST /api/billing/webhook` (Node-pinned, signature-verified via `stripe.webhooks.constructEvent`, no Supabase JWT); `web/lib/billing/webhook.ts` (`RELEVANT_EVENT_TYPES`, `resolveSubscriptionId`, `extractBillingFields` — canonical re-fetch for all four event types, `items.data[0].current_period_end`, `parent.subscription_details.subscription` for `invoice.payment_failed`); `apply_subscription_event` RPC write with `P0002`-is-calm-200 / other-errors-500 handling. 17 new unit tests (896 web total). `web/README.md` Environment section gains `STRIPE_WEBHOOK_SECRET`/`SUPABASE_SECRET_KEY`. Manual Stripe CLI / local Supabase verification (Task 5.2) blocked in this session — Docker daemon unreachable (`docker info`/`supabase status` both hung past tool timeout); pure-helper unit tests plus hand-review against the migration's exact errcodes stand in its place, flagged rather than silently skipped. Status → review. |
