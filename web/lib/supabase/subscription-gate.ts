@@ -63,6 +63,52 @@ export function isSubscriptionGatedPath(pathname: string): boolean {
  * therefore safe here — both answers deny — and keeps the caller a single
  * `hasWebAccess(...)` check with no third state to forget.
  */
+/**
+ * The gate's read, widened (2026-08-16) to also answer WHICH no-access page a
+ * denied DJ belongs on. `subscription_status` alone can't: it is `null` both
+ * for a DJ who signed up a minute ago and for a DJ whose row predates any
+ * Stripe contact, and those two want opposite pages — `/subscribe` sells,
+ * `/subscription-required` doesn't. `stripe_customer_id` is the discriminator
+ * (see `everSubscribed`), and it costs nothing extra: same row, same query.
+ *
+ * Fails CLOSED on both counts, and the second one is the subtle half. A read
+ * error denies access, as it always has. It ALSO reports `readFailed`, and the
+ * caller routes a failed read to `/subscription-required` — the page that does
+ * not sell. Guessing "never subscribed" on a hiccup would pitch a fresh
+ * subscription to a DJ who may already be paying for one, which is the one
+ * mistake in this area that costs a real person real money.
+ */
+export type BillingGateState = {
+  status: string | null;
+  stripeCustomerId: string | null;
+  readFailed: boolean;
+};
+
+export async function readBillingGate(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<BillingGateState> {
+  try {
+    const { data, error } = await supabase
+      .from("djs")
+      .select("subscription_status, stripe_customer_id")
+      .eq("id", userId)
+      .single();
+
+    if (error || !data) {
+      return { status: null, stripeCustomerId: null, readFailed: true };
+    }
+
+    return {
+      status: data.subscription_status ?? null,
+      stripeCustomerId: data.stripe_customer_id ?? null,
+      readFailed: false,
+    };
+  } catch {
+    return { status: null, stripeCustomerId: null, readFailed: true };
+  }
+}
+
 export async function readSubscriptionStatus(
   supabase: SupabaseClient,
   userId: string,

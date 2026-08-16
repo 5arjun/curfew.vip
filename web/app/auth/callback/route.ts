@@ -1,7 +1,9 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { type NextRequest } from "next/server";
+import { billingEnabled } from "@/lib/billing/checkout";
+import { CHECKOUT_PENDING_COOKIE, nextSetupStep, readSetupState } from "@/lib/onboarding/corridor";
 import { createClient } from "@/lib/supabase/server";
-import { needsPhone } from "@/lib/supabase/phone-gate";
 
 // OAuth callback (Google/Apple), separate from confirm/route.ts (email-OTP).
 // A provider redirect only ever produces a `code` (success) or `error`
@@ -18,17 +20,23 @@ export async function GET(request: NextRequest) {
   // redirect instead of surfacing a raw 500. Same discipline as
   // confirm/route.ts (2.3a Review Findings).
   let exchanged = false;
-  let phoneRequired = false;
+  let destination = "/dashboard";
   if (!error && code) {
     const supabase = await createClient();
     try {
       const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
       exchanged = !exchangeError;
-      // needsPhone() catches its own errors and returns false (the
-      // least-blocking path — Story 2.3c Task 5.4), so it never flips
-      // `exchanged` back to false via this shared catch.
+      // readSetupState() catches its own errors and reports `readFailed`, and
+      // nextSetupStep() treats that as "don't block" (the least-blocking path
+      // — Story 2.3c Task 5.4), so neither ever flips `exchanged` back to
+      // false via this shared catch.
       if (exchanged && data.user) {
-        phoneRequired = await needsPhone(supabase, data.user.id);
+        destination = nextSetupStep({
+          sellsSubscriptions: billingEnabled(process.env),
+          checkoutPending:
+            (await cookies()).get(CHECKOUT_PENDING_COOKIE)?.value === data.user.id,
+          state: await readSetupState(supabase, data.user.id),
+        });
       }
     } catch {
       exchanged = false;
@@ -36,11 +44,12 @@ export async function GET(request: NextRequest) {
   }
 
   // Into the app, not back onto the marketing landing — same change as
-  // confirm/route.ts. A first-time OAuth signup has no phone yet and takes
-  // the /phone-required branch into the onboarding corridor; a returning
-  // sign-in lands on the dashboard.
+  // confirm/route.ts. Where in the app is the corridor's call, not this
+  // route's: as of 2026-08-16 a first-time signup goes to /subscribe (Curfew
+  // is paid at signup), then the phone step, then the agent; a returning
+  // sign-in lands on the dashboard. See lib/onboarding/corridor.ts.
   if (exchanged) {
-    redirect(phoneRequired ? "/phone-required" : "/dashboard");
+    redirect(destination);
   }
 
   redirect("/login?error=confirmation-failed");

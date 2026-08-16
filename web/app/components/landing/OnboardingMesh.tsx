@@ -9,10 +9,17 @@ import { AUTH_PALETTE } from "./MarketingMesh";
 // pattern as MarketingMesh — one MeshDrift, palette swapped by pathname as
 // a uniform update, no canvas remount between corridor steps.
 //
-// Room assignment tells the corridor's own story: /phone-required keeps the
-// ember the DJ just signed in under; /welcome warms to spark-gold (almost
-// there); /link-agent runs the glacial default — the landing's own ramp,
-// the color of the product the agent is about to fill.
+// Room assignment tells the corridor's own story: /subscribe and
+// /phone-required keep the ember the DJ just signed in under (they are the
+// two form-ish steps, and /subscribe is now the first thing after the login
+// card — the room should not change under it); /welcome warms to spark-gold
+// (almost there); /link-agent runs the glacial default — the landing's own
+// ramp, the color of the product the agent is about to fill.
+//
+// /subscribe therefore needs no branch of its own: it takes AUTH_PALETTE via
+// the same fallback /phone-required does. Named here anyway, because "the
+// list doesn't mention it" and "it falls through on purpose" look identical
+// in this file and only one of them is true.
 const WELCOME_PALETTE = [
   "--landing-welcome-atmos",
   "--landing-welcome-deep",

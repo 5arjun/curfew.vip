@@ -3539,6 +3539,112 @@
   color: var(--color-abyss-text-45);
 }
 
+/* ── /subscribe — the corridor's first step (2026-08-16) ──────────────────
+   Two plans as two choosable blocks, built on lp-ob-dl's geometry rather than
+   a new one: the corridor already has exactly one "large tappable block inside
+   the card" idiom, and the download CTA is it. A <button>, so the block resets
+   button styling the way lp-ob-dl resets link styling. */
+.lp-ob-plans {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.lp-ob-plan {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: var(--space-md);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-abyss-hairline);
+  background: linear-gradient(180deg, var(--shadow-ink-0) 0%, var(--shadow-ink-20) 100%);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    transform var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+/* The yearly plan leads on every marketing surface, so it leads here too —
+   carried by the accent hairline alone, not a filled button. Both options are
+   real choices and one of them shouting would make the other look like a
+   downgrade. */
+.lp-ob-plan--primary {
+  border-color: var(--color-primary-glow);
+}
+
+.lp-ob-plan:hover {
+  border-color: var(--color-primary-glow);
+}
+
+.lp-ob-plan:active {
+  transform: translateY(1px);
+}
+
+.lp-ob-plan:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-primary),
+    0 0 0 6px var(--color-primary-glow);
+}
+
+.lp-ob-plan:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.lp-ob-plan-price {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  font-family: var(--lp-display);
+  font-size: 1.375rem;
+  color: var(--color-abyss-text);
+}
+
+.lp-ob-plan-cadence {
+  font-family: var(--font-inter);
+  font-size: 0.875rem;
+  color: var(--color-abyss-text-72);
+}
+
+.lp-ob-plan-note {
+  font-family: var(--font-geist-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  color: var(--color-abyss-text-45);
+}
+
+.lp-ob-plan-fine {
+  margin: var(--space-sm) 0 0;
+  text-align: center;
+  font-family: var(--font-geist-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  color: var(--color-abyss-text-45);
+}
+
+.lp-ob-plan-error {
+  margin: var(--space-sm) 0 0;
+  text-align: center;
+  font-family: var(--font-inter);
+  font-size: 0.875rem;
+  color: var(--color-error);
+}
+
+/* The post-Checkout hold, only ever seen by someone who navigated BACK to
+   /subscribe before the webhook landed. Centred and quiet — nothing here is
+   actionable, which is the message. */
+.lp-ob-confirming {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-sm);
+  text-align: center;
+}
+
 /* Leaving is allowed here (the opposite of /phone-required) but it is the
    quiet path — same underline idiom as lp-auth-continue, stepped down to
    the 45 ramp. */

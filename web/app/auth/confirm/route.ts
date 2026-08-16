@@ -1,8 +1,10 @@
 import { type EmailOtpType, type User } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import { type NextRequest } from "next/server";
+import { cookies } from "next/headers";
+import { billingEnabled } from "@/lib/billing/checkout";
+import { CHECKOUT_PENDING_COOKIE, nextSetupStep, readSetupState } from "@/lib/onboarding/corridor";
 import { createClient } from "@/lib/supabase/server";
-import { needsPhone } from "@/lib/supabase/phone-gate";
 
 // Email-confirmation callback. Supabase's default local email template links
 // to GoTrue's own hosted /auth/v1/verify endpoint, which — for a PKCE-flow
@@ -26,7 +28,7 @@ export async function GET(request: NextRequest) {
   // be swallowed here) so a network hiccup falls through to the calm failure
   // redirect instead of surfacing a raw 500.
   let confirmed = false;
-  let phoneRequired = false;
+  let destination = "/dashboard";
   try {
     let user: User | null = null;
     if (code) {
@@ -39,24 +41,29 @@ export async function GET(request: NextRequest) {
       user = data.user;
     }
 
-    // needsPhone() catches its own errors and returns false (the
-    // least-blocking path — Story 2.3c Task 5.4), so it never flips
-    // `confirmed` back to false via this shared catch. `user` comes directly
-    // from whichever branch above succeeded — no extra getUser() round trip
-    // needed, same as callback/route.ts.
+    // readSetupState() catches its own errors and reports `readFailed`, which
+    // nextSetupStep() treats as "don't block" (the least-blocking path —
+    // Story 2.3c Task 5.4), so it never flips `confirmed` back to false via
+    // this shared catch. `user` comes directly from whichever branch above
+    // succeeded — no extra getUser() round trip needed, same as
+    // callback/route.ts.
     if (confirmed && user) {
-      phoneRequired = await needsPhone(supabase, user.id);
+      destination = nextSetupStep({
+        sellsSubscriptions: billingEnabled(process.env),
+        checkoutPending: (await cookies()).get(CHECKOUT_PENDING_COOKIE)?.value === user.id,
+        state: await readSetupState(supabase, user.id),
+      });
     }
   } catch {
     confirmed = false;
   }
 
   // Into the app, not back onto the marketing landing (which is where "/"
-  // goes) — a just-confirmed account either owes a phone number or belongs
-  // on its dashboard. New signups always take the /phone-required branch and
-  // continue down the onboarding corridor (→ /welcome) from there.
+  // goes). Which screen is the corridor's call, not this route's — as of
+  // 2026-08-16 a new signup starts at /subscribe (Curfew is paid at signup),
+  // then the phone step, then the agent. See lib/onboarding/corridor.ts.
   if (confirmed) {
-    redirect(phoneRequired ? "/phone-required" : "/dashboard");
+    redirect(destination);
   }
 
   redirect("/login?error=confirmation-failed");

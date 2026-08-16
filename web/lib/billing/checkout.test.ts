@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  INTEGRATION_IDENTIFIER,
   SUBSCRIPTION_ATTACHED,
   billingEnabled,
   billingManageEnabled,
+  checkoutReturnUrls,
   offersSubscribeCta,
+  parseCheckoutSource,
   parseInterval,
   resolvePriceId,
 } from "./checkout";
@@ -199,5 +202,86 @@ describe("offersSubscribeCta", () => {
     // subscription" and pushed into a duplicate Checkout. Silence is the safe
     // wrong answer here; a duplicate subscription is the unsafe one.
     expect(offersSubscribeCta("some_future_stripe_status")).toBe(false);
+  });
+});
+
+// Checkout stopped having one caller (2026-08-16): /subscribe sells to a DJ
+// mid-setup while Settings sells to a lapsed one, and the two must come back
+// to different places. A wrong mapping here is invisible until someone has
+// actually paid, which is why it is a pure function with tests rather than two
+// string literals inside the route.
+describe("parseCheckoutSource", () => {
+  it("accepts the two entry points", () => {
+    expect(parseCheckoutSource("settings")).toBe("settings");
+    expect(parseCheckoutSource("onboarding")).toBe("onboarding");
+  });
+
+  it("defaults an ABSENT source to settings", () => {
+    // Back-compatibility with the body shape that shipped before this field:
+    // a Settings tab left open across the deploy still posts `{interval}`
+    // alone and must not meet a 400 on a button that worked a minute ago.
+    expect(parseCheckoutSource(undefined)).toBe("settings");
+    expect(parseCheckoutSource(null)).toBe("settings");
+  });
+
+  it("rejects a present-but-unrecognized source", () => {
+    // Distinct from absent: a value that is there and wrong is a bug or a
+    // probe, not an old tab.
+    expect(parseCheckoutSource("dashboard")).toBeNull();
+    expect(parseCheckoutSource("")).toBeNull();
+    expect(parseCheckoutSource(7)).toBeNull();
+    expect(parseCheckoutSource({ source: "settings" })).toBeNull();
+  });
+
+  it("does not case-fold or trim", () => {
+    expect(parseCheckoutSource("Settings")).toBeNull();
+    expect(parseCheckoutSource(" onboarding ")).toBeNull();
+  });
+});
+
+describe("checkoutReturnUrls", () => {
+  const origin = "https://curfew.vip";
+
+  it("returns a Settings checkout to Settings", () => {
+    expect(checkoutReturnUrls("settings", origin)).toEqual({
+      success_url: "https://curfew.vip/settings",
+      cancel_url: "https://curfew.vip/settings",
+    });
+  });
+
+  it("returns an onboarding checkout into the corridor, carrying the session id", () => {
+    // `{CHECKOUT_SESSION_ID}` is Stripe's own template token and must reach
+    // Stripe un-encoded — /subscribe/return needs it to ask Stripe whether the
+    // session completed, which is the only answer available before the webhook
+    // lands.
+    expect(checkoutReturnUrls("onboarding", origin)).toEqual({
+      success_url: "https://curfew.vip/subscribe/return?session_id={CHECKOUT_SESSION_ID}",
+      cancel_url: "https://curfew.vip/subscribe",
+    });
+  });
+
+  it("builds every URL from the passed origin and nothing else", () => {
+    // The safety property: no branch may return a URL the caller supplied.
+    // Whatever `success_url` says is where Stripe sends a browser AFTER a real
+    // payment, so a client-chosen value would be an open redirect with a card
+    // charge attached.
+    for (const source of ["settings", "onboarding"] as const) {
+      const urls = checkoutReturnUrls(source, "https://preview.example.com");
+      expect(urls.success_url.startsWith("https://preview.example.com/")).toBe(true);
+      expect(urls.cancel_url.startsWith("https://preview.example.com/")).toBe(true);
+    }
+  });
+});
+
+describe("INTEGRATION_IDENTIFIER", () => {
+  it("labels the two entry points distinguishably in the Stripe Dashboard", () => {
+    expect(INTEGRATION_IDENTIFIER.settings).not.toBe(INTEGRATION_IDENTIFIER.onboarding);
+  });
+
+  it("keeps the Settings label byte-identical to the one already in Stripe", () => {
+    // Story 7.2 shipped this exact string and live sessions carry it. Changing
+    // it would silently split the Dashboard comparison the identifier exists
+    // for, with no error anywhere.
+    expect(INTEGRATION_IDENTIFIER.settings).toBe("curfew-settings-subscribe-hqvbnjxt");
   });
 });

@@ -30,7 +30,13 @@ export function SubscribeActions() {
       const response = await fetch("/api/billing/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ interval }),
+        // `source` picks the success_url from a server-side map — Settings
+        // returns here, while /subscribe's twin of this component continues
+        // down the setup corridor instead. The server defaults a missing
+        // `source` to "settings", so an open tab from before this field
+        // existed still works; sending it explicitly is what keeps the two
+        // callers legible.
+        body: JSON.stringify({ interval, source: "settings" }),
       });
       const payload: unknown = await response.json().catch(() => null);
       const url =

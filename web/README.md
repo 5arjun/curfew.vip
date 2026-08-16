@@ -111,8 +111,17 @@ Development (disconnect removes all four vars everywhere; remove deletes the
 sandbox Product and the Prices `STRIPE_PRICE_ID_*` point at in those
 environments).
 
-Two operational notes learned during the cutover:
+Three operational notes:
 
+- **`STRIPE_RESTRICTED_KEY` needs `checkout.sessions:read`**, not only write.
+  Added 2026-08-16 with the onboarding Checkout step: `/subscribe/return` asks
+  Stripe whether a Checkout Session actually completed, because that is the only
+  authoritative answer available before the webhook lands. Check the grid on
+  both the live and test restricted keys. If the permission is missing, the
+  retrieve throws and the route treats the result as UNKNOWN and continues —
+  chosen deliberately so a key-scope gap degrades to a slightly-too-trusting
+  onboarding hop rather than re-pitching Checkout to a DJ whose card was already
+  charged. Nothing breaks visibly, so nothing will tell you it is missing.
 - **Vercel refuses `--sensitive` on Development** (`sensitive_not_allowed_on_development`
   — Sensitive is Production/Preview only). Tolerable for a test-mode key; it is
   why no live value is ever scoped to Development.

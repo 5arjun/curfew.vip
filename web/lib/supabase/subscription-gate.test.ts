@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { isSubscriptionGatedPath, readSubscriptionStatus } from "./subscription-gate";
+import { hasWebAccess } from "@/lib/billing/access";
+import { isSubscriptionGatedPath, readBillingGate, readSubscriptionStatus } from "./subscription-gate";
 
 // AC-1: which paths the middleware subscription gate covers. The gate itself
 // (the uncached read + fail-closed redirect) lives in middleware.ts; this
@@ -36,6 +37,15 @@ describe("isSubscriptionGatedPath", () => {
     expect(isSubscriptionGatedPath("/subscription-required")).toBe(false);
   });
 
+  it("exempts /subscribe — the gate's OTHER destination (2026-08-16)", () => {
+    // Since the corridor gained a Checkout step, this gate sends a
+    // never-subscribed DJ to /subscribe instead of /subscription-required.
+    // Gating that page would be an infinite redirect: denied at /dashboard,
+    // sent to /subscribe, denied there, sent to /subscribe...
+    expect(isSubscriptionGatedPath("/subscribe")).toBe(false);
+    expect(isSubscriptionGatedPath("/subscribe/return")).toBe(false);
+  });
+
   it("exempts the auth surface and the public landing", () => {
     expect(isSubscriptionGatedPath("/")).toBe(false);
     expect(isSubscriptionGatedPath("/login")).toBe(false);
@@ -65,7 +75,7 @@ describe("isSubscriptionGatedPath", () => {
 
 /** Minimal stand-in for the one chained call the reader makes. */
 function stubClient(result: {
-  data?: { subscription_status: string | null } | null;
+  data?: Record<string, string | null> | null;
   error?: unknown;
   throws?: boolean;
 }): SupabaseClient {
@@ -132,5 +142,60 @@ describe("readSubscriptionStatus", () => {
   it("fails closed on a thrown error rather than propagating", async () => {
     const supabase = stubClient({ throws: true });
     expect(await readSubscriptionStatus(supabase, "dj-1")).toBe(null);
+  });
+});
+
+// The widened read (2026-08-16). `subscription_status` alone cannot say WHICH
+// no-access page a denied DJ belongs on — it is null both for someone who
+// signed up a minute ago and for someone whose row predates Stripe entirely —
+// so the gate now reads `stripe_customer_id` from the same row as the
+// discriminator.
+describe("readBillingGate", () => {
+  it("returns the status and the customer id from one row", async () => {
+    const supabase = stubClient({
+      data: { subscription_status: "active", stripe_customer_id: "cus_x" },
+    });
+    expect(await readBillingGate(supabase, "dj-1")).toEqual({
+      status: "active",
+      stripeCustomerId: "cus_x",
+      readFailed: false,
+    });
+  });
+
+  it("reads both billing columns in one query, scoped to the caller", async () => {
+    const supabase = stubClient({
+      data: { subscription_status: null, stripe_customer_id: null },
+    });
+    await readBillingGate(supabase, "dj-1");
+    expect((supabase as unknown as { seen: string[] }).seen).toEqual([
+      "djs",
+      "subscription_status, stripe_customer_id",
+      "id=dj-1",
+    ]);
+  });
+
+  it("distinguishes a never-subscribed DJ from a lapsed one", async () => {
+    const fresh = await readBillingGate(
+      stubClient({ data: { subscription_status: null, stripe_customer_id: null } }),
+      "dj-1",
+    );
+    expect(fresh).toMatchObject({ status: null, stripeCustomerId: null, readFailed: false });
+
+    const lapsed = await readBillingGate(
+      stubClient({ data: { subscription_status: "canceled", stripe_customer_id: "cus_x" } }),
+      "dj-1",
+    );
+    expect(lapsed).toMatchObject({ status: "canceled", stripeCustomerId: "cus_x" });
+  });
+
+  it("fails closed on a query error, a missing row, and a thrown client error", async () => {
+    // Denies access on all three, exactly as readSubscriptionStatus does —
+    // AND reports readFailed, which is what stops the caller from guessing
+    // "never subscribed" and pitching Checkout to someone already paying.
+    for (const result of [{ error: { message: "boom" } }, { data: null }, { throws: true }]) {
+      const state = await readBillingGate(stubClient(result), "dj-1");
+      expect(state.readFailed).toBe(true);
+      expect(hasWebAccess(state.status)).toBe(false);
+    }
   });
 });
