@@ -67,6 +67,13 @@ export default function GlobalError({
             >
               Try again
             </button>
+            {/* A plain <a>, not next/link, and deliberately so: global-error
+                replaces the ROOT layout after a render failure that took out
+                the whole React tree. A client-side Link navigation would stay
+                inside that broken tree; a hard navigation is the only thing
+                that reliably gets the DJ back to a working page. The lint rule
+                cannot see that distinction — it only knows `/` is a route. */}
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a
               href="/"
               style={{
