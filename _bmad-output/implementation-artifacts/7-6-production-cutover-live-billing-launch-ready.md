@@ -85,24 +85,25 @@ Same check found `STRIPE_WEBHOOK_SECRET` absent from all three environments too,
 
 ## Tasks / Subtasks
 
-- [ ] **Task 0: Surface the live lockout and get a ruling** (see the 🚨 section above)
-  - [ ] 0.1 Show Arjun the closed loop (`/dashboard` → `/subscription-required` → `/settings` → nothing) and confirm whether curfew.vip has real signed-up DJs today. The pre-launch checklist records a real Google sign-up → dashboard verified by Arjun on 2026-08-16, so assume at least one.
-  - [ ] 0.2 Record his ruling in Dev Notes: ship the full cutover as the fix, or land an interim mitigation first. **Do not implement a mitigation without an explicit instruction** — it would mean touching 7.5's merged, reviewed gate.
+- [x] **Task 0: Surface the live lockout and get a ruling** — **RESOLVED 2026-08-16, before the cutover** (see the 🚨 section above)
+  - [x] 0.1 Surfaced. Arjun's ruling was to mitigate immediately rather than wait for the cutover.
+  - [x] 0.2 Ruling: **interim mitigation shipped first.** `web/lib/supabase/middleware.ts`'s gate now runs only when `billingEnabled(process.env)` is true, so an environment with no way to sell cannot restrict. PR #37, merged, live on curfew.vip as commit `05130bd`. Verified signed-in on 2026-08-16: `https://curfew.vip/dashboard` renders the dashboard (empty state, "Good afternoon, Arjun") with no redirect to `/subscription-required`. Note an anonymous check proves nothing here — the gate sits inside `if (userId && …)`, so signed-out requests return 200 either way.
+        Consequence for the rest of this story: **the paywall now turns on as a side effect of Task 5.2's `BILLING_LIVE=1`.** From that redeploy onward, production DJs are gated on `subscription_status` for real. That makes Task 7's live pass the thing standing between the flag and a locked-out user, not a formality after it.
 
-- [ ] **Task 1: Split the sell gate from the manage gate** (code — the one real code change; closes `deferred-work.md`'s "Split the sell gate from the manage gate", deferred here by Arjun at 7.4's review)
-  - [ ] 1.1 In `web/lib/billing/checkout.ts`, add a second predicate beside `billingEnabled`:
+- [x] **Task 1: Split the sell gate from the manage gate** (code — the one real code change; closes `deferred-work.md`'s "Split the sell gate from the manage gate", deferred here by Arjun at 7.4's review)
+  - [x] 1.1 In `web/lib/billing/checkout.ts`, add a second predicate beside `billingEnabled`:
         `export function billingManageEnabled(env: { STRIPE_RESTRICTED_KEY?: string; STRIPE_SECRET_KEY?: string; [k: string]: string | undefined }): boolean` — returns `Boolean(env.STRIPE_RESTRICTED_KEY || env.STRIPE_SECRET_KEY)`.
         **Why exactly that and nothing more:** the Portal path needs a Stripe API key and a `stripe_customer_id`, and nothing else. It does **not** need Price ids (it sells nothing) and it does **not** need `BILLING_LIVE` (a DJ who already paid is past the "may we sell here" question). Use `||` not `??`, matching `resolveApiKey`'s reasoning about empty-string vars one file over.
         Do **not** rename or change `billingEnabled` — it stays the sell gate, and its two conditions stay exactly as they are.
-  - [ ] 1.2 `web/app/api/billing/portal/route.ts:38` — swap `billingEnabled(process.env)` for `billingManageEnabled(process.env)`. Replace the `CAUTION (7.4 review, Decision 2 — deferred to Story 7.6)` comment block at lines 27-37 with a short note recording that the split happened here and why the manage gate is key-only. Leave the 401/502/404 gates untouched.
-  - [ ] 1.3 `web/app/components/settings/BillingSection.tsx` — the current shape (`if (!billingEnabled(...)) return null` at line 34, before the branch) applies the sell gate to both halves. Restructure so the gate follows the branch:
+  - [x] 1.2 `web/app/api/billing/portal/route.ts:38` — swap `billingEnabled(process.env)` for `billingManageEnabled(process.env)`. Replace the `CAUTION (7.4 review, Decision 2 — deferred to Story 7.6)` comment block at lines 27-37 with a short note recording that the split happened here and why the manage gate is key-only. Leave the 401/502/404 gates untouched.
+  - [x] 1.3 `web/app/components/settings/BillingSection.tsx` — the current shape (`if (!billingEnabled(...)) return null` at line 34, before the branch) applies the sell gate to both halves. Restructure so the gate follows the branch:
         keep the `statusUnknown` early return as-is; compute `const offersSubscribe = offersSubscribeCta(status)`; then render the Subscribe half only when `billingEnabled(process.env)`, and the Manage half only when `billingManageEnabled(process.env)`; render `null` when the applicable gate is false.
         Careful with ordering: `formatSubscriptionStatus` throws on `null`, and the existing `const status = subscriptionStatus ?? ""` narrowing at line 48 is what prevents that — keep it, and keep its comment.
-  - [ ] 1.4 Tests, in the two files that already cover these:
+  - [x] 1.4 Tests, in the two files that already cover these:
         `web/lib/billing/checkout.test.ts` — `billingManageEnabled` is true with only `STRIPE_RESTRICTED_KEY`, true with only `STRIPE_SECRET_KEY`, **true in production with `BILLING_LIVE` unset**, **true with both Price ids absent** (these two are the whole point of the split), false with neither key, false with an empty-string key.
         `web/app/components/settings/billing-section.test.tsx` — the regression this closes: a subscriber with `subscription_status: "active"` in a production-shaped env (`VERCEL_ENV: "production"`, no `BILLING_LIVE`, no Price ids) still renders the Manage row and `ManageBillingActions`; a non-subscriber in that same env still renders nothing. Follow the file's existing `vi.stubEnv` setup (lines ~15-25).
-  - [ ] 1.5 Update `billingEnabled`'s own doc comment (`checkout.ts:70-91`) — its condition-2 paragraph describes the sandbox situation in the present tense and will be stale the moment Task 5 lands. State what the flag means going forward (an explicit production sales switch), and point at `billingManageEnabled` for why flipping it off no longer strands a subscriber.
-  - [ ] 1.6 `pnpm lint && pnpm typecheck && pnpm test` in `web/` — green, no regressions. Baseline is 947 web tests (Story 7.5).
+  - [x] 1.5 Update `billingEnabled`'s own doc comment (`checkout.ts:70-91`) — its condition-2 paragraph describes the sandbox situation in the present tense and will be stale the moment Task 5 lands. State what the flag means going forward (an explicit production sales switch), and point at `billingManageEnabled` for why flipping it off no longer strands a subscriber.
+  - [x] 1.6 `pnpm lint && pnpm typecheck && pnpm test` in `web/` — green, no regressions. Baseline is 947 web tests (Story 7.5).
 
 - [ ] **Task 2: Restricted key for test mode** (AC: #7) — completes the pattern before anything live exists, so a mistake here costs nothing
   - [ ] 2.1 Arjun mints a **test-mode** restricted key in the `stripe-bistre-ribbon` sandbox's Stripe Dashboard (Developers → API keys → Create restricted key). Permission grid — write implies read, so grant exactly:
@@ -275,9 +276,23 @@ Every Epic 7 story recorded its live-verification status explicitly rather than 
 
 ### Agent Model Used
 
+claude-opus-5 (Claude Code)
+
 ### Debug Log References
 
 ### Completion Notes List
+
+**Task 0 — live lockout: RESOLVED 2026-08-16, ahead of the cutover.**
+Arjun ruled for an interim mitigation rather than waiting. `web/lib/supabase/middleware.ts`'s gate is now bound to `billingEnabled(process.env)`, so an environment that cannot sell a subscription cannot restrict access either. PR #37, merged, live as `05130bd`. Verified signed-in on production the same day: `/dashboard` renders (empty state, greeting by name), no redirect to `/subscription-required`. An anonymous check is not evidence here — the gate sits inside `if (userId && …)`.
+**Carry-forward:** this makes `BILLING_LIVE=1` (Task 5.2) the switch that *arms the paywall* as well as the one that opens sales. Task 7 is therefore load-bearing, not a post-hoc formality.
+
+**Task 1 — sell/manage gate split: DONE, PR #38 (`story/7-6-manage-gate`), awaiting merge.**
+`billingManageEnabled(env)` added beside `billingEnabled` in `web/lib/billing/checkout.ts` — `Boolean(env.STRIPE_RESTRICTED_KEY || env.STRIPE_SECRET_KEY)`, `||` not `??` per `resolveApiKey`. Consumed by `POST /api/billing/portal` and `BillingSection`'s Manage branch; the section's env gate moved to *after* the status branch so each half answers to its own gate. `billingEnabled` is behavior-identical and still gates the Subscribe CTA, the Checkout route, and 7.5's paywall; its doc comment was rewritten off the now-obsolete present-tense sandbox framing.
+Gates: **962 web tests pass** (baseline 947, +15); `pnpm typecheck` clean; `pnpm lint` fails only on the pre-existing `web/app/global-error.tsx:70` `no-html-link-for-pages` from `103fec0`, untouched here.
+Two pre-existing `BillingSection` guards were **rewritten, not deleted**: both asserted "renders nothing" using `subscription_status: "active"`, which is exactly the case that must now still render Manage. They now assert the same fact about the Subscribe half using a non-subscriber status, and a new describe block pins the regression — every `SUBSCRIPTION_ATTACHED` status still renders Manage in a production-shaped env with no `BILLING_LIVE` and no Price ids, while a non-subscriber in that env still renders nothing.
+**Ordering constraint restated:** #38 must land *before* Task 5.2. Merged after, and the window between them is a period where pausing sales would withdraw a paying DJ's only cancel path.
+
+**Branch hygiene note (shared checkout).** A concurrent session committed its README work (`931155a`) onto this session's branch mid-task, so `story/7-6-gate-split` carries an unrelated README redesign that conflicts with `main`'s own README rewrite. PR #38 was therefore opened from `story/7-6-manage-gate`, a clean single-commit branch built directly on `origin/main` containing only the five billing files. `story/7-6-gate-split` was left alone rather than rewritten — the other session's commit is not this session's to move.
 
 **Live Stripe artifacts (AC-1/AC-2 require these recorded here):**
 
@@ -292,8 +307,18 @@ Every Epic 7 story recorded its live-verification status explicitly rather than 
 
 ### File List
 
+Task 1 (PR #38, branch `story/7-6-manage-gate`, commit `b0ae964`):
+
+- Modified: `web/lib/billing/checkout.ts` — new `billingManageEnabled`; `billingEnabled` doc comment rewritten, behavior unchanged
+- Modified: `web/app/api/billing/portal/route.ts` — predicate swap + the deferred-CAUTION block replaced
+- Modified: `web/app/components/settings/BillingSection.tsx` — env gate moved after the status branch
+- Modified: `web/lib/billing/checkout.test.ts` — `billingManageEnabled` suite
+- Modified: `web/app/components/settings/billing-section.test.tsx` — Stripe-key stub in `beforeEach`; two guards rewritten; new stranded-subscriber regression block
+
 ## Change Log
 
 | Date | Change |
 | --- | --- |
 | 2026-08-16 | Story created via bmad-create-story. |
+| 2026-08-16 | Task 0 resolved — paywall bound to `billingEnabled()` (PR #37, `05130bd`), verified signed-in on production. |
+| 2026-08-16 | Task 1 done — sell/manage gate split, PR #38 open. 962 web tests green. |
