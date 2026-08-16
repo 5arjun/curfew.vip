@@ -1,5 +1,8 @@
 <div align="center">
-  <img src=".github/logo.png" alt="Curfew" width="360">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/logo-dark.png">
+    <img src=".github/logo-light.png" alt="Curfew" width="360">
+  </picture>
 </div>
 
 **A Serato-first reflection dashboard for DJs.** Curfew reads a DJ's local Serato
