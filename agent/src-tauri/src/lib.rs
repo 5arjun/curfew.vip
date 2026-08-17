@@ -655,6 +655,24 @@ pub fn run() {
                     // startup sweep — the `database V2` catalogues load once,
                     // however many sessions get re-derived.
                     let dates = joiner::date_added::DateAddedIndex::live(&backfill_home);
+                    // Decision A: establish the go-forward baseline BEFORE the
+                    // sweep below, not merely soon after. The sweep clears
+                    // `synced_at` on every row whose derived output changed,
+                    // and `store::rows_pending_sync` withholds serato4 rows at
+                    // or below the baseline — so a sweep that runs first, on a
+                    // store with no baseline yet, would re-queue a DJ's whole
+                    // pre-signup history with the guard still unarmed. The
+                    // watch loop's first tick resolves the same baseline, but
+                    // it races this thread, and "usually first" is not a
+                    // guarantee worth a DJ's history. Persisting is monotonic,
+                    // so both call sites resolving at once is harmless.
+                    if let Some(source) = &backfill_plan.serato4 {
+                        if let Ok(serato4_conn) =
+                            joiner::serato4::open_read_only(&source.root, &source.db_path)
+                        {
+                            watcher::ensure_serato4_baseline(&conn, &serato4_conn);
+                        }
+                    }
                     backfill::reprocess_parse_failures(
                         &conn,
                         &backfill_plan,

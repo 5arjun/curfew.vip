@@ -1102,6 +1102,58 @@ fn start_fs_watch(
 /// immediately rather than waiting for the next pending re-check tick.
 /// `store_conn`/`pending` are `None`/unused when the local store could not be
 /// opened this run (detection still works; capture bookkeeping is skipped).
+/// The go-forward baseline for this Serato4 library (Decision A, fixed
+/// 2026-08-17): the stored watermark if this store has one, otherwise the
+/// library's current `max(history_session.id)`, persisted on the spot.
+/// `None` means unresolved — a store read failed, or the library's own max id
+/// could not be read — and every caller treats that as "do nothing this pass"
+/// rather than falling back to a value that would sweep the DJ's history.
+///
+/// **Why this exists.** `WatchState`'s watermark starts at 0, and
+/// `list_sessions_after(conn, 0)` means "every session Serato has ever
+/// recorded", so a freshly linked agent swept the DJ's whole history into the
+/// cloud: 485 sets and 17,337 plays going back five years on the first real
+/// install, against the 1 set actually played after signing up. Decision A is
+/// explicit that launch capture is go-forward only.
+///
+/// **Why the newest id, not a timestamp.** Ids are monotonic by insertion
+/// regardless of clock skew — the same reasoning `list_sessions_after`'s own
+/// doc gives for keying on id over `start_time`. The agent cannot know the
+/// subscription date directly (AD-8 is outbound-only; there is no cloud→agent
+/// channel), but Checkout is the first step of the corridor (PR #42), so a DJ
+/// pays before they can link and first-link is a faithful proxy — minutes off
+/// at worst.
+///
+/// Called from two places, deliberately: the watch loop's first tick, and
+/// startup before the backfill sweep runs (see `lib.rs`). The sweep can clear
+/// `synced_at` on historical rows, and [`crate::store::rows_pending_sync`]
+/// refuses to push serato4 rows at or below this baseline — so the baseline
+/// has to exist *before* the sweep, not merely soon after. Persisting is
+/// monotonic (`MAX()` in SQL), so the two call sites racing is harmless.
+pub(crate) fn ensure_serato4_baseline(
+    store_conn: &Connection,
+    serato4_conn: &Connection,
+) -> Option<i64> {
+    match crate::store::serato4_watermark(store_conn) {
+        Ok(Some(stored)) => Some(stored),
+        Ok(None) => {
+            let baseline = crate::parser::max_session_id(serato4_conn).ok()?;
+            log_store_err(
+                "set_serato4_watermark (first-run go-forward baseline)",
+                crate::store::set_serato4_watermark(store_conn, baseline),
+            );
+            Some(baseline)
+        }
+        Err(_e) => {
+            // A store read failure must never be the thing that re-imports a
+            // DJ's entire history.
+            #[cfg(debug_assertions)]
+            eprintln!("curfew-agent: could not read serato4 watermark: {_e}");
+            None
+        }
+    }
+}
+
 fn check_for_new_sessions(
     root: &Path,
     db_path: &Path,
@@ -1113,49 +1165,17 @@ fn check_for_new_sessions(
     let Ok(conn) = crate::joiner::serato4::open_read_only(root, db_path) else {
         return;
     };
-    // ─── Go-forward baseline (Decision A, fixed 2026-08-17) ──────────────
-    //
-    // `watermark` starts at 0 in `WatchState`, and `list_sessions_after(conn,
-    // 0)` means "every session Serato has ever recorded". A freshly linked
-    // agent therefore swept the DJ's whole history into the cloud — measured
-    // on the first real install: 485 sets and 17,337 plays going back five
-    // years, against 1 set actually played after signing up. Decision A is
-    // explicit that launch capture is go-forward only, and this is the line
-    // that broke it.
-    //
     // 0 is the "unresolved" sentinel, which is safe because SQLite AUTOINCREMENT
     // ids start at 1: a real watermark is never 0 except on a library that has
     // never logged a session, where baselining at 0 is also correct.
-    //
-    // The baseline is the CURRENT newest session id, not a timestamp: ids are
-    // monotonic by insertion regardless of clock skew, the same reasoning
-    // `list_sessions_after`'s own doc gives for keying on id over `start_time`.
-    // The agent cannot know the subscription date directly — AD-8 is
-    // outbound-only, there is no cloud→agent channel — but Checkout is now the
-    // first step of the corridor (PR #42), so a DJ pays before they can link
-    // and first-link is a faithful proxy, minutes off at worst.
     if *watermark == 0 {
         if let Some(store_conn) = store_conn {
-            match crate::store::serato4_watermark(store_conn) {
-                Ok(Some(stored)) => *watermark = stored,
-                Ok(None) => {
-                    if let Ok(baseline) = crate::parser::max_session_id(&conn) {
-                        *watermark = baseline;
-                        log_store_err(
-                            "set_serato4_watermark (first-run go-forward baseline)",
-                            crate::store::set_serato4_watermark(store_conn, baseline),
-                        );
-                    }
-                }
-                Err(_e) => {
-                    // Deliberately does NOT fall through to a 0 watermark: a
-                    // store read failure must not be the thing that re-imports
-                    // a DJ's entire history. Skip this tick; the next one
-                    // retries.
-                    #[cfg(debug_assertions)]
-                    eprintln!("curfew-agent: could not read serato4 watermark: {_e}");
-                    return;
-                }
+            match ensure_serato4_baseline(store_conn, &conn) {
+                Some(baseline) => *watermark = baseline,
+                // Unresolved: skip this tick rather than fall through to a 0
+                // watermark, which would list every session Serato ever
+                // recorded. The next tick retries.
+                None => return,
             }
         }
     }

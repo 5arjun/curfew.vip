@@ -715,15 +715,77 @@ pub fn rows_with_status(
 }
 
 /// Every `captured_sessions` row eligible for a sync attempt (Story 3.2, Task
-/// 3's read source): `status = 'captured' AND synced_at IS NULL`. A row that
-/// already synced, or is still `watching`/`incomplete`, never appears here.
+/// 3's read source): `status = 'captured' AND synced_at IS NULL`, minus any
+/// serato4 row at or below the go-forward baseline.
+///
+/// # The baseline guard (Decision A, 2026-08-17)
+///
+/// The watermark in [`crate::watcher`] governs **discovery** — which sessions
+/// get captured in the first place. That is one line of defence, and it only
+/// covers the path where a session is newly found. It does not cover a session
+/// already sitting in this store from before the go-forward rule was enforced,
+/// and those exist in the field: 965 pre-signup rows on the first real
+/// install, 491 of them `captured`.
+///
+/// Such a row is one cleared `synced_at` away from being pushed, and clearing
+/// `synced_at` is a *designed* behaviour, not a bug —
+/// `backfill::backfill_captured_serato4` re-derives every captured row on
+/// startup and re-queues any whose derived output changed, which is exactly
+/// how a shipped stat fix reaches old sessions. So any future build that
+/// changes derived output re-queues the DJ's entire history for upload, and no
+/// discovery-time watermark can stop it.
+///
+/// This is the second line of defence, placed at the single read source every
+/// sync path already goes through: a serato4 session at or below the baseline
+/// is never pushed, whatever put it in the queue. `<=` matches
+/// [`crate::parser::list_sessions_after`]'s own exclusive bound, so discovery
+/// and sync agree on which side of the line a session falls.
+///
+/// **An unresolved baseline does not filter.** If no baseline is stored yet,
+/// or the read fails, every pending row is returned exactly as before. The
+/// alternative — withholding rows until a baseline appears — would let a
+/// metadata read failure silently strand a DJ's real captures forever, which
+/// is a worse failure than the one this guards against. The baseline is
+/// established at startup before the backfill sweep can clear a single
+/// `synced_at` (see `watcher::ensure_serato4_baseline`), so the unresolved
+/// window is the first moments of a first run, when there is nothing
+/// historical to withhold anyway.
+///
+/// Legacy rows are never filtered: their identities are file-derived, carry no
+/// Serato session id, and have no ordering to compare a baseline against.
 pub fn rows_pending_sync(conn: &Connection) -> Result<Vec<CapturedSessionRow>, StoreError> {
     let mut stmt = conn.prepare(
         "SELECT * FROM captured_sessions WHERE status = 'captured' AND synced_at IS NULL",
     )?;
     let rows = stmt.query_map([], row_from)?;
-    rows.collect::<rusqlite::Result<Vec<_>>>()
-        .map_err(StoreError::from)
+    let rows = rows
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(StoreError::from)?;
+
+    let Ok(Some(baseline)) = serato4_watermark(conn) else {
+        return Ok(rows);
+    };
+
+    Ok(rows
+        .into_iter()
+        .filter(|row| match serato4_session_id_of(row) {
+            Some(id) => id > baseline,
+            None => true,
+        })
+        .collect())
+}
+
+/// This row's Serato session id, for rows that have one. Reads the identity
+/// (`serato4:<id>`) rather than the `raw_ref` path: the identity is the dedup
+/// key this store is built on and cannot drift, whereas a `raw_ref` carries a
+/// `master.sqlite` location that a drive remount can change.
+fn serato4_session_id_of(row: &CapturedSessionRow) -> Option<i64> {
+    if row.source != SessionSource::Serato4 {
+        return None;
+    }
+    row.session_identity
+        .strip_prefix("serato4:")
+        .and_then(|id| id.parse().ok())
 }
 
 /// Candidate rows for the capture-time "Serato 4 wins" dedup guard (Story
@@ -2102,6 +2164,99 @@ mod tests {
         let pending = rows_pending_sync(&conn).unwrap();
         assert_eq!(pending.len(), 1);
         assert_eq!(pending[0].session_identity, "serato4:31");
+    }
+
+    /// Decision A, second line of defence: a serato4 session at or below the
+    /// stored go-forward baseline is never handed to the sync path, however it
+    /// got back into the queue. The scenario is the real one — a pre-signup set
+    /// that already synced once, then had its `synced_at` cleared by a
+    /// `backfill_captured_serato4` sweep re-deriving it under a newer build.
+    #[test]
+    fn a_serato4_session_at_or_below_the_baseline_is_never_pushed() {
+        let file = TempStoreFile::new("pending-sync-baseline");
+        let conn = open_at(&file.0).expect("store opens");
+
+        for id in [40, 41, 42] {
+            upsert_captured(
+                &conn,
+                &format!("serato4:{id}"),
+                SessionSource::Serato4,
+                &format!("/path/master.sqlite#{id}"),
+                Some(1_000 * id),
+                Some(1_000 * id + 500),
+                &sample_plays(),
+                &sample_derived(),
+            )
+            .unwrap();
+        }
+        // A legacy row from the same era: never filtered, it carries no
+        // Serato session id to compare against.
+        upsert_captured(
+            &conn,
+            "legacy:2026-01-01-set",
+            SessionSource::Legacy,
+            "/path/History/Sessions/old.session",
+            Some(1_000),
+            Some(1_500),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+
+        // No baseline yet: nothing is withheld.
+        assert_eq!(rows_pending_sync(&conn).unwrap().len(), 4);
+
+        set_serato4_watermark(&conn, 41).unwrap();
+
+        let pending = rows_pending_sync(&conn).unwrap();
+        let identities: Vec<&str> = pending
+            .iter()
+            .map(|r| r.session_identity.as_str())
+            .collect();
+        assert_eq!(
+            identities.len(),
+            2,
+            "sessions 40 and 41 sit at or below the baseline and must not be pushed"
+        );
+        assert!(
+            identities.contains(&"serato4:42"),
+            "a session above the baseline is the DJ's real go-forward work and must still sync"
+        );
+        assert!(
+            identities.contains(&"legacy:2026-01-01-set"),
+            "a legacy row has no session id to compare and is never filtered by this guard"
+        );
+    }
+
+    /// The guard has to survive the exact sequence that motivates it: sync,
+    /// then a re-derivation clears `synced_at`, then the drain loop looks
+    /// again. Before the guard, that sequence re-uploaded the DJ's history.
+    #[test]
+    fn a_resynced_pre_baseline_row_stays_withheld() {
+        let file = TempStoreFile::new("pending-sync-resync");
+        let conn = open_at(&file.0).expect("store opens");
+
+        upsert_captured(
+            &conn,
+            "serato4:50",
+            SessionSource::Serato4,
+            "/path/master.sqlite#50",
+            Some(5_000),
+            Some(5_500),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+        set_serato4_watermark(&conn, 100).unwrap();
+        mark_synced(&conn, "serato4:50", 9_999).unwrap();
+
+        // A newer build re-derives it and re-queues the correction.
+        mark_for_resync(&conn, "serato4:50").unwrap();
+
+        assert!(
+            rows_pending_sync(&conn).unwrap().is_empty(),
+            "a cleared synced_at must not be enough to push a pre-baseline session"
+        );
     }
 
     /// Story 3.3 AC-1: a session captured with zero connectivity is
