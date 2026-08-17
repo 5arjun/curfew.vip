@@ -110,8 +110,25 @@ export default async function WelcomePage() {
               ↓
             </span>
           </span>
-          <span className="lp-ob-dl-sub">macOS · Windows — signed, updates itself</span>
+          <span className="lp-ob-dl-sub">macOS · Windows — updates itself</span>
         </a>
+
+        {/* The sub-label above used to read "signed, updates itself". Half of
+            that stopped being true on 2026-08-16, when Windows was ruled to
+            ship UNSIGNED (no Authenticode cert — see the Windows row in
+            pre-launch-services-checklist.md), so the word is gone. "Updates
+            itself" is still true on both: the Tauri updater keypair is
+            minisign, unrelated to Authenticode, so update payloads stay
+            verified either way.
+
+            An explanatory SmartScreen warning lived here briefly and was
+            REMOVED at Arjun's direction (2026-08-17): a Windows DJ can work
+            out "More info → Run anyway" unaided, and the note cost more room
+            than it bought. Deliberate product call, not an oversight — the
+            page now says nothing false, which was the actual defect. If it
+            ever comes back, do not OS-detect it: step 01 tells the DJ to
+            install "on the laptop you play from", which is often not the
+            device they are reading this on. */}
 
         {/* Skippable on purpose — the opposite of /phone-required. The
             dashboard's AgentStatusBanner keeps telling the story until an
