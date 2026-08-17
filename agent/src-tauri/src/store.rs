@@ -140,6 +140,49 @@ pub fn mark_identity_migration_done(conn: &Connection) -> Result<(), StoreError>
     Ok(())
 }
 
+/// The serato4 discovery watermark — the highest `history_session.id` this
+/// install has already seen (Decision A go-forward fix, 2026-08-17).
+const SERATO4_WATERMARK_KEY: &str = "serato4_watermark";
+
+/// Reads the persisted serato4 watermark. `None` means this install has never
+/// resolved one, which is the signal to baseline at the library's current
+/// newest session rather than at 0.
+///
+/// Persisted rather than held in memory for two independent reasons, both
+/// real bugs before this existed: the in-memory watermark started at 0 on
+/// every launch, so (a) a first launch swept the DJ's entire play history
+/// into the cloud, violating Decision A, and (b) every *subsequent* launch
+/// re-listed every session again, re-running capture over sets that were
+/// already captured. A malformed stored value degrades to `None` — a fresh
+/// baseline is a far safer failure than a re-import.
+pub fn serato4_watermark(conn: &Connection) -> Result<Option<i64>, StoreError> {
+    let stored: Option<String> = conn
+        .query_row(
+            "SELECT value FROM agent_meta WHERE key = ?1",
+            [SERATO4_WATERMARK_KEY],
+            |row| row.get(0),
+        )
+        .optional()?;
+    Ok(stored.and_then(|v| v.parse::<i64>().ok()))
+}
+
+/// Advances (or first sets) the persisted serato4 watermark.
+///
+/// Monotonic on purpose — `MAX(existing, incoming)` in SQL, not a plain
+/// overwrite. A watermark that could move backwards would re-open the exact
+/// hole this key was added to close: one pass reading a temporarily
+/// unreachable or partially-written library could otherwise reset the mark
+/// and re-import everything above it on the next tick.
+pub fn set_serato4_watermark(conn: &Connection, id: i64) -> Result<(), StoreError> {
+    conn.execute(
+        "INSERT INTO agent_meta (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value =
+           CAST(MAX(CAST(agent_meta.value AS INTEGER), CAST(excluded.value AS INTEGER)) AS TEXT)",
+        rusqlite::params![SERATO4_WATERMARK_KEY, id.to_string()],
+    )?;
+    Ok(())
+}
+
 /// Story 4.11 AC-6: the no-identity exclusion count from the MOST RECENT scan,
 /// plus the catalogue row count it was measured against. Reuses `agent_meta`
 /// (the same tiny key-value store `IDENTITY_V2_MIGRATED_KEY` already
@@ -1473,6 +1516,43 @@ mod tests {
     /// recounts the whole catalogue, so the same unidentifiable rows are seen
     /// again on every tick — an accumulating total would read k×272 after k
     /// scans in a 930-track library and could never be the "N tracks in your
+    /// The go-forward watermark must survive a restart — that persistence IS
+    /// the fix. An in-memory-only watermark restarted at 0, which both
+    /// re-imported the DJ's whole history and re-listed every session on every
+    /// later launch (Decision A, 2026-08-17).
+    #[test]
+    fn serato4_watermark_persists_and_only_ever_advances() {
+        let file = TempStoreFile::new("serato4-watermark");
+        let conn = open_at(&file.0).expect("store opens");
+
+        // Absent means "never baselined" — the signal to start at the
+        // library's newest session rather than at 0.
+        assert_eq!(serato4_watermark(&conn).expect("read"), None);
+
+        set_serato4_watermark(&conn, 492).expect("baseline");
+        assert_eq!(serato4_watermark(&conn).expect("read"), Some(492));
+
+        set_serato4_watermark(&conn, 495).expect("advance");
+        assert_eq!(serato4_watermark(&conn).expect("read"), Some(495));
+
+        // Monotonic: a lower value must NOT move it backwards. A pass that read
+        // a temporarily unreachable or half-written library could otherwise
+        // reset the mark and re-import everything above it on the next tick.
+        set_serato4_watermark(&conn, 3).expect("stale write");
+        assert_eq!(
+            serato4_watermark(&conn).expect("read"),
+            Some(495),
+            "the watermark must never move backwards"
+        );
+
+        let reopened = open_at(&file.0).expect("reopen");
+        assert_eq!(
+            serato4_watermark(&reopened).expect("read"),
+            Some(495),
+            "a restart must resume from the stored watermark, not from 0"
+        );
+    }
+
     /// library have no artist tag" gauge the disclosure needs.
     #[test]
     fn scan_identity_coverage_replaces_rather_than_accumulates_and_persists() {

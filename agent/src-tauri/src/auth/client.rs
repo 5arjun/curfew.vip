@@ -52,14 +52,24 @@ impl std::fmt::Display for AuthError {
 
 impl std::error::Error for AuthError {}
 
-/// The two JWT claims this agent ever reads. Extra fields are ignored by
+/// The JWT claims this agent ever reads. Extra fields are ignored by
 /// default (serde, no `#[serde(deny_unknown_fields)]`) — this agent never
 /// verifies the signature, so there's no reason to reject an otherwise-valid
 /// token over an unrecognized claim.
+///
+/// `email` is `Option` because it is the one claim here that is not
+/// guaranteed: Supabase omits it for a phone-only identity, and a token
+/// minted by a future provider need not carry it either. A missing email
+/// must degrade to "linked, identity not shown" — never to "not linked",
+/// which is what a non-optional field's decode failure would produce, since
+/// `decode_jwt_claims` would then reject the whole token and take `exp`/`sub`
+/// down with it (2026-08-17).
 #[derive(Debug, Deserialize)]
 struct JwtClaims {
     exp: i64,
     sub: String,
+    #[serde(default)]
+    email: Option<String>,
 }
 
 /// Decodes a Supabase-issued JWT's payload (middle, `.`-separated) segment
@@ -79,6 +89,19 @@ fn decode_jwt_claims(token: &str) -> Result<JwtClaims, AuthError> {
 /// outbound requests — no live caller exists yet in this story.
 pub fn current_dj_id(access_token: &str) -> Option<String> {
     decode_jwt_claims(access_token).ok().map(|c| c.sub)
+}
+
+/// The DJ's email, read off an access token's `email` claim — what the
+/// settings panel shows so a DJ can tell *which* account this install is
+/// filing sets into (2026-08-17). `None` for a malformed token or an identity
+/// that carries no email; the panel then says "linked" without naming an
+/// account rather than implying the link is missing.
+///
+/// Deliberately claim-reading, not a network call: this is display-only, it
+/// runs every time the panel opens, and an email good enough to recognize
+/// your own account does not justify a round trip or a token refresh.
+pub fn current_email(access_token: &str) -> Option<String> {
+    decode_jwt_claims(access_token).ok().and_then(|c| c.email)
 }
 
 /// The access token's `exp` claim, as a Unix epoch second count — what a
