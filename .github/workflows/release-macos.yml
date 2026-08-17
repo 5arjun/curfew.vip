@@ -10,8 +10,14 @@ name: Release macOS
 # — chosen over the Apple-ID + app-specific-password method because it has no
 # 2FA/password rotation to babysit in unattended CI.
 #
-# Required GitHub Actions secrets (not yet provisioned — see
-# pre-launch-services-checklist.md row 32):
+# Required GitHub Actions secrets — ALL PROVISIONED as of 2026-08-16, verified
+# again 2026-08-17 against `gh secret list`. (This block used to read "not yet
+# provisioned"; that went stale the day the secrets landed and made this
+# workflow look blocked when it was not. If you are here because a release
+# failed, the cause is not a missing secret — check the run log.)
+# TAURI_SIGNING_PRIVATE_KEY_PASSWORD is deliberately absent and must stay
+# absent: the keypair was generated with an empty password, and creating that
+# secret with any value breaks signing.
 #   APPLE_CERTIFICATE          - base64-encoded .p12 Developer ID Application cert
 #   APPLE_CERTIFICATE_PASSWORD - the .p12 export password
 #   APPLE_SIGNING_IDENTITY     - e.g. "Developer ID Application: <Name> (<TEAMID>)"
