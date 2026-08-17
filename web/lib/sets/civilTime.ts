@@ -39,11 +39,22 @@ export type Civil = {
  * Keyed on the zone string, which is also how an invalid zone is remembered:
  * see `formatterFor`.
  */
-const formatters = new Map<string, Intl.DateTimeFormat>();
+const formatters = new Map<string, { formatter: Intl.DateTimeFormat; usable: boolean }>();
+
+/**
+ * The cache is bounded because its key is remote input. `derived.timezone`
+ * arrives from an agent on a machine we do not control, this module lives for
+ * the whole life of a long-running server process, and an unusable zone is
+ * cached too (that is how we remember not to re-try it). A buggy or hostile
+ * agent sending a distinct zone per set would otherwise grow this map without
+ * limit. Past the cap we stop caching and simply pay the construction cost —
+ * slower, never unbounded. Real deployments hold a handful of zones.
+ */
+const MAX_CACHED_FORMATTERS = 64;
 
 /**
  * A formatter pinned to `zone`, or the UTC one if `zone` is not a zone this
- * runtime knows.
+ * runtime knows, plus whether `zone` was usable at all.
  *
  * Degrading rather than throwing is deliberate and matches the house posture
  * everywhere else in this directory (`getObservationStart`, `hasRenderableDerived`):
@@ -51,6 +62,13 @@ const formatters = new Map<string, Intl.DateTimeFormat>();
  * garbage value must render a dashboard, not a 500. `Intl.DateTimeFormat`
  * throws `RangeError` on an unknown IANA name, and an agent from a machine with
  * a corrupt tzdata could produce one.
+ *
+ * **The `usable` flag is the half that was missing** (code review, 2026-08-17).
+ * Degrading quietly inside this module told the rest of the app nothing, so
+ * `resolveSetZone` reported a garbage zone as `source: "set"` — a real captured
+ * answer — while every value derived from it was silently UTC, and
+ * `countZoneFallbacks` said zero. A degradation that is not counted is the
+ * silent guess AC-4 forbids.
  *
  * Note `"en-US"` rather than `[]`: the locale is pinned because a floating
  * locale is the *other* live date defect in this codebase (the
@@ -60,29 +78,61 @@ const formatters = new Map<string, Intl.DateTimeFormat>();
  * weekday NAME — so the locale cannot leak into any value this module returns.
  * Pinning it means this file can never become a second instance of that bug.
  */
-function formatterFor(zone: string): Intl.DateTimeFormat {
+function entryFor(zone: string): { formatter: Intl.DateTimeFormat; usable: boolean } {
   const cached = formatters.get(zone);
   if (cached) return cached;
 
-  let formatter: Intl.DateTimeFormat;
+  let entry: { formatter: Intl.DateTimeFormat; usable: boolean };
   try {
-    formatter = new Intl.DateTimeFormat("en-US", {
-      timeZone: zone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hourCycle: "h23",
-    });
+    entry = {
+      formatter: new Intl.DateTimeFormat("en-US", {
+        timeZone: zone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      }),
+      usable: true,
+    };
   } catch {
     if (process.env.NODE_ENV !== "production") {
       console.error(`[civilTime] unknown time zone ${JSON.stringify(zone)} — falling back to UTC`);
     }
-    formatter = zone === FALLBACK_ZONE ? throwingUtcFallback() : formatterFor(FALLBACK_ZONE);
+    entry = {
+      formatter: zone === FALLBACK_ZONE ? throwingUtcFallback() : entryFor(FALLBACK_ZONE).formatter,
+      usable: false,
+    };
   }
-  formatters.set(zone, formatter);
-  return formatter;
+  if (formatters.size < MAX_CACHED_FORMATTERS) formatters.set(zone, entry);
+  return entry;
+}
+
+function formatterFor(zone: string): Intl.DateTimeFormat {
+  return entryFor(zone).formatter;
+}
+
+/**
+ * Whether this runtime can actually resolve `zone` — i.e. whether handing it to
+ * `Intl` or to a `toLocale*` call is safe.
+ *
+ * Exported because the degradation cannot live only in this module: `format.ts`
+ * and `listModel.ts` pass a zone into `toLocaleDateString`/`toLocaleTimeString`
+ * for the locale-shaped NAMES this file deliberately refuses to read, and those
+ * throw `RangeError` on an unknown zone. That is a 500 on the dashboard rather
+ * than a wrong bucket, and it is reachable: `normalizeTimezone` at signup is a
+ * shape check, not a membership check, so an authenticated DJ can persist
+ * `"Mars/Olympus_Mons"` on their own `djs` row and have no UI left to clear it.
+ */
+export function isUsableZone(zone: string | null | undefined): boolean {
+  return typeof zone === "string" && zone !== "" && entryFor(zone).usable;
+}
+
+/** `zone` if this runtime knows it, else {@link FALLBACK_ZONE}. The guard every
+ *  `toLocale*` call site outside this module needs. */
+export function usableZoneOr(zone: string, fallback: string = FALLBACK_ZONE): string {
+  return isUsableZone(zone) ? zone : fallback;
 }
 
 /** Unreachable in practice — every runtime knows "UTC". Present so the
@@ -108,7 +158,11 @@ function throwingUtcFallback(): Intl.DateTimeFormat {
  * one of.
  */
 export function civilInZone(ms: number, zone: string): Civil | null {
-  if (!Number.isFinite(ms)) return null;
+  // `Number.isFinite` alone is not the guard it looks like: `isFinite(1e16)` is
+  // true, `new Date(1e16)` is an Invalid Date, and `formatToParts` then throws
+  // `RangeError: Invalid time value` — from a function whose contract is to
+  // return `null`. ±8.64e15 ms is ECMA-262's whole representable range.
+  if (!Number.isFinite(ms) || Math.abs(ms) > 8.64e15) return null;
   const parts = formatterFor(zone).formatToParts(new Date(ms));
   const read = (type: Intl.DateTimeFormatPartTypes): number => {
     const part = parts.find((p) => p.type === type);
@@ -199,17 +253,51 @@ export function zoneOffsetMs(ms: number, zone: string): number {
 /**
  * The first instant of a civil month in `zone`, as epoch ms.
  *
- * Two passes, which is not defensiveness: the offset must be looked up *at* the
- * instant being computed, but you need the instant to look up the offset. Guess
- * with the offset at the naive UTC position, correct once with the offset at
- * the guessed position. One correction always converges — offsets move by at
- * most a couple of hours and a month boundary is never that close to a DST
- * transition (transitions happen at 01:00–03:00 local on a Sunday).
+ * The offset must be looked up *at* the instant being computed, but you need
+ * the instant to look up the offset. So: guess with the offset at the naive UTC
+ * position, correct with the offset at the guessed position, and then **check**
+ * — do not assume the correction landed.
+ *
+ * An earlier version returned the corrected guess unchecked, on the stated
+ * grounds that "a month boundary is never that close to a DST transition
+ * (transitions happen at 01:00–03:00 local on a Sunday)". That is simply not
+ * true: Havana, Santiago, Asunción, Tehran and Beirut all transition at
+ * 00:00/24:00 local, which is exactly a month boundary when it falls on the
+ * 1st. Measured against real tzdata, the unchecked version returned
+ * **2023-09-30 23:00** for `(2023, 10, "America/Asuncion")` — an instant in the
+ * previous month, from a function named for the start of this one.
+ *
+ * When the clock jumps forward across midnight there is no such instant as
+ * civil midnight that day, so neither candidate reads back as the target. The
+ * later one is the moment the jump happens, i.e. the first instant of that
+ * civil day that exists — the same answer `Temporal`'s `compatible`
+ * disambiguation gives, and the one that keeps `civilMonthEndMs` from
+ * overlapping the month before it.
  */
 export function civilMonthStartMs(year: number, month: number, zone: string): number {
   const naive = Date.UTC(year, month - 1, 1);
   const guess = naive - zoneOffsetMs(naive, zone);
-  return naive - zoneOffsetMs(guess, zone);
+  const corrected = naive - zoneOffsetMs(guess, zone);
+
+  const isTargetMidnight = (ms: number): boolean => {
+    const c = civilInZone(ms, zone);
+    return (
+      c !== null &&
+      c.year === year &&
+      c.month === month &&
+      c.day === 1 &&
+      c.hour === 0 &&
+      c.minute === 0
+    );
+  };
+
+  // Earliest first: in a fall-back overlap civil midnight happens twice, and the
+  // first occurrence is the month's start.
+  const earlier = Math.min(guess, corrected);
+  const later = Math.max(guess, corrected);
+  if (isTargetMidnight(earlier)) return earlier;
+  if (isTargetMidnight(later)) return later;
+  return later;
 }
 
 /**
@@ -263,13 +351,22 @@ export type ResolvedZone = { zone: string; source: ZoneSource };
  *
  * What is forbidden is guessing *silently*: a fallback is counted (see
  * {@link countZoneFallbacks}) so a caller can say so.
+ *
+ * **Usable, not merely present** (code review, 2026-08-17). Each step tests
+ * {@link isUsableZone}, not truthiness. A truthy-but-unresolvable zone — `" "`,
+ * `"UTC+5"`, a name from a tzdata release this runtime does not have — used to
+ * win the chain and be reported as `source: "set"`, while `formatterFor`
+ * quietly substituted UTC underneath it. The number the UI would have shown was
+ * therefore a claim that every set was bucketed on its own captured zone, at
+ * the exact moment none of them were. A zone we cannot resolve is not an
+ * answer, and it falls through to the next step like any other absence.
  */
 export function resolveSetZone(
   setTimezone: string | null | undefined,
   djTimezone: string | null | undefined,
 ): ResolvedZone {
-  if (setTimezone) return { zone: setTimezone, source: "set" };
-  if (djTimezone) return { zone: djTimezone, source: "dj" };
+  if (isUsableZone(setTimezone)) return { zone: setTimezone as string, source: "set" };
+  if (isUsableZone(djTimezone)) return { zone: djTimezone as string, source: "dj" };
   return { zone: FALLBACK_ZONE, source: "fallback" };
 }
 

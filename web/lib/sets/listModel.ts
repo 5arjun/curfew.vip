@@ -13,7 +13,7 @@ import {
   topGenres,
 } from "./format";
 import { HERO_MIN_TRACKS } from "./hero";
-import { localDayKey as dayKeyInZone, zoneForSet } from "./civilTime";
+import { localDayKey as dayKeyInZone, usableZoneOr, zoneForSet } from "./civilTime";
 import type { SetRecord, SyncPlay } from "./types";
 
 export interface SetTrack {
@@ -165,7 +165,12 @@ export function buildSetRows(sets: SetRecord[], djTimezone: string | null = null
             month: "long",
             day: "numeric",
             year: "numeric",
-            timeZone: zone,
+            // Guarded: `Intl` throws `RangeError` on a zone it cannot resolve,
+            // and this runs in a Server Component — an unguarded throw is a
+            // blank dashboard, not a missing search term (code review,
+            // 2026-08-17). `format.ts` carries the same guard for the same
+            // reason.
+            timeZone: usableZoneOr(zone),
           })
         : "";
     const names = set.plays.flatMap((p) => [p.title ?? "", p.artist ?? ""]);

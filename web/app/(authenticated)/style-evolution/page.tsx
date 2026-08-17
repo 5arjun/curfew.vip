@@ -1,4 +1,4 @@
-import { getRecentSets } from "@/lib/sets";
+import { getDjTimezone, getRecentSets } from "@/lib/sets";
 import { buildStyleEvolution } from "@/lib/sets/styleEvolution";
 import { SilkBackdrop } from "@/app/components/dashboard/SilkBackdrop";
 import { StyleEvolutionView } from "@/app/components/style-evolution/StyleEvolutionView";
@@ -22,9 +22,17 @@ import { StyleEvolutionView } from "@/app/components/style-evolution/StyleEvolut
 // summary tiles, which are aggregate and read honestly off a single set.
 // `StyleEvolutionView` now always renders; the narrower gate lives inside it,
 // scoped to the three trend sections only.
+// Story 7.7 code review (2026-08-17): this page was the ONE bucketing surface
+// that never fetched `djs.timezone`. `buildStyleEvolution`'s `djTimezone`
+// defaults to `null` so a fixture-backed test can omit it, which is also why
+// the omission typechecked and why the UTC-pinned suite stayed green — a DJ on
+// a pre-7.7 agent still had their 11pm New Year's Eve gig filed under January
+// here, on the one page whose whole subject is month-over-month movement.
+// `Promise.all` rather than two awaits: the two reads are independent, and this
+// is the shape every other converted page uses.
 export default async function StyleEvolutionPage() {
-  const sets = await getRecentSets();
-  const model = buildStyleEvolution(sets);
+  const [sets, djTimezone] = await Promise.all([getRecentSets(), getDjTimezone()]);
+  const model = buildStyleEvolution(sets, djTimezone);
 
   return (
     <main className="se">

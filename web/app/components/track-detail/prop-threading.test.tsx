@@ -347,3 +347,65 @@ describe("day labels render server-side, in the DJ's own zone (Story 7.7)", () =
     expect(tokyo).toContain("Tue, Jun 2");
   });
 });
+
+/* ── Restored by the Story 7.7 code review (2026-08-17) ──────────────────────
+   These two blocks were removed alongside the D-32 placeholder assertions when
+   this file was rewritten for Story 7.7. They assert nothing about zones or
+   about server-vs-client rendering — they are Story 4.10's cold-start (D-38)
+   and reveal (D-34) guarantees, and this is the only file in `web/` that
+   renders `TrackDetail`, so deleting them left that behaviour with no
+   component-level coverage anywhere. Restored verbatim apart from the
+   `djTimezone` prop the component now requires. */
+
+describe("the cold start is a designed state, not four empty modules (D-38)", () => {
+  it("renders identity, the add date and one honest line for an owned, unplayed track", () => {
+    const html = renderToStaticMarkup(
+      <TrackDetail plays={[]} roster={ROSTER} neighbourRows={[]} djTimezone={null} />,
+    );
+    expect(html).toContain("Deep End");
+    expect(html).toContain("In your library, not played yet");
+    // NEGATIVE CONTROL: none of the four play-side modules render at all.
+    expect(html).not.toContain("Play history");
+    expect(html).not.toContain("Ride time");
+    expect(html).not.toContain("Mix neighbours");
+  });
+
+  it("says so when a played track is no longer in the library sync", () => {
+    const html = renderToStaticMarkup(
+      <TrackDetail plays={[record({})]} roster={null} neighbourRows={[]} djTimezone={null} />,
+    );
+    expect(html).toContain("not in your current library sync");
+  });
+
+  // NEGATIVE CONTROL for the line above.
+  it("stays silent about the roster when the track is in it", () => {
+    const html = renderToStaticMarkup(
+      <TrackDetail plays={[record({})]} roster={ROSTER} neighbourRows={[]} djTimezone={null} />,
+    );
+    expect(html).not.toContain("not in your current library sync");
+  });
+});
+
+describe("AC-12's reveal is wired on this surface too (D-34)", () => {
+  it("renders the reveal control when a play sits in a short set, and hides that play", () => {
+    const html = renderToStaticMarkup(
+      <TrackDetail
+        plays={[record({}), record({ setId: "soundcheck", trackCount: 2 })]}
+        roster={ROSTER}
+        neighbourRows={[]}
+        djTimezone={null}
+      />,
+    );
+    expect(html).toContain("short or low-confidence");
+    // One play surviving, not two — the soundcheck is excluded by default.
+    expect(html).toContain("Played 1 time across 1 set");
+  });
+
+  // NEGATIVE CONTROL: no control at all when the predicate hides nothing.
+  it("renders no reveal control when every set clears the predicate", () => {
+    const html = renderToStaticMarkup(
+      <TrackDetail plays={[record({})]} roster={ROSTER} neighbourRows={[]} djTimezone={null} />,
+    );
+    expect(html).not.toContain("short or low-confidence");
+  });
+});

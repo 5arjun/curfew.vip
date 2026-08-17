@@ -806,24 +806,6 @@ pub fn session_bounds(plays: &[CapturedPlay]) -> (Option<i64>, Option<i64>) {
     (started, ended)
 }
 
-/// The shared per-play assembly logic both source paths converge on: embedded-
-/// tag fallback has already run by the time this is called, so from here it is
-/// `enrich_session` -> `resolve_played_ms` -> every stat function ->
-/// `confidence::classify` -> the local DTOs, written once rather than
-/// duplicated per source. `set_end` is the session's own resolved end time
-/// (serato4 `history_session.end_time`), the last-resort played-duration bound
-/// for a final play with no per-play end; `None` where the source has no such
-/// record (legacy).
-///
-/// `pub` only so out-of-tree tooling can reuse the exact production assembly
-/// rather than reimplementing it: the demo-account generator
-/// (`examples/demo_set_generator.rs`, demo-account-spec §4.1) builds synthetic
-/// `(Play, JoinedMetadata)` pairs and needs the same stats, the same
-/// `confidence::classify`, and above all the same `segments::detect` the
-/// product would run — the rule `supabase/scripts/generate-seed.mjs` already
-/// follows for segments ("call the Rust detector, never reimplement it"). It
-/// is a pure function of its arguments with no store or IO reachable from it,
-/// so widening its visibility adds no new call-path into the agent's state.
 /// The single effectful time-zone read in the agent (Story 7.7). Call it at the
 /// edge — the watcher's capture handler, the backfill sweep — and thread the
 /// result down through [`build_serato4`]/[`build_legacy`] into [`assemble`].
@@ -850,6 +832,28 @@ pub fn local_timezone() -> Option<String> {
     }
 }
 
+/// The shared per-play assembly logic both source paths converge on: embedded-
+/// tag fallback has already run by the time this is called, so from here it is
+/// `enrich_session` -> `resolve_played_ms` -> every stat function ->
+/// `confidence::classify` -> the local DTOs, written once rather than
+/// duplicated per source. `set_end` is the session's own resolved end time
+/// (serato4 `history_session.end_time`), the last-resort played-duration bound
+/// for a final play with no per-play end; `None` where the source has no such
+/// record (legacy).
+///
+/// `pub` only so out-of-tree tooling can reuse the exact production assembly
+/// rather than reimplementing it: the demo-account generator
+/// (`examples/demo_set_generator.rs`, demo-account-spec §4.1) builds synthetic
+/// `(Play, JoinedMetadata)` pairs and needs the same stats, the same
+/// `confidence::classify`, and above all the same `segments::detect` the
+/// product would run — the rule `supabase/scripts/generate-seed.mjs` already
+/// follows for segments ("call the Rust detector, never reimplement it"). It
+/// is a pure function of its arguments with no store or IO reachable from it,
+/// so widening its visibility adds no new call-path into the agent's state.
+///
+/// `timezone` is the DJ's IANA zone at capture time, read by
+/// [`local_timezone`] at the effectful edge and passed IN precisely so this
+/// function keeps that purity.
 pub fn assemble(
     pairs: &[(Play, JoinedMetadata)],
     set_end: Option<i64>,

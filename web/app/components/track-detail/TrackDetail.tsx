@@ -237,7 +237,12 @@ function TrackBody({
   /** The DJ's fallback zone (Story 7.7); a set's own captured zone wins. */
   djTimezone: string | null;
 }) {
-  const djZone = djTimezone ?? FALLBACK_ZONE;
+  // No `djZone` here any more: every date this component renders now carries
+  // the zone of the SET it belongs to. First/last played used to fall straight
+  // to the DJ's zone even though `buildTrackHistory` had the set's in hand,
+  // which dated the same play differently from the per-set row beneath it
+  // (code review, 2026-08-17). `TrackTags`'s library add date keeps `djZone`
+  // deliberately — an add has no gig and so no set zone to inherit.
   const history = buildTrackHistory(plays, djTimezone);
   const clock = buildClockStrip(plays, djTimezone);
   const rideTime = buildRideTime(plays);
@@ -285,7 +290,7 @@ function TrackBody({
                 {history.firstPlayedMs === null ? (
                   "—"
                 ) : (
-                  <ClientDayDate ms={history.firstPlayedMs} zone={djZone} />
+                  <ClientDayDate ms={history.firstPlayedMs} zone={history.firstPlayedZone} />
                 )}
               </span>
               <span>
@@ -293,7 +298,7 @@ function TrackBody({
                 {history.lastPlayedMs === null ? (
                   "—"
                 ) : (
-                  <ClientDayDate ms={history.lastPlayedMs} zone={djZone} />
+                  <ClientDayDate ms={history.lastPlayedMs} zone={history.lastPlayedZone} />
                 )}
               </span>
             </p>

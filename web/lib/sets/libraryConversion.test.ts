@@ -28,6 +28,7 @@ import {
   type LibraryAddEvent,
   type LibraryConversionModel,
 } from "./libraryConversion";
+import { civilMonthEndMs, zoneOffsetMs } from "./civilTime";
 
 /** The default (60-day) series — what every test below reads unless it is
  *  specifically about the D-13 window toggle. */
@@ -43,10 +44,31 @@ import type { SetRecord, SyncPlay } from "./types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Local-time ISO for a given local calendar moment — these tests are about
- *  LOCAL month bucketing, so they must not hand in UTC strings and hope. */
+/**
+ * A civil moment in an EXPLICIT zone, as an ISO instant.
+ *
+ * This used to be `new Date(y, m - 1, d, h)` — the process's zone — which was
+ * silently correct only because `vitest.config.ts:18` pins `TZ=UTC`. Story 7.7
+ * gave `buildLibraryConversion`/`isCohortComplete` an explicit `zone`
+ * parameter, so the code stopped reading the process zone while these
+ * expectations went on constructing themselves in it. Measured at the 7.7 code
+ * review: with the pin removed under `TZ=Pacific/Kiritimati` this file went
+ * from 94/94 to 10 failures — the pin was the only thing holding it together,
+ * which is exactly the trap the story's "The TZ pin" section warned about.
+ *
+ * `zone` defaults to UTC because that is what the builders default to; the
+ * point is that both sides now name it rather than inheriting it (AC-7).
+ */
+const UTC = "UTC";
+
+function isoIn(zone: string, y: number, m: number, d: number, h = 12): string {
+  // Build the naive UTC instant, then correct by the zone's offset there.
+  const naive = Date.UTC(y, m - 1, d, h);
+  return new Date(naive - zoneOffsetMs(naive, zone)).toISOString();
+}
+
 function localIso(y: number, m: number, d: number, h = 12): string {
-  return new Date(y, m - 1, d, h).toISOString();
+  return isoIn(UTC, y, m, d, h);
 }
 
 function play(overrides: Partial<SyncPlay>): SyncPlay {
@@ -92,7 +114,7 @@ function added(trackId: string, iso: string | null): LibraryAddEvent {
 }
 
 /** Well past every cohort used below, so nothing is pending unless a test says so. */
-const NOW = new Date(2027, 5, 1).getTime();
+const NOW = Date.UTC(2027, 5, 1);
 
 describe("cohort bucketing", () => {
   it("buckets add-events by the LOCAL month they were added", () => {
@@ -144,7 +166,7 @@ describe("cohort bucketing", () => {
 });
 
 describe("the conversion window (D-8; scale unified with the live meter, Story 4.7 AC-3)", () => {
-  const addedMs = new Date(2026, 0, 1).getTime();
+  const addedMs = Date.UTC(2026, 0, 1);
 
   it("counts a play on day 59 and on day 60 (the default window), but not day 61", () => {
     expect(convertedWithinWindow(addedMs, addedMs + 59 * DAY_MS)).toBe(true);
@@ -217,17 +239,17 @@ describe("the conversion window (D-8; scale unified with the live meter, Story 4
 describe("cohort-recency honesty (D-9)", () => {
   it("measures completeness from the END of the month, not its start", () => {
     // A track added March 31st has not had its 60 days until ~May 30th.
-    const marchEndPlus60 = new Date(2026, 2, 31, 23, 59, 59, 999).getTime() + 60 * DAY_MS;
+    const marchEndPlus60 = Date.UTC(2026, 2, 31, 23, 59, 59, 999) + 60 * DAY_MS;
     expect(isCohortComplete("2026-03", marchEndPlus60 - 1, 60)).toBe(false);
     expect(isCohortComplete("2026-03", marchEndPlus60, 60)).toBe(true);
     // The naive "start of month + 60d" reading would have called it complete
     // here, scoring every late-March purchase a failure it never had time to
     // avoid.
-    expect(isCohortComplete("2026-03", new Date(2026, 2, 1).getTime() + 60 * DAY_MS, 60)).toBe(false);
+    expect(isCohortComplete("2026-03", Date.UTC(2026, 2, 1) + 60 * DAY_MS, 60)).toBe(false);
   });
 
   it("omits a still-converting cohort entirely rather than plotting it low", () => {
-    const now = new Date(2026, 4, 15).getTime(); // mid-May
+    const now = Date.UTC(2026, 4, 15); // mid-May
     const model = buildLibraryConversion(
       [added("old", localIso(2025, 6, 1)), added("recent", localIso(2026, 4, 1))],
       [],
@@ -240,7 +262,7 @@ describe("cohort-recency honesty (D-9)", () => {
   });
 
   it("discloses pending cohorts rather than letting the line just stop", () => {
-    const now = new Date(2026, 4, 15).getTime();
+    const now = Date.UTC(2026, 4, 15);
     const model = buildLibraryConversion(
       [added("a", localIso(2026, 3, 1)), added("b", localIso(2026, 4, 1))],
       [],
@@ -286,7 +308,7 @@ describe("unknown-add-date disclosure (D-10 / AC-7)", () => {
   });
 
   it("joins both disclosures when both apply", () => {
-    const now = new Date(2026, 4, 15).getTime();
+    const now = Date.UTC(2026, 4, 15);
     const model = buildLibraryConversion(
       [added("a", null), added("b", localIso(2026, 4, 1))],
       [],
@@ -310,7 +332,7 @@ describe("empty and insufficient states (AC-3)", () => {
   });
 
   it("needs two COMPLETED cohorts, not two months of add-events", () => {
-    const now = new Date(2026, 4, 15).getTime();
+    const now = Date.UTC(2026, 4, 15);
     const oneComplete = buildLibraryConversion(
       [added("a", localIso(2025, 12, 1)), added("b", localIso(2026, 4, 1))],
       [],
@@ -420,7 +442,7 @@ describe("the chart summary (AC-2)", () => {
       "No library additions tracked yet.",
     );
 
-    const now = new Date(2026, 4, 15).getTime();
+    const now = Date.UTC(2026, 4, 15);
     expect(
       libraryConversionSummary(buildLibraryConversion([added("a", localIso(2026, 4, 1))], [], now), DEFAULT_CONVERSION_WINDOW),
     ).toBe("No cohorts have finished their 60-day window yet.");
@@ -478,7 +500,7 @@ describe("the conversion-window toggle (D-13; scale unified with the live meter,
   });
 
   it("a shorter window completes MORE cohorts, so the line reaches closer to today", () => {
-    const now = new Date(2026, 3, 20).getTime(); // April 20
+    const now = Date.UTC(2026, 3, 20); // April 20
     const model = buildLibraryConversion(
       [
         added("jan", localIso(2026, 1, 10)),
@@ -516,14 +538,14 @@ describe("the conversion-window toggle (D-13; scale unified with the live meter,
     // May 5 — inside BOTH the 60-day and the 14-day window still measured
     // from April's month-end (~Jun 29 and ~May 14 respectively), so the
     // April cohort is genuinely pending under either selection.
-    const now = new Date(2026, 4, 5).getTime();
+    const now = Date.UTC(2026, 4, 5);
     const model = buildLibraryConversion([added("a", localIso(2026, 4, 1))], [], now);
     expect(disclosureFor(model, 60)).toContain("60-day window");
     expect(disclosureFor(model, 14)).toContain("14-day window");
   });
 
   it("gates insufficient-history per window, not globally", () => {
-    const now = new Date(2026, 3, 20).getTime(); // April 20
+    const now = Date.UTC(2026, 3, 20); // April 20
     const model = buildLibraryConversion(
       [added("jan", localIso(2026, 1, 10)), added("feb", localIso(2026, 2, 10))],
       [],
@@ -576,7 +598,7 @@ describe("live conversion rate (Story 4.3, Decision E-1, AC-1/AC-3/AC-4)", () =>
   });
 
   it("excludes a track added outside the trailing window", () => {
-    const now = new Date(2026, 5, 1).getTime();
+    const now = Date.UTC(2026, 5, 1);
     const tooOld = now - 61 * DAY_MS;
 
     const rate = buildLiveConversionRate([added("t", new Date(tooOld).toISOString())], [], now, 60);
@@ -585,7 +607,7 @@ describe("live conversion rate (Story 4.3, Decision E-1, AC-1/AC-3/AC-4)", () =>
   });
 
   it("excludes an undated track from the denominator AND counts it in noAddDateCount (AC-4)", () => {
-    const now = new Date(2026, 5, 1).getTime();
+    const now = Date.UTC(2026, 5, 1);
 
     const rate = buildLiveConversionRate(
       [added("dated", localIso(2026, 4, 20)), added("undated", null)],
@@ -599,7 +621,7 @@ describe("live conversion rate (Story 4.3, Decision E-1, AC-1/AC-3/AC-4)", () =>
   });
 
   it("window-boundary: counts a track added exactly `window` days ago, excludes one day further back", () => {
-    const now = new Date(2026, 5, 1).getTime();
+    const now = Date.UTC(2026, 5, 1);
     const onBoundary = new Date(now - 60 * DAY_MS).toISOString();
     const pastBoundary = new Date(now - 61 * DAY_MS).toISOString();
 
@@ -653,7 +675,7 @@ describe("live conversion rate (Story 4.3, Decision E-1, AC-1/AC-3/AC-4)", () =>
   });
 
   it("flags low confidence below LOW_CONFIDENCE_COHORT_SIZE, reusing the cohort model's threshold", () => {
-    const now = new Date(2026, 5, 1).getTime();
+    const now = Date.UTC(2026, 5, 1);
     const events = Array.from({ length: LOW_CONFIDENCE_COHORT_SIZE - 1 }, (_, i) =>
       added(`t${i}`, localIso(2026, 4, 20)),
     );
@@ -666,7 +688,7 @@ describe("live conversion rate (Story 4.3, Decision E-1, AC-1/AC-3/AC-4)", () =>
   });
 
   it("reuses undatedDisclosure for its own copy, with pendingCohortCount forced to 0", () => {
-    const now = new Date(2026, 5, 1).getTime();
+    const now = Date.UTC(2026, 5, 1);
     const rate = buildLiveConversionRate([added("dated", localIso(2026, 4, 20)), added("undated", null)], [], now, 60);
 
     expect(undatedDisclosure({ noAddDateCount: rate.noAddDateCount, pendingCohortCount: 0 }, rate.window)).toBe(
@@ -1183,5 +1205,58 @@ describe("time-to-first-play summary (AC-2, AC-3, AC-4)", () => {
     const summary = timeToFirstPlaySummary(modelWith(5, 3));
     expect(summary).toContain("an average of 3 days");
     expect(summary).toContain("early read");
+  });
+});
+
+/* ── AC-7: zone-explicit by construction (added by the 7.7 code review) ──────
+   Story 7.7 threaded a `zone` parameter through `monthEndMs` (the cohort
+   clock) and the cohort month itself, but nothing in this file ever passed a
+   non-UTC one — so both conversions were asserted only at UTC, where they are
+   indistinguishable from the process-zone code they replaced. These tests pass
+   a zone IN, and each turns on a case that has a different answer in two
+   zones. */
+
+describe("cohort bucketing is zone-explicit (Story 7.7, AC-7)", () => {
+  // 2026-06-30 23:00 in New York is 2026-07-01 03:00 UTC: one instant, two
+  // civil months. The DJ downloaded it in June.
+  const lateJuneNight = "2026-07-01T03:00:00.000Z";
+
+  it("buckets an add-event into the DJ's civil month, not the process's", () => {
+    const ny = buildLibraryConversion(
+      [added("a", lateJuneNight)],
+      [],
+      NOW,
+      undefined,
+      "America/New_York",
+    );
+    const utc = buildLibraryConversion([added("a", lateJuneNight)], [], NOW);
+
+    expect(at(ny).cohorts.map((c) => c.bucket)).toEqual(["2026-06"]);
+    expect(at(utc).cohorts.map((c) => c.bucket)).toEqual(["2026-07"]);
+  });
+
+  it("ends a cohort month at local midnight, so the completion clock moves with the zone", () => {
+    // July 2026 ends at 00:00 Aug 1 local. New York is UTC-4 that day, so its
+    // month-end instant is four hours LATER than UTC's.
+    const utcEnd = civilMonthEndMs(2026, 7, UTC);
+    const nyEnd = civilMonthEndMs(2026, 7, "America/New_York");
+    expect(nyEnd - utcEnd).toBe(4 * 60 * 60 * 1000);
+  });
+
+  it("holds across a DST transition — the reason Decision 1 chose a zone name over an offset", () => {
+    // March 2026 ends after the US spring-forward (Mar 8), November's after the
+    // fall-back (Nov 1). If the code carried a fixed offset instead of a zone,
+    // these two would differ from UTC by the same amount; they do not.
+    const marchGap = civilMonthEndMs(2026, 3, "America/New_York") - civilMonthEndMs(2026, 3, UTC);
+    const novGap = civilMonthEndMs(2026, 11, "America/New_York") - civilMonthEndMs(2026, 11, UTC);
+    expect(marchGap).toBe(4 * 60 * 60 * 1000); // EDT
+    expect(novGap).toBe(5 * 60 * 60 * 1000); // EST
+  });
+
+  it("a cohort that is complete in UTC can still be running for the DJ", () => {
+    // 60 days past UTC's end-of-July, but not yet past New York's.
+    const justPastUtc = civilMonthEndMs(2026, 7, UTC) + 60 * DAY_MS + 1;
+    expect(isCohortComplete("2026-07", justPastUtc, 60, UTC)).toBe(true);
+    expect(isCohortComplete("2026-07", justPastUtc, 60, "America/New_York")).toBe(false);
   });
 });

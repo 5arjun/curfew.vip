@@ -403,6 +403,15 @@ fn carry_forward_library_dates(
 /// mounted volume is genuinely better evidence. Here there is no such thing as
 /// better evidence about the past arriving later — today's zone is not new
 /// information about a set played two years ago.
+/// Reads the stored zone as a bare JSON field rather than deserializing the
+/// whole [`crate::store::CapturedDerived`], because the full parse fails
+/// **open**: `let Ok(stored) = … else { return }` left `fresh.timezone` holding
+/// today's zone, which is exactly the restamp this guard exists to prevent, and
+/// it happened silently — no `reporter` call, no changed-row signal to read
+/// afterwards. A partially-written row, or any future story that changes an
+/// unrelated field's type, was enough to trigger it. Reading one field keeps
+/// the guard independent of the rest of the struct's schema (code review,
+/// 2026-08-17).
 fn carry_forward_timezone(
     stored_derived_json: Option<&str>,
     fresh: &mut crate::store::CapturedDerived,
@@ -410,11 +419,17 @@ fn carry_forward_timezone(
     let Some(json) = stored_derived_json else {
         return;
     };
-    let Ok(stored) = serde_json::from_str::<crate::store::CapturedDerived>(json) else {
+    let Ok(stored) = serde_json::from_str::<serde_json::Value>(json) else {
+        // Unparseable JSON tells us nothing about the stored zone, so the safe
+        // reading is "it may have had one": clear the fresh value rather than
+        // stamping a row we cannot inspect.
+        fresh.timezone = None;
         return;
     };
-    if let Some(zone) = stored.timezone {
-        fresh.timezone = Some(zone);
+    // An absent or null key is the pre-7.7 row the sweep exists to fill, and
+    // the only case where the fresh read is allowed to win.
+    if let Some(zone) = stored.get("timezone").and_then(serde_json::Value::as_str) {
+        fresh.timezone = Some(zone.to_string());
     }
 }
 

@@ -38,7 +38,7 @@
 //    defect in this epic).
 import { isLowConfidenceSet } from "./listModel";
 import { formatSessionLabel } from "./format";
-import { civilInZone, resolveSetZone } from "./civilTime";
+import { civilInZone, FALLBACK_ZONE, resolveSetZone } from "./civilTime";
 import type { LibraryRosterEntry } from "./libraryRoster";
 import type { SetRecord, SyncPlay, SyncSetDerived } from "./types";
 
@@ -302,6 +302,19 @@ export interface TrackHistoryModel {
   /** Epoch ms, or `null` when no play carried a parseable time (D-8, never `0`). */
   firstPlayedMs: number | null;
   lastPlayedMs: number | null;
+  /**
+   * The zone each of those two plays happened in — its own set's captured zone,
+   * else the DJ's, else UTC (Story 7.7).
+   *
+   * Carried rather than left to the caller because the caller only has the DJ's
+   * zone, and using it here dated the SAME play differently in two places on
+   * one page: "First played Sat, Jun 20" above a per-set row reading "Fri, Jun
+   * 19", since the rows already use `TrackSetRow.zone`. Live today — both
+   * production `djs` rows have `timezone = null`, so the DJ zone resolves to
+   * UTC while the sets carry `America/New_York` (code review, 2026-08-17).
+   */
+  firstPlayedZone: string;
+  lastPlayedZone: string;
   /** Distinct sets, most recent first; undated sets last. */
   sets: TrackSetRow[];
   /**
@@ -330,6 +343,8 @@ export function buildTrackHistory(
 ): TrackHistoryModel {
   let firstPlayedMs: number | null = null;
   let lastPlayedMs: number | null = null;
+  let firstPlayedZone = FALLBACK_ZONE;
+  let lastPlayedZone = FALLBACK_ZONE;
   let undatedPlayCount = 0;
   const bySet = new Map<string, TrackSetRow>();
 
@@ -337,8 +352,17 @@ export function buildTrackHistory(
     const playedMs = msOf(record.play.started_at);
     if (playedMs === null) undatedPlayCount += 1;
     else {
-      firstPlayedMs = firstPlayedMs === null ? playedMs : Math.min(firstPlayedMs, playedMs);
-      lastPlayedMs = lastPlayedMs === null ? playedMs : Math.max(lastPlayedMs, playedMs);
+      // The zone travels with the extremum, not with the DJ: whichever play
+      // wins first/last also decides which zone dates it. Resolved from the
+      // same `record.setDerived` the set rows below already read.
+      if (firstPlayedMs === null || playedMs < firstPlayedMs) {
+        firstPlayedMs = playedMs;
+        firstPlayedZone = resolveSetZone(record.setDerived?.timezone, djTimezone).zone;
+      }
+      if (lastPlayedMs === null || playedMs > lastPlayedMs) {
+        lastPlayedMs = playedMs;
+        lastPlayedZone = resolveSetZone(record.setDerived?.timezone, djTimezone).zone;
+      }
     }
 
     const existing = bySet.get(record.setId);
@@ -365,7 +389,15 @@ export function buildTrackHistory(
     (a, b) => (b.startedAtMs ?? -Infinity) - (a.startedAtMs ?? -Infinity) || a.setId.localeCompare(b.setId),
   );
 
-  return { timesPlayed: plays.length, firstPlayedMs, lastPlayedMs, sets, undatedPlayCount };
+  return {
+    timesPlayed: plays.length,
+    firstPlayedMs,
+    lastPlayedMs,
+    firstPlayedZone,
+    lastPlayedZone,
+    sets,
+    undatedPlayCount,
+  };
 }
 
 /** AC-7's gate: this population holds at least one play to describe. */

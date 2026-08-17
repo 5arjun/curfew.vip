@@ -444,7 +444,11 @@ export function buildStyleEvolution(
     monthsSpannedAll: monthsSpanned(sets, djTimezone),
     lowConfidenceCount: dated.filter(isLowConfidence).length,
     undatedCount: sets.length - dated.length,
-    zoneFallbackCount: countZoneFallbacks(sets, djTimezone),
+    // Counted over `dated`, not `sets`: an undated set was never bucketed at
+    // all, so calling it "bucketed on a fallback zone" double-discloses it
+    // alongside `undatedCount` — and the overlap is the common case, since a
+    // pre-7.7 set typically has neither field (code review, 2026-08-17).
+    zoneFallbackCount: countZoneFallbacks(dated, djTimezone),
     month: buildSeries(sets, monthKey, fillMonthRange),
     week: buildSeries(sets, weekKey, fillWeekRange),
   };

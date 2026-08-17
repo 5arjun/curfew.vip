@@ -10,8 +10,17 @@
 // mismatches on a non-`en` browser. It is ledgered in `deferred-work.md` and
 // deliberately out of scope here — do not fix it in passing, and do not add a
 // new instance of it either.
+// Every `toLocale*` call below is guarded with `usableZoneOr`. `Intl` throws
+// `RangeError` on a zone it does not know, and unlike `civilTime`'s own
+// derivations — which degrade to UTC internally — a throw HERE is an uncaught
+// exception inside a Server Component, i.e. the dashboard, set, track and
+// library pages render `global-error` instead of a date. `resolveSetZone` now
+// filters unusable zones out of the chain, so this is the second line rather
+// than the first; it stays because these are exported functions that take a
+// bare string, and the one thing a formatter must never do is take the page
+// down (code review, 2026-08-17).
 import type { SegmentStats } from "./dancefloor";
-import { civilFromIso } from "./civilTime";
+import { civilFromIso, usableZoneOr } from "./civilTime";
 
 /** Mono header date, e.g. "SAT · 21 JUN 2026". Uppercased for the console voice. */
 export function formatSetDate(iso: string | null, zone: string): string {
@@ -22,9 +31,12 @@ export function formatSetDate(iso: string | null, zone: string): string {
   if (!civil) return "—";
   // Names through `toLocaleDateString` (locale-shaped, out of scope), numerics
   // off the civil triple — never `getDate`/`getFullYear`, which would read the
-  // process's zone and disagree with the month name beside them.
-  const weekday = d.toLocaleDateString([], { weekday: "short", timeZone: zone }).toUpperCase();
-  const month = d.toLocaleDateString([], { month: "short", timeZone: zone }).toUpperCase();
+  // process's zone and disagree with the month name beside them. Both sides
+  // must resolve the SAME zone, which is why the guarded value is reused rather
+  // than guarding each call: `civilFromIso` already degraded to UTC internally.
+  const safe = usableZoneOr(zone);
+  const weekday = d.toLocaleDateString([], { weekday: "short", timeZone: safe }).toUpperCase();
+  const month = d.toLocaleDateString([], { month: "short", timeZone: safe }).toUpperCase();
   return `${weekday} · ${civil.day} ${month} ${civil.year}`;
 }
 
@@ -95,7 +107,7 @@ export function formatDayDate(iso: string | null, zone: string): string {
     weekday: "short",
     month: "short",
     day: "numeric",
-    timeZone: zone,
+    timeZone: usableZoneOr(zone),
   });
 }
 
@@ -110,7 +122,11 @@ export function formatClock(iso: string | null, zone: string): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", timeZone: zone });
+  return d.toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: usableZoneOr(zone),
+  });
 }
 
 /** Start AND end (D8: duration implied), e.g. "10:14 PM – 1:52 AM". */
