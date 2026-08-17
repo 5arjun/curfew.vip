@@ -719,9 +719,10 @@ fn recheck_pending_serato4(
 }
 
 /// Runs the Serato4 capture pipeline for one now-complete session and persists
-/// it. Returns `true` for a terminal outcome — captured, or
-/// [`crate::capture::CaptureError::EmptySession`] (expected rather than
-/// exceptional, see that variant's own doc comment) — meaning the caller
+/// it. Returns `true` for a terminal outcome — captured, or nothing to
+/// capture ([`crate::capture::CaptureError::EmptySession`] and
+/// [`crate::capture::CaptureError::AllPreviews`], both expected rather than
+/// exceptional; see those variants' own doc comments) — meaning the caller
 /// should stop tracking this session. Returns `false` for a transient failure
 /// (parse/join/correlation/SQLite error, or a failed store write), logged in
 /// debug builds: the caller keeps the session pending so the next poll tick
@@ -804,11 +805,24 @@ pub(crate) fn capture_and_store_serato4(
             }
             true
         }
-        Err(crate::capture::CaptureError::EmptySession) => {
+        Err(
+            crate::capture::CaptureError::EmptySession | crate::capture::CaptureError::AllPreviews,
+        ) => {
             // Nothing decoded for a session id `history_session` itself just
             // reported — leave the existing `watching` row as-is rather than
             // fabricate an identity for nothing (Task 4); it simply never
             // resolves to `captured`.
+            //
+            // `AllPreviews` joins it here (fixed 2026-08-17): a session where
+            // every row was a loaded-but-never-played preview is the same
+            // "nothing to capture" outcome, not a failure. It used to fall
+            // through to the `Err(e)` arm below and be written to
+            // `parse_failures`, which is a *permanent* wrong state: re-parsing
+            // an all-previews session always returns `AllPreviews` again, so
+            // `reprocess_parse_failures` can never clear the row, the tray
+            // reads "Format drift detected" forever, and Sentry is fed a
+            // non-error on every startup. Arjun hit exactly this on the first
+            // real install — 6 rows, one DJ, day one.
             true
         }
         Err(e) => {
@@ -1009,10 +1023,21 @@ pub(crate) fn capture_and_store_legacy(
             }
             true
         }
-        Err(crate::capture::CaptureError::EmptySession) => {
+        Err(
+            crate::capture::CaptureError::EmptySession | crate::capture::CaptureError::AllPreviews,
+        ) => {
             // The file went quiet with nothing decodable — leave the
             // `watching` row as-is (Task 4), same reasoning as the Serato4
             // sibling above.
+            //
+            // `AllPreviews` is unreachable from `build_legacy` today: the
+            // `played` filter it comes from is Serato4-only (`history_entry`
+            // carries the flag; the legacy `.session` format has no
+            // equivalent). It is matched here anyway so the two arms make the
+            // *same* classification — the day legacy learns to recognize a
+            // preview, it inherits "skip quietly" rather than silently
+            // regressing into the `parse_failures` path this fix exists to
+            // close.
             true
         }
         Err(e) => {
@@ -1077,6 +1102,58 @@ fn start_fs_watch(
 /// immediately rather than waiting for the next pending re-check tick.
 /// `store_conn`/`pending` are `None`/unused when the local store could not be
 /// opened this run (detection still works; capture bookkeeping is skipped).
+/// The go-forward baseline for this Serato4 library (Decision A, fixed
+/// 2026-08-17): the stored watermark if this store has one, otherwise the
+/// library's current `max(history_session.id)`, persisted on the spot.
+/// `None` means unresolved — a store read failed, or the library's own max id
+/// could not be read — and every caller treats that as "do nothing this pass"
+/// rather than falling back to a value that would sweep the DJ's history.
+///
+/// **Why this exists.** `WatchState`'s watermark starts at 0, and
+/// `list_sessions_after(conn, 0)` means "every session Serato has ever
+/// recorded", so a freshly linked agent swept the DJ's whole history into the
+/// cloud: 485 sets and 17,337 plays going back five years on the first real
+/// install, against the 1 set actually played after signing up. Decision A is
+/// explicit that launch capture is go-forward only.
+///
+/// **Why the newest id, not a timestamp.** Ids are monotonic by insertion
+/// regardless of clock skew — the same reasoning `list_sessions_after`'s own
+/// doc gives for keying on id over `start_time`. The agent cannot know the
+/// subscription date directly (AD-8 is outbound-only; there is no cloud→agent
+/// channel), but Checkout is the first step of the corridor (PR #42), so a DJ
+/// pays before they can link and first-link is a faithful proxy — minutes off
+/// at worst.
+///
+/// Called from two places, deliberately: the watch loop's first tick, and
+/// startup before the backfill sweep runs (see `lib.rs`). The sweep can clear
+/// `synced_at` on historical rows, and [`crate::store::rows_pending_sync`]
+/// refuses to push serato4 rows at or below this baseline — so the baseline
+/// has to exist *before* the sweep, not merely soon after. Persisting is
+/// monotonic (`MAX()` in SQL), so the two call sites racing is harmless.
+pub(crate) fn ensure_serato4_baseline(
+    store_conn: &Connection,
+    serato4_conn: &Connection,
+) -> Option<i64> {
+    match crate::store::serato4_watermark(store_conn) {
+        Ok(Some(stored)) => Some(stored),
+        Ok(None) => {
+            let baseline = crate::parser::max_session_id(serato4_conn).ok()?;
+            log_store_err(
+                "set_serato4_watermark (first-run go-forward baseline)",
+                crate::store::set_serato4_watermark(store_conn, baseline),
+            );
+            Some(baseline)
+        }
+        Err(_e) => {
+            // A store read failure must never be the thing that re-imports a
+            // DJ's entire history.
+            #[cfg(debug_assertions)]
+            eprintln!("curfew-agent: could not read serato4 watermark: {_e}");
+            None
+        }
+    }
+}
+
 fn check_for_new_sessions(
     root: &Path,
     db_path: &Path,
@@ -1088,9 +1165,35 @@ fn check_for_new_sessions(
     let Ok(conn) = crate::joiner::serato4::open_read_only(root, db_path) else {
         return;
     };
+    // 0 is the "unresolved" sentinel, which is safe because SQLite AUTOINCREMENT
+    // ids start at 1: a real watermark is never 0 except on a library that has
+    // never logged a session, where baselining at 0 is also correct.
+    if *watermark == 0 {
+        if let Some(store_conn) = store_conn {
+            match ensure_serato4_baseline(store_conn, &conn) {
+                Some(baseline) => *watermark = baseline,
+                // Unresolved: skip this tick rather than fall through to a 0
+                // watermark, which would list every session Serato ever
+                // recorded. The next tick retries.
+                None => return,
+            }
+        }
+    }
+
     if let Ok(sessions) = crate::parser::list_sessions_after(&conn, *watermark) {
         if let Some(max_id) = sessions.iter().map(|s| s.id).max() {
             *watermark = max_id;
+            // Persist immediately, before the capture loop below: a crash or
+            // quit mid-capture must not leave the next launch re-listing these
+            // same sessions. Re-capture is idempotent at the store level, but
+            // re-listing years of history is not something to rely on
+            // idempotency for.
+            if let Some(store_conn) = store_conn {
+                log_store_err(
+                    "set_serato4_watermark (advance)",
+                    crate::store::set_serato4_watermark(store_conn, max_id),
+                );
+            }
         }
         for session in &sessions {
             log_new_session(session);
@@ -1519,6 +1622,24 @@ mod tests {
         db_path
     }
 
+    /// The same fixture, but every row carries Serato's own `played = 0` —
+    /// tracks loaded to a deck and never played. `build_serato4`'s Story 3.7
+    /// filter drops all of them, so the capture resolves to
+    /// `CaptureError::AllPreviews`.
+    fn write_serato4_all_previews_fixture(dir: &Path, session_id: i64, start: i64) -> PathBuf {
+        let db_path = write_serato4_fixture(dir, session_id, start);
+        let conn = Connection::open(&db_path).unwrap();
+        conn.execute("DELETE FROM history_entry", []).unwrap();
+        conn.execute(
+            r#"INSERT INTO history_entry (session_id, name, artist, genre, "key", bpm, start_time, deck, played)
+               VALUES (?1, 'Loaded only', 'Artist', 'House', '1A', 120.0, ?2, '1', 0),
+                      (?1, 'Also loaded only', 'Artist', 'House', '1A', 120.0, ?3, '2', 0)"#,
+            rusqlite::params![session_id, start, start + 100],
+        )
+        .unwrap();
+        db_path
+    }
+
     /// AC-2, forward direction (the common case): serato4 captures first, a
     /// same-night legacy capture arriving after it is superseded rather than
     /// reaching the sync queue as a duplicate.
@@ -1711,10 +1832,59 @@ mod tests {
 
     // ---- Terminal-failure -> parse_failures + ErrorReporter (Story 3.4, Task 2/6) ---
 
-    /// A genuine `build_serato4` error (not `CaptureError::EmptySession`) —
-    /// `db_path` names a file that was never created, so `open_read_only`
-    /// fails outright — records a `parse_failures` row and reports it,
-    /// tagged with the running build's `agent_version`.
+    /// A session where every row was a loaded-but-never-played preview is
+    /// **not** a failure: nothing was played, so there is nothing to capture.
+    /// It must not reach `parse_failures` (where it would be permanent — a
+    /// re-parse returns `AllPreviews` again, so `reprocess_parse_failures` can
+    /// never clear it, and the tray would read "Format drift detected"
+    /// forever) and must not be reported to Sentry.
+    #[test]
+    fn an_all_previews_serato4_session_is_skipped_not_recorded_as_a_failure() {
+        let store_dir = TempDir::new("all-previews-serato4-store");
+        let store_conn =
+            crate::store::open_at(&store_dir.0.join("local.sqlite")).expect("store opens");
+
+        let serato4_dir = TempDir::new("all-previews-serato4");
+        let db_path = write_serato4_all_previews_fixture(&serato4_dir.0, 7, 1_000);
+        let reporter = RecordingReporter::default();
+
+        let terminal = capture_and_store_serato4(
+            &store_conn,
+            &serato4_dir.0,
+            &db_path,
+            7,
+            &no_dates(),
+            &reporter,
+        );
+
+        assert!(
+            terminal,
+            "an all-previews session is a terminal outcome -- the caller must stop \
+             retrying it, exactly as it does for an empty session"
+        );
+        assert!(
+            crate::store::unresolved_parse_failures(&store_conn)
+                .unwrap()
+                .is_empty(),
+            "nothing played is not a parse failure"
+        );
+        assert!(
+            reporter.calls.lock().unwrap().is_empty(),
+            "Sentry must not be fed a non-error on every startup"
+        );
+        assert_eq!(
+            crate::store::status_of(&store_conn, &crate::capture::serato4_session_identity(7))
+                .unwrap(),
+            None,
+            "no identity is fabricated for a session with nothing in it"
+        );
+    }
+
+    /// A genuine `build_serato4` error (not `CaptureError::EmptySession` or
+    /// `AllPreviews`, both of which are ordinary "nothing to capture"
+    /// outcomes) — `db_path` names a file that was never created, so
+    /// `open_read_only` fails outright — records a `parse_failures` row and
+    /// reports it, tagged with the running build's `agent_version`.
     #[test]
     fn a_terminal_serato4_capture_failure_records_and_reports() {
         let store_dir = TempDir::new("terminal-failure-serato4-store");
@@ -1746,7 +1916,8 @@ mod tests {
         assert_eq!(calls[0].1, crate::config::AGENT_VERSION);
     }
 
-    /// A genuine `build_legacy` error (not `CaptureError::EmptySession`) —
+    /// A genuine `build_legacy` error (not `CaptureError::EmptySession`, nor
+    /// the `AllPreviews` its Serato4 sibling now skips alongside it) —
     /// `session_path` names a file that was never created, so
     /// `parse_session_file_partial`'s `std::fs::read` fails outright.
     #[test]
