@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
-import { getSetById } from "@/lib/sets";
+import { getDjTimezone, getSetById } from "@/lib/sets";
+import { zoneForSet } from "@/lib/sets/civilTime";
 import { SetDetail } from "@/app/components/set-detail/SetDetail";
 
 // Set Detail (Story 3.7) — the read-back shell: identity + scope, energy arc,
@@ -19,8 +20,14 @@ import { SetDetail } from "@/app/components/set-detail/SetDetail";
 // scope-reactive client recompute from `plays[]` (D1/D5).
 export default async function SetDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const set = await getSetById(id);
+  const [set, djTimezone] = await Promise.all([getSetById(id), getDjTimezone()]);
   if (!set) notFound();
 
-  return <SetDetail set={set} />;
+  // Story 7.7: resolved once, here, and passed down as a plain string. Every
+  // clock on this page is the clock the DJ read off the booth — not the
+  // server's (UTC on Vercel, which rendered a 10:14 PM set as 5:14 AM) and not
+  // the viewer's.
+  const { zone } = zoneForSet(set, djTimezone);
+
+  return <SetDetail set={set} zone={zone} />;
 }

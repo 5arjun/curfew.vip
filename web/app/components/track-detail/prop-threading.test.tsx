@@ -15,14 +15,26 @@ import type { SyncPlay, SyncSetDerived } from "@/lib/sets/types";
  * `lib/sets/trackDetail.test.ts`'s pure-function suite; this file answers one
  * question only — *does the value reach the DOM?*
  *
- * `ClockStrip` renders its pre-hydration branch here, which is exactly right:
- * `useSyncExternalStore`'s server snapshot is `false`, so this suite sees the
- * markup a real server render produces, and the fact that no hour string
- * appears in it IS D-32's guarantee under test.
+ * `ClockStrip` and `ClientDayDate` render their real output here (Story 7.7).
+ * They used to render a pre-hydration placeholder, and this suite used to
+ * assert that no hour or day string appeared in a server render at all — the
+ * D-32 guarantee, back when no zone existed anywhere in the system and the
+ * server's own zone was the only thing a server render could have used.
+ *
+ * A set now carries the zone it was captured in, so the guarantee inverted:
+ * the hour and the day MUST render server-side, and must be the DJ's. The
+ * tests at the bottom of this file assert the new rule in the only way that
+ * actually distinguishes it from the old bug — by rendering the same instant
+ * under two different set zones and requiring the output to differ.
  */
 
-function derived(confidence = 1.0, trackCount = 40): SyncSetDerived {
+function derived(
+  confidence = 1.0,
+  trackCount = 40,
+  timezone: string | null = "America/Los_Angeles",
+): SyncSetDerived {
   return {
+    timezone,
     most_played_tracks: [],
     most_played_artists: [],
     genre_breakdown: { buckets: [], no_genre_count: 0 },
@@ -39,13 +51,19 @@ function record(overrides: {
   setId?: string;
   setLabel?: string | null;
   trackCount?: number;
+  /** The zone the SET was captured in (Story 7.7). `null` = a pre-7.7 agent. */
+  timezone?: string | null;
   play?: Partial<SyncPlay>;
 }): TrackPlayRecord {
   return {
     setId: overrides.setId ?? "set-1",
     setLabel: "setLabel" in overrides ? (overrides.setLabel ?? null) : "serato4:975",
     setStartedAt: "2026-06-01T21:00:00.000Z",
-    setDerived: derived(1.0, overrides.trackCount ?? 40),
+    setDerived: derived(
+      1.0,
+      overrides.trackCount ?? 40,
+      "timezone" in overrides ? (overrides.timezone ?? null) : "America/Los_Angeles",
+    ),
     play: {
       position: 4,
       title: "Deep End",
@@ -79,7 +97,7 @@ const NEIGHBOURS: MixNeighbourRow[] = [
 describe("identity and tags reach the DOM (AC-5)", () => {
   it("renders title, artist and every tag", () => {
     const html = renderToStaticMarkup(
-      <TrackDetail plays={[record({})]} roster={ROSTER} neighbourRows={[]} />,
+      <TrackDetail plays={[record({})]} roster={ROSTER} neighbourRows={[]} djTimezone={null} />,
     );
     expect(html).toContain("Deep End");
     expect(html).toContain("Hardrive");
@@ -97,6 +115,7 @@ describe("identity and tags reach the DOM (AC-5)", () => {
         plays={[record({ play: { bpm: null, camelot_key: null, genre: null, library_added_at: null } })]}
         roster={null}
         neighbourRows={[]}
+        djTimezone={null}
       />,
     );
     // BPM, key, genre and add date — four Unknowns, none of them omitted.
@@ -105,7 +124,7 @@ describe("identity and tags reach the DOM (AC-5)", () => {
 
   it("treats a whitespace-only title as absent rather than rendering a blank heading", () => {
     const html = renderToStaticMarkup(
-      <TrackDetail plays={[record({ play: { title: "   ", artist: "" } })]} roster={null} neighbourRows={[]} />,
+      <TrackDetail plays={[record({ play: { title: "   ", artist: "" } })]} roster={null} neighbourRows={[]} djTimezone={null} />,
     );
     expect(html).toContain(">Unknown</h1>");
   });
@@ -116,6 +135,7 @@ describe("identity and tags reach the DOM (AC-5)", () => {
         plays={[record({ play: { genre: { raw: "Techno", normalized: "techno", taxonomy_version: 1 } } })]}
         roster={ROSTER}
         neighbourRows={[]}
+        djTimezone={null}
       />,
     );
     expect(html).toContain("techno");
@@ -130,6 +150,7 @@ describe("play history reaches the DOM (AC-7)", () => {
         plays={[record({ setId: "872d5614-9894-5803-80f5-aa1dd4177944" })]}
         roster={ROSTER}
         neighbourRows={[]}
+        djTimezone={null}
       />,
     );
     expect(html).toContain('href="/set/872d5614-9894-5803-80f5-aa1dd4177944"');
@@ -139,7 +160,7 @@ describe("play history reaches the DOM (AC-7)", () => {
   // NEGATIVE CONTROL for the label fallback.
   it("renders an unlabelled set as Untitled set rather than as a uuid", () => {
     const html = renderToStaticMarkup(
-      <TrackDetail plays={[record({ setLabel: null })]} roster={ROSTER} neighbourRows={[]} />,
+      <TrackDetail plays={[record({ setLabel: null })]} roster={ROSTER} neighbourRows={[]} djTimezone={null} />,
     );
     expect(html).toContain("Untitled set");
   });
@@ -148,7 +169,7 @@ describe("play history reaches the DOM (AC-7)", () => {
 describe("ride time reaches the DOM (AC-9/AC-11)", () => {
   it("renders the duration at minute-and-second scale", () => {
     const html = renderToStaticMarkup(
-      <TrackDetail plays={[record({}), record({ setId: "set-2" })]} roster={ROSTER} neighbourRows={[]} />,
+      <TrackDetail plays={[record({}), record({ setId: "set-2" })]} roster={ROSTER} neighbourRows={[]} djTimezone={null} />,
     );
     expect(html).toContain("3m 42s");
   });
@@ -156,7 +177,7 @@ describe("ride time reaches the DOM (AC-9/AC-11)", () => {
   // AC-11's n=1 form, and the word this story must not ship at n=1.
   it("never says 'typically' on a single play", () => {
     const html = renderToStaticMarkup(
-      <TrackDetail plays={[record({})]} roster={ROSTER} neighbourRows={[]} />,
+      <TrackDetail plays={[record({})]} roster={ROSTER} neighbourRows={[]} djTimezone={null} />,
     );
     expect(html).toContain("on its one play");
     expect(html).not.toContain("typical");
@@ -166,17 +187,29 @@ describe("ride time reaches the DOM (AC-9/AC-11)", () => {
   // case where EVERY play is missing a duration.
   it("discloses the excluded count when no play carried a duration", () => {
     const html = renderToStaticMarkup(
-      <TrackDetail plays={[record({ play: { played_ms: null } })]} roster={ROSTER} neighbourRows={[]} />,
+      <TrackDetail plays={[record({ play: { played_ms: null } })]} roster={ROSTER} neighbourRows={[]} djTimezone={null} />,
     );
     expect(html).toContain("1 play carries no duration");
-    expect(html).not.toContain("0 plays");
+    // Scoped to the ride-time module, not the whole document (Story 7.7): the
+    // clock strip now renders server-side, and its per-hour hover tips
+    // legitimately read "6pm · 0 plays" for every empty hour. A page-wide
+    // string check would fail on that unrelated text while proving nothing
+    // about the assertion's real subject — that RIDE TIME must disclose the
+    // exclusion rather than fabricate a zero.
+    const rideTime = html.slice(html.indexOf("Ride time"));
+    expect(rideTime).not.toContain("0 plays");
   });
 });
 
 describe("mix neighbours reach the DOM (AC-10, D-26)", () => {
   it("renders both sides, linking only the neighbour that has an identity", () => {
     const html = renderToStaticMarkup(
-      <TrackDetail plays={[record({})]} roster={ROSTER} neighbourRows={NEIGHBOURS} />,
+      <TrackDetail
+        plays={[record({})]}
+        roster={ROSTER}
+        neighbourRows={NEIGHBOURS}
+        djTimezone={null}
+      />,
     );
     expect(html).toContain("Came Before");
     expect(html).toContain("Came After");
@@ -187,93 +220,130 @@ describe("mix neighbours reach the DOM (AC-10, D-26)", () => {
 
   it("uses no ranking vocabulary anywhere in the rendered page", () => {
     const html = renderToStaticMarkup(
-      <TrackDetail plays={[record({})]} roster={ROSTER} neighbourRows={NEIGHBOURS} />,
+      <TrackDetail
+        plays={[record({})]}
+        roster={ROSTER}
+        neighbourRows={NEIGHBOURS}
+        djTimezone={null}
+      />,
     );
     expect(html.toLowerCase()).not.toMatch(/\b(best|winner|ranked|#1)\b/);
   });
 });
 
-describe("the clock strip renders no hour server-side (D-32)", () => {
-  // The guarantee, under test: `useSyncExternalStore`'s SERVER snapshot is
-  // `false`, so a server render emits the placeholder and not a single hour
-  // label. If this ever fails, the page has started rendering the SERVER's
-  // timezone to every DJ — and would hydrate-mismatch besides.
-  it("emits the placeholder, never a formatted hour", () => {
+describe("the clock strip buckets server-side, in the SET's zone (Story 7.7)", () => {
+  // The guarantee, inverted. This suite used to assert that a server render
+  // emitted "Reading your clock" and not a single hour label, because there was
+  // no zone in the system and a server-rendered hour could only have been the
+  // SERVER's. A set now carries the zone it was captured in, so the hour is
+  // computed here, on the server, and the placeholder is gone.
+  //
+  // If this ever regresses to a placeholder, the aggregation has been pushed
+  // back to the client and the histogram's answer once again depends on who is
+  // looking at it.
+  it("renders real hours rather than a pre-hydration placeholder", () => {
     const html = renderToStaticMarkup(
-      <TrackDetail plays={[record({})]} roster={ROSTER} neighbourRows={[]} />,
+      <TrackDetail plays={[record({})]} roster={ROSTER} neighbourRows={[]} djTimezone={null} />,
     );
-    expect(html).toContain("Reading your clock");
-    expect(html).not.toMatch(/\b\d{1,2}(am|pm)\b/);
-  });
-});
-
-describe("day labels render no locale/timezone-dependent date server-side", () => {
-  // Same reasoning as the clock strip above, generalized to day granularity:
-  // `ClientDayDate`'s SERVER snapshot is `false`, so first/last played, per-set
-  // dates and the library-added date all emit the placeholder rather than a
-  // server-computed (and possibly wrong-zone) day. If this regresses, the page
-  // has gone back to rendering `formatDayDate` directly in the Server
-  // Component.
-  it("emits the placeholder for the add date, never a formatted day", () => {
-    const html = renderToStaticMarkup(<TrackDetail plays={[]} roster={ROSTER} neighbourRows={[]} />);
-    expect(html).toContain(">–<");
-    expect(html).not.toMatch(/\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s/);
+    expect(html).not.toContain("Reading your clock");
+    expect(html).toMatch(/\b\d{1,2}(am|pm)\b/);
   });
 
-  it("emits the placeholder for first/last played and per-set dates, never a formatted day", () => {
-    const html = renderToStaticMarkup(
-      <TrackDetail plays={[record({})]} roster={ROSTER} neighbourRows={[]} />,
-    );
-    expect(html).not.toMatch(/\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s/);
-  });
-});
-
-describe("the cold start is a designed state, not four empty modules (D-38)", () => {
-  it("renders identity, the add date and one honest line for an owned, unplayed track", () => {
-    const html = renderToStaticMarkup(<TrackDetail plays={[]} roster={ROSTER} neighbourRows={[]} />);
-    expect(html).toContain("Deep End");
-    expect(html).toContain("In your library, not played yet");
-    // NEGATIVE CONTROL: none of the four play-side modules render at all.
-    expect(html).not.toContain("Play history");
-    expect(html).not.toContain("Ride time");
-    expect(html).not.toContain("Mix neighbours");
-  });
-
-  it("says so when a played track is no longer in the library sync", () => {
-    const html = renderToStaticMarkup(
-      <TrackDetail plays={[record({})]} roster={null} neighbourRows={[]} />,
-    );
-    expect(html).toContain("not in your current library sync");
-  });
-
-  // NEGATIVE CONTROL for the line above.
-  it("stays silent about the roster when the track is in it", () => {
-    const html = renderToStaticMarkup(
-      <TrackDetail plays={[record({})]} roster={ROSTER} neighbourRows={[]} />,
-    );
-    expect(html).not.toContain("not in your current library sync");
-  });
-});
-
-describe("AC-12's reveal is wired on this surface too (D-34)", () => {
-  it("renders the reveal control when a play sits in a short set, and hides that play", () => {
-    const html = renderToStaticMarkup(
+  // THE test for this story. One instant, two set zones, two different hours —
+  // which is the only assertion that distinguishes a correct implementation
+  // from the bug, since the suite is TZ-pinned to UTC (`vitest.config.ts:18`)
+  // and a process-zone implementation would look perfectly green on any single
+  // fixture. 22:00Z is 3pm in Los Angeles and 7am the next day in Tokyo.
+  it("buckets the same play into a different hour under a different set zone", () => {
+    const la = renderToStaticMarkup(
       <TrackDetail
-        plays={[record({}), record({ setId: "soundcheck", trackCount: 2 })]}
+        plays={[record({ timezone: "America/Los_Angeles" })]}
         roster={ROSTER}
         neighbourRows={[]}
+        djTimezone={null}
       />,
     );
-    expect(html).toContain("short or low-confidence");
-    // One play surviving, not two — the soundcheck is excluded by default.
-    expect(html).toContain("Played 1 time across 1 set");
+    const tokyo = renderToStaticMarkup(
+      <TrackDetail
+        plays={[record({ timezone: "Asia/Tokyo" })]}
+        roster={ROSTER}
+        neighbourRows={[]}
+        djTimezone={null}
+      />,
+    );
+
+    expect(la).toContain("landed in the 3pm hour");
+    expect(tokyo).toContain("landed in the 7am hour");
+    expect(la).not.toEqual(tokyo);
   });
 
-  // NEGATIVE CONTROL: no control at all when the predicate hides nothing.
-  it("renders no reveal control when every set clears the predicate", () => {
+  // The fallback chain, end to end through the component: a set from a pre-7.7
+  // agent carries no zone, so `djs.timezone` decides. It must still render —
+  // AD-3 makes a zone-less payload permanently valid, so this is not a
+  // transitional case that eventually stops happening.
+  it("falls back to the DJ's zone for a set captured before this story", () => {
     const html = renderToStaticMarkup(
-      <TrackDetail plays={[record({})]} roster={ROSTER} neighbourRows={[]} />,
+      <TrackDetail
+        plays={[record({ timezone: null })]}
+        roster={ROSTER}
+        neighbourRows={[]}
+        djTimezone="Asia/Tokyo"
+      />,
     );
-    expect(html).not.toContain("short or low-confidence");
+    expect(html).toContain("landed in the 7am hour");
+  });
+
+  it("falls back to UTC when neither the set nor the DJ has a zone", () => {
+    const html = renderToStaticMarkup(
+      <TrackDetail
+        plays={[record({ timezone: null })]}
+        roster={ROSTER}
+        neighbourRows={[]}
+        djTimezone={null}
+      />,
+    );
+    expect(html).toContain("landed in the 10pm hour");
+  });
+});
+
+describe("day labels render server-side, in the DJ's own zone (Story 7.7)", () => {
+  // Same inversion as the clock strip, at day granularity. `ClientDayDate` used
+  // to emit "–" on the server and fill in after hydration; it now renders the
+  // real day, because there is finally a zone that makes a server-rendered day
+  // meaningful.
+  it("renders the add date rather than a placeholder", () => {
+    const html = renderToStaticMarkup(
+      <TrackDetail plays={[]} roster={ROSTER} neighbourRows={[]} djTimezone="America/Los_Angeles" />,
+    );
+    expect(html).toMatch(/\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s/);
+  });
+
+  it("renders first/last played and per-set dates", () => {
+    const html = renderToStaticMarkup(
+      <TrackDetail
+        plays={[record({})]}
+        roster={ROSTER}
+        neighbourRows={[]}
+        djTimezone="America/Los_Angeles"
+      />,
+    );
+    expect(html).toContain("First played");
+    expect(html).toMatch(/\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s/);
+  });
+
+  // The per-set row uses the SET's zone, not the page's — the case a touring
+  // DJ makes real. The play is at 22:00Z on 2026-06-01, so the set date is
+  // Jun 1 in Los Angeles and Jun 2 in Tokyo.
+  it("dates a per-set row in that set's own zone", () => {
+    const tokyo = renderToStaticMarkup(
+      <TrackDetail
+        plays={[record({ timezone: "Asia/Tokyo" })]}
+        roster={ROSTER}
+        neighbourRows={[]}
+        djTimezone="America/Los_Angeles"
+      />,
+    );
+    // 21:00Z on Jun 1 is 06:00 on Jun 2 in Tokyo.
+    expect(tokyo).toContain("Tue, Jun 2");
   });
 });

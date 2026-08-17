@@ -650,6 +650,7 @@ mod tests {
             },
             suggested_segments: vec![],
             idle_gaps: vec![],
+            timezone: None,
         }
     }
 

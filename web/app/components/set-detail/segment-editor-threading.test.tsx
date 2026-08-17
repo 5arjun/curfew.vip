@@ -10,6 +10,10 @@ import { formatClock } from "@/lib/sets/format";
 import { segmentPositions } from "@/lib/sets/segmentEditor";
 import type { SetPlay, SetRecord, SyncSetDerived } from "@/lib/sets/types";
 
+/** Story 7.7: an explicit zone. The suite is TZ-pinned to UTC, so a helper
+ *  that defaulted would silently test the process zone and nothing else. */
+const TEST_ZONE = "America/Los_Angeles";
+
 /**
  * RENDER ASSERTIONS for the segment editor (Story 5.3, Tasks 5.6/6.3/7.5/8.3).
  *
@@ -131,6 +135,7 @@ function renderTracklist(editor: SegmentEditor, editable = true): string {
   return renderToStaticMarkup(
     <Tracklist
       set={set(editor.segments)}
+      zone={TEST_ZONE}
       frame={frameFor()}
       focus={null}
       onDismissFocus={() => undefined}
@@ -390,6 +395,7 @@ describe("keyboard affordances reach the DOM (Task 7.1/7.3, D-36)", () => {
   const html = renderToStaticMarkup(
     <SegmentBoundaryHandle
       segmentId="seg-1"
+      zone={TEST_ZONE}
       edge="first"
       position={3}
       plays={plays}
@@ -432,7 +438,7 @@ describe("keyboard affordances reach the DOM (Task 7.1/7.3, D-36)", () => {
     // The clock string is whatever `formatClock` produces — asserted through it
     // rather than hardcoded, so this cannot drift from what the rows display.
     expect(html).toContain(
-      `aria-valuetext="Dancefloor starts at Peak Time, ${formatClock(plays[2].started_at!)}"`,
+      `aria-valuetext="Dancefloor starts at Peak Time, ${formatClock(plays[2].started_at!, TEST_ZONE)}"`,
     );
   });
 });

@@ -1,0 +1,51 @@
+-- Migration: add_djs_timezone_column
+-- Story 7.7 — Local-time capture and bucketing (AC-4, AC-5; Decision 4)
+--
+-- FILENAME NOTE: this was authored as 20260817120000 and renamed to match the
+-- version Supabase actually recorded when it was applied to prod
+-- (20260817193455). The applied version is generated at apply time, not read
+-- from the filename, so leaving the two different would put `supabase
+-- migration up` in a split-brain: the repo version would be absent from the
+-- applied list, the CLI would try to run this file again, and it would fail on
+-- "column already exists". Applied to prod 2026-08-17, ahead of the release,
+-- per the pre-launch checklist's standing rule ("diff the repo's migrations
+-- against prod's applied list and apply the difference BEFORE any release").
+--
+-- The DJ-level time zone fallback. Structurally identical to
+-- 20260806090000_add_djs_dj_name_column.sql, which is itself the phone
+-- migration's (20260727192439) shape: nullable additive column, a
+-- column-scoped update grant, and no new RLS policy.
+--
+-- WHY A SECOND ZONE COLUMN EXISTS. The per-set zone rides sets.derived jsonb
+-- and needs no migration at all (Decision 2, AD-23's precedent). This one is a
+-- different column on a different table answering a different question: what
+-- zone do we bucket a set that has NO captured zone of its own? Two halves of
+-- one fallback chain, not a contradiction.
+--
+-- And that chain must never fail closed. AD-3 binds the cloud to accept the
+-- last N agent_versions, so a payload carrying no zone is valid FOREVER — an
+-- agent that has not auto-updated is not a migration step waiting to finish.
+-- Resolution is set zone -> this column -> UTC, with the fallback counted and
+-- disclosed (web/lib/sets/civilTime.ts). Never a silent guess, never an error.
+--
+-- Written once, at signup, from the browser's
+-- Intl.DateTimeFormat().resolvedOptions().timeZone (Arjun, 2026-08-17:
+-- signup-only, not refreshed on later logins — "where you signed up" is an
+-- honest claim, whereas refreshing would silently rewrite the fallback zone for
+-- a relocated DJ's entire back history. Reversible if that turns out wrong).
+--
+-- No CHECK constraint on the value: Postgres cannot validate an IANA name
+-- without pg_timezone_names, tzdata revisions rename zones over time, and the
+-- read path already degrades an unknown zone to UTC rather than throwing. A
+-- constraint here would reject a legitimately-new zone name at write time and
+-- buy nothing the reader does not already handle.
+
+alter table public.djs add column timezone text;
+
+grant update (timezone) on public.djs to authenticated;
+
+-- No new RLS policy: policies scope ROWS, not columns, and the existing
+-- `djs_update_own_phone` UPDATE policy (owner-only, null-safe) already governs
+-- every UPDATE an authenticated DJ issues against their own row. Which columns
+-- that UPDATE may touch is the GRANT's job — the separation AD-19 requires, and
+-- the reason Epic 7's billing columns stay unreachable from the client.

@@ -153,3 +153,64 @@ describe("floorSegmentCount (Story 5.4, AC #4)", () => {
     expect(row.floorSegmentCount).toBe(2);
   });
 });
+
+describe("set rows resolve dates and search in the set's own zone (Story 7.7)", () => {
+  function setAt(startedAt: string, timezone: string | null): SetRecord {
+    return {
+      external_id: "s1",
+      started_at: startedAt,
+      ended_at: startedAt,
+      plays: [],
+      derived: {
+        most_played_tracks: [],
+        most_played_artists: [],
+        genre_breakdown: { buckets: [], no_genre_count: 0 },
+        bpm_distribution: { count: 0, min: 0, max: 0, mean: 0, median: 0 },
+        camelot_mixing_stats: {
+          compatible_transitions: 0,
+          incompatible_transitions: 0,
+          excluded_no_key: 0,
+        },
+        set_length_sec: 3600,
+        track_count: 40,
+        energy_arc: [],
+        confidence: { value: 1.0, track_count: 40, long_gap_count: 0 },
+        timezone,
+      },
+    } as unknown as SetRecord;
+  }
+
+  // 01:00Z on Jul 1 is 21:00 on Jun 30 in New York — EDT is UTC-4 in summer,
+  // not UTC-5, which is exactly the kind of arithmetic a fixed stored offset
+  // gets wrong half the year and a zone name never does (Decision 1).
+  const LAST_NIGHT_OF_JUNE = "2026-07-01T01:00:00.000Z";
+
+  it("dates and keys a late-June gig as June", () => {
+    const [row] = buildSetRows([setAt(LAST_NIGHT_OF_JUNE, "America/New_York")]);
+    expect(row.dayKey).toBe("2026-06-30");
+    expect(row.dateLabel).toBe("Tue, Jun 30");
+    expect(row.startClock).toBe("9:00 PM");
+  });
+
+  // AC-3 calls this out specifically: `searchDate` is BEHAVIOUR, not a label.
+  // Rendered in the process zone, this set's search text said "July", so a DJ
+  // typing "june" could not find their own June gig.
+  it("lets the DJ find a June gig by typing 'june'", () => {
+    const [row] = buildSetRows([setAt(LAST_NIGHT_OF_JUNE, "America/New_York")]);
+    expect(row.haystack).toContain("june");
+    expect(row.haystack).not.toContain("july");
+  });
+
+  it("still searches by the fallback zone when the set carries none", () => {
+    const [row] = buildSetRows([setAt(LAST_NIGHT_OF_JUNE, null)], "America/New_York");
+    expect(row.haystack).toContain("june");
+  });
+
+  it("falls back to UTC — and finds July — when no zone is known at all", () => {
+    // The honest pre-7.7 answer, not a bug to fix: AD-3 keeps zone-less
+    // payloads valid forever, and the fallback is counted for disclosure.
+    const [row] = buildSetRows([setAt(LAST_NIGHT_OF_JUNE, null)], null);
+    expect(row.dayKey).toBe("2026-07-01");
+    expect(row.haystack).toContain("july");
+  });
+});

@@ -5,6 +5,7 @@
 import { playsInSegment, primaryDancefloorSegment } from "./dancefloor";
 import { formatClock, formatDuration } from "./format";
 import { isLowConfidenceSet, localDayKey } from "./listModel";
+import { zoneForSet } from "./civilTime";
 import type { SetRecord } from "./types";
 
 export interface DayMarkSet {
@@ -147,15 +148,24 @@ function mostPlayedInRecentSets(newestFirst: SetRecord[], count: number): MostPl
   return { track: top(trackCounts), artist: top(artistCounts), setCount: window.length };
 }
 
-export function buildRightColumn(sets: SetRecord[]): RightColumnModel {
+export function buildRightColumn(
+  sets: SetRecord[],
+  djTimezone: string | null = null,
+): RightColumnModel {
   const marks: DayMarks = {};
   for (const set of sets) {
-    const key = localDayKey(set.started_at);
+    // Story 7.7: the calendar's day keys are built in the SET's zone — the
+    // night the DJ actually played. `GlassCalendar` looks these up from a grid
+    // it builds client-side, so the two sides must agree on what a key MEANS:
+    // a pure civil date, with no zone conversion left in it on either side.
+    // See the key-construction note in `GlassCalendar.tsx`.
+    const { zone } = zoneForSet(set, djTimezone);
+    const key = localDayKey(set.started_at, zone);
     if (!key) continue;
     const mark = (marks[key] ??= { count: 0, sets: [], totalSec: 0 });
     mark.count += 1;
     mark.sets.push({
-      start: formatClock(set.started_at),
+      start: formatClock(set.started_at, zone),
       duration: formatDuration(set.derived.set_length_sec),
     });
     mark.totalSec += set.derived.set_length_sec ?? 0;

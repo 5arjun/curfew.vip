@@ -15,10 +15,33 @@ import {
   type SyncLibraryRosterBatch,
   type SyncLibraryRosterEntry,
   type SyncPlay,
+  type SyncSetDerived,
 } from "./index";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const schemaPath = resolve(packageRoot, SYNC_PAYLOAD_SCHEMA_PATH);
+
+/**
+ * Every `required` field of SyncSetDerived and nothing else — the shape a
+ * payload carrying no post-freeze additions has. Spread it to assert that an
+ * optional field is genuinely optional at the *type* level, not just absent
+ * from the schema's `required` array.
+ */
+const MINIMAL_DERIVED: SyncSetDerived = {
+  most_played_tracks: [],
+  most_played_artists: [],
+  genre_breakdown: { buckets: [], no_genre_count: 0 },
+  bpm_distribution: { count: 0, min: 0, max: 0, mean: 0, median: 0 },
+  camelot_mixing_stats: {
+    compatible_transitions: 0,
+    incompatible_transitions: 0,
+    excluded_no_key: 0,
+  },
+  set_length_sec: null,
+  track_count: 0,
+  energy_arc: [],
+  confidence: { value: 0, track_count: 0, long_gap_count: 0 },
+};
 
 /**
  * The contract has two consumers (web = these TS exports, agent = the JSON-schema
@@ -113,14 +136,17 @@ describe("@curfew/shared frozen contract", () => {
       "energy_arc",
       "confidence",
     ];
-    // subgenre_breakdown (taxonomy v2) and, from Story 5.2, suggested_segments /
-    // idle_gaps were added post-freeze and are optional per AD-15 — present in
-    // `properties` but deliberately absent from `required`.
+    // subgenre_breakdown (taxonomy v2), suggested_segments / idle_gaps (Story
+    // 5.2) and timezone (Story 7.7) were added post-freeze and are optional per
+    // AD-15 — present in `properties` but deliberately absent from `required`.
+    // timezone in particular must never become required: AD-3 binds the cloud to
+    // accept payloads from agents that predate it, forever.
     const allProperties = [
       ...requiredProperties,
       "subgenre_breakdown",
       "suggested_segments",
       "idle_gaps",
+      "timezone",
     ];
     const derivedSchema = schema.$defs.derived;
     expect(Object.keys(derivedSchema.properties).sort()).toEqual([...allProperties].sort());
@@ -132,6 +158,25 @@ describe("@curfew/shared frozen contract", () => {
     const confidenceSchema = schema.$defs.confidence;
     expect(Object.keys(confidenceSchema.properties).sort()).toEqual([...expectedProperties].sort());
     expect(confidenceSchema.required.slice().sort()).toEqual([...expectedProperties].sort());
+  });
+
+  it("carries timezone as an optional, nullable string (Story 7.7, AD-15/AD-3)", () => {
+    const timezone = schema.$defs.derived.properties.timezone;
+    expect(timezone.type).toEqual(["string", "null"]);
+    expect(schema.$defs.derived.required).not.toContain("timezone");
+
+    // The three legal shapes, all of which must keep validating forever: a
+    // pre-7.7 agent omits the key, a 7.7 agent whose OS lookup failed sends
+    // null rather than a fabricated "UTC" (AD-11), and the happy path sends the
+    // IANA name. Fail-closed on a missing zone is forbidden here (AD-3).
+    const omitted: SyncSetDerived = MINIMAL_DERIVED;
+    expect(omitted.timezone).toBeUndefined();
+
+    const unknown: SyncSetDerived = { ...MINIMAL_DERIVED, timezone: null };
+    expect(unknown.timezone).toBeNull();
+
+    const known: SyncSetDerived = { ...MINIMAL_DERIVED, timezone: "America/Los_Angeles" };
+    expect(known.timezone).toBe("America/Los_Angeles");
   });
 
   it("carries track_id as an optional, nullable string (Story 4.2 D-2, AD-15)", () => {

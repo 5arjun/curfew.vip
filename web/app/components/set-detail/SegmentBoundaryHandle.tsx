@@ -40,6 +40,7 @@ import type { SetPlay } from "@/lib/sets/types";
 // path actually per-handle).
 export function SegmentBoundaryHandle({
   segmentId,
+  zone,
   edge,
   position,
   plays,
@@ -57,6 +58,8 @@ export function SegmentBoundaryHandle({
   onDragStateChange,
 }: {
   segmentId: string;
+  /** The set's own IANA zone, resolved once by the page (Story 7.7). */
+  zone: string;
   edge: BoundaryEdge;
   position: number;
   plays: SetPlay[];
@@ -86,7 +89,7 @@ export function SegmentBoundaryHandle({
   onDragStateChange: (segmentId: string | null, edge: BoundaryEdge | null) => void;
 }) {
   const play = plays.find((p) => p.position === position);
-  const valueText = boundaryValueText(edge, play, formatClock(play?.started_at ?? null));
+  const valueText = boundaryValueText(edge, play, formatClock(play?.started_at ?? null, zone));
 
   // Drag offset, held in a ref and written straight to `style.transform` rather
   // than through React state. A boundary snaps to whole tracks, so the handle's

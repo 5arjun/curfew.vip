@@ -2,12 +2,18 @@ import { describe, expect, it } from "vitest";
 import { clockSummary } from "./ClockStrip";
 
 /**
- * `clockSummary` is the one string in Story 4.10 that lived entirely outside
- * `lib/sets/*` and so was reachable only through `ClockStrip`'s pre-hydration
- * render path (`prop-threading.test.tsx`), which never exercises the hydrated
- * bucket math. Exported and tested directly here instead, following the
- * house rule that pure logic gets a direct unit test rather than only a DOM
- * assertion.
+ * `clockSummary` is the one string in Story 4.10 that lives entirely outside
+ * `lib/sets/*`. It was exported and tested directly here rather than only
+ * through a DOM assertion, following the house rule that pure logic gets a
+ * direct unit test.
+ *
+ * The original reason was sharper: `ClockStrip` was a Client Component whose
+ * server render only ever produced a pre-hydration placeholder, so
+ * `prop-threading.test.tsx` never exercised the bucket math at all. Story 7.7
+ * moved the bucketing to the server (each play counted in its own set's zone),
+ * so that suite now does reach it — see the zone assertions there. This file
+ * still owns the summary string's own edge cases, which is what it was always
+ * really for.
  */
 
 function buckets(counts: Partial<Record<number, number>>): number[] {

@@ -1,18 +1,31 @@
-// Presentation formatters for the set card (Story 3.6). Pure + deterministic
-// (the date formatter reflects the viewer's locale/timezone — a gig's date is
-// the DJ's local date, not UTC).
+// Presentation formatters for the set card (Story 3.6). Pure + deterministic.
+//
+// **Every date/clock formatter here takes an explicit `zone`** (Story 7.7).
+// They used to read the process's zone, and these render in Server Components,
+// so on Vercel that was UTC — a DJ's 11pm Friday set was labelled Saturday. The
+// zone comes from `zoneForSet` in `./civilTime` and nowhere else.
+//
+// The LOCALE is a separate, still-open defect: `toLocaleDateString([], …)`
+// resolves to the runtime's default and produces `June`/`juin` hydration
+// mismatches on a non-`en` browser. It is ledgered in `deferred-work.md` and
+// deliberately out of scope here — do not fix it in passing, and do not add a
+// new instance of it either.
 import type { SegmentStats } from "./dancefloor";
+import { civilFromIso } from "./civilTime";
 
 /** Mono header date, e.g. "SAT · 21 JUN 2026". Uppercased for the console voice. */
-export function formatSetDate(iso: string | null): string {
+export function formatSetDate(iso: string | null, zone: string): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  const weekday = d.toLocaleDateString([], { weekday: "short" }).toUpperCase();
-  const day = d.getDate();
-  const month = d.toLocaleDateString([], { month: "short" }).toUpperCase();
-  const year = d.getFullYear();
-  return `${weekday} · ${day} ${month} ${year}`;
+  const civil = civilFromIso(iso, zone);
+  if (!civil) return "—";
+  // Names through `toLocaleDateString` (locale-shaped, out of scope), numerics
+  // off the civil triple — never `getDate`/`getFullYear`, which would read the
+  // process's zone and disagree with the month name beside them.
+  const weekday = d.toLocaleDateString([], { weekday: "short", timeZone: zone }).toUpperCase();
+  const month = d.toLocaleDateString([], { month: "short", timeZone: zone }).toUpperCase();
+  return `${weekday} · ${civil.day} ${month} ${civil.year}`;
 }
 
 /**
@@ -73,26 +86,41 @@ export function formatTrackCount(count: number): string {
    surfaces speak title-case Hanken, not the console voice above. Same
    locale/timezone discipline: a gig's date and clock are the DJ's local ones. */
 
-/** Row/hero date, e.g. "Fri, Aug 1". `null`/garbage → "—". */
-export function formatDayDate(iso: string | null): string {
+/** Row/hero date in the set's own zone, e.g. "Fri, Aug 1". `null`/garbage → "—". */
+export function formatDayDate(iso: string | null, zone: string): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+  return d.toLocaleDateString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: zone,
+  });
 }
 
-/** Local clock time, e.g. "10:14 PM". `null`/garbage → "—". */
-export function formatClock(iso: string | null): string {
+/**
+ * The clock the DJ saw, e.g. "10:14 PM". `null`/garbage → "—".
+ *
+ * This is the label whose wrongness was most visible: a set that started at
+ * 10:14 PM in Los Angeles rendered "5:14 AM" server-side, which is not a time
+ * anyone plays a club set at.
+ */
+export function formatClock(iso: string | null, zone: string): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", timeZone: zone });
 }
 
 /** Start AND end (D8: duration implied), e.g. "10:14 PM – 1:52 AM". */
-export function formatTimeRange(startIso: string | null, endIso: string | null): string {
-  const start = formatClock(startIso);
-  const end = formatClock(endIso);
+export function formatTimeRange(
+  startIso: string | null,
+  endIso: string | null,
+  zone: string,
+): string {
+  const start = formatClock(startIso, zone);
+  const end = formatClock(endIso, zone);
   if (start === "—" && end === "—") return "—";
   return `${start} – ${end}`;
 }

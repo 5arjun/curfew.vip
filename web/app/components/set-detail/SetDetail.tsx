@@ -31,7 +31,7 @@ import { useSegmentEditor } from "./useSegmentEditor";
 // tracklist drives page height and the right column is `position: sticky`.
 const INITIAL_ROWS = 50;
 
-export function SetDetail({ set }: { set: SetRecord }) {
+export function SetDetail({ set, zone }: { set: SetRecord; zone: string }) {
   // The dancefloor cut arrives ON the set row (Story 5.2) — detected agent-side
   // against this DJ's own calibrated floors, stored as `segments` rows, fetched
   // by the read seam. `null` still means "no dancefloor", which the scope
@@ -87,7 +87,7 @@ export function SetDetail({ set }: { set: SetRecord }) {
   // Story 5.3: the editor's state, owned here because three surfaces read it —
   // the tracklist draws the handles, the arc mirrors the live boundary (D-34),
   // and the selector says which floor is being edited (D-30).
-  const editor = useSegmentEditor(set, revealPosition);
+  const editor = useSegmentEditor(set, revealPosition, zone);
 
   // No detected dancefloor → the toggle hides and the whole set is the one
   // honest frame (AC-35/36).
@@ -223,10 +223,16 @@ export function SetDetail({ set }: { set: SetRecord }) {
       {/* Same Silk ground as the dashboard (post-review parity ruling). */}
       <SilkBackdrop />
       <header className="sd-header">
-        <SetHeader set={set} frame={frame} onScopeChange={flipScope} scopeToggleVisible={segment != null} />
+        <SetHeader
+          set={set}
+          zone={zone}
+          frame={frame}
+          onScopeChange={flipScope}
+          scopeToggleVisible={segment != null}
+        />
         {/* 3.8: the arc + key strip click-to-jump ride the SAME DR-2 setFocus
             every stat module uses — no second focus path. */}
-        <DetailArc set={set} frame={frame} setFocus={setFocus} />
+        <DetailArc set={set} zone={zone} frame={frame} setFocus={setFocus} />
       </header>
 
       <div className="sd-body">
@@ -238,6 +244,7 @@ export function SetDetail({ set }: { set: SetRecord }) {
               stack pushed the card out of line with the stats rail. */}
           <Tracklist
             set={set}
+            zone={zone}
             frame={frame}
             focus={focus}
             onDismissFocus={() => setFocusState(null)}

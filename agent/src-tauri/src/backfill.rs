@@ -214,6 +214,11 @@ pub fn backfill_captured_serato4(
     // history for sync on the next launch. That IS the rollout mechanism (D-25) —
     // there is deliberately no second one.
     let pool = crate::capture::load_calibration_pool(store_conn);
+    // Story 7.7: read once for the whole sweep, at the edge, like the pool. Note
+    // this is *today's* zone, which is the right answer only for a row that has
+    // none — `carry_forward_timezone` below is what keeps it from being applied
+    // to a row that already knows where it was captured.
+    let timezone = crate::capture::local_timezone();
 
     let mut changed = 0;
     for row in rows {
@@ -230,12 +235,13 @@ pub fn backfill_captured_serato4(
         // db_path to sit under the configured root, which the live source
         // guarantees. Any error (source gone, session pruned, corrupt row) leaves
         // the existing row untouched.
-        let (mut plays, derived) = match crate::capture::build_serato4(
+        let (mut plays, mut derived) = match crate::capture::build_serato4(
             &source.root,
             &source.db_path,
             session_id,
             dates,
             &pool,
+            timezone.as_deref(),
         ) {
             Ok(built) => built,
             // Distinct from every other re-derivation error (Story 3.7 code
@@ -267,6 +273,7 @@ pub fn backfill_captured_serato4(
         // are stable across re-derivations of the same raw) is therefore kept
         // whenever the fresh derivation has none. Fresh `Some` values still win.
         carry_forward_library_dates(row.plays_json.as_deref(), &mut plays);
+        carry_forward_timezone(row.derived_json.as_deref(), &mut derived);
 
         let (Ok(plays_json), Ok(derived_json)) = (
             serde_json::to_string(&plays),
@@ -374,6 +381,43 @@ fn carry_forward_library_dates(
     }
 }
 
+/// Story 7.7's carry-forward guard — the same shape as
+/// [`carry_forward_library_dates`] above, for the same class of reason.
+///
+/// A re-derivation reads the zone the DJ is in *now*, but the field records the
+/// zone they were in *at the gig*. Those are the same value only until the DJ
+/// travels. Without this, a DJ who moves from Los Angeles to Berlin gets their
+/// entire back catalogue restamped `Europe/Berlin` on the next agent upgrade —
+/// every historical set re-bucketed onto the wrong night, which is precisely
+/// the failure this story exists to remove, reintroduced by its own fix and at
+/// far greater scale than the bug it replaced.
+///
+/// So: a stored zone always wins. The fresh read only fills a row that has none
+/// (every row captured before this story, which is the whole point of the
+/// sweep). Once filled, a row's zone is never rewritten by this path again —
+/// which also keeps the sweep self-terminating, since the second pass finds
+/// nothing left to change.
+///
+/// Note the asymmetry with `carry_forward_library_dates`, and that it is
+/// deliberate: there, a fresh `Some` wins over a stored one, because a newly
+/// mounted volume is genuinely better evidence. Here there is no such thing as
+/// better evidence about the past arriving later — today's zone is not new
+/// information about a set played two years ago.
+fn carry_forward_timezone(
+    stored_derived_json: Option<&str>,
+    fresh: &mut crate::store::CapturedDerived,
+) {
+    let Some(json) = stored_derived_json else {
+        return;
+    };
+    let Ok(stored) = serde_json::from_str::<crate::store::CapturedDerived>(json) else {
+        return;
+    };
+    if let Some(zone) = stored.timezone {
+        fresh.timezone = Some(zone);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -411,6 +455,13 @@ mod tests {
     fn no_dates() -> crate::joiner::date_added::DateAddedIndex {
         crate::joiner::date_added::DateAddedIndex::fixed(std::collections::HashMap::new())
     }
+
+    /// Story 7.7. Tests that pre-store a row must give it a zone, because the
+    /// sweep itself reads the *machine's* zone — a row stored with `None` would
+    /// be filled by the sweep and report as changed on any developer's laptop
+    /// while passing on a UTC CI box. Storing a real zone makes these tests
+    /// machine-independent and exercises `carry_forward_timezone` besides.
+    const TEST_ZONE: Option<&str> = Some("America/Los_Angeles");
 
     /// A real on-disk `master.sqlite` fixture carrying one `history_entry`
     /// row -- mirrors `watcher::mod`'s own test fixture builder.
@@ -687,6 +738,7 @@ mod tests {
             42,
             &no_dates(),
             &crate::stats::segments::CalibrationPool::default(),
+            TEST_ZONE,
         )
         .expect("derive");
         let (started_at, ended_at) = crate::capture::session_bounds(&plays);
@@ -726,6 +778,104 @@ mod tests {
             row.synced_at,
             Some(777),
             "an unchanged row must keep its synced_at (no needless re-sync)"
+        );
+    }
+
+    /// (Story 7.7, Task 2.) The DJ moved. Their back catalogue must not move
+    /// with them.
+    ///
+    /// The sweep re-derives against *today's* zone, so without
+    /// `carry_forward_timezone` every historical set would be restamped with
+    /// wherever the DJ happens to be on the day they upgrade the agent — every
+    /// past night re-bucketed onto the wrong day, at the scale of the whole
+    /// local history, by the very story that exists to stop that. This asserts
+    /// the stored zone wins and the row is left alone entirely.
+    #[test]
+    fn a_relocated_dj_does_not_get_their_history_restamped() {
+        let store_dir = TempDir::new("backfill-tz-carry-forward-store");
+        let store_conn = crate::store::open_at(&store_dir.0.join("local.sqlite")).unwrap();
+        let serato4_dir = TempDir::new("backfill-tz-carry-forward-serato4");
+        let db_path = write_serato4_fixture_with_key_value(&serato4_dir.0, 42, 0, "G#m", 1_000);
+        let identity = crate::capture::serato4_session_identity(42);
+
+        // Captured back when the DJ lived in Los Angeles.
+        let (plays, derived) = crate::capture::build_serato4(
+            &serato4_dir.0,
+            &db_path,
+            42,
+            &no_dates(),
+            &crate::stats::segments::CalibrationPool::default(),
+            Some("America/Los_Angeles"),
+        )
+        .expect("derive");
+        let (started_at, ended_at) = crate::capture::session_bounds(&plays);
+        crate::store::upsert_captured(
+            &store_conn,
+            &identity,
+            SessionSource::Serato4,
+            &crate::capture::serato4_raw_ref(&db_path, 42),
+            started_at,
+            ended_at,
+            &plays,
+            &derived,
+        )
+        .unwrap();
+
+        // They have since moved to Berlin — the sweep's fresh read says so.
+        let mut fresh = derived.clone();
+        fresh.timezone = Some("Europe/Berlin".into());
+        carry_forward_timezone(Some(&serde_json::to_string(&derived).unwrap()), &mut fresh);
+        assert_eq!(
+            fresh.timezone.as_deref(),
+            Some("America/Los_Angeles"),
+            "a set played in LA stays played in LA"
+        );
+
+        // And end to end: the sweep leaves the row untouched, so it is not
+        // re-queued for sync either.
+        let plan = WatchPlan {
+            serato4: Some(Serato4Source {
+                root: serato4_dir.0.clone(),
+                db_path,
+            }),
+            legacy: None,
+        };
+        let changed = backfill_captured_serato4(&store_conn, &plan, &no_dates(), &NoopReporter);
+        assert_eq!(
+            changed, 0,
+            "a row that already knows its zone is not rewritten"
+        );
+    }
+
+    /// (Story 7.7, Task 2.) The other half: a row captured *before* this story
+    /// carries no zone at all, and the sweep is exactly the mechanism that
+    /// fills it. Preserve-don't-overwrite must not become never-write.
+    #[test]
+    fn a_zoneless_row_is_filled_by_the_sweep() {
+        let serato4_dir = TempDir::new("backfill-tz-fill-serato4");
+        let db_path = write_serato4_fixture_with_key_value(&serato4_dir.0, 42, 0, "G#m", 1_000);
+
+        let (_, pre_story) = crate::capture::build_serato4(
+            &serato4_dir.0,
+            &db_path,
+            42,
+            &no_dates(),
+            &crate::stats::segments::CalibrationPool::default(),
+            None,
+        )
+        .expect("derive");
+        assert_eq!(pre_story.timezone, None, "precondition: no stored zone");
+
+        let mut fresh = pre_story.clone();
+        fresh.timezone = Some("Europe/Berlin".into());
+        carry_forward_timezone(
+            Some(&serde_json::to_string(&pre_story).unwrap()),
+            &mut fresh,
+        );
+        assert_eq!(
+            fresh.timezone.as_deref(),
+            Some("Europe/Berlin"),
+            "a row with no zone takes the fresh one — that is the rollout"
         );
     }
 
@@ -794,6 +944,7 @@ mod tests {
             42,
             &with_dates,
             &crate::stats::segments::CalibrationPool::default(),
+            TEST_ZONE,
         )
         .expect("derive with dates");
         assert_eq!(plays[0].library_added_at, Some(1_644_628_114));
@@ -869,6 +1020,7 @@ mod tests {
             42,
             &no_dates(),
             &crate::stats::segments::CalibrationPool::default(),
+            TEST_ZONE,
         )
         .expect("derive without dates");
         assert_eq!(plays[0].library_added_at, None);

@@ -74,6 +74,22 @@ rusqlite = { version = "0.40.1", features = ["bundled"] }
 # + `Disk::is_removable()`/`Disk::mount_point()` cover both macOS and Windows.
 sysinfo = "0.39.6"
 
+# The DJ's IANA time zone name at capture time (Story 7.7). Reads the OS's own
+# zone setting (macOS `/etc/localtime` symlink, Windows registry) and returns
+# the tzdata name — `"America/Los_Angeles"`, not an offset.
+#
+# Why this crate and not the obvious alternative: `chrono::Local` / `time`'s
+# `UtcOffset::current_local_offset` both give an *offset*, and `time` refuses
+# outright in a multithreaded process (its `local-offset` soundness fix — the
+# underlying libc `localtime_r` races with `setenv`). A Tauri app is
+# unavoidably multithreaded, so that API returns `Err` in production while
+# working fine in a single-threaded unit test — the worst possible failure
+# shape. An offset would also be wrong on its own terms here: re-applying a
+# summer `-07:00` to a January set shifts it by an hour, which is the exact
+# class of bug this story exists to remove. The zone name survives DST and
+# tzdata revisions; `iana-time-zone` reads it without the libc race.
+iana-time-zone = "0.1"
+
 # Cross-platform filesystem watcher (Story 2.6 Task 6) — the API the
 # architecture spine's pipeline diagram already names for the `watcher` stage.
 # `recommended_watcher` picks the OS-native backend (FSEvents on macOS,

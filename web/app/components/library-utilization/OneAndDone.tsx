@@ -45,7 +45,7 @@ const ONE_AND_DONE_ALL_REPEATED_COPY =
  * worth another look. The date is on the row because "once, in March" and
  * "once, on Friday" are different prompts.
  */
-export function OneAndDone({ model }: { model: OneAndDoneModel }) {
+export function OneAndDone({ model, zone }: { model: OneAndDoneModel; zone: string }) {
   const ready = hasEnoughOneAndDone(model);
   const summary = oneAndDoneSummary(model);
 
@@ -87,7 +87,7 @@ export function OneAndDone({ model }: { model: OneAndDoneModel }) {
               // says "unknown" without inventing a date, which is the same
               // "never omitted, never guessed" contract AD-11 asks for.
               value: Number.isFinite(row.lastPlayedMs)
-                ? formatDayDate(new Date(row.lastPlayedMs).toISOString())
+                ? formatDayDate(new Date(row.lastPlayedMs).toISOString(), zone)
                 : "—",
             }))}
             visibleRows={ONE_AND_DONE_VISIBLE_ROWS}

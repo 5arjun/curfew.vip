@@ -1390,6 +1390,20 @@ pub struct CapturedDerived {
     /// (there is no `idle` value in the type enum, D-26).
     #[serde(default)]
     pub idle_gaps: Vec<CapturedIdleGap>,
+    /// The DJ's IANA time zone name at capture time (Story 7.7) — e.g.
+    /// `"America/Los_Angeles"`. Read from the OS at the effectful edge and
+    /// threaded into [`crate::capture::assemble`] as an argument, never read
+    /// from inside it: `assemble` is pure, and the byte-identical re-derive
+    /// invariant (D-23) depends on that.
+    ///
+    /// `#[serde(default)]` for the same pre-existing-row round-trip reason as
+    /// `suggested_segments`/`idle_gaps` above: a stored `derived_json` written
+    /// before this story never carried the key.
+    ///
+    /// `None` when `iana_time_zone::get_timezone()` fails — carried as null,
+    /// never a fabricated `"UTC"` (AD-11). The cloud resolves the fallback.
+    #[serde(default)]
+    pub timezone: Option<String>,
 }
 
 /// One captured session's raw material for Story 5.2's calibration pool — the
@@ -1582,6 +1596,7 @@ mod tests {
             },
             suggested_segments: vec![],
             idle_gaps: vec![],
+            timezone: None,
         }
     }
 

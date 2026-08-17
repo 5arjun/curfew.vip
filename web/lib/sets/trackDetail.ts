@@ -10,16 +10,26 @@
 // **Two rules from the story shape this whole file, and both are easy to
 // undo by accident:**
 //
-// 1. **No formatted clock string is produced here (D-32).** `plays.started_at`
-//    is `timestamptz`: the capture-side offset is normalized to UTC and lost,
-//    and there is no venue timezone, no DJ timezone on `djs` and no set-level
-//    offset anywhere in the system. Rendering an hour server-side renders it in
-//    the SERVER's zone — wrong, and a hydration mismatch besides. So the model
-//    ships `startedAtMs: number` and the browser formats it, in the viewer's
-//    own zone, which is the only zone ever right for "what time of night do I
-//    drop this" (the DJ plays where they live). `vitest.config.ts` pins
-//    `TZ=UTC`, so a passing test here proves the EPOCH MATH and nothing about
-//    the rendered hour — that is verified in the browser pass, not here.
+// 1. **No formatted clock STRING is produced here (D-32) — but the hour
+//    BUCKETS now are (Story 7.7).** This rule used to read "the model ships raw
+//    epoch ms and the browser does everything else," justified by: "there is no
+//    venue timezone, no DJ timezone on `djs` and no set-level offset anywhere in
+//    the system."
+//
+//    That premise is now false. A set carries `derived.timezone` — the IANA zone
+//    the DJ was in when the agent captured it — with `djs.timezone` behind it as
+//    a fallback. So the hour histogram is computed here, in each set's own zone
+//    (see {@link buildClockStrip}), instead of in the browser in whichever zone
+//    the viewer happens to be sitting in.
+//
+//    Deferring a *label* to the client was defensible. Deferring an
+//    *aggregation* was not: it made the answer depend on who was looking, and it
+//    was wrong for exactly the DJ this page is most useful to — one who travels.
+//    Formatted clock strings are still the client's job.
+//
+//    `vitest.config.ts` pins `TZ=UTC`, so a passing test here proves nothing
+//    about the process zone either way; the tests that matter pass a zone in
+//    explicitly (`civilTime.test.ts`).
 //
 // 2. **A missing value is a gap, never a fabricated zero (D-8).** Every model
 //    below returns `null`/absent for "not enough data" rather than `0`, and
@@ -28,6 +38,7 @@
 //    defect in this epic).
 import { isLowConfidenceSet } from "./listModel";
 import { formatSessionLabel } from "./format";
+import { civilInZone, resolveSetZone } from "./civilTime";
 import type { LibraryRosterEntry } from "./libraryRoster";
 import type { SetRecord, SyncPlay, SyncSetDerived } from "./types";
 
@@ -274,6 +285,13 @@ export interface TrackSetRow {
   label: string;
   /** `null` for an undated set — rendered as a gap, never as a guessed date. */
   startedAtMs: number | null;
+  /**
+   * The zone THIS set was played in (Story 7.7) — its own captured zone, else
+   * the DJ's, else UTC. Carried per row because a touring DJ's history spans
+   * several, and "the night I played this" is a claim about where they were
+   * standing, not where the reader is.
+   */
+  zone: string;
   /** How many times the track played in THIS set. Two spins in one night is a real answer. */
   playCount: number;
 }
@@ -306,7 +324,10 @@ export interface TrackHistoryModel {
  * straddles midnight has plays on both sides of it, and the set's start is not
  * when this track played.
  */
-export function buildTrackHistory(plays: TrackPlayRecord[]): TrackHistoryModel {
+export function buildTrackHistory(
+  plays: TrackPlayRecord[],
+  djTimezone: string | null = null,
+): TrackHistoryModel {
   let firstPlayedMs: number | null = null;
   let lastPlayedMs: number | null = null;
   let undatedPlayCount = 0;
@@ -329,6 +350,7 @@ export function buildTrackHistory(plays: TrackPlayRecord[]): TrackHistoryModel {
         // it is the documented `SET 872d5614-…` regression.
         label: record.setLabel ? formatSessionLabel(record.setLabel) : "Untitled set",
         startedAtMs: msOf(record.setStartedAt),
+        zone: resolveSetZone(record.setDerived?.timezone, djTimezone).zone,
         playCount: 1,
       });
     }
@@ -369,35 +391,63 @@ export function trackHistorySummary(model: TrackHistoryModel): string {
 
 export interface ClockStripModel {
   /**
-   * Every play's start, in epoch ms, ascending. **Never a formatted hour**
-   * (D-32) — the strip's hour labels and its text equivalent are both generated
-   * in the browser from exactly these numbers, so the two cannot drift.
+   * Plays per hour of the day, indexed 0–23, each play counted in the zone the
+   * SET it belongs to was played in (Story 7.7).
+   *
+   * **This is an aggregation, and it is computed here, on the server.** It used
+   * to be `startedAtMs: number[]` with the bucketing done in the browser behind
+   * a hydration gate — see `ClockStrip.tsx` for why that was, and why it is no
+   * longer.
    */
+  hourCounts: number[];
+  /** Every play's start, in epoch ms, ascending — kept for the total and for callers that want the raw instants. */
   startedAtMs: number[];
   /** Plays with no parseable time — absent from the strip, disclosed as a count. */
   undatedPlayCount: number;
+  /** Plays bucketed on a fallback zone rather than their set's own (AC-4). */
+  zoneFallbackCount: number;
 }
 
 /**
  * AC-8's clock strip: what time of night the DJ drops this track.
  *
- * The model is deliberately almost empty. Everything that makes an hour an
- * *hour* — which day it falls on, which side of midnight, what to call it —
- * depends on a timezone this system does not store anywhere (GAP-3), and the
- * only correct one is the viewer's own. See this file's header for the full
- * argument; the short version is that a server-rendered hour is both wrong and
- * a hydration mismatch, and this epic already carries one unfixed instance.
+ * **Story 7.7 inverted this module's central decision, and the old reasoning is
+ * worth keeping because the premise is what changed, not the logic.** The model
+ * used to carry only raw epoch numbers, on the grounds that "everything that
+ * makes an hour an *hour* depends on a timezone this system does not store
+ * anywhere (GAP-3), and the only correct one is the viewer's own." The first
+ * half of that is no longer true: a set now carries the zone it was captured
+ * in, with `djs.timezone` behind it. And with it false, the second half stops
+ * following — the viewer's zone was never *right*, it was the best available
+ * stand-in for a zone nobody had recorded. A DJ who tours does not want their
+ * Berlin sets re-bucketed because they opened the page in Los Angeles, and a
+ * histogram whose answer depends on who is looking is not an answer.
+ *
+ * Each play is bucketed in ITS OWN set's zone, not one zone for the whole
+ * track: that is the case that makes per-set capture worth having.
  */
-export function buildClockStrip(plays: TrackPlayRecord[]): ClockStripModel {
+export function buildClockStrip(
+  plays: TrackPlayRecord[],
+  djTimezone: string | null = null,
+): ClockStripModel {
   const startedAtMs: number[] = [];
+  const hourCounts = new Array<number>(24).fill(0);
   let undatedPlayCount = 0;
+  let zoneFallbackCount = 0;
   for (const record of plays) {
     const ms = msOf(record.play.started_at);
-    if (ms === null) undatedPlayCount += 1;
-    else startedAtMs.push(ms);
+    if (ms === null) {
+      undatedPlayCount += 1;
+      continue;
+    }
+    startedAtMs.push(ms);
+    const resolved = resolveSetZone(record.setDerived?.timezone, djTimezone);
+    if (resolved.source !== "set") zoneFallbackCount += 1;
+    const civil = civilInZone(ms, resolved.zone);
+    if (civil) hourCounts[civil.hour] += 1;
   }
   startedAtMs.sort((a, b) => a - b);
-  return { startedAtMs, undatedPlayCount };
+  return { hourCounts, startedAtMs, undatedPlayCount, zoneFallbackCount };
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

@@ -43,6 +43,8 @@ function set(overrides: {
   noGenreCount?: number;
   plays?: SyncPlay[];
   mixingStats?: { compatible_transitions: number; incompatible_transitions: number; excluded_no_key: number };
+  /** The zone this set was captured in (Story 7.7). Omitted = a pre-7.7 agent. */
+  timezone?: string | null;
 }): SetRecord {
   const plays = overrides.plays ?? [];
   return {
@@ -68,35 +70,53 @@ function set(overrides: {
         track_count: plays.length,
         long_gap_count: 0,
       },
+      timezone: overrides.timezone ?? null,
     },
   } as SetRecord;
 }
 
+// Story 7.7: these helpers take an explicit zone now, and this whole block
+// passes UTC so the existing expectations still describe exactly what they
+// always described.
+//
+// **Do not read this block as coverage of the timezone behaviour.** Every
+// timestamp here is midday UTC, deliberately chosen back when the helpers read
+// the process zone, precisely so a zone could not perturb them — and
+// `vitest.config.ts:18` pins `TZ=UTC` besides, so these would pass against a
+// process-zone implementation and a zone-explicit one alike. What they cover is
+// the calendar arithmetic: padding, Monday-of-week, month and year rollovers.
+//
+// The cases that actually distinguish this story's fix from the bug — local
+// midnight, a month boundary crossed by a late-night set, and a DST transition
+// — live in `civilTime.test.ts`, where each one passes two different zones and
+// requires the answers to differ.
+const UTC = "UTC";
+
 describe("localMonthKey", () => {
   it("truncates a local timestamp to YYYY-MM", () => {
-    expect(localMonthKey("2026-06-21T10:00:00.000Z")).toBe("2026-06");
+    expect(localMonthKey("2026-06-21T10:00:00.000Z", UTC)).toBe("2026-06");
   });
 
   it("returns '' for null or unparsable input", () => {
-    expect(localMonthKey(null)).toBe("");
-    expect(localMonthKey("not-a-date")).toBe("");
+    expect(localMonthKey(null, UTC)).toBe("");
+    expect(localMonthKey("not-a-date", UTC)).toBe("");
   });
 
   it("pads single-digit months", () => {
-    expect(localMonthKey("2026-01-05T12:00:00.000Z")).toBe("2026-01");
+    expect(localMonthKey("2026-01-05T12:00:00.000Z", UTC)).toBe("2026-01");
   });
 
   it("buckets across a year boundary correctly", () => {
     // Local midday timestamps avoid any timezone-driven day rollover flakiness.
-    expect(localMonthKey("2025-12-31T12:00:00.000Z")).toBe("2025-12");
-    expect(localMonthKey("2026-01-01T12:00:00.000Z")).toBe("2026-01");
+    expect(localMonthKey("2025-12-31T12:00:00.000Z", UTC)).toBe("2025-12");
+    expect(localMonthKey("2026-01-01T12:00:00.000Z", UTC)).toBe("2026-01");
   });
 
   it("stays in the same local month across a DST transition (no manual UTC-offset math to misfire)", () => {
     // US DST spring-forward 2026-03-08. Both timestamps land in local March
     // regardless of the runner's timezone offset shifting mid-month.
-    const before = localMonthKey("2026-03-01T12:00:00.000Z");
-    const after = localMonthKey("2026-03-15T12:00:00.000Z");
+    const before = localMonthKey("2026-03-01T12:00:00.000Z", UTC);
+    const after = localMonthKey("2026-03-15T12:00:00.000Z", UTC);
     expect(before).toBe("2026-03");
     expect(after).toBe("2026-03");
   });
@@ -105,36 +125,36 @@ describe("localMonthKey", () => {
 describe("localWeekKey", () => {
   it("returns the local Monday date of the containing week", () => {
     // 2026-03-04 is a Wednesday; its week's Monday is 2026-03-02.
-    expect(localWeekKey("2026-03-04T12:00:00.000Z")).toBe("2026-03-02");
+    expect(localWeekKey("2026-03-04T12:00:00.000Z", UTC)).toBe("2026-03-02");
   });
 
   it("a Monday maps to itself", () => {
-    expect(localWeekKey("2026-03-02T12:00:00.000Z")).toBe("2026-03-02");
+    expect(localWeekKey("2026-03-02T12:00:00.000Z", UTC)).toBe("2026-03-02");
   });
 
   it("a Sunday maps to the Monday that started its week", () => {
-    expect(localWeekKey("2026-03-08T12:00:00.000Z")).toBe("2026-03-02");
+    expect(localWeekKey("2026-03-08T12:00:00.000Z", UTC)).toBe("2026-03-02");
   });
 
   it("returns '' for null or unparsable input", () => {
-    expect(localWeekKey(null)).toBe("");
-    expect(localWeekKey("not-a-date")).toBe("");
+    expect(localWeekKey(null, UTC)).toBe("");
+    expect(localWeekKey("not-a-date", UTC)).toBe("");
   });
 
   it("crosses a month boundary correctly", () => {
     // 2026-03-01 is a Sunday; its week's Monday is 2026-02-23.
-    expect(localWeekKey("2026-03-01T12:00:00.000Z")).toBe("2026-02-23");
+    expect(localWeekKey("2026-03-01T12:00:00.000Z", UTC)).toBe("2026-02-23");
   });
 
   it("crosses a year boundary correctly", () => {
     // 2026-01-01 is a Thursday; its week's Monday is 2025-12-29.
-    expect(localWeekKey("2026-01-01T12:00:00.000Z")).toBe("2025-12-29");
+    expect(localWeekKey("2026-01-01T12:00:00.000Z", UTC)).toBe("2025-12-29");
   });
 
   it("stays in the same local week across a DST transition", () => {
     // US DST spring-forward 2026-03-08 (a Sunday) — same week as 2026-03-05.
-    const wed = localWeekKey("2026-03-05T12:00:00.000Z");
-    const sun = localWeekKey("2026-03-08T12:00:00.000Z");
+    const wed = localWeekKey("2026-03-05T12:00:00.000Z", UTC);
+    const sun = localWeekKey("2026-03-08T12:00:00.000Z", UTC);
     expect(wed).toBe(sun);
   });
 });
@@ -1253,5 +1273,90 @@ describe("harmonicMixSummary (Story 4.8 AC-9)", () => {
     ]);
     const values = model.month.excluding.map((p) => p.harmonicMix);
     expect(harmonicMixSummary(model.month.buckets, values, "month")).toBe("Harmonic mixing sits at 75% in June.");
+  });
+});
+
+describe("buildStyleEvolution buckets in each set's own zone (Story 7.7)", () => {
+  // The model-level counterpart to `civilTime.test.ts`. That file proves the
+  // key helpers are zone-correct; this one proves the zone actually reaches
+  // them through `buildStyleEvolution` rather than being resolved once, wrongly,
+  // somewhere on the way in.
+  //
+  // The instant below is the canonical production case: 04:00Z on 2026-01-01 is
+  // 23:00 on 2025-12-31 in New York. Before this story it filed under January
+  // 2026 for a DJ who played it in December 2025 — measured on 2 of the 76 real
+  // production sets.
+  const NYE = "2026-01-01T04:00:00.000Z";
+
+  it("files an 11pm New Year's Eve set in the month the DJ played it", () => {
+    const played = set({ external_id: "nye", started_at: NYE, timezone: "America/New_York" });
+    const model = buildStyleEvolution([played]);
+    expect(model.month.buckets).toEqual(["2025-12"]);
+  });
+
+  it("would have filed it in January without the set's zone — the bug, pinned", () => {
+    // Same instant, no captured zone and no DJ zone, so the chain falls to UTC.
+    // This is not a regression to guard against; it is the honest behaviour for
+    // a set from an agent older than 7.7, and AD-3 makes that state permanent.
+    const played = set({ external_id: "nye", started_at: NYE, timezone: null });
+    const model = buildStyleEvolution([played], null);
+    expect(model.month.buckets).toEqual(["2026-01"]);
+    expect(model.zoneFallbackCount).toBe(1);
+  });
+
+  it("falls back to the DJ's zone for a set that carries none", () => {
+    const played = set({ external_id: "nye", started_at: NYE, timezone: null });
+    const model = buildStyleEvolution([played], "America/New_York");
+    expect(model.month.buckets).toEqual(["2025-12"]);
+    // Still disclosed: a DJ-level zone is a guess about where THAT gig was.
+    expect(model.zoneFallbackCount).toBe(1);
+  });
+
+  it("prefers each set's own zone over the DJ's", () => {
+    const played = set({ external_id: "nye", started_at: NYE, timezone: "Asia/Tokyo" });
+    // 04:00Z on Jan 1 is 13:00 on Jan 1 in Tokyo — so the set's own zone keeps
+    // it in January even though the DJ's zone would move it to December.
+    const model = buildStyleEvolution([played], "America/New_York");
+    expect(model.month.buckets).toEqual(["2026-01"]);
+    expect(model.zoneFallbackCount).toBe(0);
+  });
+
+  it("buckets a touring DJ's sets in the zones they were each played in", () => {
+    // The case that justifies per-set capture over one DJ-level zone. Two sets
+    // at the same instant, two zones, two different months.
+    const model = buildStyleEvolution(
+      [
+        set({ external_id: "ny", started_at: NYE, timezone: "America/New_York" }),
+        set({ external_id: "tokyo", started_at: NYE, timezone: "Asia/Tokyo" }),
+      ],
+      null,
+    );
+    expect(model.month.buckets).toEqual(["2025-12", "2026-01"]);
+    expect(model.zoneFallbackCount).toBe(0);
+  });
+
+  it("counts only the sets that actually fell back", () => {
+    const model = buildStyleEvolution(
+      [
+        set({ external_id: "a", started_at: NYE, timezone: "America/New_York" }),
+        set({ external_id: "b", started_at: NYE, timezone: null }),
+        set({ external_id: "c", started_at: NYE, timezone: null }),
+      ],
+      "America/New_York",
+    );
+    expect(model.zoneFallbackCount).toBe(2);
+    // And they are still IN the series — a fallback is a caveat, not a drop.
+    expect(model.setCount).toBe(3);
+    expect(model.undatedCount).toBe(0);
+  });
+
+  it("keeps monthsSpanned in the set's zone too", () => {
+    // A one-set history that straddles a month boundary must not report two.
+    const sets = [
+      set({ external_id: "a", started_at: NYE, timezone: "America/New_York" }),
+      set({ external_id: "b", started_at: "2026-01-15T04:00:00.000Z", timezone: "America/New_York" }),
+    ];
+    // Dec 31 and Jan 14 in New York — two distinct months.
+    expect(monthsSpanned(sets, null)).toBe(2);
   });
 });

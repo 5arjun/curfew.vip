@@ -14,7 +14,7 @@ import { MetalButton } from "@/app/components/dashboard/MetalButton";
 // right is the set-view entry. Server component — only the arrow is client.
 const VIEW = { width: 1000, height: 300, padding: 18 };
 
-export function HeroBand({ set }: { set: SetRecord }) {
+export function HeroBand({ set, zone }: { set: SetRecord; zone: string }) {
   // Story 5.2: the dancefloor window is fetched off the set row (`segments`
   // rows, detected agent-side against this DJ's own floors), not recomputed
   // here. Several → the longest, as the interim pick (D-24).
@@ -124,8 +124,10 @@ export function HeroBand({ set }: { set: SetRecord }) {
 
       <div className="dz-hero-content">
         <p className="dz-hero-when">
-          <span className="dz-hero-date">{formatDayDate(set.started_at)}</span>
-          <span className="dz-hero-time">{formatTimeRange(set.started_at, set.ended_at)}</span>
+          <span className="dz-hero-date">{formatDayDate(set.started_at, zone)}</span>
+          <span className="dz-hero-time">
+            {formatTimeRange(set.started_at, set.ended_at, zone)}
+          </span>
         </p>
 
         <dl className="dz-hero-stats">

@@ -1,5 +1,6 @@
 import { resolveFirstName } from "@/lib/account/greeting";
-import { getAgentStatus, getRecentSets } from "@/lib/sets";
+import { getAgentStatus, getDjTimezone, getRecentSets } from "@/lib/sets";
+import { zoneForSet } from "@/lib/sets/civilTime";
 import { splitSets } from "@/lib/sets/hero";
 import { buildSetRows } from "@/lib/sets/listModel";
 import { buildRightColumn } from "@/lib/sets/rightColumn";
@@ -50,18 +51,23 @@ export default async function DashboardPage({
 }: {
   searchParams: Promise<{ deleted?: string }>;
 }) {
-  const [sets, firstName, agentStatus, { deleted }] = await Promise.all([
+  const [sets, firstName, agentStatus, { deleted }, djTimezone] = await Promise.all([
     getRecentSets(),
     getFirstName(),
     getAgentStatus(),
     searchParams,
+    // Story 7.7: the DJ-level fallback zone, for sets whose own payload carried
+    // none. Composed here with `Promise.all` rather than folded into
+    // `getRecentSets`' return type — the same shape `getObservationStart` uses
+    // on `/library-utilization`.
+    getDjTimezone(),
   ]);
   // The hero is the most recent SUBSTANTIAL set (a one-track soundcheck never
   // takes the slot); the LIST still shows every set including the hero's —
   // D9: the archive is complete, the hero is a spotlight.
   const { hero } = splitSets(sets);
-  const rows = buildSetRows(sets);
-  const right = buildRightColumn(sets);
+  const rows = buildSetRows(sets, djTimezone);
+  const right = buildRightColumn(sets, djTimezone);
 
   return (
     <main className="dz">
@@ -79,7 +85,7 @@ export default async function DashboardPage({
       <AgentStatusBanner initial={agentStatus} />
 
       {hero ? (
-        <HeroBand set={hero} />
+        <HeroBand set={hero} zone={zoneForSet(hero, djTimezone).zone} />
       ) : (
         // Awaiting-first-set hero (D13): the real shell, calm copy — the
         // launch experience IS this state. History-as-asset voice; no fake

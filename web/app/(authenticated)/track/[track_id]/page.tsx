@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getMixNeighbours, getTrackPlays, getTrackRosterEntry } from "@/lib/sets";
+import { getDjTimezone, getMixNeighbours, getTrackPlays, getTrackRosterEntry } from "@/lib/sets";
 import { buildNeighbourAnchors } from "@/lib/sets/trackDetail";
 import { TrackDetail } from "@/app/components/track-detail/TrackDetail";
 
@@ -32,9 +32,13 @@ export default async function TrackDetailPage({
   params: Promise<{ track_id: string }>;
 }) {
   const { track_id } = await params;
-  const [plays, roster] = await Promise.all([
+  const [plays, roster, djTimezone] = await Promise.all([
     getTrackPlays(track_id),
     getTrackRosterEntry(track_id),
+    // Story 7.7: the fallback zone for plays whose set carried none. The clock
+    // strip buckets each play in its OWN set's zone (`buildClockStrip`); this is
+    // only what it falls back to.
+    getDjTimezone(),
   ]);
 
   // Neither population knows this id. Note that "no plays" ALONE is not
@@ -48,5 +52,12 @@ export default async function TrackDetailPage({
   // hash, not something a DJ can look up or act on, and nothing on the page
   // renders it. `formatSessionLabel`'s own history — a raw uuid reaching the
   // Set Detail header — is the precedent for keeping machine ids off screen.
-  return <TrackDetail plays={plays} roster={roster} neighbourRows={neighbours} />;
+  return (
+    <TrackDetail
+      plays={plays}
+      roster={roster}
+      neighbourRows={neighbours}
+      djTimezone={djTimezone}
+    />
+  );
 }

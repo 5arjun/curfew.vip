@@ -605,6 +605,7 @@ pub fn build_legacy(
     library_root: &Path,
     session_path: &Path,
     pool: &CalibrationPool,
+    timezone: Option<&str>,
 ) -> Result<(Vec<CapturedPlay>, CapturedDerived), CaptureError> {
     let outcome =
         crate::parser::parse_session_file_partial(session_path).map_err(CaptureError::Parse)?;
@@ -637,7 +638,7 @@ pub fn build_legacy(
 
     // Legacy has no session-level end-time record; a final play with no
     // field-45 duration honestly has no resolvable played length (AD-11).
-    Ok(assemble(&pairs, None, &floors))
+    Ok(assemble(&pairs, None, &floors, timezone))
 }
 
 /// This session's own start, from the same first-play `start_time`
@@ -674,6 +675,7 @@ pub fn build_serato4(
     session_id: i64,
     dates: &DateAddedIndex,
     pool: &CalibrationPool,
+    timezone: Option<&str>,
 ) -> Result<(Vec<CapturedPlay>, CapturedDerived), CaptureError> {
     let conn = open_read_only(root, db_path).map_err(CaptureError::Open)?;
     let plays = crate::parser::read_session(&conn, session_id).map_err(CaptureError::Sqlite)?;
@@ -743,7 +745,7 @@ pub fn build_serato4(
         &serato4_session_identity(session_id),
     );
 
-    Ok(assemble(&pairs, set_end, &floors))
+    Ok(assemble(&pairs, set_end, &floors, timezone))
 }
 
 /// Loads every captured session's window stats into one ordered
@@ -822,10 +824,37 @@ pub fn session_bounds(plays: &[CapturedPlay]) -> (Option<i64>, Option<i64>) {
 /// follows for segments ("call the Rust detector, never reimplement it"). It
 /// is a pure function of its arguments with no store or IO reachable from it,
 /// so widening its visibility adds no new call-path into the agent's state.
+/// The single effectful time-zone read in the agent (Story 7.7). Call it at the
+/// edge — the watcher's capture handler, the backfill sweep — and thread the
+/// result down through [`build_serato4`]/[`build_legacy`] into [`assemble`].
+///
+/// **Never call this from inside [`assemble`].** That function is pure, and
+/// `re_deriving_an_old_session_after_new_captures_is_byte_identical` (D-23)
+/// depends on it staying pure: an OS call in there makes `derived_json` depend
+/// on *when and where* the re-derivation ran, which would make the startup
+/// backfill sweep rewrite and re-queue the DJ's entire history on every launch
+/// instead of terminating after one corrective pass.
+///
+/// `None` on failure rather than a fabricated `"UTC"` — AD-11's "carried as
+/// null, never a fabricated default". The cloud resolves the fallback chain
+/// (`derived.timezone` -> `djs.timezone` -> UTC) and discloses when it had to.
+pub fn local_timezone() -> Option<String> {
+    match iana_time_zone::get_timezone() {
+        Ok(zone) => Some(zone),
+        Err(e) => {
+            #[cfg(debug_assertions)]
+            eprintln!("curfew-agent: local time zone unavailable, syncing without one: {e}");
+            let _ = e;
+            None
+        }
+    }
+}
+
 pub fn assemble(
     pairs: &[(Play, JoinedMetadata)],
     set_end: Option<i64>,
     floors: &Floors,
+    timezone: Option<&str>,
 ) -> (Vec<CapturedPlay>, CapturedDerived) {
     let mut enriched = stats::enrich_session(pairs);
     stats::resolve_played_ms(&mut enriched, set_end);
@@ -940,6 +969,9 @@ pub fn assemble(
                 end: g.end_epoch_s,
             })
             .collect(),
+        // Story 7.7: an argument, not an OS read — see `local_timezone`'s note
+        // on why `assemble` has to stay pure.
+        timezone: timezone.map(str::to_string),
     };
 
     (captured_plays, derived)
@@ -1018,6 +1050,11 @@ mod tests {
     fn cold_start_pool() -> CalibrationPool {
         CalibrationPool::default()
     }
+
+    /// Story 7.7: the zone capture tests build against. A fixed value, passed
+    /// in as an argument — never `local_timezone()`, which would make every
+    /// assertion below depend on the machine running the suite.
+    const TEST_ZONE: Option<&str> = Some("America/Los_Angeles");
 
     // ---- Story 4.2: track identity + library add-detection -----------------
 
@@ -2305,8 +2342,8 @@ mod tests {
         let file = TempSessionFile::write(&data, "legacy-ok");
         let root = empty_legacy_library_root("ok");
 
-        let (plays, derived) =
-            build_legacy(&root, &file.0, &cold_start_pool()).expect("synthetic session captures");
+        let (plays, derived) = build_legacy(&root, &file.0, &cold_start_pool(), TEST_ZONE)
+            .expect("synthetic session captures");
         let _ = std::fs::remove_dir_all(&root);
 
         assert_eq!(plays.len(), 2);
@@ -2324,7 +2361,7 @@ mod tests {
         let file = TempSessionFile::write(&[], "legacy-empty");
         let root = empty_legacy_library_root("empty");
 
-        let result = build_legacy(&root, &file.0, &cold_start_pool());
+        let result = build_legacy(&root, &file.0, &cold_start_pool(), TEST_ZONE);
         let _ = std::fs::remove_dir_all(&root);
 
         assert!(matches!(result, Err(CaptureError::EmptySession)));
@@ -2456,8 +2493,15 @@ mod tests {
             insert_entry(&seed, 7, "Second", "A", "Techno", "4A", 140.0, 1_000, "2");
         }
 
-        let (plays, _derived) = build_serato4(&dir, &db_path, 7, &no_dates(), &cold_start_pool())
-            .expect("build_serato4 succeeds");
+        let (plays, _derived) = build_serato4(
+            &dir,
+            &db_path,
+            7,
+            &no_dates(),
+            &cold_start_pool(),
+            TEST_ZONE,
+        )
+        .expect("build_serato4 succeeds");
         let _ = std::fs::remove_dir_all(&dir);
 
         let first = plays
@@ -2498,7 +2542,14 @@ mod tests {
             .unwrap();
         }
 
-        let result = build_serato4(&dir, &db_path, 999, &no_dates(), &cold_start_pool());
+        let result = build_serato4(
+            &dir,
+            &db_path,
+            999,
+            &no_dates(),
+            &cold_start_pool(),
+            TEST_ZONE,
+        );
         let _ = std::fs::remove_dir_all(&dir);
 
         assert!(matches!(result, Err(CaptureError::EmptySession)));
@@ -2530,8 +2581,15 @@ mod tests {
             insert_entry(&seed, 7, "Once", "DJ B", "Techno", "2A", 128.0, 1_200, "1");
         }
 
-        let (_plays, derived) = build_serato4(&dir, &db_path, 7, &no_dates(), &cold_start_pool())
-            .expect("build_serato4 succeeds");
+        let (_plays, derived) = build_serato4(
+            &dir,
+            &db_path,
+            7,
+            &no_dates(),
+            &cold_start_pool(),
+            TEST_ZONE,
+        )
+        .expect("build_serato4 succeeds");
         let _ = std::fs::remove_dir_all(&dir);
 
         assert_eq!(
@@ -2590,8 +2648,15 @@ mod tests {
             }
         }
 
-        let (plays, derived) = build_serato4(&dir, &db_path, 7, &no_dates(), &cold_start_pool())
-            .expect("build_serato4 succeeds");
+        let (plays, derived) = build_serato4(
+            &dir,
+            &db_path,
+            7,
+            &no_dates(),
+            &cold_start_pool(),
+            TEST_ZONE,
+        )
+        .expect("build_serato4 succeeds");
         let _ = std::fs::remove_dir_all(&dir);
 
         let keys: Vec<Option<String>> = plays.iter().map(|p| p.camelot_key.clone()).collect();
@@ -2669,8 +2734,9 @@ mod tests {
             ("Users/arjun/Music/preview.mp3".to_string(), 1_650_000_000),
         ]));
 
-        let (plays, derived) = build_serato4(&dir, &db_path, 7, &dates, &cold_start_pool())
-            .expect("build_serato4 succeeds");
+        let (plays, derived) =
+            build_serato4(&dir, &db_path, 7, &dates, &cold_start_pool(), TEST_ZONE)
+                .expect("build_serato4 succeeds");
         let _ = std::fs::remove_dir_all(&dir);
 
         let titles: Vec<Option<&str>> = plays.iter().map(|p| p.title.as_deref()).collect();
@@ -2732,7 +2798,14 @@ mod tests {
             .unwrap();
         }
 
-        let result = build_serato4(&dir, &db_path, 7, &no_dates(), &cold_start_pool());
+        let result = build_serato4(
+            &dir,
+            &db_path,
+            7,
+            &no_dates(),
+            &cold_start_pool(),
+            TEST_ZONE,
+        );
         let _ = std::fs::remove_dir_all(&dir);
 
         assert!(matches!(result, Err(CaptureError::AllPreviews)));
@@ -2882,7 +2955,8 @@ mod tests {
     ) -> String {
         let pool = load_calibration_pool(store_conn);
         let (plays, derived) =
-            build_serato4(dir, db_path, session_id, &no_dates(), &pool).expect("night captures");
+            build_serato4(dir, db_path, session_id, &no_dates(), &pool, TEST_ZONE)
+                .expect("night captures");
         let (started_at, ended_at) = session_bounds(&plays);
         crate::store::upsert_captured(
             store_conn,
@@ -2927,14 +3001,91 @@ mod tests {
         capture_night(&store, &dir, &db_path, 3);
 
         let pool = load_calibration_pool(&store);
-        let (_, rederived) =
-            build_serato4(&dir, &db_path, 2, &no_dates(), &pool).expect("re-derivation succeeds");
+        let (_, rederived) = build_serato4(&dir, &db_path, 2, &no_dates(), &pool, TEST_ZONE)
+            .expect("re-derivation succeeds");
         let _ = std::fs::remove_dir_all(&dir);
 
         assert_eq!(
             serde_json::to_string(&rederived).expect("serializes"),
             night_two_first_pass,
             "a re-derivation after later captures must be byte-identical (D-23)"
+        );
+    }
+
+    /// (Story 7.7, Task 1 / AC-1.) The zone the caller passes reaches
+    /// `derived.timezone` verbatim — the whole capture half of this story in
+    /// one assertion.
+    #[test]
+    fn the_captured_zone_is_the_one_the_caller_passed() {
+        let dir = std::env::temp_dir().join(format!("curfew_capture_tz_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir creates");
+        let db_path = seed_serato4_nights(&dir, &[(1, 100_000, 20)]);
+
+        let (_, derived) = build_serato4(
+            &dir,
+            &db_path,
+            1,
+            &no_dates(),
+            &cold_start_pool(),
+            Some("Europe/Berlin"),
+        )
+        .expect("captures");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(derived.timezone.as_deref(), Some("Europe/Berlin"));
+    }
+
+    /// (Story 7.7, Task 1 / AC-1, AD-11.) A failed OS lookup is carried as
+    /// `None`, never as a fabricated `"UTC"` — a fabricated zone would be
+    /// indistinguishable from a DJ who genuinely plays in London, and would
+    /// silently defeat the whole fallback chain the cloud runs.
+    #[test]
+    fn an_unavailable_zone_is_null_not_a_fabricated_utc() {
+        let dir =
+            std::env::temp_dir().join(format!("curfew_capture_tz_none_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir creates");
+        let db_path = seed_serato4_nights(&dir, &[(1, 100_000, 20)]);
+
+        let (_, derived) = build_serato4(&dir, &db_path, 1, &no_dates(), &cold_start_pool(), None)
+            .expect("captures");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(derived.timezone, None);
+        // The distinction that matters: absent, not the string "UTC".
+        let json = serde_json::to_value(&derived).expect("serializes");
+        assert_eq!(json.get("timezone"), Some(&serde_json::Value::Null));
+    }
+
+    /// (Story 7.7, Task 1.) `assemble` reads the zone from its argument and
+    /// nowhere else: re-deriving the same session under a different zone
+    /// changes `timezone` and *only* `timezone`. If anything else moved, some
+    /// stat would be deriving a calendar value internally — the bug class this
+    /// story closes, appearing on the agent side.
+    #[test]
+    fn the_zone_argument_changes_the_zone_and_nothing_else() {
+        let dir =
+            std::env::temp_dir().join(format!("curfew_capture_tz_iso_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir creates");
+        let db_path = seed_serato4_nights(&dir, &[(1, 100_000, 20)]);
+
+        let build = |zone| {
+            build_serato4(&dir, &db_path, 1, &no_dates(), &cold_start_pool(), zone)
+                .expect("captures")
+                .1
+        };
+        let la = build(Some("America/Los_Angeles"));
+        let tokyo = build(Some("Asia/Tokyo"));
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(la.timezone.as_deref(), Some("America/Los_Angeles"));
+        assert_eq!(tokyo.timezone.as_deref(), Some("Asia/Tokyo"));
+
+        let (mut la_rest, mut tokyo_rest) = (la, tokyo);
+        la_rest.timezone = None;
+        tokyo_rest.timezone = None;
+        assert_eq!(
+            la_rest, tokyo_rest,
+            "the zone must be inert to every other derived field"
         );
     }
 
@@ -2983,8 +3134,8 @@ mod tests {
             segments::Floors::prior()
         );
 
-        let (_, derived) =
-            build_serato4(&dir, &db_path, 1, &no_dates(), &pool).expect("first night captures");
+        let (_, derived) = build_serato4(&dir, &db_path, 1, &no_dates(), &pool, TEST_ZONE)
+            .expect("first night captures");
         let _ = std::fs::remove_dir_all(&dir);
 
         assert_eq!(derived.suggested_segments.len(), 1);

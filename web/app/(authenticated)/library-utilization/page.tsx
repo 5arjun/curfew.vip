@@ -1,4 +1,11 @@
-import { getLibraryAddEvents, getLibraryRoster, getObservationStart, getRecentSets } from "@/lib/sets";
+import {
+  getDjTimezone,
+  getLibraryAddEvents,
+  getLibraryRoster,
+  getObservationStart,
+  getRecentSets,
+} from "@/lib/sets";
+import { FALLBACK_ZONE } from "@/lib/sets/civilTime";
 import { buildAgingShelf } from "@/lib/sets/agingShelf";
 import {
   buildLibraryConversion,
@@ -73,7 +80,7 @@ import { Workhorses } from "@/app/components/library-utilization/Workhorses";
 // own, the trend's insufficient state is scoped to itself, and each Story
 // 4.5/4.9 module renders its own gate inside its own shell.
 export default async function LibraryUtilizationPage() {
-  const [sets, addEvents, roster, observationStartMs] = await Promise.all([
+  const [sets, addEvents, roster, observationStartMs, djTimezone] = await Promise.all([
     getRecentSets(),
     getLibraryAddEvents(),
     getLibraryRoster(),
@@ -83,7 +90,14 @@ export default async function LibraryUtilizationPage() {
     // `getObservationStart`'s own doc comment before treating it like the
     // other calm fallbacks on this line.
     getObservationStart(),
+    // Story 7.7: the DJ-level zone. This page's dates are LIBRARY facts — when
+    // a track was added, when it was last played across the whole catalogue —
+    // not one gig's, so the DJ's own zone is the right one rather than any
+    // single set's. Same choice `buildLibraryConversion` makes for its cohort
+    // months, and for the same reason.
+    getDjTimezone(),
   ]);
+  const zone = djTimezone ?? FALLBACK_ZONE;
   // Story 4.11 AC-6: measured 27.7% (252/910) of Arjun's real catalogue rows
   // excluded for having no resolvable title/artist at all — well above the
   // ~5% materiality bar, so this renders, not silently omitted. (The 272/930
@@ -109,12 +123,12 @@ export default async function LibraryUtilizationPage() {
   // needs both populations at once and `renderBody` only ever sees one. Not an
   // extra pass either — `renderBody` used to build its own index per call, so
   // this is the same two builds, now reachable from both consumers.
-  const survivingIndex = buildUtilizationIndex(surviving);
+  const survivingIndex = buildUtilizationIndex(surviving, djTimezone);
   // Reuses the surviving index when nothing was hidden: the two populations are
   // then the same list, and `buildUtilizationIndex` is a full walk over every
   // play of every set. Same "don't build what nothing can read" rule the
   // `including` prop below already follows.
-  const allIndex = hidden.length > 0 ? buildUtilizationIndex(sets) : survivingIndex;
+  const allIndex = hidden.length > 0 ? buildUtilizationIndex(sets, djTimezone) : survivingIndex;
   const searchIndex = buildTrackSearchIndex(survivingIndex, allIndex, roster.entries);
 
   return (
@@ -179,6 +193,7 @@ export default async function LibraryUtilizationPage() {
       <LibraryUtilizationReveal
         hiddenCount={hidden.length}
         search={searchIndex}
+        searchZone={zone}
         excluding={renderBody(
           surviving,
           survivingIndex,
@@ -186,10 +201,19 @@ export default async function LibraryUtilizationPage() {
           unidentifiableDisclosure,
           roster,
           observationStartMs,
+          djTimezone,
         )}
         including={
           hidden.length > 0
-            ? renderBody(sets, allIndex, addEvents, unidentifiableDisclosure, roster, observationStartMs)
+            ? renderBody(
+                sets,
+                allIndex,
+                addEvents,
+                unidentifiableDisclosure,
+                roster,
+                observationStartMs,
+                djTimezone,
+              )
             : null
         }
       />
@@ -220,7 +244,10 @@ function renderBody(
   // being the one module that silently keeps counting soundchecks.
   roster: LibraryRosterSnapshot,
   observationStartMs: number | null,
+  /** The DJ's own zone (Story 7.7) — threaded, never re-derived. */
+  djTimezone: string | null,
 ) {
+  const zone = djTimezone ?? FALLBACK_ZONE;
   // Decision E-1: the LIVE current-window rate, not a read of the Story 4.2
   // cohort model — see `buildLiveConversionRate`'s own doc comment. The clock
   // comes from the data seam (`readAtMs`), never read in render (Story 4.1's
@@ -250,7 +277,13 @@ function renderBody(
       buildLiveConversionRate(addEvents.events, sets, addEvents.readAtMs, window, playIndex),
     ]),
   ) as Record<(typeof CONVERSION_WINDOWS)[number], ReturnType<typeof buildLiveConversionRate>>;
-  const library = buildLibraryConversion(addEvents.events, sets, addEvents.readAtMs, playIndex);
+  const library = buildLibraryConversion(
+    addEvents.events,
+    sets,
+    addEvents.readAtMs,
+    playIndex,
+    djTimezone,
+  );
 
   // Story 4.5, AC-1/AC-2: the population boundary ("tracks added on or after
   // the DJ's subscription start") needs no extra filter here — see the
@@ -400,7 +433,7 @@ function renderBody(
       <h2 className="lu-group-heading">Tracks</h2>
       <div className="lu-pair">
         <Workhorses model={workhorses} />
-        <OneAndDone model={oneAndDone} />
+        <OneAndDone model={oneAndDone} zone={zone} />
       </div>
 
       {/* ── First play ────────────────────────────────────────────────────

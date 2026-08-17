@@ -141,6 +141,10 @@
           "description": "Labeled stretches of silence (Story 5.2, D-10). Descriptive only, never a gate, and deliberately not segments rows (no 'idle' value in the type enum, D-26). Added post-freeze, optional per AD-15.",
           "type": "array",
           "items": { "$ref": "#/$defs/idle_gap" }
+        },
+        "timezone": {
+          "description": "IANA time zone name the DJ was in at capture time, e.g. 'America/Los_Angeles' (Story 7.7). A zone name, never a UTC offset -- an offset is only correct at the instant it was read. Added post-freeze, optional per AD-15; null or absent from any agent older than 7.7, which AD-3 binds the cloud to keep accepting forever.",
+          "type": ["string", "null"]
         }
       }
     },
