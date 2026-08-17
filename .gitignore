@@ -1,6 +1,7 @@
 # Curfew monorepo .gitignore
-# NOTE: existing tracked paths (_bmad/, _bmad-output/, .claude/, docs/, output/,
-# dj-stats.md, README.md) are intentionally NOT ignored and remain versioned.
+# NOTE: docs/, dj-stats.md and README.md are product docs and stay versioned.
+# The AI-tooling directories below used to be tracked and were untracked
+# deliberately — they are local dev scaffolding, not part of the product.
 
 # --- JS/TS ---
 node_modules/
@@ -32,3 +33,20 @@ supabase/.temp/
 # --- Tool-generated caches / verification artifacts ---
 __pycache__/
 .playwright-mcp/
+
+# --- AI dev tooling (local only; never shipped, never reviewed) ---
+# Agent harness config, skills and planning output. These live on the dev
+# machine and are intentionally not versioned: they are not product source,
+# they dwarf the real diff in review, and they change for reasons that have
+# nothing to do with the app.
+.claude/
+.agents/
+.codex/
+.impeccable/
+.mcp.json
+skills-lock.json
+_bmad/
+_bmad-output/
+output/
+.github/skills/
+.github/hooks/
