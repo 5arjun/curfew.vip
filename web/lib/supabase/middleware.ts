@@ -100,11 +100,23 @@ export async function updateSession(request: NextRequest) {
     // means the paywall switches on in the same deploy that makes Checkout
     // appear.
     //
-    // Spelled-out properties, not `process.env` passed whole: proxy.ts
-    // exports no `runtime`, so this runs on Edge, where Next inlines
-    // `process.env.FOO` literals at build time. Dynamic indexing inside
-    // billingEnabled would read undefined there and silently disable the
-    // gate everywhere, which is the failure this line must not have.
+    // Spelled-out properties, not `process.env` passed whole.
+    //
+    // The original reason was that proxy.ts runs on Edge, where Next inlines
+    // `process.env.FOO` literals at build time, so dynamic indexing inside
+    // billingEnabled would read undefined and silently disable the gate. That
+    // premise expired with Next 16: proxy.ts now compiles to the NODE runtime
+    // (verified 2026-08-18 — built with marker env values and none were
+    // inlined; these reads survive as dynamic `process.env` lookups in
+    // `.next/server/chunks/`, and `middleware.js` ships CommonJS `require()`
+    // plus a `.nft.json` file trace, neither of which an Edge bundle has).
+    // Values now arrive from Vercel's runtime injection at request time.
+    //
+    // Kept spelled out anyway: it costs nothing, it survives a future move
+    // back to Edge, and it keeps the read sites greppable. What changed is the
+    // justification, not the code — so don't "simplify" this to a whole
+    // `process.env` pass on the assumption that the old hazard is gone for
+    // good.
     const sellsSubscriptions = billingEnabled({
       STRIPE_PRICE_ID_MONTHLY: process.env.STRIPE_PRICE_ID_MONTHLY,
       STRIPE_PRICE_ID_ANNUAL: process.env.STRIPE_PRICE_ID_ANNUAL,
