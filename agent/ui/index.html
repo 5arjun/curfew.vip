@@ -41,11 +41,28 @@
         height: 100%;
         font: 13px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif;
       }
+      /* The window is frameless and transparent (2026-08-17) so it can drop out
+         of the menu bar icon like a native popover rather than arrive as a
+         titled window in the middle of the screen. Transparency means the
+         rounded corner has to be drawn here — the OS is no longer drawing a
+         frame around this content — so `html` stays fully transparent and
+         `body` is the visible surface.
+
+         macOS clips the window's own shadow to the rounded shape; the hairline
+         is what keeps the panel's edge legible where it overlaps a dark
+         desktop, since a dark surface on a dark background has no edge of its
+         own. */
+      html {
+        background: transparent;
+      }
       body {
         padding: 18px;
         background: var(--base);
         color: var(--text);
         box-sizing: border-box;
+        border-radius: 10px;
+        border: 0.5px solid #ffffff1f;
+        overflow-y: auto;
       }
       /* Two type sizes in the whole panel, on purpose (2026-08-17): this
          register — 0.6875rem, uppercase, tracked — for the wordmark and the
@@ -295,6 +312,22 @@
     <script>
       const { invoke } = window.__TAURI__.core;
       const { open } = window.__TAURI__.dialog;
+
+      // Escape dismisses the panel, because the window has no close button any
+      // more — it is frameless so it can sit under the menu bar icon.
+      //
+      // Escape and a second click on the tray icon are the ONLY ways out, and
+      // that is deliberate: the obvious third option, dismiss-on-blur, breaks
+      // both of this panel's actual jobs. "Browse…" opens a native folder
+      // picker and "Link…" hands off to the browser, so a blur-dismissing panel
+      // would vanish at exactly the two moments the DJ is mid-task in it. A
+      // dialog-aware guard could make blur-dismiss safe later; until then the
+      // predictable behaviour is the better one.
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          window.__TAURI__.window.getCurrentWindow().hide();
+        }
+      });
 
       const pathInput = document.getElementById("serato-path");
       const status = document.getElementById("status");

@@ -12,11 +12,17 @@
       {
         "label": "main",
         "title": "Curfew Agent Settings",
-        "width": 360,
-        "height": 220,
+        "width": 400,
+        "height": 640,
         "resizable": false,
         "minimizable": false,
-        "visible": false
+        "visible": false,
+        "maximizable": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": false,
+        "skipTaskbar": true,
+        "shadow": true
       }
     ],
     "security": {
@@ -29,7 +35,8 @@
         "base-uri": "'self'",
         "form-action": "'none'"
       }
-    }
+    },
+    "macOSPrivateApi": true
   },
   "bundle": {
     "active": true,
@@ -51,7 +58,9 @@
     },
     "deep-link": {
       "desktop": {
-        "schemes": ["curfew-agent"]
+        "schemes": [
+          "curfew-agent"
+        ]
       }
     }
   }
