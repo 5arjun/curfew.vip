@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import { pageMetadata } from "@/lib/seo";
 import { LoginClient } from "./login-client";
 
 // /login moved into the marketing group (Arjun, 2026-08-15: "create the
@@ -9,11 +10,15 @@ import { LoginClient } from "./login-client";
 // and lives in login-client.tsx; this file exists so a client page can still
 // have its own metadata.
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Curfew — start your archive",
   description:
     "One plan, everything in it: $6.99/month billed yearly, or $7.99 month to month. Create the account tonight's set will land in, or sign back in.",
-};
+  // Canonicalised WITHOUT the ?intent=join variant on purpose: the two URLs
+  // are one page with one set of copy, and letting both into an index is how a
+  // page competes with itself. The param drives the client tab, not content.
+  path: "/login",
+});
 
 // Dynamic on purpose (Arjun, 2026-08-15: "when i click login it goes to
 // intent join"). As a static route, the client router cache keyed this page

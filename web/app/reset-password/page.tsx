@@ -1,6 +1,17 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { NOINDEX } from "@/lib/seo";
 import { createClient } from "@/lib/supabase/server";
 import { ResetPasswordForm } from "./reset-password-form";
+
+// Top-level like /subscription-required, so it inherits no group layout and
+// needs its own noindex (launch checklist §1.6). It had no metadata at all
+// before this pass, which meant it was also carrying the root layout's title.
+export const metadata: Metadata = {
+  title: "Curfew — set a new password",
+  description: "Set a new password for your Curfew account.",
+  ...NOINDEX,
+};
 
 // Set-new-password page (Story 3.10, AC-8 / D-5) — where the recovery link
 // from Settings' "Send reset link" actually lands (via /auth/reset). One

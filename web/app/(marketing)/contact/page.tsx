@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { MarketingFooter } from "@/app/components/landing/MarketingFooter";
+import { pageMetadata } from "@/lib/seo";
 
 // /contact — one address, three doors. support@curfew.vip is the canonical
 // inbox everywhere (Settings' export/delete mailtos already point at it);
@@ -12,10 +13,11 @@ import { MarketingFooter } from "@/app/components/landing/MarketingFooter";
 // (Arjun, 2026-08-15) — the page now just says where mail goes and what
 // it's for, no posture about what it isn't.
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Curfew — contact",
   description: "How to reach Curfew: support, data requests, and questions before you join.",
-};
+  path: "/contact",
+});
 
 const DOORS = [
   {

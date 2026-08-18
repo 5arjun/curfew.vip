@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { LegalDoc, LegalList, LegalP } from "@/app/components/landing/LegalDoc";
+import { pageMetadata } from "@/lib/seo";
 
 // /terms — the agreement, written the way the FAQ talks: plain words, short
 // sections, nothing doing the real talking in a footnote. Grounded in what
@@ -28,11 +29,12 @@ import { LegalDoc, LegalList, LegalP } from "@/app/components/landing/LegalDoc";
 // (onboarding)/phone-required has to collect real TCPA consent — separate
 // opt-in, not bundled into these terms. Finding A; launch-checklist §5.
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Curfew — terms of service",
   description:
     "The agreement between you and Curfew, in plain words: one plan, your sets stay yours, cancel whenever.",
-};
+  path: "/terms",
+});
 
 export default function TermsPage() {
   return (

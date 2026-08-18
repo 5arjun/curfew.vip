@@ -6,6 +6,7 @@ import { AUTH_PALETTE } from "@/app/components/landing/MarketingMesh";
 import { createClient } from "@/lib/supabase/server";
 import { readSubscriptionStatus } from "@/lib/supabase/subscription-gate";
 import { hasWebAccess } from "@/lib/billing/access";
+import { NOINDEX } from "@/lib/seo";
 import { clashDisplay } from "../fonts";
 import "../landing.css";
 
@@ -30,6 +31,9 @@ import "../landing.css";
 export const metadata: Metadata = {
   title: "Curfew — subscription",
   description: "Your Curfew subscription is inactive.",
+  // Top-level, so it inherits no group layout's noindex — it needs its own
+  // (launch checklist §1.6).
+  ...NOINDEX,
 };
 
 export default async function SubscriptionRequiredPage() {

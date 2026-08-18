@@ -4,12 +4,18 @@
 that day — the repo, prod Supabase, GitHub Releases, the Vercel project, and
 `https://curfew.vip` itself. Nothing here is inherited on trust.
 
-**Last re-verified:** 2026-08-18, after 1.1/1.2/1.3 and 1.7 closed. Every open
+**Last re-verified:** 2026-08-18, after 1.4, 1.5 and 1.6 closed. Every open
 item below was re-checked against the same live sources rather than carried
-forward — the four still-open sections all reproduced exactly, so what changed
-in this pass is the *closed* half of the file and one under-scoped route list
-(1.4). Re-verify the same way before opening the doors; several of these are
+forward. Re-verify the same way before opening the doors; several of these are
 point-in-time checks that go stale silently.
+
+**One thing in this pass is NOT verified live, and it is the important one.**
+1.4/1.5/1.6 were verified against a production build and a local `next start`
+— redirects, emitted tags, `robots.txt` and `sitemap.xml` bodies, parsed
+JSON-LD. None of it has been verified against `https://curfew.vip`, because
+none of it is deployed yet. The one that can still fail there is **1.6**:
+Cloudflare injects its own `robots.txt` when the origin serves none, and
+whether our route now wins is a fact about Cloudflare, not about this repo.
 
 **Why this file exists, and why it is versioned.**
 `_bmad-output/implementation-artifacts/pre-launch-services-checklist.md` has
@@ -51,19 +57,21 @@ Prod schema is at **24/24 migration parity** with `supabase/migrations/`
 again this pass against the live applied list — same 24, same versions, through
 `20260817193455_add_djs_timezone_column`.
 
-**What is actually left to open the doors.** §1 has seven sections and four of
-them are now closed (1.1, 1.2, 1.3 — the agent ships and the download resolves;
-1.7 — the legal review is done bar one fact). The blocking remainder is three
-sections and one sentence:
+**What is actually left to open the doors.** §1 has seven sections and every
+one of them is now closed except a single sentence of 1.7. The blocking
+remainder is:
 
 | Still blocking | Shape of the work |
 | --- | --- |
-| **1.4** signed-out authenticated routes render an empty shell | Route guard — five pages, none of them Settings |
-| **1.5** no `openGraph` / `twitter` / `metadataBase` anywhere | An afternoon, and the highest-leverage item here |
-| **1.6** no `sitemap.xml`, and `robots.txt` is Cloudflare's, not ours | Two Next route files, then verify against Cloudflare |
 | **1.7** governing law and venue | One fact — the state. Clause is drafted and ready to paste |
 
-Nothing in §2 blocks, but 2.1 (no analytics at all) means launching blind.
+That is the whole list. Two things stand behind it that are not blockers but
+are not nothing either: **1.6 needs a live check after the deploy** (does our
+`robots.txt` beat Cloudflare's injected one?), and the §5 marketing-send rule
+still fires on an action rather than a date.
+
+Nothing in §2 blocks, and 2.1 no longer means launching blind — pageviews and
+field vitals are both wired, live from the next production deploy.
 
 ---
 
@@ -144,80 +152,127 @@ Neither platform is emphasized and neither is OS-detected: step 01 says "the
 laptop you play from", which is routinely not the device the page is being
 read on.
 
-### 1.4 Signed-out authenticated routes render instead of redirecting
+### 1.4 Signed-out authenticated routes render instead of redirecting — ✅ **DONE 2026-08-18**
 
-**Five** pages, not the three originally listed here. The `(authenticated)`
-group has six, and `redirect("/login")` appears in exactly one of them —
-`settings/page.tsx:38`. The other five render a logged-out empty shell:
+Was: five of the group's six pages rendered a logged-out empty shell to anyone
+who deep-linked them — `/dashboard`, `/set/[id]`, `/track/[track_id]`,
+`/library-utilization`, `/style-evolution`. `redirect("/login")` appeared in
+exactly one page, `settings/page.tsx`. Not a data breach (RLS), but it read as
+a broken product.
 
-- `/dashboard`
-- `/set/[id]`
-- `/track/[track_id]`
-- `/library-utilization` ← missed on the first pass
-- `/style-evolution` ← missed on the first pass
+Fixed in `web/app/(authenticated)/layout.tsx`, which now login-gates the whole
+group. **In the layout, not page-by-page and not in the middleware** — a layout
+has no list to keep in sync, so every page added to the group is covered the
+day it is added. The middleware was the wrong home for the opposite reason:
+route groups are invisible to routing, so a gate there needs a literal prefix
+list, which is the same maintenance burden that produced the bug.
 
-`web/app/(authenticated)/layout.tsx` says so in a comment ("no auth-gating
-middleware/redirect exists yet for this group — each page self-guards"), which
-is the trap: the layout describes a convention that only one page follows, so
-the two analysis pages read as guarded to anyone who trusts the comment. RLS
-means nothing leaks, and the proxy's subscription gate runs
-`if (sellsSubscriptions && userId && …)`, so it never fires for a signed-out
-visitor.
+Two details worth keeping:
 
-Not a data breach. It is what a curious visitor who deep-links sees, and it
-reads as a broken product. Fixing this in the layout rather than page-by-page is
-what stops the list growing again with the next authenticated page.
+- It uses `getClaims()`, not `getUser()` — the JWT is verified locally, so the
+  gate costs no network round-trip per render. Same call, same reason, as
+  `lib/supabase/middleware.ts`.
+- It **fails open** on a thrown read: the old empty shell is the floor, where
+  failing closed would bounce a signed-in DJ to `/login` mid-session. The
+  paywall is the only gate in this app that fails closed, because that one
+  guards revenue rather than polish.
 
-### 1.5 No social/share metadata anywhere
+The comment that made this bug invisible ("each page self-guards") is gone from
+the layout, and the two other files that asserted the gap in passing —
+`dashboard/page.tsx` and `settings/page.tsx` — were corrected with it.
 
-Verified by grep across `web/app`: **zero** occurrences of `openGraph`,
-`twitter`, or `metadataBase`. Every link to `curfew.vip` — pasted into a DM,
-posted to Instagram or Discord, sent to a DJ friend — currently unfurls as a
-bare URL with no image, no title beyond "Curfew", and no description.
+Verified against a production build on a local `next start`: all six routes,
+signed out, return `307 → /login`. `/features` and `/faq` still return 200.
 
-For a product whose entire launch motion is DJs sending it to other DJs, this
-is the highest-leverage item on this list.
+### 1.5 No social/share metadata anywhere — ✅ **DONE 2026-08-18**
 
-- [ ] `metadataBase: new URL("https://curfew.vip")` in `web/app/layout.tsx` —
-      without it, every relative OG image URL resolves wrong and Next warns at
-      build time
-- [ ] Default `openGraph` + `twitter` (`summary_large_image`) blocks on the
-      root layout, overridden per marketing route
-- [ ] A real 1200×630 OG image. `web/public/landing/` already holds
-      `dashboard-3-poster.jpg`, `set-detail-3-poster.jpg` and
-      `style-evolution-poster.jpg` — the art exists, it just needs cropping to
-      ratio. Next's file convention (`app/opengraph-image.png`, plus per-route
-      overrides) is the least-moving-parts option
-- [ ] Fix the root `description`. It currently reads **"DJ reflection
-      platform."** — internal shorthand, not customer copy. The marketing
-      layout already carries the real line ("Curfew reads the sets you play and
-      gives you the only baseline that means anything: your own."). The root
-      one is what shows on every non-marketing route
-- [ ] `apple-touch-icon` (180×180). Only `favicon-light.png` /
-      `favicon-dark.png` are wired today, so an iOS home-screen save gets a
-      screenshot instead of a mark
+Was: **zero** occurrences of `openGraph`, `twitter` or `metadataBase` across
+`web/app`. Every link to `curfew.vip` unfurled as a bare URL — no image, no
+title beyond "Curfew", no description — for a product whose entire launch
+motion is DJs sending it to other DJs.
 
-### 1.6 No `sitemap.xml`, and `robots.txt` is not ours
+- [x] `metadataBase: new URL("https://curfew.vip")` on the root layout
+- [x] `openGraph` + `twitter` (`summary_large_image`) on the root layout and on
+      every marketing route, through `pageMetadata()` in **`web/lib/seo.ts`** —
+      the one module page metadata, the sitemap, robots and the JSON-LD all
+      read from, so the four cannot drift
+- [x] A real 1200×630 card at `web/app/opengraph-image.jpg`. Not a cropped
+      screenshot in the end: it is the `booth.jpg` photograph pushed back into
+      atmosphere, the wordmark, the landing's own two statements set in Clash
+      Display, and the energy arc across the bottom band. Regenerate with
+      `python3 web/scripts/og-assets.py` — that script is committed, documents
+      every input, and explains why a runtime `ImageResponse` was declined
+      (satori cannot read woff2, and Clash Display ships only as woff2, so a
+      runtime card would have used a face that is not ours)
+- [x] Root `description` fixed. "DJ reflection platform." is gone; the real
+      customer line now shows on every non-marketing route
+- [x] `apple-touch-icon` (180×180) at `web/app/apple-icon.png` — the record
+      glyph on Abyss ground, opaque and full-bleed because iOS composites it
+      with its own rounding and no transparency handling
+- [x] Also done, unasked but part of the same surface: `/`'s title. It was the
+      single word "Curfew" — the weakest possible result line for this site's
+      most important query — and is now "Curfew — the DJ set archive that
+      builds itself". It lives on the **marketing layout** because
+      `(marketing)/page.tsx` is a client component and cannot export metadata
+- [x] JSON-LD: `Organization` + `WebSite` + `SoftwareApplication` on every
+      marketing route, and `FAQPage` on `/faq` — 18 questions, built from the
+      **same array `/faq` renders**. That is why the FAQ content moved to
+      `faq-content.ts`: `FaqBeats.tsx` is `"use client"`, and a value imported
+      from a client module into a server component arrives as a client
+      reference, not as data. Google requires the marked-up answer to be the
+      answer on the page; one array is the only way to keep that true
+- [x] `sameAs` points at Instagram `@curfew.vip` and X `@curfewvip`, which is
+      what tells Google those profiles and this site are one brand. `@curfewvip`
+      is also `twitter:site` / `twitter:creator`
 
-- `https://curfew.vip/sitemap.xml` → **404**. No `app/sitemap.ts` exists.
-- `https://curfew.vip/robots.txt` → **200**, but it is **Cloudflare's injected
-  content-signals block** (DNS is Cloudflare-proxied), not a file this repo
-  controls. There is no `app/robots.ts` and no `public/robots.txt`. What it
-  serves is comment lines about AI-training signals and **no crawl directives
-  and no `Sitemap:` line at all**.
+**The trap this pass hit, recorded because it will recur.** The plan was to let
+Next's file convention wire the card: drop `opengraph-image.jpg` into `app/`
+and every route inherits it. The build says otherwise — in
+`.next/server/app/`, `_not-found.html` (which overrides nothing) carried all
+four `og:image*` tags while `index.html` carried **none**. Any route that
+exports an `openGraph` object replaces the resolved parent object, and the
+file-convention image goes with it. Same for `icons`: declaring the favicons
+dropped the apple-touch-icon. Both are now named explicitly, and `OG_IMAGE` in
+`lib/seo.ts` carries the evidence. **This fails silently and looks correct in
+the source.**
 
-So there is no statement of what should be indexed, and — more importantly —
-nothing keeps crawlers out of `/dashboard`, `/settings`, `/welcome`,
-`/subscribe`, `/link-agent` or `/subscription-required`.
+Verified in the build output for `/`, `/faq`, `/features` and `/privacy`: title,
+description, canonical, the full `og:*` and `twitter:*` sets with image
+dimensions and alt text, `apple-touch-icon`, and the JSON-LD parsed back as
+valid JSON with the right prices and 18 questions.
 
-- [ ] `app/robots.ts` — allow the marketing surfaces, disallow the
-      authenticated and onboarding groups, reference the sitemap. Verify after
-      deploy that Next's route wins over Cloudflare's injection; if Cloudflare
-      still overrides, the fix is in the Cloudflare dashboard, not the repo
-- [ ] `app/sitemap.ts` — `/`, `/features`, `/faq`, `/contact`, `/privacy`,
-      `/terms`, `/login` (and `/pricing` if 3.1 lands)
-- [ ] Consider `robots: { index: false }` on the authenticated layouts as
-      defence in depth — a `robots.txt` rule is a request, a meta tag is not
+### 1.6 No `sitemap.xml`, and `robots.txt` is not ours — ✅ **DONE in the repo, one live check owed**
+
+Was: `/sitemap.xml` a 404, and `/robots.txt` a 200 serving **Cloudflare's
+injected content-signals block** — comment lines about AI-training signals, no
+crawl directives, no `Sitemap:` line. Nothing stated what should be indexed and
+nothing kept crawlers out of the authenticated or onboarding surfaces.
+
+- [x] `web/app/robots.ts` — allows the marketing surfaces, disallows all 16
+      private prefixes, and points at the sitemap. It also **disallows
+      everything on a non-production deployment** (`VERCEL_ENV !==
+      "production"`), so previews cannot compete with prod in an index
+- [x] `web/app/sitemap.ts` — the seven public routes. `/pricing` is
+      deliberately absent while 6.3 is undecided and the route 404s (§2.6); a
+      sitemap listing a 404 is worse than one omitting a real page. No
+      `lastModified`, because both available values are lies Google ignores —
+      the reasoning is on `PUBLIC_ROUTES` in `lib/seo.ts`
+- [x] `robots: { index: false, follow: false }` on both group layouts and on
+      the two top-level private routes (`/subscription-required`,
+      `/reset-password`, which inherit no group layout). This is the stronger
+      half: a `robots.txt` rule is a request that only prevents a re-crawl, and
+      the meta tag is what removes a page already in an index
+
+Both bodies were read out of the build and are correct, and the sitemap's home
+entry deliberately matches the canonical Next emits for `/` (no trailing
+slash) — one character of difference there is the cheapest way to look like two
+pages.
+
+- [ ] **Live check, owed after the deploy.** Fetch `https://curfew.vip/robots.txt`
+      and confirm it is ours — look for the `Sitemap:` line. Cloudflare injects
+      its block when the origin serves none; with one present it *should* pass
+      through, but "should" is not "does" and the failure is silent. If
+      Cloudflare still overrides, the fix is in its dashboard, not this repo.
 
 ### 1.7 Pre-launch legal review — ✅ **DONE 2026-08-18**
 
@@ -288,22 +343,33 @@ verify it.
 
 ## 2. Should be done before real signups, ~an afternoon
 
-### 2.1 No analytics of any kind
+### 2.1 No analytics of any kind — ✅ **DONE 2026-08-18**
 
-Verified two ways: no `@vercel/analytics` or `@vercel/speed-insights` in
-`web/package.json`, and the Vercel API returns
-`web_analytics_not_enabled` for the project.
+Was: no `@vercel/analytics` or `@vercel/speed-insights` in `web/package.json`,
+and the Vercel API returning `web_analytics_not_enabled` for the project —
+launching a landing page, a features walkthrough, an FAQ and a paywall with
+**zero visibility into whether any of it converts**.
 
-Launching means shipping a landing page, a features walkthrough, an FAQ and a
-paywall with **zero visibility into whether any of it converts** — no pageviews,
-no funnel, no idea whether DJs bounce at the price or at the download.
-
-- [ ] Enable Web Analytics on the Vercel project and add `<Analytics />`
-- [ ] Consider `<SpeedInsights />` in the same change — the landing page runs a
-      WebGL mesh and ships several MP4s, so real-device numbers are worth having
+- [x] Enable Web Analytics on the Vercel project and add `<Analytics />` —
+      enabled on `curfew.vip` (`prj_UPn4…YKfR`) 2026-08-18 via
+      `vercel project web-analytics`, and both components mounted in
+      `web/app/layout.tsx`. Nothing is collected until the next production
+      deploy carries that layout.
+- [x] `<SpeedInsights />` — mounted, and the project setting is on. This one
+      cost something: Hobby teams get Speed Insights on **one project at a
+      time**, and `avorigroup.com` held the slot. Arjun disabled it there
+      2026-08-18 so `curfew.vip` could take it — avorigroup keeps its history
+      but stops collecting field vitals. Re-enabling it there would silently
+      turn this one off, so treat the slot as a shared resource, not a setting.
 - [ ] If you want funnel events rather than pageviews (signup → checkout →
       download → first sync), that is a bigger decision than a script tag;
-      decide it deliberately rather than by default
+      decide it deliberately rather than by default. **Explicitly not done in
+      the 2026-08-18 change** — what shipped is pageviews only.
+
+Both scripts serve from this origin rather than a third-party host, which is
+what keeps them working behind Cloudflare's proxy and past an ad blocker —
+the same reason `next.config.ts` sets BotID's rewrites and Sentry's
+`tunnelRoute`. No CSP exists to widen.
 
 ### 2.2 Leaked-password protection is off
 

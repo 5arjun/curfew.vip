@@ -51,6 +51,21 @@ function stripNonColorKeywords(line: string): string {
   return line.replace(/(^|[\s{])transparent(?=\s*\/?>|\s*=\s*\{(?:true|false)\}|\s|$)/g, "$1");
 }
 
+// `viewport.themeColor` (app/layout.tsx) is the second collision, and unlike
+// the first it IS a color — it just cannot be a token. Next serialises it into
+// `<meta name="theme-color">` on the server, where there is no DOM and no
+// stylesheet to resolve a custom property against, so the getComputedStyle
+// escape hatch the shader colors use (--color-abyss-silk and friends) is not
+// available either. A literal is the only form the value can take.
+//
+// Narrowed to the property, not the file, following the `transparent`
+// precedent above: only the value of a `themeColor:` key is dropped, so a hex
+// anywhere else in app/layout.tsx still trips the guard. Keep this value equal
+// to --color-abyss-base; nothing but review enforces that.
+function stripThemeColor(line: string): string {
+  return line.replace(/\bthemeColor:\s*"[^"]*"/g, "themeColor:");
+}
+
 function collectFiles(dir: string, extensions: string[]): string[] {
   const results: string[] = [];
   for (const entry of readdirSync(dir)) {
@@ -80,7 +95,7 @@ describe("web/app has no hard-coded colors outside the token file (Story 2.2 AC-
     for (const file of files) {
       const lines = readFileSync(file, "utf-8").split("\n");
       lines.forEach((line, index) => {
-        if (COLOR_LITERAL_PATTERN.test(stripNonColorKeywords(stripComments(line)))) {
+        if (COLOR_LITERAL_PATTERN.test(stripThemeColor(stripNonColorKeywords(stripComments(line))))) {
           violations.push({ file, line: index + 1, text: line.trim() });
         }
       });

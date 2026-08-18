@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { LegalDoc, LegalList, LegalP } from "@/app/components/landing/LegalDoc";
+import { pageMetadata } from "@/lib/seo";
 
 // /privacy — the policy the FAQ's "Your data" section was already promising:
 // music never leaves the laptop, sets are private, export/deletion on
@@ -34,11 +35,12 @@ import { LegalDoc, LegalList, LegalP } from "@/app/components/landing/LegalDoc";
 // needs A2P 10DLC registration. See finding A of the review, and
 // launch-checklist §5.
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Curfew — privacy policy",
   description:
     "What Curfew collects (the record of your sets — never your music files), who touches it, and how to get it out or delete it.",
-};
+  path: "/privacy",
+});
 
 export default function PrivacyPage() {
   return (

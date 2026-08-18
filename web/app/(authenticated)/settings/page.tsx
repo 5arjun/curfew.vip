@@ -26,10 +26,11 @@ import pkg from "../../../package.json";
 //
 // Server component: the read-only facts render on the server; only the
 // interactive rows (DJ name autosave, password reset, providers, sign-out)
-// are client islands. Self-guarded with the link-agent page's getUser() →
-// /login pattern — the (authenticated) group has no auth-gating middleware
-// (the 3.10 phone gate assumes an authenticated caller; login-gating stays
-// each page's job).
+// are client islands. Login-gating is the group layout's job as of the launch
+// checklist's §1.4 pass — this page's own `!profile` redirect is kept, but it
+// is now a data-read guard rather than the auth gate: `getSettingsProfile()`
+// also returns null when the read throws, and everything below dereferences
+// `profile`.
 
 export default async function SettingsPage() {
   const [profile, agentStatus] = await Promise.all([getSettingsProfile(), getAgentStatus()]);

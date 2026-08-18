@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { OnboardingMesh } from "@/app/components/landing/OnboardingMesh";
+import { NOINDEX } from "@/lib/seo";
 import { clashDisplay } from "../fonts";
 import "../landing.css";
 
@@ -14,9 +15,13 @@ import "../landing.css";
 // phone-gate.ts's GATED_PREFIXES still matches /link-agent, and every page
 // here keeps its own server guard.
 
+// Noindexed with the rest of the corridor (launch checklist §1.6) — these are
+// mid-signup screens, meaningless out of context and thin content in Google's
+// sense. Same defence-in-depth argument as the (authenticated) group's layout.
 export const metadata: Metadata = {
   title: "Curfew — set up",
   description: "Finish setting up your Curfew account.",
+  ...NOINDEX,
 };
 
 export default function OnboardingLayout({ children }: { children: React.ReactNode }) {

@@ -24,8 +24,10 @@ import { SilkBackdrop } from "@/app/components/dashboard/SilkBackdrop";
 // read path with no change here.
 async function getFirstName(): Promise<string | null> {
   // Resilient rather than gating: with no session (or no configured Supabase
-  // env in a dev checkout) the greeting simply drops the name — auth-gating
-  // this route group is a known separate gap, not this page's job.
+  // env in a dev checkout) the greeting simply drops the name. A signed-out
+  // visitor no longer reaches this page at all — the group layout redirects to
+  // /login (launch checklist §1.4) — but the layout fails open on a thrown
+  // read, so the nameless path stays reachable and stays handled.
   // Story 3.10 (AC-4/D-3): an explicit `djs.dj_name` wins over OAuth
   // metadata, so email-path DJs are no longer permanently nameless —
   // precedence lives in `resolveFirstName`, shared with Settings.
