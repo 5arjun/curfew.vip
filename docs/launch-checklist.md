@@ -5,8 +5,16 @@ that day — the repo, prod Supabase, GitHub Releases, the Vercel project, and
 `https://curfew.vip` itself. Nothing here is inherited on trust.
 
 **Last re-verified:** 2026-08-18, after 1.4, 1.5 and 1.6 closed. Every open
-item below was re-checked against the same live sources rather than carried
-forward. Re-verify the same way before opening the doors; several of these are
+item below was re-checked against a live source rather than carried forward,
+and what that meant in this pass: the Supabase security advisor (still five
+WARNs, one real), the four `backup.presignup_*` tables (still there), the
+applied-migration list (24, matching the repo through
+`20260817193455_add_djs_timezone_column`), `sprint-status.yaml` (7-5 still
+`review`, 6-3 still `backlog`), all four §4 bookkeeping lines in
+`pre-launch-services-checklist.md` (all still un-actioned), and
+`agent/README.md`. Two things had gone stale and were corrected: **2.3** (the
+BotID sign-in ruling of the same day) and **2.5**'s reference count.
+Re-verify the same way before opening the doors; several of these are
 point-in-time checks that go stale silently.
 
 **One thing in this pass is NOT verified live, and it is the important one.**
@@ -386,10 +394,30 @@ so the next person to run the advisor does not read them as four new findings
 sitting next to a real one. **This is the only item on the list where "clean the
 advisor output" would be the wrong instinct.**
 
-### 2.3 No rate limiting on `signIn` / `signUp`
+### 2.3 No rate limiting on `signIn` / `signUp` — and BotID no longer blocks sign-in
 
 The Server Actions have no application-level throttle. Supabase's own limits
 apply, but nothing app-side.
+
+**Changed 2026-08-18 (`96ce86e`), and it changes what this item means.** BotID
+runs on both credential actions, but it now **refuses only signup** —
+`botRejection()` in `web/app/(marketing)/login/actions.ts` records the verdict
+and returns null for `sign-in`. The ruling is the asymmetry: a false positive
+on signup costs an account that was never created, while on sign-in it locks an
+already-paying DJ out of an archive they own. This was not hypothetical —
+`admin@curfew.vip` could not log in at all, behind the same generic copy a
+wrong password produces, and because the check ran *before* the Supabase call
+the attempts left no trace in the auth logs either.
+
+So on the sign-in path specifically, **Supabase Auth's per-IP rate limiting on
+`/token` is now the only answer to credential stuffing.** That was always the
+second layer; the hard block in front of it was shadowing it rather than adding
+to it, since a rejected request never reached the limiter to be counted. The
+verdict is now logged (`console.warn`, no email), so a recurrence is at least
+visible.
+
+This is a reason to weigh an app-side throttle slightly more heavily than the
+line above did, not a new blocker.
 
 ### 2.4 Drop the pre-signup backup tables
 
@@ -411,9 +439,11 @@ once you are satisfied the deletion was right.
   panel (UX-DR23)**". PR #47 deliberately superseded UX-DR23 — the panel is now
   an on-brand popover with an account row and a Link button, and the file
   itself records that supersession.
-- It links twice into `_bmad-output/…`, which is gitignored. Those are dead
-  links for anyone who clones the repo — the exact class of breakage this
-  `docs/` file was created to avoid.
+- It points into `_bmad-output/…`, which is gitignored, in **three** places
+  (lines 76, 91 and 117) — one a real markdown link, two inline path
+  references. Dead for anyone who clones the repo, which is the exact class of
+  breakage this `docs/` file was created to avoid. ("Links twice" was this
+  line's own count until 2026-08-18; it was wrong.)
 
 (PR #48 rewrites the release section correctly. Fold the rest into the same
 merge rather than a separate pass.)
