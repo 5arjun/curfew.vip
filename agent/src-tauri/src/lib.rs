@@ -310,6 +310,97 @@ fn forward_deep_link_from_argv(app: &tauri::AppHandle, argv: &[String]) {
     }
 }
 
+/// Where the menu bar icon currently sits, in physical pixels
+/// (`x, y, width, height`), captured from whichever [`tauri::tray::TrayIconEvent`]
+/// last fired. `None` until the pointer has touched the tray at least once.
+///
+/// The settings panel is anchored to this so it drops out of the icon like a
+/// native popover rather than appearing wherever the window manager feels like.
+/// It has to be remembered rather than queried, because Tauri exposes the
+/// icon's rect only on an event — there is no "where is my tray icon" call —
+/// and the panel can also be opened from a path that has no event to read
+/// (the first-run confirm gate).
+#[derive(Default)]
+struct TrayAnchor(std::sync::Mutex<Option<(f64, f64, f64, f64)>>);
+
+/// Records the icon's rect from a tray event, in physical pixels.
+///
+/// Tauri hands back a [`tauri::Rect`] whose position and size are each
+/// independently either logical or physical, so all four combinations are
+/// converted explicitly — an assumption either way silently misplaces the
+/// panel by a factor of the display's scale, which is invisible on a 1x
+/// external monitor and half a screen off on a Retina one.
+fn remember_tray_anchor(app: &tauri::AppHandle, rect: tauri::Rect, scale: f64) {
+    use tauri::Manager;
+
+    let (x, y) = match rect.position {
+        tauri::Position::Physical(p) => (p.x as f64, p.y as f64),
+        tauri::Position::Logical(p) => (p.x * scale, p.y * scale),
+    };
+    let (w, h) = match rect.size {
+        tauri::Size::Physical(s) => (s.width as f64, s.height as f64),
+        tauri::Size::Logical(s) => (s.width * scale, s.height * scale),
+    };
+    if let Some(anchor) = app.try_state::<TrayAnchor>() {
+        if let Ok(mut slot) = anchor.0.lock() {
+            *slot = Some((x, y, w, h));
+        }
+    }
+}
+
+/// Drops the settings panel beneath the menu bar icon, horizontally centred on
+/// it, and shows it.
+///
+/// Falls back to Tauri's own centring when the tray rect is unknown — the
+/// first-run confirm gate can open this panel before the DJ has ever pointed at
+/// the icon, and a panel in the middle of the screen is a far better outcome
+/// than one pinned to a corner or not shown at all.
+///
+/// The horizontal clamp is not defensive padding: a status item near the right
+/// edge of the menu bar (which is where this one lives, alongside every other
+/// third-party item) would otherwise centre the panel half-way off the screen.
+fn show_panel(app: &tauri::AppHandle) {
+    use tauri::Manager;
+
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+
+    let anchor = app
+        .try_state::<TrayAnchor>()
+        .and_then(|a| a.0.lock().ok().and_then(|slot| *slot));
+
+    if let (Some((tx, ty, tw, th)), Ok(size)) = (anchor, window.outer_size()) {
+        let scale = window.scale_factor().unwrap_or(1.0);
+        let gap = 6.0 * scale;
+        let win_w = size.width as f64;
+
+        let mut x = tx + tw / 2.0 - win_w / 2.0;
+        let y = ty + th + gap;
+
+        if let Ok(Some(monitor)) = window.current_monitor() {
+            let m_pos = monitor.position();
+            let m_size = monitor.size();
+            let margin = 8.0 * scale;
+            let min_x = m_pos.x as f64 + margin;
+            let max_x = m_pos.x as f64 + m_size.width as f64 - win_w - margin;
+            // `max` second, and only when the range is real: on a display
+            // narrower than the panel the two bounds cross, and clamping to a
+            // crossed range would push the window off the opposite edge.
+            if max_x > min_x {
+                x = x.clamp(min_x, max_x);
+            }
+        }
+
+        let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+    } else {
+        let _ = window.center();
+    }
+
+    let _ = window.show();
+    let _ = window.set_focus();
+}
+
 /// How often [`updater_loop`] checks for a new release, after its first
 /// immediate check on startup. **Flagged to Arjun as a tunable, not a
 /// load-bearing number** — same treatment Story 1.7 gave its unconfirmed
@@ -445,6 +536,8 @@ pub fn run() {
                 tauri::Theme::Dark,
             ))));
 
+            app.manage(TrayAnchor::default());
+
             let window = app
                 .get_webview_window("main")
                 .ok_or("agent: main window not found during setup")?;
@@ -536,19 +629,45 @@ pub fn run() {
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
+                    let app = tray.app_handle();
+
+                    // Every tray event carries the icon's current rect, and the
+                    // icon moves whenever a neighbouring menu bar item appears
+                    // or disappears — so the anchor is refreshed on all of them,
+                    // not just the click. A `Move`/`Enter` almost always
+                    // precedes the click that opens the panel, which means the
+                    // rect is usually fresh before it is needed.
+                    let scale = app
+                        .get_webview_window("main")
+                        .and_then(|w| w.scale_factor().ok())
+                        .unwrap_or(1.0);
+                    match &event {
+                        TrayIconEvent::Click { rect, .. }
+                        | TrayIconEvent::DoubleClick { rect, .. }
+                        | TrayIconEvent::Enter { rect, .. }
+                        | TrayIconEvent::Move { rect, .. }
+                        | TrayIconEvent::Leave { rect, .. } => {
+                            remember_tray_anchor(app, *rect, scale);
+                        }
+                        _ => {}
+                    }
+
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,
                         button_state: MouseButtonState::Up,
                         ..
                     } = event
                     {
-                        if let Some(window) = tray.app_handle().get_webview_window("main") {
-                            let _ = if window.is_visible().unwrap_or(false) {
-                                window.hide()
-                            } else {
-                                let _ = window.show();
-                                window.set_focus()
-                            };
+                        let visible = app
+                            .get_webview_window("main")
+                            .and_then(|w| w.is_visible().ok())
+                            .unwrap_or(false);
+                        if visible {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.hide();
+                            }
+                        } else {
+                            show_panel(app);
                         }
                     }
                 })
@@ -620,8 +739,13 @@ pub fn run() {
                 // AC-3: the confirm gate must not depend on the DJ thinking to
                 // click the tray icon — this window starts `visible: false`
                 // (Story 2.5) and only reveals on tray click otherwise.
-                window.show()?;
-                window.set_focus()?;
+                //
+                // Goes through `show_panel` so first run gets the same anchored
+                // placement as every later open. At this point in setup no tray
+                // event has fired yet, so in practice this centres — which is
+                // the right answer for a window the DJ did not ask for and has
+                // no icon to associate it with yet.
+                show_panel(app.handle());
             }
 
             // Always started, regardless of resolution: the loop itself tracks
