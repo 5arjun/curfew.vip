@@ -5,6 +5,7 @@
 import { playsInSegment, primaryDancefloorSegment } from "./dancefloor";
 import { formatClock, formatDuration } from "./format";
 import { isLowConfidenceSet, localDayKey } from "./listModel";
+import { zoneForSet } from "./civilTime";
 import type { SetRecord } from "./types";
 
 export interface DayMarkSet {
@@ -50,6 +51,19 @@ export interface RightColumnModel {
   /** Latest set's dancefloor-detection confidence, 0–100, or null with no sets. */
   confidencePct: number | null;
   odometer: { sets: number; hours: number; tracks: number };
+  /**
+   * How many of the sets on this calendar were placed using a zone that was not
+   * their own captured one (AC-4). Same shape as `undatedCount` /
+   * `noAddDateCount` / `unreconciledDateCount`, so surfacing it is a copy
+   * change; model-only for now per Arjun (2026-08-17).
+   *
+   * It belongs *here* specifically: the calendar is the surface AC-6 measured
+   * (63 of 76 sets on the wrong cell) and the one place a fallback-bucketed set
+   * lands visibly beside correctly-placed ones. Counting it only on Style
+   * Evolution left the calendar with no way to say so (code review,
+   * 2026-08-17). Counted over dated sets only — an undated set has no cell.
+   */
+  zoneFallbackCount: number;
 }
 
 /**
@@ -147,15 +161,26 @@ function mostPlayedInRecentSets(newestFirst: SetRecord[], count: number): MostPl
   return { track: top(trackCounts), artist: top(artistCounts), setCount: window.length };
 }
 
-export function buildRightColumn(sets: SetRecord[]): RightColumnModel {
+export function buildRightColumn(
+  sets: SetRecord[],
+  djTimezone: string | null = null,
+): RightColumnModel {
   const marks: DayMarks = {};
+  let zoneFallbackCount = 0;
   for (const set of sets) {
-    const key = localDayKey(set.started_at);
+    // Story 7.7: the calendar's day keys are built in the SET's zone — the
+    // night the DJ actually played. `GlassCalendar` looks these up from a grid
+    // it builds client-side, so the two sides must agree on what a key MEANS:
+    // a pure civil date, with no zone conversion left in it on either side.
+    // See the key-construction note in `GlassCalendar.tsx`.
+    const { zone, source } = zoneForSet(set, djTimezone);
+    const key = localDayKey(set.started_at, zone);
     if (!key) continue;
+    if (source !== "set") zoneFallbackCount += 1;
     const mark = (marks[key] ??= { count: 0, sets: [], totalSec: 0 });
     mark.count += 1;
     mark.sets.push({
-      start: formatClock(set.started_at),
+      start: formatClock(set.started_at, zone),
       duration: formatDuration(set.derived.set_length_sec),
     });
     mark.totalSec += set.derived.set_length_sec ?? 0;
@@ -201,5 +226,6 @@ export function buildRightColumn(sets: SetRecord[]): RightColumnModel {
       hours: Math.round(totalSec / 3600),
       tracks: sets.reduce((s, x) => s + (x.derived.track_count ?? x.plays.length), 0),
     },
+    zoneFallbackCount,
   };
 }

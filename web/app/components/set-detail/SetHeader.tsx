@@ -52,11 +52,14 @@ function scopedLength(frame: ScopeFrame): number | null {
 
 export function SetHeader({
   set,
+  zone,
   frame,
   onScopeChange,
   scopeToggleVisible,
 }: {
   set: SetRecord;
+  /** The set's own IANA zone, resolved once by the page (Story 7.7). */
+  zone: string;
   frame: ScopeFrame;
   onScopeChange: (scope: Scope) => void;
   scopeToggleVisible: boolean;
@@ -83,7 +86,7 @@ export function SetHeader({
   }, [menuOpen]);
 
   const scopeLine = frame.segment
-    ? `Dancefloor ${formatTimeRange(frame.segment.start, frame.segment.end)}`
+    ? `Dancefloor ${formatTimeRange(frame.segment.start, frame.segment.end, zone)}`
     : "Whole set · no distinct dancefloor detected.";
 
   return (
@@ -93,7 +96,7 @@ export function SetHeader({
         <p className="sd-eyebrow">
           {/* `session_label` (sessions.session_identity), not `external_id` — the
               latter is a raw uuid in the cloud read path. Story 4.6 code review. */}
-          {formatSetDate(set.started_at)} · {formatSessionLabel(set.session_label ?? set.external_id)}
+          {formatSetDate(set.started_at, zone)} · {formatSessionLabel(set.session_label ?? set.external_id)}
         </p>
 
         <div className="sd-overflow" ref={menuRef}>

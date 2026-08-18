@@ -126,6 +126,8 @@ export function useSegmentEditor(
    * 1440 browser pass, invisible to every other gate.)
    */
   revealPosition: (position: number, scrollIntoView?: boolean) => void,
+  /** The set's own IANA zone, resolved once by the page (Story 7.7). */
+  zone: string,
 ): SegmentEditor {
   const segments = useMemo(() => dancefloorSegments(set.segments), [set.segments]);
   const bounds = useMemo(() => positionBounds(set.plays), [set.plays]);
@@ -180,9 +182,11 @@ export function useSegmentEditor(
   const describe = useCallback(
     (edge: BoundaryEdge, position: number) => {
       const play = set.plays.find((p) => p.position === position);
-      return boundaryValueText(edge, play, formatClock(play?.started_at ?? null), "change");
+      return boundaryValueText(edge, play, formatClock(play?.started_at ?? null, zone), "change");
     },
-    [set.plays],
+    // `zone` formats the clock inside this announcement (Story 7.7) — a stale
+    // one would read the wrong time to a screen reader.
+    [set.plays, zone],
   );
 
   /** Drops every trace of an in-progress edit. */

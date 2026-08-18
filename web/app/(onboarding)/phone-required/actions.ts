@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { AUTH_FAILURE_COPY } from "@/app/(marketing)/login/auth-copy";
 import { isValidPhone, normalizePhone } from "./phone-validation";
+import { normalizeTimezone } from "./timezone-validation";
 import type { PhoneActionState } from "./phone-state";
 
 export async function setPhone(
@@ -34,6 +35,18 @@ export async function setPhone(
     };
   }
 
+  // Story 7.7: the browser's IANA zone, from this form's hidden field. It is
+  // the DJ-level fallback for bucketing a set whose own payload carried no zone
+  // (an agent older than 7.7, or any set captured before it).
+  //
+  // **It must never be able to fail this form.** A DJ whose browser reports no
+  // zone, or a nonsense one, still gets a phone number saved and still reaches
+  // /welcome — AD-19 forbids gating in this direction, and losing the zone
+  // costs a disclosure line, while losing the phone number costs the account's
+  // only contactability. So: validated loosely, dropped silently, never
+  // surfaced as an error.
+  const timezone = normalizeTimezone(String(formData.get("timezone") ?? ""));
+
   const supabase = await createClient();
 
   // Supabase calls are caught (not the redirect() below — redirect() works
@@ -54,9 +67,16 @@ export async function setPhone(
       // .select("id") makes a zero-row update (e.g. no matching djs row)
       // distinguishable from a real success — a bare .update() with no
       // .select() reports no error either way.
+      //
+      // The zone goes in the SAME update as the phone — one write, one RLS
+      // check, no second round trip and no partial-success state to reason
+      // about. When the browser gave us nothing, the key is omitted entirely
+      // rather than written as null: this action also runs for a DJ correcting
+      // a rejected number, and an omitted key leaves a zone we already have
+      // alone, where an explicit null would erase it.
       const { data: updated, error } = await supabase
         .from("djs")
-        .update({ phone: normalizedPhone })
+        .update(timezone ? { phone: normalizedPhone, timezone } : { phone: normalizedPhone })
         .eq("id", data.user.id)
         .select("id");
       succeeded = !error && (updated?.length ?? 0) > 0;

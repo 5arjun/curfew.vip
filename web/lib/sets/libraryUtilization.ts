@@ -19,6 +19,7 @@
 import { isLowConfidenceSet } from "./listModel";
 import { MOST_PLAYED_RECENT_SETS } from "./rightColumn";
 import { formatDayDate, formatSessionLabel } from "./format";
+import { zoneForSet } from "./civilTime";
 import type { SetRecord } from "./types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -155,6 +156,16 @@ export interface IndexedSet {
   label: string;
   /** `-Infinity` for an undated set (see {@link startMs}). */
   startMs: number;
+  /**
+   * The resolved IANA zone this set was played in (Story 7.7) — its own
+   * captured zone, else the DJ's, else UTC.
+   *
+   * Carried on the index rather than resolved at label time because `startMs`
+   * is a bare instant: by the time the similarity axis wants a date, the set
+   * record is gone and there is nothing left to ask. That is exactly how the
+   * axis ended up rendering UTC days in the first place.
+   */
+  zone: string;
   /** Distinct {@link trackKey}s played in this set. */
   tracks: Set<string>;
   /** Identified plays in this set — total, not distinct. */
@@ -261,7 +272,10 @@ export interface UtilizationIndex {
  * lifetime-scope-through-a-`getRecentSets`-seam hazard. Named here rather than
  * worked around with a second query.
  */
-export function buildUtilizationIndex(sets: SetRecord[]): UtilizationIndex {
+export function buildUtilizationIndex(
+  sets: SetRecord[],
+  djTimezone: string | null = null,
+): UtilizationIndex {
   const all: IndexedSet[] = [];
   const setsByTrack = new Map<string, Set<string>>();
   const playsByKey = new Map<string, number>();
@@ -351,6 +365,7 @@ export function buildUtilizationIndex(sets: SetRecord[]): UtilizationIndex {
       // is the documented `SET 872d5614-…` regression (`types.ts`).
       label: set.session_label ? formatSessionLabel(set.session_label) : "Untitled set",
       startMs: ms,
+      zone: zoneForSet(set, djTimezone).zone,
       tracks,
       playCount,
     });
@@ -571,7 +586,10 @@ function disambiguateLabels(labels: string[]): string[] {
  * every axis has a real date and there is no `"—"` case to design for.
  */
 function buildAxisDayLabels(recent: IndexedSet[]): string[] {
-  const dayOf = (s: IndexedSet) => formatDayDate(new Date(s.startMs).toISOString());
+  // Story 7.7: each set's own zone, carried on the index — see `IndexedSet.zone`.
+  // These labels are server-rendered and also compose into an `aria-label`, so a
+  // UTC-shifted date here was wrong in the accessible name too, not just on screen.
+  const dayOf = (s: IndexedSet) => formatDayDate(new Date(s.startMs).toISOString(), s.zone);
 
   const dayCounts = new Map<string, number>();
   for (const s of recent) {

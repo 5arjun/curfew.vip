@@ -108,10 +108,13 @@ class ArcErrorBoundary extends Component<
 // input (a plain array filter) is computed outside it.
 export function DetailArc({
   set,
+  zone,
   frame,
   setFocus,
 }: {
   set: SetRecord;
+  /** The set's own IANA zone, resolved once by the page (Story 7.7). */
+  zone: string;
   frame: ScopeFrame;
   setFocus: (focus: Focus | null) => void;
 }) {
@@ -132,19 +135,29 @@ export function DetailArc({
 
   return (
     <ArcErrorBoundary caption={caption}>
-      <DetailArcChart set={set} frame={frame} setFocus={setFocus} scopedArc={scopedArc} caption={caption} />
+      <DetailArcChart
+        set={set}
+        zone={zone}
+        frame={frame}
+        setFocus={setFocus}
+        scopedArc={scopedArc}
+        caption={caption}
+      />
     </ArcErrorBoundary>
   );
 }
 
 function DetailArcChart({
   set,
+  zone,
   frame,
   setFocus,
   scopedArc,
   caption,
 }: {
   set: SetRecord;
+  /** The set's own IANA zone, resolved once by the page (Story 7.7). */
+  zone: string;
   frame: ScopeFrame;
   setFocus: (focus: Focus | null) => void;
   scopedArc: ArcPoint[];
@@ -441,7 +454,7 @@ function DetailArcChart({
 
       // Chip = the curve's reading at that instant. State only changes when
       // the DISPLAYED minute/BPM changes, so mousemove stays cheap.
-      const clock = formatClock(new Date(geo.timeAtX(clampedX)).toISOString());
+      const clock = formatClock(new Date(geo.timeAtX(clampedX)).toISOString(), zone);
       const bpm = Math.round(geo.bpmAtY(yOnCurve));
       setHover((prev) =>
         prev?.kind === "point" && prev.clock === clock && prev.bpm === bpm
@@ -449,7 +462,10 @@ function DetailArcChart({
           : { kind: "point", clock, bpm },
       );
     },
-    [chipTargetRef, geo, medianY, hideBall],
+    // `zone` is in here because the hover chip's clock is formatted in it
+    // (Story 7.7). Omitting it would pin the readout to whichever zone was
+    // current when the callback was first created.
+    [chipTargetRef, geo, medianY, hideBall, zone],
   );
 
   const onPlotClick = useCallback(
@@ -638,8 +654,8 @@ function DetailArcChart({
 
         <div className="sd-arc-footer sd-arc-fade">
           <div className="sd-arc-ticks">
-            <span className="sd-arc-tick">{formatClock(tickStart ?? null)}</span>
-            <span className="sd-arc-tick">{formatClock(tickEnd ?? null)}</span>
+            <span className="sd-arc-tick">{formatClock(tickStart ?? null, zone)}</span>
+            <span className="sd-arc-tick">{formatClock(tickEnd ?? null, zone)}</span>
           </div>
           <p className="sd-arc-caption">{caption}</p>
         </div>

@@ -47,6 +47,7 @@ function transitionLabel(t: Transition): string {
 // filtered slice would put them on the wrong tracks.
 export function Tracklist({
   set,
+  zone,
   frame,
   focus,
   onDismissFocus,
@@ -59,6 +60,8 @@ export function Tracklist({
   onSelectView,
 }: {
   set: SetRecord;
+  /** The set's own IANA zone, resolved once by the page (Story 7.7). */
+  zone: string;
   frame: ScopeFrame;
   focus: Focus | null;
   onDismissFocus: () => void;
@@ -198,6 +201,7 @@ export function Tracklist({
               {startsHere && bounds && (
                 <SegmentBoundaryHandle
                   segmentId={startsHere.id}
+                  zone={zone}
                   edge="first"
                   position={play.position}
                   plays={set.plays}
@@ -261,7 +265,7 @@ export function Tracklist({
                 data-taptarget={placingEdge ? "true" : undefined}
               >
                 <div className="sd-row-rail">
-                  <time className="sd-row-time">{formatClock(play.started_at)}</time>
+                  <time className="sd-row-time">{formatClock(play.started_at, zone)}</time>
                   <span className="sd-row-node" aria-hidden="true" />
                   {isPeak && (
                     <span className="sd-row-peak" aria-label="Peak of the energy arc">
@@ -310,6 +314,7 @@ export function Tracklist({
               {endsHere && bounds && (
                 <SegmentBoundaryHandle
                   segmentId={endsHere.id}
+                  zone={zone}
                   edge="last"
                   position={play.position}
                   plays={set.plays}

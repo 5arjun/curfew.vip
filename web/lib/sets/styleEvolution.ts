@@ -17,36 +17,28 @@
 // history at all, not about the current view.
 import type { SetRecord } from "./types";
 import { parseCamelot } from "./setDetail";
+import {
+  countZoneFallbacks,
+  localMonthKey as monthKeyInZone,
+  localWeekKey as weekKeyInZone,
+  zoneForSet,
+} from "./civilTime";
 
 export type Granularity = "month" | "week";
 
-/** Local-month key "2026-06"; "" for an unparsable/missing timestamp. Mirrors
- *  `localDayKey` (listModel.ts:51-57) truncated to the month — local time,
- *  not UTC, since a gig's date is the DJ's local date. */
-export function localMonthKey(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const pad = (n: number) => `${n}`.padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
-}
-
 /**
- * Local Monday-of-the-week date key "2026-06-15" — the week's start date,
- * not an ISO week number, so it sorts and formats with the same "YYYY-MM-DD"
- * shape as every other local-date key in this codebase (no back-conversion
- * from a week number needed to render a label). "" for unparsable input.
- * Local time, not UTC, same discipline as `localMonthKey`.
+ * This module's two bucket keys, resolved in the zone the SET was played in
+ * (Story 7.7).
+ *
+ * Both used to build a `Date` and read `getFullYear`/`getMonth`/`getDay` off
+ * it, which resolves in the rendering process's zone — and this page is a
+ * Server Component, so that zone was Vercel's UTC, not the DJ's. An 11pm gig
+ * crossed into the next day, and an 11pm New Year's Eve set crossed into the
+ * next *month*. The implementations now live in `./civilTime`, take an explicit
+ * zone, and are shared with every other bucketing site so two of them cannot
+ * drift again.
  */
-export function localWeekKey(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const dow = (d.getDay() + 6) % 7; // Mon=0..Sun=6
-  const monday = new Date(d.getFullYear(), d.getMonth(), d.getDate() - dow);
-  const pad = (n: number) => `${n}`.padStart(2, "0");
-  return `${monday.getFullYear()}-${pad(monday.getMonth() + 1)}-${pad(monday.getDate())}`;
-}
+export { localMonthKey, localWeekKey } from "./civilTime";
 
 /**
  * `H = -Σ pᵢ·log2(pᵢ)` over raw counts. Zero-length or all-zero input → `0`,
@@ -77,10 +69,10 @@ export function shannonEntropy(counts: number[]): number {
  * low-confidence sets should see the trend, never a misleading "not enough
  * yet."
  */
-export function monthsSpanned(sets: SetRecord[]): number {
+export function monthsSpanned(sets: SetRecord[], djTimezone: string | null = null): number {
   const months = new Set<string>();
   for (const s of sets) {
-    const key = localMonthKey(s.started_at);
+    const key = monthKeyInZone(s.started_at, zoneForSet(s, djTimezone).zone);
     if (key) months.add(key);
   }
   return months.size;
@@ -185,6 +177,23 @@ export interface StyleEvolutionModel {
    *  because there is no bucket to file them under. Disclosed rather than
    *  silently swallowed — the same contract `no_genre_count` holds to. */
   undatedCount: number;
+  /**
+   * Sets bucketed on a zone that was not their own (Story 7.7, AC-4) — either
+   * the DJ-level `djs.timezone`, or UTC when even that is unknown.
+   *
+   * These sets ARE in the series; unlike `undatedCount` this is not a drop, it
+   * is a caveat on where they landed. A set captured by an agent older than
+   * 7.7 carries no zone, and AD-3 makes that permanently valid — so this count
+   * never reaches zero by waiting, and must never gate or filter anything
+   * (AD-19).
+   *
+   * Model-only for now (Arjun, 2026-08-17): the counted-disclosure pattern is
+   * established by `undatedCount` above and `noAddDateCount`/
+   * `unreconciledDateCount` on the library models, but *where* this surfaces in
+   * the UI is a copy decision, not an implementation one. Carried in the same
+   * shape so surfacing it later is a one-line view change.
+   */
+  zoneFallbackCount: number;
   month: BucketSeries;
   week: BucketSeries;
 }
@@ -356,7 +365,22 @@ function fillMonthRange(first: string, last: string): string[] {
   return out;
 }
 
-/** Same continuity fix as `fillMonthRange`, stepping by 7 local-calendar days (Monday to Monday) instead of by month. */
+/**
+ * Same continuity fix as `fillMonthRange`, stepping by 7 calendar days (Monday
+ * to Monday) instead of by month.
+ *
+ * **The `getFullYear`/`getMonth`/`getDate` reads here are correct and must not
+ * be "fixed" (Story 7.7).** Every other such read in this directory was a bug —
+ * a calendar value derived from an *instant* in whichever zone the process
+ * happened to be in. These are not: `first`/`last` are already-resolved civil
+ * date KEYS, `new Date(y, m - 1, d)` builds them back in the process zone, and
+ * the getters read them out of that same zone. The zone cancels, and the output
+ * is the identical civil dates that went in — this function is doing calendar
+ * arithmetic, not timezone conversion.
+ *
+ * Rewriting it against an explicit zone would change nothing except to imply
+ * these keys denote instants, which they do not.
+ */
 function fillWeekRange(first: string, last: string): string[] {
   const [fy, fm, fd] = first.split("-").map(Number);
   const [ly, lm, ld] = last.split("-").map(Number);
@@ -371,37 +395,62 @@ function fillWeekRange(first: string, last: string): string[] {
   return out;
 }
 
+/**
+ * `bucketKeyFn` takes the whole `SetRecord`, not its `started_at` (Story 7.7):
+ * the key depends on the zone THAT set was captured in, which only the set
+ * itself knows. Passing the bare ISO string is what made a process-zone read
+ * the only thing available here.
+ */
 function buildSeries(
   sets: SetRecord[],
-  bucketKeyFn: (iso: string | null) => string,
+  bucketKeyFn: (set: SetRecord) => string,
   fillRange: (first: string, last: string) => string[],
 ): BucketSeries {
   const keySet = new Set<string>();
   for (const s of sets) {
-    const key = bucketKeyFn(s.started_at);
+    const key = bucketKeyFn(s);
     if (key) keySet.add(key);
   }
   const present = [...keySet].sort();
   const buckets = present.length === 0 ? [] : fillRange(present[0], present[present.length - 1]);
 
   const excluding = buckets.map((b) =>
-    aggregateBucket(sets.filter((s) => bucketKeyFn(s.started_at) === b && !isLowConfidence(s))),
+    aggregateBucket(sets.filter((s) => bucketKeyFn(s) === b && !isLowConfidence(s))),
   );
-  const including = buckets.map((b) => aggregateBucket(sets.filter((s) => bucketKeyFn(s.started_at) === b)));
+  const including = buckets.map((b) => aggregateBucket(sets.filter((s) => bucketKeyFn(s) === b)));
 
   return { buckets, excluding, including };
 }
 
-/** Builds the full Style Evolution trend model from the DJ's synced sets — both month and week series, computed up front. */
-export function buildStyleEvolution(sets: SetRecord[]): StyleEvolutionModel {
-  const dated = sets.filter((s) => localMonthKey(s.started_at) !== "");
+/**
+ * Builds the full Style Evolution trend model from the DJ's synced sets — both
+ * month and week series, computed up front.
+ *
+ * `djTimezone` (Story 7.7) is the DJ-level fallback for a set whose payload
+ * carried no zone of its own — every set captured before 7.7, and every set
+ * from an agent that has not auto-updated yet. It defaults to `null` so a test
+ * or a fixture-backed caller can omit it; that path buckets in UTC and is
+ * counted in `zoneFallbackCount`, exactly like production would.
+ */
+export function buildStyleEvolution(
+  sets: SetRecord[],
+  djTimezone: string | null = null,
+): StyleEvolutionModel {
+  const monthKey = (s: SetRecord) => monthKeyInZone(s.started_at, zoneForSet(s, djTimezone).zone);
+  const weekKey = (s: SetRecord) => weekKeyInZone(s.started_at, zoneForSet(s, djTimezone).zone);
+  const dated = sets.filter((s) => monthKey(s) !== "");
   return {
     setCount: sets.length,
-    monthsSpannedAll: monthsSpanned(sets),
+    monthsSpannedAll: monthsSpanned(sets, djTimezone),
     lowConfidenceCount: dated.filter(isLowConfidence).length,
     undatedCount: sets.length - dated.length,
-    month: buildSeries(sets, localMonthKey, fillMonthRange),
-    week: buildSeries(sets, localWeekKey, fillWeekRange),
+    // Counted over `dated`, not `sets`: an undated set was never bucketed at
+    // all, so calling it "bucketed on a fallback zone" double-discloses it
+    // alongside `undatedCount` — and the overlap is the common case, since a
+    // pre-7.7 set typically has neither field (code review, 2026-08-17).
+    zoneFallbackCount: countZoneFallbacks(dated, djTimezone),
+    month: buildSeries(sets, monthKey, fillMonthRange),
+    week: buildSeries(sets, weekKey, fillWeekRange),
   };
 }
 

@@ -1,65 +1,44 @@
-"use client";
-
-import { useMemo, useSyncExternalStore } from "react";
 import type { ClockStripModel } from "@/lib/sets/trackDetail";
 
 // AC-8's clock-time strip — what time of night the DJ drops this track.
 //
-// **The only client component this page adds, and the reason is D-32.**
-// `plays.started_at` is `timestamptz`: the capture-side offset is normalized to
+// **This was the app's clearest instance of the bug Story 7.7 exists to fix,
+// and it is worth recording what changed, because the code was right about its
+// own constraints and wrong about nothing except a premise.**
+//
+// It used to be a Client Component whose whole reason for existing was D-32:
+// "`plays.started_at` is `timestamptz`: the capture-side offset is normalized to
 // UTC and lost, and there is no venue timezone, no DJ timezone on `djs` and no
-// set-level offset anywhere in the system (GAP-3). So an hour rendered on the
-// server is rendered in the SERVER's zone, which is (a) wrong for every DJ who
-// is not sitting in it and (b) a hydration mismatch the moment the client
-// disagrees. This epic already carries one unfixed instance of that class
-// (`deferred-work.md:491`, locale-dependent axis ticks) and 4.7 shipped
-// another; this makes three, so it is built the other way round instead.
+// set-level offset anywhere in the system (GAP-3)." Given that, a server-rendered
+// hour would be the SERVER's hour, so the bucketing was deferred behind a
+// `useSyncExternalStore` hydration gate and computed in the viewer's zone.
 //
-// The viewer's own zone is not a compromise here — it is the only zone that is
-// ever right for "what time of night do I drop this", because the DJ plays
-// where they live.
+// Story 7.7 closes GAP-3: a set now carries the IANA zone it was captured in,
+// with `djs.timezone` behind it. Once a real zone exists, the viewer's zone
+// stops being the least-wrong option and becomes simply wrong — a DJ who played
+// Berlin does not want those plays re-bucketed because they opened the page in
+// Los Angeles, and a histogram whose shape depends on who is looking is not an
+// answer to "what time of night do I drop this".
 //
-// `vitest.config.ts` pins `TZ=UTC`, so a green unit test proves the epoch math
-// and NOTHING about the rendered hour. The hour is verified in the browser
-// pass.
+// So the aggregation moved to the server (`buildClockStrip`), each play counted
+// in ITS OWN set's zone, and the hydration gate went with it — there is nothing
+// left for the two environments to disagree about. **If a hydration warning ever
+// reappears here, the warning is the symptom and a wrong bucket is the defect:
+// do not reach back for `useSyncExternalStore` to silence it.**
+//
+// Deferring a *label* to the client would still be defensible. Deferring an
+// aggregation is what this story exists to stop.
 
 /** Hours in a night, laid out 6pm → 6pm so a set that crosses midnight reads as one arc. */
 const NIGHT_START_HOUR = 18;
 
-/**
- * `false` while server-rendering and on the very first client render, `true`
- * after hydration — React's own supported way to ask "am I on the client yet".
- *
- * A `useState(false)` + `useEffect(() => setState(true))` pair reads more
- * simply and is what this component was first written as, but it sets state
- * synchronously inside an effect, which `react-hooks/set-state-in-effect`
- * rejects and which genuinely does cause a cascading second render. The store
- * below never changes, so `subscribe` is a no-op: the value is constant within
- * an environment, and it is only the two environments that disagree.
- */
-const NEVER_CHANGES = () => () => {};
-const ON_CLIENT = () => true;
-const ON_SERVER = () => false;
-
 export function ClockStrip({ model }: { model: ClockStripModel }) {
-  const hydrated = useSyncExternalStore(NEVER_CHANGES, ON_CLIENT, ON_SERVER);
 
-  // `null` until hydrated. The first client render must match what the server
-  // sent, so the buckets cannot be computed during it — that is the mismatch
-  // this whole component exists to avoid. The pre-hydration markup is the
-  // module's shell with an honest "reading your clock" placeholder rather than
-  // a strip of zeroes, which would flash a wrong answer before the right one.
-  const buckets = useMemo(() => {
-    if (!hydrated) return null;
-    const counts = new Array<number>(24).fill(0);
-    for (const ms of model.startedAtMs) {
-      // `getHours`, not `getUTCHours`: the local hour IS the answer.
-      counts[new Date(ms).getHours()] += 1;
-    }
-    return counts;
-  }, [hydrated, model.startedAtMs]);
-
-  const summary = buckets === null ? "Clock" : clockSummary(buckets, model.startedAtMs.length);
+  // Already bucketed, server-side, in each play's own set zone. Nothing to
+  // compute here and nothing to wait for — the strip renders complete on the
+  // first paint, in the DJ's own hours.
+  const buckets = model.hourCounts;
+  const summary = clockSummary(buckets, model.startedAtMs.length);
 
   return (
     <div className="td-module dz-shell" role="group" aria-label={summary}>
@@ -68,8 +47,6 @@ export function ClockStrip({ model }: { model: ClockStripModel }) {
 
       {model.startedAtMs.length === 0 ? (
         <p className="td-neighbour-empty">No play of this has carried a time yet.</p>
-      ) : buckets === null ? (
-        <p className="td-neighbour-empty">Reading your clock…</p>
       ) : (
         <>
           {/* aria-hidden on the graphic; the group's `aria-label` above carries
@@ -126,7 +103,7 @@ export function ClockStrip({ model }: { model: ClockStripModel }) {
   );
 }
 
-/** "9pm", "12am", "3am" — the viewer's own clock, in the register the rest of the page uses. */
+/** "9pm", "12am", "3am" — the DJ's own clock at the gig, in the register the rest of the page uses. */
 function formatHour(hour: number): string {
   const suffix = hour < 12 ? "am" : "pm";
   const h = hour % 12 === 0 ? 12 : hour % 12;

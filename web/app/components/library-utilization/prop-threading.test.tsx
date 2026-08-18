@@ -17,6 +17,10 @@ import type {
   WorkhorsesModel,
 } from "@/lib/sets/libraryUtilization";
 
+/** Story 7.7: an explicit zone — the suite is TZ-pinned to UTC, so a bare
+ *  default would make a date assertion prove nothing about zones. */
+const TEST_ZONE = "America/Los_Angeles";
+
 /**
  * PROP-THREADING ASSERTIONS (Story 4.9, D-24).
  *
@@ -283,12 +287,22 @@ describe("Workhorses and OneAndDone thread their rows to the DOM (AC-5, AC-6)", 
   });
 
   it("renders one-and-done rows with a date, and an em dash when the play was undated", () => {
-    const dated = renderToStaticMarkup(<OneAndDone model={oneAndDone(2)} />);
+    const dated = renderToStaticMarkup(<OneAndDone model={oneAndDone(2)} zone={TEST_ZONE} />);
     expect(dated).toContain("Once 0");
-    expect(dated).toContain("Jun");
+
+    // Story 7.7: this used to assert `toContain("Jun")`, because the fixture's
+    // instant is early on June 1 UTC and the row rendered in the process zone,
+    // which the suite pins to UTC. It now renders in the ZONE PROP — and in Los
+    // Angeles that instant is still May 31. So the row correctly reads May, and
+    // the change of month is itself the proof that the prop reaches the DOM
+    // rather than being ignored in favour of the process zone.
+    expect(dated).toContain("May 31");
+    const utc = renderToStaticMarkup(<OneAndDone model={oneAndDone(2)} zone="UTC" />);
+    expect(utc).toContain("Jun 1");
 
     const undated = renderToStaticMarkup(
       <OneAndDone
+        zone={TEST_ZONE}
         model={{
           ...oneAndDone(1),
           rows: [{ title: "No Time", artist: "Artist", lastPlayedMs: -Infinity, trackId: "id0" }],
@@ -301,7 +315,7 @@ describe("Workhorses and OneAndDone thread their rows to the DOM (AC-5, AC-6)", 
 
   // NEGATIVE CONTROL.
   it("renders no rows below the gate", () => {
-    const html = renderToStaticMarkup(<OneAndDone model={oneAndDone(0)} />);
+    const html = renderToStaticMarkup(<OneAndDone model={oneAndDone(0)} zone={TEST_ZONE} />);
     expect(html).not.toContain("lu-row-list");
     expect(html).toContain('aria-label="Played once"');
   });
@@ -389,7 +403,7 @@ describe("trackId reaches the DOM as a link, and its absence reaches it as plain
   });
 
   it("links a played-once row's title", () => {
-    const html = renderToStaticMarkup(<OneAndDone model={oneAndDone(1)} />);
+    const html = renderToStaticMarkup(<OneAndDone model={oneAndDone(1)} zone={TEST_ZONE} />);
     expect(html).toContain('href="/track/id0"');
   });
 
@@ -397,7 +411,7 @@ describe("trackId reaches the DOM as a link, and its absence reaches it as plain
   it("renders an unlinkable played-once row as plain text", () => {
     const model = oneAndDone(1);
     const html = renderToStaticMarkup(
-      <OneAndDone model={{ ...model, rows: [{ ...model.rows[0], trackId: null }] }} />,
+      <OneAndDone model={{ ...model, rows: [{ ...model.rows[0], trackId: null }] }} zone={TEST_ZONE} />,
     );
     expect(html).toContain("Once 0");
     expect(html).not.toContain("<a");

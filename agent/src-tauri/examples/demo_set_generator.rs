@@ -172,6 +172,16 @@ impl Rng {
 // §2.1 — America/New_York clock
 // =============================================================================
 
+/// The zone this whole file already computes in — every ET helper below, the
+/// `window_start_et`/`window_end_et` bounds, and `GeneratorMeta.timezone`.
+///
+/// Story 7.7 gave it a second job: it is now stamped onto each generated set's
+/// `derived.timezone`, so June's demo data buckets through exactly the same
+/// zone-explicit path a real DJ's does. Without it every demo set would fall
+/// back to `djs.timezone` and be counted as a disclosure, which would be both
+/// wrong and visible.
+const DEMO_TIMEZONE: &str = "America/New_York";
+
 /// Days from 1970-01-01 for a proleptic-Gregorian civil date (Howard Hinnant's
 /// `days_from_civil`, the standard branch-free formulation).
 fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
@@ -1154,7 +1164,7 @@ fn main() {
             seed,
             anchor: format!("{:04}-{:02}-{:02}", anchor.0, anchor.1, anchor.2),
             anchor_shift_days: shift_days,
-            timezone: "America/New_York",
+            timezone: DEMO_TIMEZONE,
             window_start_et: et_date(sets.first().map(|s| s.started_at).unwrap_or(window_start)),
             window_end_et: et_date(sets.last().map(|s| s.started_at).unwrap_or(window_start)),
             add_date_source: "file_mtime (spec §11 risk 1 — tadd/uadd is 91% bulk-copy junk)",
@@ -2473,7 +2483,7 @@ fn assemble_all(
         let set_end = slots.last().map(|s| s.start + s.on_air);
         let started_at = slots[0].start;
         let floors = pooled_floors(&pooled, started_at, &plan.session_identity);
-        let (plays, derived) = assemble(&pairs, set_end, &floors);
+        let (plays, derived) = assemble(&pairs, set_end, &floors, Some(DEMO_TIMEZONE));
 
         // Feed this session forward into the pool, exactly as the store does.
         let detection_plays: Vec<segments::DetectionPlay> = plays

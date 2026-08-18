@@ -28,6 +28,7 @@ import { InsufficientHistory } from "@/app/components/style-evolution/Insufficie
 import { LibraryUtilizationReveal } from "@/app/components/library-utilization/LibraryUtilizationReveal";
 import { ClockStrip } from "./ClockStrip";
 import { ClientDayDate } from "./ClientDayDate";
+import { FALLBACK_ZONE } from "@/lib/sets/civilTime";
 
 // Track Detail's shell (Story 4.10, AC-5..AC-12).
 //
@@ -53,15 +54,23 @@ export function TrackDetail({
   plays,
   roster,
   neighbourRows,
+  djTimezone,
 }: {
   plays: TrackPlayRecord[];
   roster: LibraryRosterEntry | null;
   neighbourRows: MixNeighbourRow[];
+  /** The DJ's fallback zone (Story 7.7); a set's own captured zone wins. */
+  djTimezone: string | null;
 }) {
   // Identity from EVERY play, not the surviving ones: a track played only at a
   // soundcheck still has a title, a BPM and a key, and hiding them behind the
   // reveal would make the page look empty for a track Curfew knows plenty about.
   const identity = buildTrackIdentity(plays, roster);
+  // Story 7.7. The page-level zone, for the facts that belong to the DJ's
+  // whole library rather than to one gig — when a track was added, when it
+  // was first and last played across every set. A per-set row uses its own
+  // `row.zone` instead; see the history table below.
+  const djZone = djTimezone ?? FALLBACK_ZONE;
   const { surviving, hiddenSetCount } = partitionTrackPlaysByConfidence(plays);
 
   return (
@@ -73,7 +82,7 @@ export function TrackDetail({
             is the page's `<h1>`. One `<h1>`, matching every other screen. */}
         <h1 className="td-title">{identity.title}</h1>
         <p className="td-artist">{identity.artist}</p>
-        <TrackTags identity={identity} />
+        <TrackTags identity={identity} djZone={djZone} />
       </header>
 
       {plays.length === 0 ? (
@@ -84,10 +93,22 @@ export function TrackDetail({
       ) : (
         <LibraryUtilizationReveal
           hiddenCount={hiddenSetCount}
-          excluding={<TrackBody plays={surviving} allPlays={plays} neighbourRows={neighbourRows} />}
+          excluding={
+            <TrackBody
+              plays={surviving}
+              allPlays={plays}
+              neighbourRows={neighbourRows}
+              djTimezone={djTimezone}
+            />
+          }
           including={
             hiddenSetCount > 0 ? (
-              <TrackBody plays={plays} allPlays={plays} neighbourRows={neighbourRows} />
+              <TrackBody
+                plays={plays}
+                allPlays={plays}
+                neighbourRows={neighbourRows}
+                djTimezone={djTimezone}
+              />
             ) : null
           }
         />
@@ -135,7 +156,7 @@ const NOT_PLAYED_YET_COPY =
  * columns written as one group and never collapsed (AD-12), and a track with a
  * genre but no subgenre must not read as though the subgenre were the genre.
  */
-function TrackTags({ identity }: { identity: TrackIdentity }) {
+function TrackTags({ identity, djZone }: { identity: TrackIdentity; djZone: string }) {
   const keyCamelot = identity.camelotKey ? parseCamelot(identity.camelotKey) : null;
   return (
     <dl className="td-tags">
@@ -188,7 +209,8 @@ function TrackTags({ identity }: { identity: TrackIdentity }) {
           {identity.libraryAddedAtMs === null ? (
             UNKNOWN
           ) : (
-            <ClientDayDate ms={identity.libraryAddedAtMs} />
+            // A library fact, not a gig's — the DJ's own zone (Story 7.7).
+            <ClientDayDate ms={identity.libraryAddedAtMs} zone={djZone} />
           )}
         </dd>
       </div>
@@ -207,13 +229,22 @@ function TrackBody({
   plays,
   allPlays,
   neighbourRows,
+  djTimezone,
 }: {
   plays: TrackPlayRecord[];
   allPlays: TrackPlayRecord[];
   neighbourRows: MixNeighbourRow[];
+  /** The DJ's fallback zone (Story 7.7); a set's own captured zone wins. */
+  djTimezone: string | null;
 }) {
-  const history = buildTrackHistory(plays);
-  const clock = buildClockStrip(plays);
+  // No `djZone` here any more: every date this component renders now carries
+  // the zone of the SET it belongs to. First/last played used to fall straight
+  // to the DJ's zone even though `buildTrackHistory` had the set's in hand,
+  // which dated the same play differently from the per-set row beneath it
+  // (code review, 2026-08-17). `TrackTags`'s library add date keeps `djZone`
+  // deliberately — an add has no gig and so no set zone to inherit.
+  const history = buildTrackHistory(plays, djTimezone);
+  const clock = buildClockStrip(plays, djTimezone);
   const rideTime = buildRideTime(plays);
   const neighbours = buildMixNeighbours(plays, neighbourRows, allPlays);
   const rideNote = rideTimeDisclosure(rideTime);
@@ -259,7 +290,7 @@ function TrackBody({
                 {history.firstPlayedMs === null ? (
                   "—"
                 ) : (
-                  <ClientDayDate ms={history.firstPlayedMs} />
+                  <ClientDayDate ms={history.firstPlayedMs} zone={history.firstPlayedZone} />
                 )}
               </span>
               <span>
@@ -267,7 +298,7 @@ function TrackBody({
                 {history.lastPlayedMs === null ? (
                   "—"
                 ) : (
-                  <ClientDayDate ms={history.lastPlayedMs} />
+                  <ClientDayDate ms={history.lastPlayedMs} zone={history.lastPlayedZone} />
                 )}
               </span>
             </p>
@@ -286,7 +317,8 @@ function TrackBody({
                       // `OneAndDone` gives an undated play.
                       "—"
                     ) : (
-                      <ClientDayDate ms={row.startedAtMs} />
+                      // This row IS one set, so it gets that set's own zone.
+                      <ClientDayDate ms={row.startedAtMs} zone={row.zone} />
                     )}
                     {row.playCount > 1 && ` · ${row.playCount} plays`}
                   </span>

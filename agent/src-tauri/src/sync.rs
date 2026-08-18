@@ -819,6 +819,12 @@ mod tests {
             },
             suggested_segments: vec![],
             idle_gaps: vec![],
+            // Story 7.7: a real zone rather than None, so the tests below that
+            // round-trip this fixture through `derived_json` are actually
+            // exercising the field on the wire. `sync.rs` forwards
+            // `derived_json` verbatim, so there is no conversion step to get
+            // wrong here — the value that must survive is the string itself.
+            timezone: Some("America/Los_Angeles".into()),
         }
     }
 

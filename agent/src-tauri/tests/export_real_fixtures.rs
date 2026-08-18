@@ -176,6 +176,9 @@ fn export_real_sets_and_verify_camelot_recovery() {
             serato_session_id,
             &dates,
             &CalibrationPool::new(pooled.clone()),
+            // Story 7.7: a fixed zone, not `local_timezone()` — an exported
+            // golden fixture must not vary with the machine that exported it.
+            Some("America/Los_Angeles"),
         );
         let (plays, derived) = match built {
             Ok(v) => v,

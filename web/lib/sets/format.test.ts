@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { formatDuration, formatElapsed, formatSessionLabel, formatSetDate, formatTrackCount, topGenres } from "./format";
+import {
+  formatClock,
+  formatDuration,
+  formatElapsed,
+  formatSessionLabel,
+  formatSetDate,
+  formatTimeRange,
+  formatTrackCount,
+  topGenres,
+} from "./format";
 
 describe("formatDuration", () => {
   it("formats hours and minutes", () => {
@@ -48,11 +57,55 @@ describe("formatSessionLabel", () => {
 });
 
 describe("formatSetDate", () => {
+  // Story 7.7: the zone is an explicit argument now, so these assert the DJ's
+  // date rather than the process's. The suite is TZ-pinned to UTC
+  // (`vitest.config.ts:18`), which is exactly why a defaulted zone would make
+  // the cross-zone case below unprovable.
+  const LA = "America/Los_Angeles";
+
   it("produces an uppercase mono-style date, or an em dash", () => {
-    expect(formatSetDate(null)).toBe("—");
-    expect(formatSetDate("not-a-date")).toBe("—");
-    // Structure is timezone-independent: WEEKDAY · D MON YYYY, all uppercase.
-    expect(formatSetDate("2026-06-21T21:26:45.000Z")).toMatch(/^[A-Z]{3} · \d{1,2} [A-Z]{3} 2026$/);
+    expect(formatSetDate(null, LA)).toBe("—");
+    expect(formatSetDate("not-a-date", LA)).toBe("—");
+    // Structure: WEEKDAY · D MON YYYY, all uppercase.
+    expect(formatSetDate("2026-06-21T21:26:45.000Z", LA)).toMatch(
+      /^[A-Z]{3} · \d{1,2} [A-Z]{3} 2026$/,
+    );
+  });
+
+  it("dates a late-night gig by the DJ's day, not the server's", () => {
+    // 06:00Z on the 21st is 23:00 on the 20th in Los Angeles. The whole story
+    // in one assertion: same instant, two days, and the DJ's is the right one.
+    const instant = "2026-06-21T06:00:00.000Z";
+    expect(formatSetDate(instant, "UTC")).toBe("SUN · 21 JUN 2026");
+    expect(formatSetDate(instant, LA)).toBe("SAT · 20 JUN 2026");
+  });
+
+  it("keeps the day number and the month name in the same zone", () => {
+    // The failure this guards: reading the day off `getDate()` (process zone)
+    // while the month name came from a zone-aware formatter would produce
+    // "1 JUL" for a set that the same function calls 30 June.
+    const instant = "2026-07-01T04:00:00.000Z"; // 21:00 on Jun 30 in LA
+    expect(formatSetDate(instant, LA)).toBe("TUE · 30 JUN 2026");
+  });
+});
+
+describe("formatClock and formatTimeRange (Story 7.7)", () => {
+  it("renders the clock the DJ read off the booth", () => {
+    // A 10:14 PM Los Angeles set rendered "5:14 AM" server-side before this
+    // story — not a time anyone plays a club set at.
+    expect(formatClock("2026-06-22T05:14:00.000Z", "America/Los_Angeles")).toBe("10:14 PM");
+    expect(formatClock("2026-06-22T05:14:00.000Z", "UTC")).toBe("5:14 AM");
+  });
+
+  it("renders both ends of a range in the same zone", () => {
+    expect(
+      formatTimeRange("2026-06-22T05:14:00.000Z", "2026-06-22T08:52:00.000Z", "America/Los_Angeles"),
+    ).toBe("10:14 PM – 1:52 AM");
+  });
+
+  it("still degrades to an em dash on missing input", () => {
+    expect(formatClock(null, "America/Los_Angeles")).toBe("—");
+    expect(formatTimeRange(null, null, "America/Los_Angeles")).toBe("—");
   });
 });
 

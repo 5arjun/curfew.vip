@@ -13,6 +13,7 @@ import {
   topGenres,
 } from "./format";
 import { HERO_MIN_TRACKS } from "./hero";
+import { localDayKey as dayKeyInZone, usableZoneOr, zoneForSet } from "./civilTime";
 import type { SetRecord, SyncPlay } from "./types";
 
 export interface SetTrack {
@@ -76,14 +77,14 @@ export function floorDisclosureLabel(floorSegmentCount: number): string | null {
   return `+${extra} more floor${extra === 1 ? "" : "s"}`;
 }
 
-/** Local-date key for calendar linking; "" when the set has no timestamp. */
-export function localDayKey(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const pad = (n: number) => `${n}`.padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
+/**
+ * Local-date key for calendar linking; "" when the set has no timestamp.
+ *
+ * Re-exported from `./civilTime` since Story 7.7 — it takes an explicit zone
+ * now, and shares one implementation with `localMonthKey`/`localWeekKey` so the
+ * calendar and Style Evolution cannot disagree about what day a set was on.
+ */
+export { localDayKey } from "./civilTime";
 
 function setTracklist(plays: SyncPlay[]): SetTrack[] {
   // Every play, in order — the expanded card lists the whole night (item 11),
@@ -130,8 +131,13 @@ export function isLowConfidenceSet(set: SetRecord): boolean {
   return set.derived.confidence.value < 1.0 || trackCount < HERO_MIN_TRACKS;
 }
 
-export function buildSetRows(sets: SetRecord[]): SetRowModel[] {
+export function buildSetRows(sets: SetRecord[], djTimezone: string | null = null): SetRowModel[] {
   return sets.map((set) => {
+    // Story 7.7: every date, clock and day-key below resolves in THIS set's
+    // zone — the one the DJ was in when they played it — falling back to the
+    // DJ's own zone and then UTC. Resolved once per set, here, rather than
+    // per-formatter.
+    const { zone } = zoneForSet(set, djTimezone);
     // Story 5.2: the cut is FETCHED (`set.segments`, from the `segments` rows),
     // not recomputed here. A set with no segments yields `null` and every
     // consumer below falls back to whole-set stats — the same code path v0's
@@ -140,12 +146,17 @@ export function buildSetRows(sets: SetRecord[]): SetRowModel[] {
     const floor = segmentStats(set.plays, segment);
     const floorSegmentCount = dancefloorSegments(set.segments).length;
     const bpm = set.derived.bpm_distribution;
-    const dateLabel = formatDayDate(set.started_at);
+    const dateLabel = formatDayDate(set.started_at, zone);
     const startedAtMs = set.started_at ? new Date(set.started_at).getTime() : 0;
 
     // Searchable date: dateLabel is the ABBREVIATED "Fri, Jun 26", so typing a
     // full month ("june"/"august") or the year matched nothing. Add the long
     // form so both abbreviated and full names (and the year, full weekday) hit.
+    //
+    // Story 7.7 — this one is BEHAVIOUR, not a label. Rendered in the process's
+    // zone, a 30 June gig that UTC files as 1 July produced the string "July",
+    // so a DJ typing "june" did not find their own June set. The zone belongs
+    // here for the same reason it belongs on `dayKey`.
     const startDate = set.started_at ? new Date(set.started_at) : null;
     const searchDate =
       startDate && !Number.isNaN(startDate.getTime())
@@ -154,6 +165,12 @@ export function buildSetRows(sets: SetRecord[]): SetRowModel[] {
             month: "long",
             day: "numeric",
             year: "numeric",
+            // Guarded: `Intl` throws `RangeError` on a zone it cannot resolve,
+            // and this runs in a Server Component — an unguarded throw is a
+            // blank dashboard, not a missing search term (code review,
+            // 2026-08-17). `format.ts` carries the same guard for the same
+            // reason.
+            timeZone: usableZoneOr(zone),
           })
         : "";
     const names = set.plays.flatMap((p) => [p.title ?? "", p.artist ?? ""]);
@@ -162,8 +179,8 @@ export function buildSetRows(sets: SetRecord[]): SetRowModel[] {
     return {
       id: set.external_id,
       dateLabel,
-      startClock: formatClock(set.started_at),
-      timeRange: formatTimeRange(set.started_at, set.ended_at),
+      startClock: formatClock(set.started_at, zone),
+      timeRange: formatTimeRange(set.started_at, set.ended_at, zone),
       floorCount: floor.track_count,
       durationLabel: formatDuration(floor.set_length_sec),
       floorSegmentCount,
@@ -171,7 +188,7 @@ export function buildSetRows(sets: SetRecord[]): SetRowModel[] {
       medianBpm: formatBpm(bpm.count > 0 ? bpm.median : null),
       genreChips: topGenres(floor.genre_breakdown),
       tracklist: setTracklist(set.plays),
-      dayKey: localDayKey(set.started_at),
+      dayKey: dayKeyInZone(set.started_at, zone),
       isLowConfidence: isLowConfidenceSet(set),
       startedAtMs: Number.isNaN(startedAtMs) ? 0 : startedAtMs,
       lengthSec: set.derived.set_length_sec ?? 0,

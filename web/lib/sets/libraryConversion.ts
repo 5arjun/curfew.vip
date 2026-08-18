@@ -14,7 +14,7 @@
 // "pure" function is what made that suite machine-dependent and let two real
 // bugs through a green gate.
 import { formatElapsed } from "./format";
-import { localMonthKey } from "./styleEvolution";
+import { civilMonthEndMs, FALLBACK_ZONE, localMonthKey, parseMonthKey } from "./civilTime";
 import type { SetRecord } from "./types";
 
 /**
@@ -128,13 +128,25 @@ export interface LibraryConversionModel {
 }
 
 /**
- * The last instant of a local calendar month, in ms — the moment from which
+ * The last instant of a calendar month IN `zone`, in ms — the moment from which
  * that cohort's slowest-added track starts its 90-day clock.
+ *
+ * Story 7.7: this was `new Date(year, month, 0, 23, 59, 59, 999)`, which builds
+ * the boundary in the *process's* zone. On Vercel that made every cohort month
+ * end at 23:59 UTC no matter where the DJ was, and it is wrong by a further
+ * hour across a DST change, since the naive constructor cannot know that
+ * November has 24 hours more than a fixed-offset month would.
+ *
+ * **The current tolerance is not the justification for getting it right.**
+ * {@link isCohortComplete} compares against a 14–90 day window, so an hour of
+ * error changes no rendered value today. Nothing at the call site announces
+ * that, though, and the next consumer of this boundary will not necessarily
+ * have 14 days of slack to absorb it.
  */
-function monthEndMs(monthKey: string): number {
-  const [year, month] = monthKey.split("-").map(Number);
-  // Day 0 of the NEXT month is the last day of this one; 23:59:59.999 local.
-  return new Date(year, month, 0, 23, 59, 59, 999).getTime();
+function monthEndMs(monthKey: string, zone: string): number {
+  const parsed = parseMonthKey(monthKey);
+  if (!parsed) return Number.NaN;
+  return civilMonthEndMs(parsed.year, parsed.month, zone);
 }
 
 /**
@@ -146,8 +158,17 @@ function monthEndMs(monthKey: string): number {
  * been bought late in the month. Strictly conservative on purpose — a cohort
  * shown at all is one where every single track had its full window.
  */
-export function isCohortComplete(monthKey: string, nowMs: number, window: ConversionWindow): boolean {
-  return nowMs >= monthEndMs(monthKey) + window * DAY_MS;
+export function isCohortComplete(
+  monthKey: string,
+  nowMs: number,
+  window: ConversionWindow,
+  zone: string = FALLBACK_ZONE,
+): boolean {
+  const end = monthEndMs(monthKey, zone);
+  // A malformed key yields NaN, and `nowMs >= NaN` is false — a cohort we
+  // cannot date is never "complete", which is the conservative direction this
+  // predicate already errs in.
+  return nowMs >= end + window * DAY_MS;
 }
 
 /** ms since epoch for an ISO timestamp, or `null` if missing/unparsable. */
@@ -268,8 +289,16 @@ export function buildLibraryConversion(
   sets: SetRecord[],
   nowMs: number,
   precomputedPlays?: Map<string, number[]>,
+  djTimezone: string | null = null,
 ): LibraryConversionModel {
   const plays = precomputedPlays ?? playsByTrack(sets);
+  // Story 7.7. **The DJ's zone, not a set's** — and that difference is the
+  // whole reason this parameter is spelled differently from every other one in
+  // this story. A cohort bucket is keyed off `added_at`, which is when the DJ
+  // *downloaded* a track, sitting at home. There is no gig and so no captured
+  // per-set zone to inherit; `djs.timezone` is the only zone that describes
+  // where that download happened. UTC when the DJ has none.
+  const zone = djTimezone || FALLBACK_ZONE;
 
   let noAddDateCount = 0;
   // bucket -> { added, converted-per-window }
@@ -289,7 +318,7 @@ export function buildLibraryConversion(
       continue;
     }
 
-    const bucket = localMonthKey(event.added_at);
+    const bucket = localMonthKey(event.added_at, zone);
     if (!bucket) {
       // A date that parsed to ms but not to a month key should be
       // unreachable; treat it as undated rather than inventing a bucket.
@@ -319,7 +348,7 @@ export function buildLibraryConversion(
     const cohorts: CohortPoint[] = [];
     let pendingCohortCount = 0;
     for (const [bucket, entry] of ordered) {
-      if (!isCohortComplete(bucket, nowMs, window)) {
+      if (!isCohortComplete(bucket, nowMs, window, zone)) {
         pendingCohortCount++;
         continue;
       }

@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { LowConfidenceReveal } from "@/app/components/style-evolution/LowConfidenceReveal";
 import type { TrackSearchIndex } from "@/lib/sets/trackSearch";
+import { FALLBACK_ZONE } from "@/lib/sets/civilTime";
 import { TrackSearch } from "./TrackSearch";
 
 /**
@@ -58,6 +59,7 @@ export function LibraryUtilizationReveal({
   excluding,
   including,
   search,
+  searchZone,
 }: {
   /** Sets the compound predicate hid. `0` renders no control at all. */
   hiddenCount: number;
@@ -85,6 +87,8 @@ export function LibraryUtilizationReveal({
    * component could not pass anyway.
    */
   search?: TrackSearchIndex | null;
+  /** The DJ's own zone (Story 7.7), forwarded to `TrackSearch`'s date labels. */
+  searchZone?: string;
   /** The page body computed from the surviving population — the default view. */
   excluding: ReactNode;
   /**
@@ -112,7 +116,9 @@ export function LibraryUtilizationReveal({
           />
         </div>
       )}
-      {search != null && <TrackSearch index={search} revealed={revealed} />}
+      {search != null && (
+        <TrackSearch index={search} revealed={revealed} zone={searchZone ?? FALLBACK_ZONE} />
+      )}
       {revealed ? including : excluding}
     </>
   );

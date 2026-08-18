@@ -6,6 +6,10 @@ import { buildSetRows } from "@/lib/sets/listModel";
 import type { DancefloorSegment } from "@/lib/sets/dancefloor";
 import type { SetRecord, SyncPlay } from "@/lib/sets/types";
 
+/** Story 7.7: an explicit zone, never the process's. The suite is TZ-pinned to
+ *  UTC, so a bare default would make these assertions prove nothing about zones. */
+const TEST_ZONE = "America/Los_Angeles";
+
 /**
  * RENDER ASSERTIONS for AC #4's "+N more floors" disclosure (Story 5.4, Task 3.3).
  *
@@ -93,18 +97,18 @@ const THREE_FLOORS = [
 
 describe("HeroBand's floor disclosure (AC #4)", () => {
   it("says nothing on a single-floor set — the common case stays untouched", () => {
-    const html = renderToStaticMarkup(<HeroBand set={set(ONE_FLOOR)} />);
+    const html = renderToStaticMarkup(<HeroBand set={set(ONE_FLOOR)} zone={TEST_ZONE} />);
     expect(html).toContain("Dancefloor tracks");
     expect(html).not.toContain("more floor");
   });
 
   it("discloses the rest on a several-floor set", () => {
-    const html = renderToStaticMarkup(<HeroBand set={set(THREE_FLOORS)} />);
+    const html = renderToStaticMarkup(<HeroBand set={set(THREE_FLOORS)} zone={TEST_ZONE} />);
     expect(html).toContain("+2 more floors");
   });
 
   it("renders at all with zero segments — the whole-set fallback, no disclosure", () => {
-    const html = renderToStaticMarkup(<HeroBand set={set([])} />);
+    const html = renderToStaticMarkup(<HeroBand set={set([])} zone={TEST_ZONE} />);
     expect(html).not.toContain("more floor");
     expect(html.length).toBeGreaterThan(0);
   });
@@ -112,21 +116,21 @@ describe("HeroBand's floor disclosure (AC #4)", () => {
 
 describe("SetListPanel's floor disclosure (AC #4)", () => {
   it("says nothing on a single-floor row", () => {
-    const html = renderToStaticMarkup(<SetListPanel rows={buildSetRows([set(ONE_FLOOR)])} />);
+    const html = renderToStaticMarkup(<SetListPanel rows={buildSetRows([set(ONE_FLOOR)], TEST_ZONE)} />);
     expect(html).toContain("dz-row-meta");
     expect(html).not.toContain("more floor");
     expect(html).not.toContain("dz-floor-disclosure");
   });
 
   it("discloses the rest on a several-floor row, pluralized", () => {
-    const html = renderToStaticMarkup(<SetListPanel rows={buildSetRows([set(THREE_FLOORS)])} />);
+    const html = renderToStaticMarkup(<SetListPanel rows={buildSetRows([set(THREE_FLOORS)], TEST_ZONE)} />);
     expect(html).toContain("dz-floor-disclosure");
     expect(html).toContain("+2 more floors");
   });
 
   it("uses the singular at exactly two floors", () => {
     const html = renderToStaticMarkup(
-      <SetListPanel rows={buildSetRows([set(THREE_FLOORS.slice(0, 2))])} />,
+      <SetListPanel rows={buildSetRows([set(THREE_FLOORS.slice(0, 2))], TEST_ZONE)} />,
     );
     expect(html).toContain("+1 more floor");
     expect(html).not.toContain("+1 more floors");

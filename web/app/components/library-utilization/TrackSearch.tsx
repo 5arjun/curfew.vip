@@ -129,8 +129,11 @@ function matchesFilter(row: TrackSearchRow, filter: SearchFilter): boolean {
 export function TrackSearch({
   index,
   revealed,
+  zone,
 }: {
   index: TrackSearchIndex;
+  /** The DJ's own zone (Story 7.7) — these are library dates, not one gig's. */
+  zone: string;
   /**
    * Whether the page's ONE reveal is open (AC-12) — owned by
    * `LibraryUtilizationReveal`, never by this component. Results follow the
@@ -268,7 +271,7 @@ export function TrackSearch({
         // Nothing renders until the DJ types: the results list is a response to
         // a question, and rendering the whole library under an empty field
         // answers one nobody asked.
-        typed && <SearchResults matches={matches} revealed={revealed} />
+        typed && <SearchResults matches={matches} revealed={revealed} zone={zone} />
       )}
     </div>
   );
@@ -283,7 +286,15 @@ export function TrackSearch({
  * index the server built; nothing recomputes on reveal beyond re-reading two
  * fields of the same tuples (D-13).
  */
-function SearchResults({ matches, revealed }: { matches: TrackSearchRow[]; revealed: boolean }) {
+function SearchResults({
+  matches,
+  revealed,
+  zone,
+}: {
+  matches: TrackSearchRow[];
+  revealed: boolean;
+  zone: string;
+}) {
   const rows = visibleTrackSearchRows(matches, revealed);
   const noMatchCopy = trackSearchNoMatchCopy(matches.length, rows.length);
   const shown = Math.min(rows.length, TRACK_SEARCH_MAX_ROWS);
@@ -334,7 +345,7 @@ function SearchResults({ matches, revealed }: { matches: TrackSearchRow[]; revea
           artist: row[TS_ARTIST],
           // D-26: `null` renders plain text, never a dead link.
           trackId: row[TS_TRACK_ID],
-          value: stateLabel(row, revealed),
+          value: stateLabel(row, revealed, zone),
         }))}
         visibleRows={TRACK_SEARCH_VISIBLE_ROWS}
       />
@@ -358,13 +369,15 @@ function SearchResults({ matches, revealed }: { matches: TrackSearchRow[]; revea
  * one unfixed locale-dependent mismatch (`deferred-work.md:491`); it must not
  * add a second.
  */
-function stateLabel(row: TrackSearchRow, revealed: boolean): string {
+function stateLabel(row: TrackSearchRow, revealed: boolean, zone: string): string {
   if (isOwned(row)) {
     const addedAtMs = row[TS_ADDED_AT_MS];
     // AC-6's rule, applied to the row: absent is a distinct honest state, never
     // guessed and never defaulted to something else Curfew happens to know.
     const added =
-      addedAtMs === null ? "add date unknown" : `added ${formatDayDate(new Date(addedAtMs).toISOString())}`;
+      addedAtMs === null
+        ? "add date unknown"
+        : `added ${formatDayDate(new Date(addedAtMs).toISOString(), zone)}`;
     return `Not played yet · ${added}`;
   }
   const plays = revealed ? row[TS_ALL_PLAY_COUNT] : row[TS_PLAY_COUNT];

@@ -42,6 +42,35 @@ interface Day {
   isToday: boolean;
 }
 
+/**
+ * A grid cell's `DayMarks` key (Story 7.7).
+ *
+ * **Both sides of this lookup must mean the same thing by a key, and that
+ * thing is a bare civil date — a calendar square, with no zone left in it.**
+ * The marks side builds its keys server-side in the zone the SET was played
+ * in (`buildRightColumn` -> `localDayKey`); this side builds them from the
+ * grid's own year/month/day numbers. Neither converts through a zone, so they
+ * meet as strings that denote the same square.
+ *
+ * This replaces `format(date, "yyyy-MM-dd")`. That call happened to produce
+ * the right string — `new Date(y, m, d)` and date-fns `format` both use the
+ * viewer's zone, so the round trip cancelled — but it only worked by that
+ * cancellation, and it read as "convert this instant into the viewer's zone",
+ * which is precisely what the marks side used to do wrongly (in UTC) and what
+ * the rest of this story removes everywhere. Reading the numbers back out
+ * makes the agreement structural instead of a coincidence that survives until
+ * someone swaps in a UTC-based formatter.
+ *
+ * `date` is always a locally-constructed midnight from the grid builders
+ * below, never a set timestamp, so the local getters here are reading back the
+ * exact integers that were just written — not deriving a calendar value from
+ * an instant. That distinction is the whole story.
+ */
+function gridDayKey(date: Date): string {
+  const pad = (n: number) => `${n}`.padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 export function GlassCalendar({ marks }: { marks: DayMarks }) {
   const [view, setView] = useState<"monthly" | "weekly">("monthly");
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
@@ -58,7 +87,7 @@ export function GlassCalendar({ marks }: { marks: DayMarks }) {
     const start = startOfMonth(currentMonth);
     return Array.from({ length: getDaysInMonth(currentMonth) }, (_, i) => {
       const date = new Date(start.getFullYear(), start.getMonth(), i + 1);
-      return { date, key: format(date, "yyyy-MM-dd"), isToday: isToday(date) };
+      return { date, key: gridDayKey(date), isToday: isToday(date) };
     });
   }, [currentMonth]);
 
@@ -79,7 +108,7 @@ export function GlassCalendar({ marks }: { marks: DayMarks }) {
   const weekDays = useMemo<Day[]>(() => {
     return Array.from({ length: 7 }, (_, i) => {
       const date = addDays(weekStart, i);
-      return { date, key: format(date, "yyyy-MM-dd"), isToday: isToday(date) };
+      return { date, key: gridDayKey(date), isToday: isToday(date) };
     });
   }, [weekStart]);
 

@@ -668,6 +668,51 @@ export async function getObservationStart(): Promise<number | null> {
 }
 
 /**
+ * The DJ's own time zone (`djs.timezone`), or `null` when they have none —
+ * Story 7.7's second link in the bucketing fallback chain.
+ *
+ * Mirrors {@link getObservationStart} exactly: same `maybeSingle()` shape, same
+ * non-production error log, same degrade-never-throw posture. Written once at
+ * signup from the browser (see `web/lib/onboarding/`), so every DJ who signed
+ * up before this story has `null` here.
+ *
+ * **Unlike `getObservationStart`, `null` is NOT fail-closed.** There it is
+ * binding: the caller must suppress a whole branch. Here it simply means the
+ * chain falls through to UTC and the set is counted as a disclosure
+ * (`countZoneFallbacks`). A missing zone must never suppress, gate, or drop a
+ * set — AD-3 makes zone-less payloads permanently valid and AD-19 forbids
+ * gating in this direction. The two functions look identical on purpose; only
+ * the meaning of `null` differs, which is why it is spelled out here.
+ *
+ * Deliberately NOT folded into `getRecentSets`' return type: pages compose the
+ * two with `Promise.all`, the same way they already compose
+ * `getObservationStart`.
+ */
+export async function getDjTimezone(): Promise<string | null> {
+  try {
+    const { createClient } = await import("@/lib/supabase/server");
+    const supabase = await createClient();
+    const { data, error } = await supabase.from("djs").select("timezone").maybeSingle();
+
+    if (error && process.env.NODE_ENV !== "production") {
+      console.error("getDjTimezone: Supabase read failed, bucketing will fall back to UTC", error);
+    }
+
+    if (error || !data) return null;
+
+    const timezone = (data as { timezone: string | null }).timezone;
+    // An empty string is not a zone. `resolveSetZone` treats falsy as absent,
+    // but normalizing here keeps the "" out of the model entirely.
+    return timezone ? timezone : null;
+  } catch (err) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error("getDjTimezone: unexpected failure, bucketing will fall back to UTC", err);
+    }
+    return null;
+  }
+}
+
+/**
  * One set by its `external_id` (== `sets.id`, see `SET_WITH_PLAYS_SELECT`'s
  * doc comment), or `null` if it does not exist, was deleted, or is not this
  * DJ's — RLS makes "not found" and "not mine" indistinguishable by design,

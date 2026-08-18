@@ -282,6 +282,30 @@ export interface SyncSetDerived {
    * the wire's real convention here rather than its documentation.
    */
   idle_gaps?: Array<{ start: number; end: number }>;
+  /**
+   * The IANA time zone name the DJ was in when this set was captured — e.g.
+   * `"America/Los_Angeles"`. From `iana_time_zone::get_timezone()`, read at the
+   * effectful edge of the agent's capture path and threaded into the (pure)
+   * assembler (Story 7.7).
+   *
+   * Added post-freeze, optional per AD-15 and absent from `required` — the same
+   * additive shape `suggested_segments`/`idle_gaps` shipped with (AD-23's
+   * precedent). It rides `sets.derived` wholesale, so it needs no migration and
+   * no change to `sync_set`'s `(text, bigint, bigint, jsonb, jsonb)` signature.
+   *
+   * **A zone name, not a UTC offset.** An offset is only correct at the instant
+   * it was read: re-applying a summer `-07:00` to a January set silently shifts
+   * it by an hour, which is precisely the class of error this field exists to
+   * remove. The name survives DST and any future tzdata revision.
+   *
+   * **Null is a real, permanent answer.** Any agent older than Story 7.7 sends
+   * no zone at all, and AD-3 binds the cloud to keep accepting them — this is
+   * not a migration with an end date. `iana_time_zone` failing also produces
+   * `null` rather than a fabricated `"UTC"` (AD-11). Consumers resolve
+   * `derived.timezone` -> `djs.timezone` -> `"UTC"`, counting the fallbacks for
+   * disclosure; see `resolveSetZone` in `web/lib/sets/civilTime.ts`.
+   */
+  timezone?: string | null;
 }
 
 /** The derived, per-set payload the agent sends and the cloud ingests. Frozen (Story 1.10, AD-15). */

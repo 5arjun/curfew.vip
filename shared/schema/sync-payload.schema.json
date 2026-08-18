@@ -141,6 +141,12 @@
           "description": "Labeled stretches of silence (Story 5.2, D-10). Descriptive only, never a gate, and deliberately not segments rows (no 'idle' value in the type enum, D-26). Added post-freeze, optional per AD-15.",
           "type": "array",
           "items": { "$ref": "#/$defs/idle_gap" }
+        },
+        "timezone": {
+          "description": "IANA time zone name the DJ was in at capture time, e.g. 'America/Los_Angeles' (Story 7.7). A zone name, never a UTC offset -- an offset is only correct at the instant it was read. Added post-freeze, optional per AD-15; null or absent from any agent older than 7.7, which AD-3 binds the cloud to keep accepting forever. Bounded and shape-checked to match the signup path's `normalizeTimezone` (code review 2026-08-17): this value was the UNvalidated half of the fallback chain and the half that wins it, and the web caches an Intl formatter keyed on it. Shape only, never a membership check -- tzdata gains and renames zones, and rejecting a legitimately-new name at the wire would be strictly worse than accepting one the reader already degrades.",
+          "type": ["string", "null"],
+          "maxLength": 64,
+          "pattern": "^[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+){0,2}$"
         }
       }
     },

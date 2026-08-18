@@ -150,3 +150,76 @@ describe("most-played counts only dancefloor time", () => {
     expect(model.mostPlayed.recent.track?.title).toBe("Floor");
   });
 });
+
+describe("calendar day marks key off each set's own zone (Story 7.7)", () => {
+  // `DayMarks` is what the dashboard calendar looks up, and it was the single
+  // most visible instance of this story's bug: 63 of the 76 real production
+  // sets (83%) sat on the wrong square, because the keys were built from a UTC
+  // reading of a late-night gig.
+  //
+  // These build a SetRecord directly rather than through this file's `set()`
+  // helper, which keys off a day offset from a fixed anchor — the zone question
+  // needs a literal instant near a midnight boundary.
+  function setAt(externalId: string, startedAt: string, timezone: string | null): SetRecord {
+    return {
+      external_id: externalId,
+      started_at: startedAt,
+      ended_at: startedAt,
+      plays: [],
+      derived: {
+        most_played_tracks: [],
+        most_played_artists: [],
+        genre_breakdown: { buckets: [], no_genre_count: 0 },
+        bpm_distribution: { count: 0, min: 0, max: 0, mean: 0, median: 0 },
+        camelot_mixing_stats: {
+          compatible_transitions: 0,
+          incompatible_transitions: 0,
+          excluded_no_key: 0,
+        },
+        set_length_sec: 3600,
+        track_count: 40,
+        energy_arc: [],
+        confidence: { value: 1.0, track_count: 40, long_gap_count: 0 },
+        timezone,
+      },
+    } as unknown as SetRecord;
+  }
+
+  // 06:00Z on Jun 21 is 23:00 on Jun 20 in Los Angeles — a Saturday-night gig
+  // that UTC files as Sunday.
+  const LATE_NIGHT = "2026-06-21T06:00:00.000Z";
+
+  it("marks the night the DJ played, not the UTC day", () => {
+    const model = buildRightColumn([setAt("a", LATE_NIGHT, "America/Los_Angeles")]);
+    expect(Object.keys(model.marks)).toEqual(["2026-06-20"]);
+  });
+
+  it("falls back to the DJ's zone for a set captured before this story", () => {
+    const model = buildRightColumn([setAt("a", LATE_NIGHT, null)], "America/Los_Angeles");
+    expect(Object.keys(model.marks)).toEqual(["2026-06-20"]);
+  });
+
+  it("falls back to UTC when no zone is known anywhere", () => {
+    // Not a regression to fix — AD-3 makes a zone-less payload permanently
+    // valid, so this is the honest answer for an agent that has not updated.
+    const model = buildRightColumn([setAt("a", LATE_NIGHT, null)], null);
+    expect(Object.keys(model.marks)).toEqual(["2026-06-21"]);
+  });
+
+  it("puts a touring DJ's two same-instant sets on two different squares", () => {
+    const model = buildRightColumn(
+      [
+        setAt("la", LATE_NIGHT, "America/Los_Angeles"),
+        setAt("tokyo", LATE_NIGHT, "Asia/Tokyo"),
+      ],
+      null,
+    );
+    // 06:00Z Jun 21 is Jun 20 in LA and Jun 21 (15:00) in Tokyo.
+    expect(Object.keys(model.marks).sort()).toEqual(["2026-06-20", "2026-06-21"]);
+  });
+
+  it("renders each mark's start clock in that set's zone", () => {
+    const model = buildRightColumn([setAt("a", LATE_NIGHT, "America/Los_Angeles")]);
+    expect(model.marks["2026-06-20"].sets[0].start).toBe("11:00 PM");
+  });
+});
