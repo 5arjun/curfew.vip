@@ -3627,6 +3627,31 @@
   color: var(--color-abyss-text-45);
 }
 
+/* The fine print carries links as of the 2026-08-18 legal review (the terms
+   and privacy consent line). globals.css strips every anchor to `color:
+   inherit; text-decoration: none`, so without this they'd read as plain text
+   — and a consent line whose links are invisible is not a consent line. Same
+   underline treatment as .lp-faq-p a, one step brighter than the muted body
+   around it so the target is findable without shouting. */
+.lp-ob-plan-fine a {
+  color: var(--color-abyss-text-72);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lp-ob-plan-fine a:hover {
+  color: var(--color-abyss-accent-soft);
+}
+
+.lp-ob-plan-fine a:focus-visible {
+  outline: none;
+  border-radius: var(--radius-sm);
+  box-shadow:
+    0 0 0 2px var(--color-primary),
+    0 0 0 6px var(--color-primary-glow);
+}
+
 .lp-ob-plan-error {
   margin: var(--space-sm) 0 0;
   text-align: center;

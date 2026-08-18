@@ -14,7 +14,25 @@ import { LegalDoc, LegalList, LegalP } from "@/app/components/landing/LegalDoc";
 // curfew_phone_on_file), and the rights section matches
 // ACCOUNT-DELETION-EXPORT-RUNBOOK.md's manual, person-handled process. The
 // FAQ's two content rules hold here too: no mechanism spillage, and the
-// archive starts at signup. Pre-launch legal review still owed.
+// archive starts at signup.
+//
+// Reviewed 2026-08-18 — docs/legal-review-2026-08-18.md, which closes the
+// launch checklist's §1.7 and supersedes the "pre-launch legal review still
+// owed" note that stood here. That pass added the two CalOPPA §22575(b)
+// disclosures (Do Not Track, cross-site collection) to the cookies section,
+// named the three processors this list had been missing, and narrowed the
+// rights paragraph to the US-only posture actually ruled in PRD §11.
+//
+// ⚠️ ONE GATE SURVIVES THAT REVIEW. "How it's used" grants Curfew the right
+// to email and text you about the product. Neither channel is built — there
+// is no SMS provider in this repo and Resend carries transactional mail only
+// — and the escape hatches named below ("reply STOP", "the unsubscribe link")
+// don't exist either. That is safe only while nothing sends. Before the first
+// marketing message of either kind: TCPA consent has to be collected on
+// (onboarding)/phone-required (separate opt-in, not bundled into these
+// terms), CAN-SPAM needs an unsubscribe link and a postal address, and SMS
+// needs A2P 10DLC registration. See finding A of the review, and
+// launch-checklist §5.
 
 export const metadata: Metadata = {
   title: "Curfew — privacy policy",
@@ -135,14 +153,17 @@ export default function PrivacyPage() {
                 items={[
                   "Supabase — the database and sign-in.",
                   "Vercel — hosting for the site and dashboard.",
+                  "Cloudflare — the domain, and the front door every request comes through.",
+                  "Stripe — payment and billing.",
                   "Resend — delivery of account email.",
                   "Sentry — crash reports from the agent and the website.",
                 ]}
               />
               <LegalP>
-                When you pay for Curfew, your card details go to the payment processor and never
-                touch Curfew&rsquo;s servers. None of these services may use your data for anything
-                beyond the job named above.
+                When you pay for Curfew, your card details go to Stripe and never touch
+                Curfew&rsquo;s servers. If you signed in with Google or Apple, that provider knows
+                you have an account here — that is what signing in with them means. None of these
+                services may use your data for anything beyond the job named above.
               </LegalP>
             </>
           ),
@@ -157,6 +178,17 @@ export default function PrivacyPage() {
                 your sign-in alive, and one small marker that remembers your account already has a
                 phone number on file so you aren&rsquo;t asked twice. No advertising cookies, no
                 cross-site tracking, nothing watching you leave.
+              </LegalP>
+              <LegalP>
+                No one is allowed to follow you off this site. Curfew lets no third party collect
+                anything about what you do here, or anywhere else, over time — there is no ad
+                network in the page and nothing to sell if there were.
+              </LegalP>
+              <LegalP>
+                <strong>Do Not Track.</strong> Some browsers send a &ldquo;do not track&rdquo;
+                signal, and there is no agreed standard for answering it. Curfew doesn&rsquo;t need
+                one: it does no behavioral tracking to switch off, so the signal changes nothing
+                here — you are already getting what it asks for.
               </LegalP>
             </>
           ),
@@ -177,9 +209,10 @@ export default function PrivacyPage() {
                 on your laptop and goes with the app.
               </LegalP>
               <LegalP>
-                Depending on where you live, laws like the GDPR or the CCPA give you specific
-                rights over your data — access, correction, deletion, portability. The same
-                address honors all of them.
+                Some places give you these rights by statute — to see your data, correct it, take
+                it with you, have it erased. Curfew is sold in the US and built to that standard,
+                and doesn&rsquo;t check which rules you fall under before answering: ask, and the
+                address above does all four, for anyone.
               </LegalP>
             </>
           ),

@@ -23,6 +23,19 @@ import { PhoneForm } from "./phone-form";
 // marketing landing; the flow's next step after a successful save is
 // /welcome (actions.ts).
 //
+// ⚠️ THIS SCREEN IS THE CONSENT RECORD, and right now it consents to less
+// than /terms claims. The tagline below asks for a number so "a person can
+// reach you" — support contact, nothing more. /terms §"Your account" says
+// that handing over the number also agrees you to marketing texts. Nothing
+// sends today (no SMS provider exists anywhere in this repo), so the gap is
+// harmless and the ruling of 2026-08-18 was to keep the grant and gate the
+// send. This file is the gate: before the first marketing text, TCPA wants
+// prior express written consent taken HERE — its own control, unchecked by
+// default, its own sentence naming marketing and message rates, never a
+// condition of subscribing — plus a djs column recording the timestamp and
+// the exact wording shown, plus A2P 10DLC registration. Damages are $500 a
+// message, $1,500 if willful. See docs/legal-review-2026-08-18.md finding A.
+//
 // Billing pass (2026-08-16): no longer the first step. /subscribe runs ahead
 // of it, so this page now checks that before it checks its own subject —
 // which is the corridor's order, and the reverse of the order middleware.ts

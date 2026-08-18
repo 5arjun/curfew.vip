@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import type { BillingInterval } from "@/lib/billing/checkout";
 
@@ -101,7 +102,22 @@ export function PlanActions() {
         </button>
       ))}
 
-      <p className="lp-ob-plan-fine">Card details go to Stripe, never to Curfew.</p>
+      {/* The auto-renewal disclosure, added by the 2026-08-18 legal review
+          (finding C). California's ARL and federal ROSCA both want the renewal
+          terms clear and conspicuous *next to the button*, not only on
+          Stripe's hosted page — and the annual button above reads "$83.88 once
+          a year", which is the one that most reads like a single purchase.
+          Cancellation is genuinely self-serve (Settings → the Stripe portal,
+          app/api/billing/portal), so this sentence is true as written; if that
+          portal's cancel flow is ever turned off in the Stripe dashboard, this
+          copy goes false and the click-to-cancel requirement goes with it. */}
+      <p className="lp-ob-plan-fine">
+        Renews automatically until you cancel. Cancel any time in Settings.
+      </p>
+      <p className="lp-ob-plan-fine">
+        Card details go to Stripe, never to Curfew. By subscribing you agree to the{" "}
+        <Link href="/terms">terms</Link> and <Link href="/privacy">privacy policy</Link>.
+      </p>
 
       {state === "failed" && (
         <p className="lp-ob-plan-error" role="alert">

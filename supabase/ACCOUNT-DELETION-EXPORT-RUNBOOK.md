@@ -23,12 +23,20 @@ TODO inline below.
 
 ## 1. Requesting a deletion or export
 
-There is no support inbox, form, or in-app link yet — no story before Story
-3.10 (Profile/Settings) builds a UI surface to host one, and no email
-infrastructure exists for this specific purpose (Story 2.3d's Resend wiring
-is transactional signup/confirmation email only). At the current DJ count,
-the interim channel — for both the DJ's incoming request and delivering an
-export back to them — is **admin@curfew.vip**.
+The channel — for both the DJ's incoming request and delivering an export
+back to them — is **support@curfew.vip**. There is still no form or in-app
+link: no story before Story 3.10 (Profile/Settings) builds a UI surface to
+host one, and no email infrastructure exists for this specific purpose
+(Story 2.3d's Resend wiring is transactional signup/confirmation email only).
+
+> **Corrected 2026-08-18** by the pre-launch legal review
+> (`docs/legal-review-2026-08-18.md`, finding G). This section and §3 step 4
+> both said **admin@curfew.vip**, on the stated premise that "there is no
+> support inbox... yet." That premise expired — `support@` is provisioned
+> (launch-checklist §0) and is the address `/privacy` and `/terms` publish to
+> customers. Two inboxes meant a deletion request could arrive at one and be
+> watched at the other, while a published page promised a person was handling
+> it. One address, and it is the one customers are actually given.
 
 **Before acting on any request:** confirm the requester can currently log
 into the account named in the request (e.g., ask them to log in and confirm
@@ -168,7 +176,7 @@ every `sessions`/`sets`/`plays`/`segments` row scoped to their `dj_id`.
    not every set has a segment.
 3. Use the SQL Editor's own export/download button on each result set to
    save it as JSON or CSV — either is a "portable format" per AC-2.
-4. **Deliver the exported files to the DJ via the same admin@curfew.vip
+4. **Deliver the exported files to the DJ via the same support@curfew.vip
    channel** used to receive the request (§1) — the `djs` export contains
    the DJ's `phone` number, so don't route any of these through any other
    channel.

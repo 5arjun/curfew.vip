@@ -7,8 +7,26 @@ import { LegalDoc, LegalList, LegalP } from "@/app/components/landing/LegalDoc";
 // the product actually does today: one plan at the two advertised rates,
 // sets private by default, export/deletion on request through
 // support@curfew.vip (the ACCOUNT-DELETION-EXPORT-RUNBOOK is the operator
-// side of that promise). Pre-launch legal review still owed — see
-// pre-launch-services-checklist.md.
+// side of that promise).
+//
+// Reviewed 2026-08-18 — docs/legal-review-2026-08-18.md, which closes the
+// launch checklist's §1.7 and supersedes the "pre-launch legal review still
+// owed" note that stood here. Two things it found are still open by ruling,
+// and both are ruled rather than forgotten:
+//
+//   • No governing-law clause (finding B). The draft section is ready to
+//     paste in the review doc; it needs one fact this repo doesn't hold —
+//     which state — and a clause naming the wrong one is worse than none.
+//   • No legal entity behind "Curfew" (accepted risk, launch-checklist §3).
+//     "What Curfew promises" caps liability for a party with no corporate
+//     shield: the cap still binds the customer, there is just nothing
+//     standing between a judgment and personal assets.
+//
+// ⚠️ "Your account" says that giving Curfew your number agrees you to
+// marketing texts. The phone-collection screen never asks for that, and
+// nothing in this repo sends one. Before the first marketing message,
+// (onboarding)/phone-required has to collect real TCPA consent — separate
+// opt-in, not bundled into these terms. Finding A; launch-checklist §5.
 
 export const metadata: Metadata = {
   title: "Curfew — terms of service",

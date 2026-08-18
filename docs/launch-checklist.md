@@ -159,18 +159,70 @@ nothing keeps crawlers out of `/dashboard`, `/settings`, `/welcome`,
 - [ ] Consider `robots: { index: false }` on the authenticated layouts as
       defence in depth — a `robots.txt` rule is a request, a meta tag is not
 
-### 1.7 Pre-launch legal review
+### 1.7 Pre-launch legal review — ✅ **DONE 2026-08-18**
 
-`web/app/(marketing)/privacy/page.tsx` and `terms/page.tsx` are written, live,
-and both return 200. The privacy page's own header comment flags **"pre-launch
-legal review still owed"** — the drafting is done, the review is not.
+**Ruled self-review, not paid legal review** (Arjun, 2026-08-18). Conducted the
+same day and written up in **`docs/legal-review-2026-08-18.md`** — findings,
+what was fixed, what was ruled as accepted risk, and the residual risk of
+having an engineer do this rather than a lawyer. That file is the artifact;
+this is the summary.
 
-Attached to this: the **CCPA posture decision** (PRD §11 item 4, Architecture
-Spine Open Question #6). Both docs conclude US-only-at-launch makes a
-CCPA-level posture sufficient rather than full GDPR, and both downgrade it from
-open question to checklist item — but neither picks *self-review vs. paid legal
-review*, and neither dates it. That decision is yours and it is the last thing
-on this list that cannot be written in code.
+It also closes the **CCPA posture decision** (PRD §11 item 4, Architecture
+Spine Open Question #6), both now marked fully resolved rather than
+"partially."
+
+**The review's main finding is that CCPA was the wrong worry.** It binds a
+business over $25M revenue, or trading the data of 100k+ Californians, or
+earning half its revenue from selling data. Curfew is none of those and won't
+be for years — the deletion runbook had independently ruled the same thing on
+2026-07-20. So the CCPA-level posture is voluntary and prospective: a good
+stance that costs nothing, not an obligation. What *does* bind at any size is
+CalOPPA, TCPA, CAN-SPAM and the auto-renewal rules, and those went unexamined
+while this line said "CCPA."
+
+Fixed in this pass:
+
+- [x] CalOPPA §22575(b)(5)/(6) — the Do Not Track and cross-site-tracking
+      disclosures, neither of which existed anywhere in the repo. Both are a
+      clean truthful "no" here, which is why they were cheap
+- [x] Auto-renewal disclosure next to the plan buttons (CA ARL / ROSCA). The
+      annual button read "$83.88 once a year" with no renewal language at all.
+      Terms and privacy links added to the same screen
+- [x] Named the three missing processors — Stripe, Cloudflare, and Google/Apple
+      as sign-in parties
+- [x] Narrowed the rights paragraph, which was volunteering GDPR compliance the
+      US-only posture had specifically deferred
+- [x] One inbox for deletion and export requests. The runbook said `admin@`,
+      both published pages said `support@`
+
+**Still open — one fact, then this is fully shut:**
+
+- [ ] **Governing law and venue.** The terms have no choice-of-law clause, so a
+      dispute defaults to wherever the customer is. The clause is drafted and
+      ready to paste in the review doc's "Ready to paste" section; it needs the
+      state, which the repo doesn't contain. No arbitration clause recommended
+      — see the review for why
+
+**Gated, not fixed — the one live trap.** `/privacy` and `/terms` both grant
+Curfew the right to email *and text* customers marketing, and name a "reply
+STOP" and an "unsubscribe link" as the ways out. **No SMS provider exists
+anywhere in this repo, no marketing email exists, and neither escape hatch is
+built** — Resend carries transactional auth mail only. Worse, the consent was
+never asked for: `phone-required` says only that "a person can reach you."
+
+Ruled 2026-08-18: **keep the grant, build the consent before the first send.**
+Nothing sends today so nothing is untrue in operation. See §5 for the standing
+rule, and finding A of the review for exactly what "build the consent" means.
+The gate is repeated as a header comment on `privacy/page.tsx`,
+`terms/page.tsx` and `phone-required/page.tsx` — the three files someone would
+have to touch on the way to sending.
+
+**One-minute check worth doing before launch:** confirm cancellation is
+actually enabled in the Stripe billing portal's dashboard configuration. The
+portal is wired (`web/app/api/billing/portal/route.ts:90`, surfaced in
+Settings) and that is what satisfies click-to-cancel — but whether its cancel
+flow is switched on lives in Stripe, not in this repo, so nothing here can
+verify it.
 
 ---
 
@@ -257,6 +309,8 @@ Recorded so nobody reopens them as discoveries.
 | **Epic 5 (segments) incomplete** | 5.3/5.4 in progress, 5.5–5.7 backlog. Explicitly the post-validation track; does not gate launch |
 | **`SENTRY_AUTH_TOKEN`** | **Not owed.** Verified today: present on **Preview + Production**. Web stack traces de-minify. Still unproven by a real exception — the first genuine production error is the confirmation |
 | **Agent Sentry project slug** | Still the platform default `rust` rather than `agent`. Cosmetic |
+| **No legal entity behind "Curfew"** | **Accepted risk**, ruled 2026-08-18. Sole proprietor, launching anyway. The terms create an agreement with a name, not a party, and `/terms` §"What Curfew promises" caps liability for someone with no corporate shield — the cap still binds the customer, there is just nothing standing between a judgment and personal assets. Forming an LLC is the fix and it is a business decision, not a checklist item |
+| **No physical postal address published** | Follows from the row above, and only actually required once commercial email sends. Gated with the marketing-send rule in §5 |
 
 ---
 
@@ -288,7 +342,22 @@ calendar, billing system, or monitor — only here and in
 silently on a random Tuesday, for every Apple user at once, with nothing in CI
 to catch it.
 
-Two standing rules, not dated:
+Three standing rules, not dated:
+
+- **Before the first marketing message — text or email — build the consent
+  first.** `/privacy` and `/terms` already grant Curfew this right and already
+  name the ways out; none of it is built, and the send is what arms it. Owed
+  before anything goes out: a separate marketing opt-in on
+  `(onboarding)/phone-required` (unchecked by default, its own sentence naming
+  marketing texts and message rates, never a condition of subscribing), a
+  `djs` column recording the consent timestamp and the exact wording shown, an
+  unsubscribe link and a physical postal address in every marketing email, and
+  A2P 10DLC brand/campaign registration. TCPA damages are $500 a message and
+  $1,500 if willful, and unregistered US business SMS is carrier-filtered
+  before it arrives — so a blast sent without this would be both unlawful and
+  undelivered. `docs/legal-review-2026-08-18.md` finding A has the detail.
+  **This is the one rule here that fires on an action rather than a date,
+  which is exactly why it is easy to walk past.**
 
 - **Before any release — agent or web — diff `supabase/migrations/` against
   prod's applied list and apply the difference first.** Verified in parity
