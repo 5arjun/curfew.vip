@@ -2852,6 +2852,42 @@ mod tests {
     /// write path this story changed), a generous bound with real margin
     /// under NFR-1's 10s full-library budget (which also has to cover the
     /// actual Serato parse this test doesn't exercise at all).
+    /// A wall-clock bound, loosened on CI.
+    ///
+    /// **This measures the machine, not the code.** The local bounds below were
+    /// calibrated against ~775ms observed on a developer Mac under full
+    /// parallel test load. GitHub's standard runner is a shared 2-core box
+    /// running the same suite in parallel, and it produced these numbers for
+    /// the 5,000-track baseline scan on *unchanged* code:
+    ///
+    /// ```text
+    /// 2.39s  (readme-logo-theme-aware, run 31978440321)
+    /// 7.02s  (release/agent-0.1.1,     run 32068427194)
+    /// 8.85s  (main,                    run 31969783890)
+    /// 9.26s  (story/7-7…,              run 32093099476)
+    /// ```
+    ///
+    /// A 4x spread with no code in common. The consequence was not a caught
+    /// regression, it was a red X on pushes that touched a README image — and
+    /// a gate everyone learned to read past, which is strictly worse than no
+    /// gate. So: keep the tight bound where it means something (a developer
+    /// machine, where a 2.5x move really is a regression), and on CI assert
+    /// only against a catastrophe bound — 15x, which still fails an O(n²)
+    /// blowup or a lost index while clearing the observed 9.26s worst case
+    /// with headroom.
+    ///
+    /// The measured value is always printed, so CI keeps a readable trend even
+    /// where it no longer fails. (Found by the Story 7.7 code review,
+    /// 2026-08-17; the sibling bound in `stats::mod` is pure CPU and has not
+    /// drifted, so it is left alone.)
+    fn perf_bound_ms(local_ms: u128) -> u128 {
+        if std::env::var_os("CI").is_some() {
+            local_ms * 15
+        } else {
+            local_ms
+        }
+    }
+
     #[test]
     fn full_library_scan_with_tag_persistence_stays_within_regression_guard_bound() {
         use std::time::Instant;
@@ -2895,21 +2931,32 @@ mod tests {
             }
         );
 
+        // Printed unconditionally: on CI the assertions below are a catastrophe
+        // bound rather than a regression guard, so this line is the only thing
+        // carrying the actual trend.
+        let bound = perf_bound_ms(2_000);
+        println!(
+            "NFR-1 perf: baseline {baseline_elapsed:?}, rescan {rescan_elapsed:?} \
+             (bound {bound}ms)"
+        );
+
         assert!(
-            baseline_elapsed.as_millis() < 2_000,
-            "baseline scan of 5,000 tracks took {baseline_elapsed:?}, expected well under \
-             NFR-1's 10s full-library budget. The bound tracks the observed cost (~775ms \
-             for this phase under full parallel test load, ~2.5x headroom) rather than \
-             sitting just inside the 10s budget: at the old 5s bound a 6x regression would \
-             still have passed silently, which is not a guard (Story 4.11 code review). \
-             Margin for the real Serato parse this synthetic test doesn't exercise lives \
-             in the 10s budget, not in this assertion."
+            baseline_elapsed.as_millis() < bound,
+            "baseline scan of 5,000 tracks took {baseline_elapsed:?} against a {bound}ms \
+             bound, expected well under NFR-1's 10s full-library budget. The local bound \
+             tracks the observed cost (~775ms for this phase under full parallel test \
+             load, ~2.5x headroom) rather than sitting just inside the 10s budget: at the \
+             old 5s bound a 6x regression would still have passed silently, which is not a \
+             guard (Story 4.11 code review). Margin for the real Serato parse this \
+             synthetic test doesn't exercise lives in the 10s budget, not in this \
+             assertion. See `perf_bound_ms` for why CI gets a looser one."
         );
         assert!(
-            rescan_elapsed.as_millis() < 2_000,
-            "unchanged-library rescan of 5,000 tracks took {rescan_elapsed:?} -- this is the \
-             write volume Story 4.11 actually added (refresh_library_track_tags now runs on \
-             every known row instead of being skipped), expected well under NFR-1's budget"
+            rescan_elapsed.as_millis() < bound,
+            "unchanged-library rescan of 5,000 tracks took {rescan_elapsed:?} against a \
+             {bound}ms bound -- this is the write volume Story 4.11 actually added \
+             (refresh_library_track_tags now runs on every known row instead of being \
+             skipped), expected well under NFR-1's budget"
         );
     }
 
