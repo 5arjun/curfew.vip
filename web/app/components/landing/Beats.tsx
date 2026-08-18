@@ -598,7 +598,11 @@ export function Stepper() {
 export function Closing() {
   const [ref, inView] = useInView<HTMLElement>(0.3);
   return (
-    <section className="lp-closing" ref={ref} data-shown={inView ? "true" : "false"}>
+    // `id="pricing"` is this beat's second job: /pricing 308s to /#pricing
+    // (next.config.ts) instead of 404ing, because this section IS the pricing
+    // card Story 6.3 asked for. Renaming or removing the id silently turns
+    // that redirect into a landing at the top of a ten-beat page.
+    <section id="pricing" className="lp-closing" ref={ref} data-shown={inView ? "true" : "false"}>
       {/* Wants P7 — the empty room, house lights up. The page's thesis image,
           and the one frame that has to be a real photograph. */}
       <div className="lp-closing-inner">

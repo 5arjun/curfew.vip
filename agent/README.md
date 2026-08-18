@@ -3,7 +3,21 @@
 The desktop agent that watches Serato, parses sessions, joins them against the
 DJ's library, derives per-set stats, and syncs the derived payload to the cloud.
 First-party Tauri 2 app (AR-16); its only UI surface is a menu-bar tray icon and
-a minimal settings panel (UX-DR23).
+a small settings popover — an account row with a Link button, and the Serato
+library-folder picker.
+
+That popover **supersedes** UX-DR23 / Story 2.5 AC-2's "native OS chrome only,
+no design tokens" rule (Arjun, 2026-08-17): the panel was a developer
+affordance when that AC was written, and it is now the first screen a paying DJ
+meets after install. It is on-brand and dark-only. `ui/index.html`'s header
+comment carries the reasoning and the one trap — its five brand tokens are
+**copied literal values**, not imports, because a standalone Tauri webview has
+no build step and no access to `web/app/tokens.css`. Nothing will notice if the
+brand moves.
+
+Some references below point into `_bmad-output/`, which is **gitignored** — it
+exists on Arjun's machine and in no clone. They are named rather than linked
+for that reason.
 
 ```text
 agent/
@@ -72,8 +86,8 @@ on clippy, which lints tests and examples too.
 ## `examples/` — the demo-account pipeline
 
 Four `cargo` examples, never shipped in the binary, that build the June demo
-account from Arjun's real Serato library
-(`_bmad-output/planning-artifacts/demo-account-spec.md`): `demo_catalog_extractor`
+account from Arjun's real Serato library (spec: `demo-account-spec.md`,
+local-only): `demo_catalog_extractor`
 → `demo_overlay_scrub` → `demo_set_generator` → `demo_account_writer`. Each
 file's header doc comment has its own runnable invocation.
 
@@ -88,7 +102,8 @@ depends on. `parser/session.rs` cites its ground-truth harness by file and line
 for *why* plays are sorted by start time (151/151 and 253/253 positions matched
 against `master.sqlite`), and `parser/serato4.rs` names it as the source its
 `history_session` queries were ported from. Its written findings live in
-`_bmad-output/implementation-artifacts/1-2-parser-validation-spike-findings.md`.
+`1-2-parser-validation-spike-findings.md` (local-only) — but the load-bearing
+citations are in the production source, not there.
 
 Only 8 files are tracked; its `target/` directory is untracked build output and
 is safe to `rm -rf` at any time.
@@ -112,10 +127,22 @@ workflow, not the base `tauri.conf.json`.
 
 The same tag push also produces a signed `latest.json` update manifest
 (Story 2.9c, AR-14), via a separate updater-signing keypair — distinct from
-the platform code-signing certs above. See the "Tauri updater signing
-keypair" row in
-[`_bmad-output/implementation-artifacts/pre-launch-services-checklist.md`](../_bmad-output/implementation-artifacts/pre-launch-services-checklist.md)
-for the one-time generation command.
+the platform code-signing certs above. One shared keypair signs both platforms'
+artifacts. It already exists; the one-time generation command was:
+
+```bash
+pnpm dlx @tauri-apps/cli@latest signer generate --ci -p "" \
+  -w ~/.tauri/curfew-agent-updater.key
+```
+
+Two properties of it fail **silently at update time rather than at build
+time**, which is why they are stated here rather than in a doc no clone has.
+The public key in `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`) must
+stay byte-identical to `~/.tauri/curfew-agent-updater.key.pub`, or every
+auto-update fails signature verification on the DJ's machine. And
+**`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` must not exist as a repo secret** — the
+keypair was generated with an empty password (`-p ""`) and both workflows pass
+that optional var through empty; creating it with any value breaks signing.
 
 **Version placeholders.** `Cargo.toml`, `tauri.conf.json`, and `package.json`
 all read `0.0.0` deliberately. The release workflows substitute the version from

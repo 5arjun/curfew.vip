@@ -43,9 +43,11 @@ export const X_HANDLE = "@curfewvip";
 /**
  * Every indexable route, and the whole of the sitemap.
  *
- * `/pricing` is deliberately absent: Story 6.3 is undecided and the route 404s
- * today (launch checklist §2.6). If it lands, it belongs here — a sitemap that
- * lists a 404 is worse than one that omits a real page.
+ * `/pricing` is deliberately absent, and now permanently so. Story 6.3 was
+ * closed by ruling on 2026-08-18 (launch checklist §2.6): one plan needs no
+ * tier-comparison page, and `/`'s closing beat already is the single-tier card
+ * the story specified. `/pricing` 308s to `/#pricing` (next.config.ts), and a
+ * sitemap should list the destination of a redirect, never its source.
  *
  * No `lastModified`. Google only honours it when it is consistently accurate,
  * and the two ways to produce it here are both lies: build time changes on

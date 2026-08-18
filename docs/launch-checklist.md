@@ -17,13 +17,14 @@ BotID sign-in ruling of the same day) and **2.5**'s reference count.
 Re-verify the same way before opening the doors; several of these are
 point-in-time checks that go stale silently.
 
-**One thing in this pass is NOT verified live, and it is the important one.**
-1.4/1.5/1.6 were verified against a production build and a local `next start`
-— redirects, emitted tags, `robots.txt` and `sitemap.xml` bodies, parsed
-JSON-LD. None of it has been verified against `https://curfew.vip`, because
-none of it is deployed yet. The one that can still fail there is **1.6**:
-Cloudflare injects its own `robots.txt` when the origin serves none, and
-whether our route now wins is a fact about Cloudflare, not about this repo.
+**Update, later the same day: that deploy landed and the live check passed.**
+1.4/1.5/1.6 had been verified only against a production build on a local
+`next start`, and the one that could still have failed on the real host was
+1.6 — Cloudflare injects its own `robots.txt` when the origin serves none.
+Fetched from `https://curfew.vip`: our `robots.txt` wins (the `Sitemap:` line
+is there), `/sitemap.xml` is 200, `/dashboard` signed out is `307 → /login`,
+and `/` carries the full `og:*` set. No Cloudflare dashboard change needed.
+**§1 now has nothing owed against the live host.**
 
 **Why this file exists, and why it is versioned.**
 `_bmad-output/implementation-artifacts/pre-launch-services-checklist.md` has
@@ -44,8 +45,9 @@ left*, and is the one to read before opening the doors.
 ## 0. Where things actually stand
 
 Epics 1–4 are done. Epic 5 (segments) is the post-validation track — the epic
-list marks it "may trail," and it does not gate launch. Epic 6 has one story
-open (6.3, pricing page). Epic 7 is done bar bookkeeping.
+list marks it "may trail," and it does not gate launch. Epic 6 is now closed —
+its last open story (6.3, pricing page) was ruled rather than built on
+2026-08-18 (§2.6). Epic 7 is done bar bookkeeping.
 
 **Everything external is provisioned.** Domain, Vercel, live Stripe (proven
 with one real $7.99 charge, then cancelled and refunded), Resend, prod
@@ -73,10 +75,12 @@ remainder is:
 | --- | --- |
 | **1.7** governing law and venue | One fact — the state. Clause is drafted and ready to paste |
 
-That is the whole list. Two things stand behind it that are not blockers but
-are not nothing either: **1.6 needs a live check after the deploy** (does our
-`robots.txt` beat Cloudflare's injected one?), and the §5 marketing-send rule
-still fires on an action rather than a date.
+That is the whole list, and it is now the *only* thing: 1.6's owed live check
+was done and passed (see the note at the top). The one thing standing behind it
+is the §5 marketing-send rule, which still fires on an action rather than a
+date.
+
+Epic 6 closed on 2026-08-18 — 6.3 was ruled rather than built (§2.6).
 
 Nothing in §2 blocks, and 2.1 no longer means launching blind — pageviews and
 field vitals are both wired, live from the next production deploy.
@@ -276,11 +280,16 @@ entry deliberately matches the canonical Next emits for `/` (no trailing
 slash) — one character of difference there is the cheapest way to look like two
 pages.
 
-- [ ] **Live check, owed after the deploy.** Fetch `https://curfew.vip/robots.txt`
-      and confirm it is ours — look for the `Sitemap:` line. Cloudflare injects
-      its block when the origin serves none; with one present it *should* pass
-      through, but "should" is not "does" and the failure is silent. If
-      Cloudflare still overrides, the fix is in its dashboard, not this repo.
+- [x] **Live check — done 2026-08-18, and it passed.**
+      `https://curfew.vip/robots.txt` is ours: 16 `Disallow` lines, `Host:`, and
+      the `Sitemap:` line. Cloudflare's injected content-signals block is gone —
+      with an origin `robots.txt` present it passes through, as hoped but not as
+      known. `/sitemap.xml` returns 200. **This was the one thing §1 could not
+      verify from the repo, and it needs no dashboard change.**
+
+Also confirmed live in the same pass, all three previously verified only against
+a local `next start`: `/dashboard` signed out returns `307 → /login` (1.4), and
+`/` serves the full `og:*` set with the real card and the long title (1.5).
 
 ### 1.7 Pre-launch legal review — ✅ **DONE 2026-08-18**
 
@@ -419,6 +428,20 @@ visible.
 This is a reason to weigh an app-side throttle slightly more heavily than the
 line above did, not a new blocker.
 
+**It is not what was locking `admin@curfew.vip` out, and nothing is now.**
+Checked against the live auth logs 2026-08-18: that account signed in by
+password at **21:14:59Z**, `banned_until` is null, and there is **exactly one**
+non-200 in the whole 24-hour window. That one is a `/token` 400 at 21:14:42 —
+`Possible abuse attempt: 69`, which is refresh-token **reuse** detection, not
+throttling — followed by a clean password login 17 seconds later. No 429s, no
+failed password attempts, no rate limiting of any kind. The lockout was the
+BotID pre-auth gate, and `96ce86e` closed it.
+
+Worth knowing rather than acting on: that reuse 400 is what a session-refresh
+race looks like (two clients refreshing one token), and it presents as being
+signed out rather than as being unable to sign in. One occurrence is noise; a
+pattern of them would be a real bug, and the auth logs are where it shows.
+
 ### 2.4 Drop the pre-signup backup tables
 
 Confirmed present in prod today:
@@ -433,30 +456,56 @@ go-forward rule was enforced. Deliberately in a `backup` schema, not `public` �
 a new public table gets auto-granted to `anon` on hosted Supabase. Drop them
 once you are satisfied the deletion was right.
 
-### 2.5 `agent/README.md` is stale in two concrete ways
+### 2.5 `agent/README.md` is stale in two concrete ways — ✅ **DONE 2026-08-18**
 
-- It describes the agent's UI as "a menu-bar tray icon and a **minimal settings
-  panel (UX-DR23)**". PR #47 deliberately superseded UX-DR23 — the panel is now
-  an on-brand popover with an account row and a Link button, and the file
-  itself records that supersession.
-- It points into `_bmad-output/…`, which is gitignored, in **three** places
-  (lines 76, 91 and 117) — one a real markdown link, two inline path
-  references. Dead for anyone who clones the repo, which is the exact class of
-  breakage this `docs/` file was created to avoid. ("Links twice" was this
-  line's own count until 2026-08-18; it was wrong.)
+Was: it described the agent's UI as "a menu-bar tray icon and a **minimal
+settings panel (UX-DR23)**" — a rule PR #47 deliberately superseded — and it
+pointed into gitignored `_bmad-output/…` in **three** places (one markdown
+link, two inline paths), dead for anyone who clones the repo.
 
-(PR #48 rewrites the release section correctly. Fold the rest into the same
-merge rather than a separate pass.)
+The UI paragraph now describes what shipped (tray icon plus an on-brand
+account/Link popover) and states the supersession outright, including the trap
+that lives with it: the panel's five brand tokens are **copied literals**, not
+imports, so nothing notices if the brand moves.
 
-### 2.6 `/pricing` 404s — decide 6.3
+The three dead references are gone, and the fix was not simply to delete them.
+The two that were only provenance (`demo-account-spec.md`, the 1.2 spike
+findings) are named without a link and flagged local-only. The third was
+load-bearing — it was the only pointer to the updater keypair's generation
+command — so **the command itself was inlined**, along with the two properties
+of that keypair that fail *silently at update time rather than at build time*:
+the pubkey in `tauri.conf.json` must stay byte-identical to the `.pub` file, and
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` must never be created. A link into a
+gitignored doc was the wrong home for facts that break every DJ's auto-update.
 
-Story 6.3 is the only open Epic 6 story, and `https://curfew.vip/pricing`
-returns 404. But the price is already on the landing hero, the features page,
-the FAQ, the login pitch and `/subscribe`.
+(PR #48's release-section rewrite had already landed; nothing was owed there.)
 
-Either build the small single-tier card page or close 6.3 by ruling. What is
-not acceptable is a dangling link — if anything ever points at `/pricing`, it
-is broken today.
+### 2.6 `/pricing` 404s — ✅ **CLOSED BY RULING 2026-08-18**
+
+**Story 6.3 is closed without building the page** (Arjun, 2026-08-18). Three
+reasons, in order of weight:
+
+1. A pricing page exists to **compare tiers**. Curfew has one plan, so the page
+   would be a single card restating a price — which is what `/`'s closing beat
+   already is: the price at `display-lg`, "Billed yearly. One plan. Cancel
+   whenever.", and the primary CTA. That is 6.3's AC-1 and AC-2 as written,
+   already shipped in `landing/Beats.tsx`.
+2. It would be a **fifth** surface stating one price (landing close, `/features`
+   close, the FAQ answer, `/subscribe`, and this) — a fifth place to miss on the
+   next price change.
+3. 6.3's AC-3 routes its CTA "into the auth overlay (Story 6.4)". **6.4 was
+   never built** — login is its own page — so the story could not have been
+   built to spec without first building a story nobody has scheduled.
+
+**The 404 is gone anyway.** `/pricing` now **308s to `/#pricing`**
+(`web/next.config.ts`), and the closing beat carries `id="pricing"` to receive
+it. Redirect rather than leave the 404, because `/pricing` is a URL people type
+whether or not anything ever linked it. Verified on a production build via a
+local `next start`: `308 → /#pricing`, the id present in `/`'s HTML, and
+`/pricing` correctly **absent** from the sitemap — a sitemap lists the
+destination of a redirect, never its source (`lib/seo.ts`).
+
+Epic 6 has no open stories left.
 
 ---
 

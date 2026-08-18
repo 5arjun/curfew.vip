@@ -20,6 +20,20 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "lh6.googleusercontent.com" },
     ],
   },
+  // `/pricing` is not a page, and Story 6.3 was closed by ruling rather than
+  // built (Arjun, 2026-08-18). A pricing page exists to compare tiers; Curfew
+  // has one plan, so the page would be a card restating a price the landing's
+  // closing beat already shows at `display-lg` with the same CTA — which is
+  // 6.3's AC-1/AC-2 as written. A fifth surface stating one price is a fifth
+  // place to miss on the next price change.
+  //
+  // It redirects rather than 404s because `/pricing` is a URL people type
+  // whether or not it was ever linked, and the answer they want is on `/`.
+  // 308, not 307: this is a permanent product decision, and the method never
+  // needs preserving on a GET.
+  async redirects() {
+    return [{ source: "/pricing", destination: "/#pricing", permanent: true }];
+  },
 };
 
 // withBotId adds the rewrites that proxy BotID's challenge script through this
