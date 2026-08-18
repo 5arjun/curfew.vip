@@ -1,0 +1,96 @@
+name: Tag agent release
+
+# Turns "bump agent/VERSION" into a shipped agent. On a push to main, if
+# agent/VERSION names a version that has no matching tag yet, this creates and
+# pushes `agent-v<VERSION>` — which is what release-macos.yml and
+# release-windows.yml actually trigger on. Neither of those files changes; this
+# workflow only supplies the tag a human used to push by hand.
+#
+# The bump IS the release decision, and it is reviewable in the PR diff. Touch
+# agent/ without bumping VERSION and this job runs, finds the tag already
+# present, and exits — deliberately, because not every agent commit deserves a
+# release. A macOS run can sit in Apple's notary service for over two hours
+# (see release-macos.yml's timeout rationale), and every published release
+# silently downloads and restarts every installed agent within ~6 hours
+# (`updater_loop` in src-tauri/src/lib.rs). Releasing on every merge would
+# spend both of those on commits that changed a comment.
+#
+# WHY A PAT INSTEAD OF GITHUB_TOKEN — the one thing that will silently break
+# this if it is ever "simplified": a tag pushed using the default GITHUB_TOKEN
+# does NOT trigger other workflows. GitHub suppresses that to prevent recursive
+# runs. The tag would appear in the repo and neither release workflow would
+# ever fire, which presents as a mysteriously missing release rather than as a
+# permissions problem. AGENT_RELEASE_TOKEN is a fine-grained PAT scoped to this
+# repository alone with Contents: read and write — the minimum that can push a
+# tag. If this job succeeds but no release build starts, the token has expired
+# or been revoked; that is the first thing to check, not the last.
+#
+# VERSION must be plain X.Y.Z with no pre-release identifier. WiX, the Windows
+# MSI builder, rejects non-numeric pre-release identifiers — that is what killed
+# agent-v0.1.0-rc.1. The release workflows' own semver check is looser (it
+# permits `-rc.1`), so this is the narrower gate of the two and the failure it
+# prevents happens ~25 minutes into a Windows build rather than here.
+
+on:
+  push:
+    branches: [main]
+    # agent/VERSION lives under agent/, so any real bump matches this filter by
+    # construction. It is a cost filter, not a correctness one — the tag-exists
+    # check below is what actually decides whether anything ships.
+    paths:
+      - 'agent/**'
+
+concurrency:
+  group: tag-agent
+  # Never cancel in progress: a cancelled run here is a release that silently
+  # did not happen. Queue instead.
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Tag if agent/VERSION is new
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Shallow by design. The tag-exists check queries the remote rather than
+      # local refs, and the tag being created points at HEAD, so full history
+      # would buy nothing.
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.AGENT_RELEASE_TOKEN }}
+
+      - name: Create and push the release tag
+        shell: bash
+        env:
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: |
+          set -euo pipefail
+
+          if [ ! -f agent/VERSION ]; then
+            echo "::error::agent/VERSION is missing — it is the sole input to this workflow."
+            exit 1
+          fi
+
+          VERSION="$(tr -d '[:space:]' < agent/VERSION)"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::agent/VERSION reads '$VERSION' — must be plain X.Y.Z with no pre-release identifier (WiX rejects those; see this file's header)."
+            exit 1
+          fi
+
+          TAG="agent-v$VERSION"
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "$TAG already exists — agent/VERSION was not bumped, so nothing ships."
+            exit 0
+          fi
+
+          git tag -a "$TAG" -m "Curfew Agent $VERSION"
+          git push origin "$TAG"
+
+          echo "Pushed $TAG. release-macos.yml and release-windows.yml build from here."
+          echo "### Released \`$TAG\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Installed agents pick this up within ~6 hours, silently." >> "$GITHUB_STEP_SUMMARY"
