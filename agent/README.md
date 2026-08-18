@@ -102,10 +102,12 @@ A signed, notarized `.dmg` is produced by
 when an `agent-v*.*.*` tag is pushed (Story 2.9a, AR-14). The same tag push
 also triggers
 [`.github/workflows/release-windows.yml`](../.github/workflows/release-windows.yml),
-which produces a signed Windows installer (Story 2.9b, AR-14) — both
-workflows publish to the same GitHub Release. Local Windows builds stay
-unsigned too, same as macOS above: the signing config lives only in
-`src-tauri/tauri.windows-release.conf.json`, merged in by the release
+which produces an **unsigned** Windows installer (Story 2.9b, AR-14) — both
+workflows publish to the same GitHub Release. Windows code signing was
+declined on purpose (2026-08-16); that file's header carries the reasoning and
+the SmartScreen warning it costs the user. Local Windows builds differ from
+macOS only in the bundle config applied:
+`src-tauri/tauri.windows-release.conf.json` is merged in by the release
 workflow, not the base `tauri.conf.json`.
 
 The same tag push also produces a signed `latest.json` update manifest
@@ -119,3 +121,28 @@ for the one-time generation command.
 all read `0.0.0` deliberately. The release workflows substitute the version from
 the pushed tag and first assert the anchor reads exactly `0.0.0` — bumping it by
 hand breaks every release build.
+
+### Cutting a release
+
+Bump [`VERSION`](VERSION) to the next plain `X.Y.Z` and merge to main.
+[`.github/workflows/tag-agent.yml`](../.github/workflows/tag-agent.yml) pushes
+the matching `agent-v` tag, and the two release workflows above take it from
+there. Merging agent changes *without* bumping `VERSION` releases nothing —
+that is the point, so the file is the release decision and it shows up in
+review. Never hand-push an `agent-v` tag; that leaves `VERSION` claiming a
+version that was never built.
+
+`VERSION` is the input to the release. The `0.0.0` anchors above are what the
+workflow rewrites during the build. They are not redundant — nothing reads
+`VERSION` at compile time.
+
+Anything the agent *embeds* is also on this release path, not just Rust
+changes. `shared/schema/sync-payload.schema.json` is compiled into the binary
+via `include_str!` (`src-tauri/src/lib.rs`), so editing it and shipping only the
+web app leaves every installed agent on the old contract. Bump `VERSION` in the
+same PR.
+
+Once released, installed agents update themselves within about six hours —
+silently, with no prompt, skipping any agent mid-capture until the next tick
+(`updater_loop`, `src-tauri/src/lib.rs`). There is no staged rollout and no way
+to recall a build: the fix for a bad release is a higher `VERSION`.
