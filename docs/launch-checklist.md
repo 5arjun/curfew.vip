@@ -4,6 +4,13 @@
 that day — the repo, prod Supabase, GitHub Releases, the Vercel project, and
 `https://curfew.vip` itself. Nothing here is inherited on trust.
 
+**Last re-verified:** 2026-08-18, after 1.1/1.2/1.3 and 1.7 closed. Every open
+item below was re-checked against the same live sources rather than carried
+forward — the four still-open sections all reproduced exactly, so what changed
+in this pass is the *closed* half of the file and one under-scoped route list
+(1.4). Re-verify the same way before opening the doors; several of these are
+point-in-time checks that go stale silently.
+
 **Why this file exists, and why it is versioned.**
 `_bmad-output/implementation-artifacts/pre-launch-services-checklist.md` has
 tracked external accounts and services since July. It is still the right place
@@ -40,7 +47,23 @@ old checklist's "no agent release has ever been published — the launch
 blocker" row is **stale and closed.**
 
 Prod schema is at **24/24 migration parity** with `supabase/migrations/`
-(re-run this diff before any release; it is a point-in-time check).
+(re-run this diff before any release; it is a point-in-time check). Confirmed
+again this pass against the live applied list — same 24, same versions, through
+`20260817193455_add_djs_timezone_column`.
+
+**What is actually left to open the doors.** §1 has seven sections and four of
+them are now closed (1.1, 1.2, 1.3 — the agent ships and the download resolves;
+1.7 — the legal review is done bar one fact). The blocking remainder is three
+sections and one sentence:
+
+| Still blocking | Shape of the work |
+| --- | --- |
+| **1.4** signed-out authenticated routes render an empty shell | Route guard — five pages, none of them Settings |
+| **1.5** no `openGraph` / `twitter` / `metadataBase` anywhere | An afternoon, and the highest-leverage item here |
+| **1.6** no `sitemap.xml`, and `robots.txt` is Cloudflare's, not ours | Two Next route files, then verify against Cloudflare |
+| **1.7** governing law and venue | One fact — the state. Clause is drafted and ready to paste |
+
+Nothing in §2 blocks, but 2.1 (no analytics at all) means launching blind.
 
 ---
 
@@ -123,14 +146,27 @@ read on.
 
 ### 1.4 Signed-out authenticated routes render instead of redirecting
 
-`/dashboard`, `/set/[id]` and `/track/[track_id]` render a logged-out empty
-shell rather than bouncing to `/login`. `web/app/(authenticated)/layout.tsx`
-says so in a comment; only Settings self-guards. RLS means nothing leaks, and
-the proxy's subscription gate runs `if (sellsSubscriptions && userId && …)`, so
-it never fires for a signed-out visitor.
+**Five** pages, not the three originally listed here. The `(authenticated)`
+group has six, and `redirect("/login")` appears in exactly one of them —
+`settings/page.tsx:38`. The other five render a logged-out empty shell:
+
+- `/dashboard`
+- `/set/[id]`
+- `/track/[track_id]`
+- `/library-utilization` ← missed on the first pass
+- `/style-evolution` ← missed on the first pass
+
+`web/app/(authenticated)/layout.tsx` says so in a comment ("no auth-gating
+middleware/redirect exists yet for this group — each page self-guards"), which
+is the trap: the layout describes a convention that only one page follows, so
+the two analysis pages read as guarded to anyone who trusts the comment. RLS
+means nothing leaks, and the proxy's subscription gate runs
+`if (sellsSubscriptions && userId && …)`, so it never fires for a signed-out
+visitor.
 
 Not a data breach. It is what a curious visitor who deep-links sees, and it
-reads as a broken product.
+reads as a broken product. Fixing this in the layout rather than page-by-page is
+what stops the list growing again with the next authenticated page.
 
 ### 1.5 No social/share metadata anywhere
 
@@ -276,6 +312,14 @@ Confirmed by the live Supabase security advisor today:
 passwords against HaveIBeenPwned. One dashboard toggle, and the email+password
 path is one of four signup routes.
 
+That advisor run returns **five** WARNs, not one. The other four are
+`authenticated_security_definer_function_executable` on `sync_set`,
+`sync_library_roster`, `sync_library_add_events` and `set_agent_status` — the
+agent's entire write path, `SECURITY DEFINER` by design. They are recorded in §3
+so the next person to run the advisor does not read them as four new findings
+sitting next to a real one. **This is the only item on the list where "clean the
+advisor output" would be the wrong instinct.**
+
 ### 2.3 No rate limiting on `signIn` / `signUp`
 
 The Server Actions have no application-level throttle. Supabase's own limits
@@ -335,17 +379,29 @@ Recorded so nobody reopens them as discoveries.
 | **Agent Sentry project slug** | Still the platform default `rust` rather than `agent`. Cosmetic |
 | **No legal entity behind "Curfew"** | **Accepted risk**, ruled 2026-08-18. Sole proprietor, launching anyway. The terms create an agreement with a name, not a party, and `/terms` §"What Curfew promises" caps liability for someone with no corporate shield — the cap still binds the customer, there is just nothing standing between a judgment and personal assets. Forming an LLC is the fix and it is a business decision, not a checklist item |
 | **No physical postal address published** | Follows from the row above, and only actually required once commercial email sends. Gated with the marketing-send rule in §5 |
+| **Four `SECURITY DEFINER` advisor WARNs** | **By design, not owed.** `sync_set`, `sync_library_roster`, `sync_library_add_events`, `set_agent_status` — every one is the agent's write path, and `SECURITY DEFINER` executable by `authenticated` is the mechanism, not a leak. The grants were deliberately hardened twice (`20260807140000_harden_table_and_function_grants`, `20260807160000_harden_library_roster_grants`) and `record_deleted_set`'s EXECUTE was revoked outright (`20260807150000`), so this is a considered posture rather than a default. Reopen only if a function's body stops scoping writes to `auth.uid()` |
 
 ---
 
 ## 4. Bookkeeping
 
-- [ ] `sprint-status.yaml`: story 7-5 reads `review` but shipped and is
-      enforcing in prod (`web/lib/supabase/middleware.ts`)
+All four confirmed still un-actioned as of this pass.
+
+- [ ] `sprint-status.yaml`: story 7-5 reads `review` (line 1545) but shipped and
+      is enforcing in prod (`web/lib/supabase/middleware.ts`). Note the file
+      argues for `review` on purpose in a comment above the line — so this is a
+      ruling to make, not a typo to fix
 - [ ] `pre-launch-services-checklist.md`: the "First agent release" row still
-      reads 🚨 OPEN. It is closed — `agent-v0.1.1`, both platforms
+      reads 🚨 OPEN. It is closed — **`agent-v0.1.2`**, both platforms
 - [ ] Same file, §3 lead paragraph: "there is exactly one thing between this
-      repo and customers" is no longer true
+      repo and customers, and it is not on this list because it is not a
+      service: no agent release has ever been published" is no longer true, and
+      is the single most misleading sentence in either checklist
+- [ ] Same row, closing paragraph: "after a green run, three code follow-ups
+      fall due." **All three are done** and should be struck with it — per-OS
+      download URLs (§1.3), `/welcome`'s false "signed, updates itself" line
+      (now rewritten, `welcome/page.tsx:139`), and the SmartScreen copy (written
+      then removed at your direction, §3)
 
 ---
 
