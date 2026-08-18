@@ -31,11 +31,13 @@ with one real $7.99 charge, then cancelled and refunded), Resend, prod
 Google/Apple OAuth, passkeys, the `support@` inbox, Sentry on both halves, and
 all Apple/Tauri signing secrets.
 
-**The agent ships.** `agent-v0.1.1` is published with both platforms —
-notarized macOS `.dmg` + `.app.tar.gz`, unsigned Windows `.msi` + `.exe`,
-minisign `.sig` for each, and a `latest.json` carrying both. The old
-checklist's "no agent release has ever been published — the launch blocker"
-row is **stale and closed.**
+**The agent ships, and shipping it is now one commit.** `agent-v0.1.2` is
+published with both platforms — notarized macOS `.dmg` + `.app.tar.gz`,
+unsigned Windows `.msi` + `.exe`, minisign `.sig` for each, and a
+`latest.json` carrying both. It was cut by bumping `agent/VERSION` (1.2), not
+by hand, and `/welcome`'s two download links resolve to it per OS (1.3). The
+old checklist's "no agent release has ever been published — the launch
+blocker" row is **stale and closed.**
 
 Prod schema is at **24/24 migration parity** with `supabase/migrations/`
 (re-run this diff before any release; it is a point-in-time check).
@@ -44,58 +46,80 @@ Prod schema is at **24/24 migration parity** with `supabase/migrations/`
 
 ## 1. Blocking — do not open the doors without these
 
-### 1.1 Cut agent 0.1.2 — the published build is two merged commits behind
+### 1.1 Cut agent 0.1.2 — ✅ **DONE 2026-08-18**
 
-`agent-v0.1.1` published 2026-08-17 21:24Z. Both `#46` (Story 7.7 local-time
-capture) and `#47` (tray icons + settings popover) touch `agent/` and merged
-*after* it. A DJ downloading right now gets a binary with **no per-set
-timezone capture** — the web half works and falls back to the DJ-level
-`djs.timezone`, but the per-set half exists only in source — and the old tray
+Was: `agent-v0.1.1` (published 2026-08-17 21:24Z) predated both `#46` (Story
+7.7 local-time capture) and `#47` (tray icons + settings popover), so a DJ
+downloading got a binary with **no per-set timezone capture** and the old tray
 icon.
 
-**Depends on 1.2.** Do that first, or this release has to be hand-cut again.
+`agent-v0.1.2` published 2026-08-18 15:43Z, both platforms, cut by the 1.2
+mechanism rather than by hand — notarized macOS `.dmg` + `.app.tar.gz`,
+unsigned Windows `.msi` + `.exe`, a minisign `.sig` for each, and a
+`latest.json` carrying both. This is the release 1.3's links resolve to.
 
-### 1.2 `AGENT_RELEASE_TOKEN` does not exist, and PR #48 is unmerged
+### 1.2 `AGENT_RELEASE_TOKEN` and PR #48 — ✅ **DONE 2026-08-18**
 
 PR #48 ("Make bumping agent/VERSION the release") makes `agent/VERSION` the
 release decision: bump it, merge, and `tag-agent.yml` pushes the `agent-v` tag
 that both release workflows trigger on. It is the right mechanism and it
 replaces the hand-cut `gh release create` workaround.
 
-It cannot work yet. `gh secret list` returns **9 secrets and no
-`AGENT_RELEASE_TOKEN`**:
+All three steps are done, and the mechanism is proven end to end: bumping
+`agent/VERSION` to `0.1.2` on main pushed `agent-v0.1.2` and both release
+workflows ran off it (macOS 14m, Windows 12m, both green). `gh secret list`
+now returns 10, including `AGENT_RELEASE_TOKEN`.
 
-```
-APPLE_API_ISSUER   APPLE_API_KEY      APPLE_API_KEY_CONTENT
-APPLE_CERTIFICATE  APPLE_CERTIFICATE_PASSWORD  APPLE_SIGNING_IDENTITY
-SENTRY_DSN         SUPABASE_PROD_PUBLISHABLE_KEY  TAURI_SIGNING_PRIVATE_KEY
-```
+- [x] Create the PAT, add it as `AGENT_RELEASE_TOKEN`
+- [x] Merge PR #48
+- [x] Bump `agent/VERSION` to `0.1.2` (plain `X.Y.Z` — WiX rejects non-numeric
+      pre-release identifiers; that is what killed `agent-v0.1.0-rc.1`)
 
-The workflow needs a fine-grained PAT scoped to this repository with
+Kept because the *why* still binds every future release. The workflow needs a
+fine-grained PAT scoped to this repository with
 **Contents: read and write** — the default `GITHUB_TOKEN` cannot be used, because
 a tag pushed with it does not trigger other workflows (GitHub suppresses that
 to prevent recursion). The failure mode is silent and misleading: the tag
 appears, no release build ever starts, and it reads as a missing release rather
 than a permissions problem.
 
-- [ ] Create the PAT, add it as `AGENT_RELEASE_TOKEN`
-- [ ] Merge PR #48
-- [ ] Bump `agent/VERSION` to `0.1.2` (plain `X.Y.Z` — WiX rejects non-numeric
-      pre-release identifiers; that is what killed `agent-v0.1.0-rc.1`)
-
 Expect the macOS run to be slow. Apple's notary service has held one submission
 of this bundle for over two hours; `timeout-minutes: 120` is set for that
 reason. Do not kill it.
 
-### 1.3 Per-OS download links
+### 1.3 Per-OS download links — ✅ **DONE 2026-08-18**
 
-`web/lib/agent-downloads.ts` still points every download affordance at
-`/releases/latest`. A DJ who has just paid $7.99 lands on a GitHub page listing
-eight assets — `.dmg`, `.app.tar.gz`, two `.sig`s, `.msi`, `.exe`, another
-`.sig`, `latest.json` — and has to guess which is theirs. The file's own comment
-says to swap this once real filenames exist. They exist now.
+Was: `web/lib/agent-downloads.ts` pointed every download affordance at
+`/releases/latest`, so a DJ who had just paid $7.99 landed on a GitHub page
+listing eight assets — `.dmg`, `.app.tar.gz`, two `.sig`s, `.msi`, `.exe`,
+another `.sig`, `latest.json` — and had to guess which was theirs, on the
+screen immediately after payment.
 
-This is the screen immediately after payment. Fix it in the same change as 1.1.
+`/welcome` now offers macOS and Windows as two blocks and hands over the
+installer directly. **The hrefs are not asset URLs**, deliberately: Tauri
+stamps the version into every filename, and the version bump *is* the release
+(1.2), so a build-time constant would go live during the same push that starts
+a macOS notarization run which has taken over two hours — live and wrong for
+that whole window, then silently 404ing on every later release nobody
+remembered to bump it for.
+
+They point at `/download/mac` and `/download/windows`
+(`web/app/download/[platform]/route.ts`), which ask GitHub for the current
+release at request time and 302 to the real asset. No bump, no staleness.
+Every failure path — unknown platform, GitHub down or rate-limiting us, a
+release carrying no installer for that OS — falls back to the releases page,
+so the old behaviour is the floor rather than the ceiling.
+
+Verified against the live 0.1.2 release on prod: `/download/mac` → the 17 MB
+universal `.dmg`, `/download/windows` → the 5.3 MB x64 setup `.exe`,
+`/download/linux` → the releases page. Suffix matching keeps the three
+minisign `.sig` files out by construction, which is what
+`web/lib/agent-downloads.test.ts` pins — a signature is a download that
+"works" and produces a useless file.
+
+Neither platform is emphasized and neither is OS-detected: step 01 says "the
+laptop you play from", which is routinely not the device the page is being
+read on.
 
 ### 1.4 Signed-out authenticated routes render instead of redirecting
 
