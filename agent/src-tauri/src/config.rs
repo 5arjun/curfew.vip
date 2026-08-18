@@ -31,9 +31,12 @@ pub const CURFEW_WEB_URL: &str = env!("CURFEW_WEB_URL");
 /// whether a fix has actually shipped since a given failure was recorded.
 pub const AGENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Sentry project DSN (Story 3.4, Task 1). The project now exists (a Rust
-/// project covering this agent; `web/` has no Sentry project of its own) and
-/// the `SENTRY_DSN` repo secret was set 2026-08-01 — both release workflows
+/// Sentry project DSN (Story 3.4, Task 1). This is the Rust project covering
+/// the agent. `web/` has its own separate Sentry project (org `curfew`,
+/// project `web`) with its own DSN inlined in `web/lib/sentry-shared.ts` —
+/// the two do not share a DSN, so a change here never affects the web app's
+/// reporting, or the reverse. The `SENTRY_DSN` repo secret was set
+/// 2026-08-01 — both release workflows
 /// already pass it into this build, so signed builds report for real. Local
 /// dev still leaves it unset unless you add it to `.env.local`, in which case
 /// this compiles to an empty string and [`crate::error_reporting`] no-ops
