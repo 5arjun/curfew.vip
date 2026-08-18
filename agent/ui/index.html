@@ -6,61 +6,239 @@
     <title>Curfew Agent Settings</title>
     <style>
       /*
-        Native OS chrome only (Story 2.5, AC-2/UX-DR23): system font stack,
-        default form controls, no imported design tokens. Do not import
-        web/app/tokens.css, globals.css, or any Obsidian/Ember class here —
-        this panel is deliberately exempt (see Story 2.2's Dev Notes).
+        ⚑ SUPERSEDES Story 2.5 AC-2/UX-DR23's "native OS chrome only, no
+        design tokens" rule for this panel — Arjun, 2026-08-17: "can you make
+        it prettier and more on brand". That AC was written when the panel was
+        a developer affordance; it is now the first screen a paying DJ meets
+        after install, and looking like a stray system dialog next to
+        curfew.vip was the actual problem.
+
+        Tokens are COPIED here as literal values, not imported: this panel is
+        a standalone Tauri webview with no build step and no access to
+        web/app/tokens.css. The five below are transcribed from that file's
+        Abyss block (--color-abyss-base/-shell/-hairline/-accent, text ramp
+        100/72/45). If the brand moves, they must be re-copied by hand — there
+        is no mechanism that will notice the drift for you.
+
+        Deliberately dark-only, dropping the old `color-scheme: light dark`:
+        Curfew has one look and it is the abyss. A light variant here would be
+        a second design nobody maintains.
       */
-      :root { color-scheme: light dark; }
+      :root {
+        color-scheme: dark;
+        --base: #04060a;
+        --shell: #0a0e13;
+        --raised: #0e131b;
+        --hairline: #16283a;
+        --accent: #7fd8f2;
+        --on-accent: #04131c;
+        --text: #eaf3f8;
+        --text-72: #eaf3f8b8;
+        --text-45: #eaf3f885;
+      }
       html, body {
         margin: 0;
         height: 100%;
-        font: 13px/1.4 -apple-system, "Segoe UI", system-ui, sans-serif;
+        font: 13px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif;
       }
       body {
-        padding: 16px;
-        background: Canvas;
-        color: CanvasText;
+        padding: 18px;
+        background: var(--base);
+        color: var(--text);
         box-sizing: border-box;
       }
+      /* Two type sizes in the whole panel, on purpose (2026-08-17): this
+         register — 0.6875rem, uppercase, tracked — for the wordmark and the
+         card labels, and plain 1rem for everything a DJ actually reads. The
+         first draft had four sizes between 8.9px and 13px, whose steps were
+         1.19/1.13/1.08 — close enough that they read as inconsistency rather
+         than hierarchy. One label size and one prose size is a 1.46 step, and
+         the emphasis that remains is carried by weight and colour instead. */
       h1 {
-        font-size: 1rem;
-        margin: 0 0 4px;
+        font-size: 0.6875rem;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin: 0 0 8px;
       }
       p.hint {
-        margin: 0 0 12px;
-        opacity: 0.7;
+        margin: 0 0 14px;
+        color: var(--text-72);
       }
-      label {
+      p.lede {
+        margin: 0 0 16px;
+        color: var(--text-72);
+      }
+      /* The card idiom the web app uses for every grouped control: hairline
+         on a raised fill, generous inner padding, no shadow (the abyss has no
+         light source). */
+      section.card {
+        background: var(--shell);
+        border: 1px solid var(--hairline);
+        border-radius: 10px;
+        padding: 12px;
+        margin-bottom: 12px;
+      }
+      label, .card-label {
         display: block;
+        font-size: 0.6875rem;
         font-weight: 600;
-        margin-bottom: 4px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text-45);
+        margin-bottom: 8px;
       }
       .row {
         display: flex;
-        gap: 6px;
+        gap: 8px;
       }
       input[type="text"] {
         flex: 1;
+        min-width: 0;
         font: inherit;
-        padding: 4px 6px;
+        padding: 7px 9px;
+        color: var(--text);
+        background: var(--raised);
+        border: 1px solid var(--hairline);
+        border-radius: 7px;
       }
+      input[type="text"]::placeholder { color: var(--text-45); }
       button {
         font: inherit;
-        padding: 4px 10px;
+        padding: 7px 12px;
+        border-radius: 7px;
+        border: 1px solid var(--hairline);
+        background: var(--raised);
+        color: var(--text);
+        cursor: default;
+        transition: border-color 120ms ease, background 120ms ease;
+      }
+      button:hover { border-color: var(--accent); }
+      button:focus-visible {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px #7fd8f233;
+      }
+      button.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--on-accent);
+        font-weight: 600;
+      }
+      button.primary:hover { background: #a2e5f8; }
+      /* The account row. `.dot` is the only status colour in the panel and it
+         is load-bearing, not decorative: linked vs not is the one thing a DJ
+         checks here at a glance. */
+      .account {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+      }
+      .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        flex: none;
+        background: var(--text-45);
+      }
+      .dot[data-linked="true"] {
+        background: var(--accent);
+        box-shadow: 0 0 0 3px #7fd8f226;
+      }
+      .account-text {
+        font-weight: 500;
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .account-text em {
+        font-style: normal;
+        color: var(--text-45);
       }
       p.status {
         margin: 10px 0 0;
         min-height: 1.2em;
-        opacity: 0.75;
+        color: var(--text-45);
+      }
+      details.help {
+        margin-top: 4px;
+      }
+      details.help summary {
+        cursor: default;
+        color: var(--text-45);
+      }
+      details.help ul {
+        margin: 8px 0 0;
+        padding-left: 18px;
+      }
+      details.help li {
+        margin-bottom: 6px;
+        color: var(--text-72);
+      }
+      /* `em`, not `rem`, and an optical correction rather than a hierarchy
+         step: monospace faces render larger than the UI face at the same
+         nominal size, so this holds paths at the SAME apparent size as the
+         prose around them. Removing it would make code look bigger than the
+         sentence containing it. */
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.9231em;
+        color: var(--text);
       }
     </style>
   </head>
   <body>
     <main>
       <h1>Curfew Agent</h1>
-      <p class="hint" id="hint">Set the folder where Serato stores your library.</p>
-      <label for="serato-path">Serato folder path override</label>
+      <p class="hint" id="hint">Point Curfew at the Serato library it should watch.</p>
+
+      <!--
+        Added 2026-08-17 after the first real install: the panel stated what to
+        do ("set the folder") but never what it was for, where the folder is, or
+        what happens to a DJ who plays off an external drive — which is most of
+        them. A first-run screen that assumes you already know the answer is a
+        first-run screen that only works for the person who wrote it.
+
+        The privacy sentence is not decoration. This panel is the one moment a
+        DJ grants a background process access to their library, and AD-2 keeps
+        raw file paths and audio off the wire entirely — saying so here, at the
+        moment the question occurs to them, is cheaper than any amount of
+        reassurance elsewhere.
+      -->
+      <p class="lede">
+        Curfew reads the play history Serato already keeps — which tracks you played, and when.
+        It never opens, copies or uploads your audio files.
+      </p>
+
+      <!--
+        The account card (2026-08-17, Arjun's request). Two things it fixes:
+        a DJ could not tell WHICH account this install files into — it is one
+        DJ per install (auth/store.rs's module doc) and picking the wrong one
+        is silent — and linking was reachable only by right-clicking the menu
+        bar icon, which is not a discoverable place to keep the one action a
+        brand-new install requires.
+
+        The button is not hidden once linked: re-linking is how a DJ moves
+        this install to a different account, and hiding it would leave that
+        with no route at all. Its LABEL changes instead, so the primary
+        first-run action still reads as primary.
+      -->
+      <section class="card">
+        <span class="card-label">Account</span>
+        <div class="account">
+          <span class="dot" id="account-dot" data-linked="false" aria-hidden="true"></span>
+          <span class="account-text" id="account-text" role="status" aria-live="polite">
+            <em>Checking…</em>
+          </span>
+          <button id="link" class="primary">Link…</button>
+        </div>
+      </section>
+
+      <section class="card">
+      <label for="serato-path">Serato library folder</label>
       <div class="row">
         <!--
           Read-only (code review, story 2.6): the only way to populate this
@@ -72,11 +250,47 @@
           how that case is handled at all (the watch loop's own reconnect
           polling recovers it independently, no Save needed).
         -->
-        <input type="text" id="serato-path" placeholder="No folder selected — click Browse" readonly />
+        <input type="text" id="serato-path" placeholder="No folder chosen yet — click Browse…" readonly />
         <button id="browse">Browse…</button>
         <button id="save">Save</button>
       </div>
       <p class="status" id="status" role="status" aria-live="polite"></p>
+
+      <!--
+        Open by default, deliberately. A collapsed <details> is the right call
+        for reference a user returns to; this is the opposite — the DJ most
+        likely to need it is the one seeing this panel for the first time and
+        least likely to go looking. It costs a returning DJ one glance.
+
+        Every path here is the folder the field actually wants: `classify()`
+        validates the `_Serato_` directory ITSELF, not its parent (see
+        watcher/detect.rs — "the `_Serato_` folder directly, not its parent"),
+        and settings.rs's own rejection message says the same thing. If that
+        ever changes, this list is wrong and a DJ will follow it into a
+        rejected Save.
+      -->
+      <details class="help" open>
+        <summary>Where is my Serato folder?</summary>
+        <ul>
+          <li>
+            It is the folder named <code>_Serato_</code>. Choose that folder itself, not the
+            folder it sits in.
+          </li>
+          <li>
+            On a Mac it is usually <code>~/Music/_Serato_</code>. On Windows,
+            <code>%USERPROFILE%\Music\_Serato_</code>.
+          </li>
+          <li>
+            Play off an external drive? Choose the <code>_Serato_</code> at the top level of that
+            drive — for example <code>/Volumes/MY SSD/_Serato_</code>.
+          </li>
+          <li>
+            Unplugging that drive is fine. Curfew waits for it and picks up where it left off the
+            next time it is connected — you do not need to come back here.
+          </li>
+        </ul>
+      </details>
+      </section>
     </main>
     <script>
       const { invoke } = window.__TAURI__.core;
@@ -85,6 +299,66 @@
       const pathInput = document.getElementById("serato-path");
       const status = document.getElementById("status");
       const hint = document.getElementById("hint");
+
+      // One definition per hint line. The default string was previously written
+      // out three times — once in the markup and twice in the Save handler's
+      // success and failure paths — which is three places to keep in step and
+      // exactly how the markup and the handlers drift apart.
+      //
+      // The three states say different things on purpose: HINT_DEFAULT asks for
+      // an action, HINT_DETECTED explains that the prefilled value is a guess
+      // and not yet saved (Story 2.6 AC-3 — a detected path is never treated as
+      // confirmed), and HINT_WATCHING confirms the agent is now doing something,
+      // which is the only one of the three the DJ ever wants to see again.
+      const HINT_DEFAULT = "Point Curfew at the Serato library it should watch.";
+      const HINT_DETECTED =
+        "Found this automatically. Click Save to confirm it, or Browse to choose a different folder.";
+      const HINT_WATCHING =
+        "Watching this folder. Every set you play files itself from here — nothing else to do.";
+
+      const accountDot = document.getElementById("account-dot");
+      const accountText = document.getElementById("account-text");
+      const linkButton = document.getElementById("link");
+
+      // Three states, not two — see `LinkedAccount`'s doc comment in lib.rs.
+      // "Linked, email unknown" is the normal state on a cold launch, because
+      // only the refresh token is persisted and a Supabase refresh token
+      // carries no identity. Rendering that as "Not linked" would tell a
+      // correctly-linked DJ to link again, and re-linking is the one action
+      // here with a real cost: it repoints the install at whichever account
+      // the browser happens to be signed into.
+      async function loadLinkedAccount() {
+        let account;
+        try {
+          account = await invoke("get_linked_account");
+        } catch (err) {
+          accountText.innerHTML = "<em>Could not read link status</em>";
+          status.textContent = `Could not read link status: ${err}`;
+          return;
+        }
+
+        accountDot.dataset.linked = account.linked ? "true" : "false";
+        if (account.linked && account.email) {
+          accountText.textContent = account.email;
+        } else if (account.linked) {
+          accountText.innerHTML = "<em>Linked to your Curfew account</em>";
+        } else {
+          accountText.innerHTML = "<em>Not linked yet — sets stay on this Mac</em>";
+        }
+        linkButton.textContent = account.linked ? "Re-link…" : "Link…";
+      }
+
+      linkButton.addEventListener("click", async () => {
+        try {
+          await invoke("start_link");
+          // The browser owns the rest of the handshake; the deep-link comes
+          // back to the agent out-of-band, so this panel cannot await a
+          // result. Say where the DJ should look instead of spinning.
+          status.textContent = "Opened Curfew in your browser — finish linking there.";
+        } catch (err) {
+          status.textContent = `${err}`;
+        }
+      });
 
       // Story 2.6, AC-3/UX-DR20: a detected-but-unconfirmed path is pre-filled but
       // never treated as saved — only the DJ's own Save click (the confirm action)
@@ -104,6 +378,7 @@
         }
         if (current) {
           pathInput.value = current;
+          hint.textContent = HINT_WATCHING;
           return;
         }
 
@@ -111,7 +386,7 @@
           const pending = await invoke("get_pending_detected_path");
           if (pending) {
             pathInput.value = pending;
-            hint.textContent = "Auto-detected — confirm with Save, or Browse to pick a different folder.";
+            hint.textContent = HINT_DETECTED;
           }
           if (overrideLoadError) {
             status.textContent = `Could not load saved path: ${overrideLoadError}`;
@@ -141,16 +416,17 @@
         try {
           await invoke("set_serato_path_override", { path: pathInput.value });
           status.textContent = "Saved.";
-          hint.textContent = "Set the folder where Serato stores your library.";
+          hint.textContent = HINT_WATCHING;
         } catch (err) {
           status.textContent = `${err}`;
           // A failed Save must not leave stale "Auto-detected..." guidance
           // sitting next to the error — reset it the same as a successful Save.
-          hint.textContent = "Set the folder where Serato stores your library.";
+          hint.textContent = HINT_DEFAULT;
         }
       });
 
       loadCurrentOverride();
+      loadLinkedAccount();
     </script>
   </body>
 </html>

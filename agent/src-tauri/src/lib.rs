@@ -167,6 +167,85 @@ fn update_link_status_display(app: &tauri::AppHandle) {
     }
 }
 
+/// Starts the "Link Account" handshake: mints this click's one-time CSRF
+/// nonce, remembers it in [`auth::AuthState`], and opens `/link-agent` in the
+/// DJ's browser.
+///
+/// Extracted from the tray menu handler on 2026-08-17 so the tray item and
+/// the settings panel's own Link button run the *same* code. The nonce is the
+/// reason this matters: a second, hand-rolled copy of this flow that forgot
+/// to store the nonce would open a browser page whose redirect
+/// `handle_link_url` then silently rejects — a link button that appears to
+/// work and never links. One implementation, one nonce discipline.
+fn begin_link(app: &tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+
+    let nonce = uuid::Uuid::new_v4().to_string();
+    let auth_state = app.state::<auth::AuthState>();
+    *auth_state
+        .pending_nonce
+        .lock()
+        .expect("pending nonce mutex poisoned") = Some(nonce.clone());
+
+    let url = format!("{}/link-agent?nonce={}", config::CURFEW_WEB_URL, nonce);
+    tauri_plugin_opener::OpenerExt::opener(app)
+        .open_url(url, None::<&str>)
+        .map_err(|e| format!("Could not open the link page: {e}"))
+}
+
+/// What the settings panel renders in its account row.
+///
+/// `email` is `None` in a real, common case that is NOT "unlinked": only the
+/// refresh token is persisted (`auth::store`'s module doc), and a Supabase
+/// refresh token is an opaque string carrying no identity. So on a fresh
+/// launch, before anything has refreshed the access token into memory, the
+/// agent knows it is linked but cannot say to whom. The panel distinguishes
+/// the three states rather than collapsing the middle one into "not linked",
+/// which would tell a correctly-linked DJ to link again.
+#[derive(serde::Serialize)]
+pub struct LinkedAccount {
+    linked: bool,
+    email: Option<String>,
+}
+
+/// Reads the current link state for the settings panel. Never refreshes, never
+/// hits the network, and never writes: this runs on every panel open, and a
+/// display-only row must not be able to mutate auth state or block on a
+/// server. Reads the in-memory access token first (the only thing that
+/// carries an email), then falls back to "is a refresh token stored at all".
+#[tauri::command]
+fn get_linked_account(app: tauri::AppHandle) -> LinkedAccount {
+    use auth::store::TokenStore;
+    use tauri::Manager;
+
+    let state = app.state::<auth::AuthState>();
+    let in_memory = state
+        .tokens
+        .lock()
+        .expect("auth tokens mutex poisoned")
+        .as_ref()
+        .map(|pair| pair.access_token.clone());
+
+    if let Some(access_token) = in_memory {
+        return LinkedAccount {
+            linked: true,
+            email: auth::client::current_email(&access_token),
+        };
+    }
+
+    LinkedAccount {
+        linked: matches!(auth::store::KeyringTokenStore.load(), Ok(Some(_))),
+        email: None,
+    }
+}
+
+/// The settings panel's Link button (2026-08-17). Same handshake as the tray
+/// item — see [`begin_link`].
+#[tauri::command]
+fn start_link(app: tauri::AppHandle) -> Result<(), String> {
+    begin_link(&app)
+}
+
 /// Resolves a `curfew-agent://link` URL (Story 2.10, Task 3) into a
 /// [`auth::client::TokenPair`], persists the refresh token via the real OS
 /// keychain, and updates the in-memory [`auth::AuthState`]. Shared by both
@@ -338,6 +417,8 @@ pub fn run() {
             settings::get_serato_path_override,
             settings::set_serato_path_override,
             watcher::get_pending_detected_path,
+            get_linked_account,
+            start_link,
         ])
         .setup(|app| {
             // Tray-only surface (UX-DR23): the agent lives in the system tray, not
@@ -430,24 +511,17 @@ pub fn run() {
                 .on_menu_event(move |app, event| match event.id().as_ref() {
                     "quit" => app.exit(0),
                     "link-account" => {
-                        // One-time CSRF nonce for this click (Review
-                        // Findings): generated here, remembered in
-                        // `AuthState`, and echoed back by `web/`'s
-                        // `/link-agent` page in its `curfew-agent://link`
-                        // redirect — `handle_link_url` rejects anything that
-                        // doesn't match, so an unsolicited trigger of that
-                        // same URL shape can't repoint the agent.
-                        let nonce = uuid::Uuid::new_v4().to_string();
-                        let auth_state = app.state::<auth::AuthState>();
-                        *auth_state
-                            .pending_nonce
-                            .lock()
-                            .expect("pending nonce mutex poisoned") = Some(nonce.clone());
-
-                        let url = format!("{}/link-agent?nonce={}", config::CURFEW_WEB_URL, nonce);
-                        if let Err(_e) =
-                            tauri_plugin_opener::OpenerExt::opener(app).open_url(url, None::<&str>)
-                        {
+                        // The one-time CSRF nonce this flow depends on is
+                        // minted inside `begin_link` (Review Findings):
+                        // remembered in `AuthState` and echoed back by
+                        // `web/`'s `/link-agent` page in its
+                        // `curfew-agent://link` redirect — `handle_link_url`
+                        // rejects anything that doesn't match, so an
+                        // unsolicited trigger of that same URL shape can't
+                        // repoint the agent. Body moved to `begin_link`
+                        // 2026-08-17 so the settings panel's Link button is
+                        // the same flow rather than a second copy of it.
+                        if let Err(_e) = begin_link(app) {
                             #[cfg(debug_assertions)]
                             eprintln!("curfew-agent: failed to open Link Account page: {_e}");
                         }
@@ -581,6 +655,24 @@ pub fn run() {
                     // startup sweep — the `database V2` catalogues load once,
                     // however many sessions get re-derived.
                     let dates = joiner::date_added::DateAddedIndex::live(&backfill_home);
+                    // Decision A: establish the go-forward baseline BEFORE the
+                    // sweep below, not merely soon after. The sweep clears
+                    // `synced_at` on every row whose derived output changed,
+                    // and `store::rows_pending_sync` withholds serato4 rows at
+                    // or below the baseline — so a sweep that runs first, on a
+                    // store with no baseline yet, would re-queue a DJ's whole
+                    // pre-signup history with the guard still unarmed. The
+                    // watch loop's first tick resolves the same baseline, but
+                    // it races this thread, and "usually first" is not a
+                    // guarantee worth a DJ's history. Persisting is monotonic,
+                    // so both call sites resolving at once is harmless.
+                    if let Some(source) = &backfill_plan.serato4 {
+                        if let Ok(serato4_conn) =
+                            joiner::serato4::open_read_only(&source.root, &source.db_path)
+                        {
+                            watcher::ensure_serato4_baseline(&conn, &serato4_conn);
+                        }
+                    }
                     backfill::reprocess_parse_failures(
                         &conn,
                         &backfill_plan,

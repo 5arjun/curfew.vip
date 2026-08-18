@@ -127,6 +127,27 @@ pub fn list_sessions_after(
     rows.collect()
 }
 
+/// The highest `history_session.id` currently on file, or `0` for a library
+/// that has never logged a session.
+///
+/// This is the go-forward baseline (Decision A, 2026-08-17): a freshly linked
+/// agent starts its watermark HERE rather than at 0, so it captures only what
+/// the DJ plays from now on and never bulk-imports the history that predates
+/// them subscribing. `list_sessions_after(conn, 0)` — the previous behaviour —
+/// returns every session Serato has ever recorded, which on a real library is
+/// years of sets.
+///
+/// `0` for an empty table rather than `None`: zero is exactly the right
+/// starting watermark for "nothing has ever been played", and it keeps the
+/// caller from having to translate an absence into the same value anyway.
+pub fn max_session_id(conn: &Connection) -> rusqlite::Result<i64> {
+    conn.query_row(
+        "SELECT COALESCE(MAX(id), 0) FROM history_session",
+        [],
+        |row| row.get(0),
+    )
+}
+
 /// Re-reads one `history_session` row by its `id` — the "has this specific
 /// pending session's `end_time` resolved yet" query Story 2.8's
 /// completion-signal polling needs (Task 4), scoped to one known id rather
@@ -259,6 +280,61 @@ mod tests {
         )
         .expect("fixture row inserts");
         conn.last_insert_rowid()
+    }
+
+    /// The go-forward baseline's whole job: a library with existing history
+    /// must report its newest id, so a fresh install starts AFTER it rather
+    /// than sweeping all of it (Decision A, 2026-08-17).
+    #[test]
+    fn max_session_id_reports_the_newest_existing_session() {
+        let conn = in_memory_sessions();
+        insert_session(&conn, Some("2021 gig"), 1_625_000_000, Some(1_625_003_600));
+        insert_session(&conn, Some("2024 gig"), 1_700_000_000, Some(1_700_003_600));
+        let newest = insert_session(&conn, Some("last night"), 1_786_000_000, None);
+
+        assert_eq!(
+            max_session_id(&conn).expect("query runs"),
+            newest,
+            "the baseline must be the newest session on file"
+        );
+    }
+
+    /// A never-played library baselines at 0, which is also the correct
+    /// watermark for it — every future session is genuinely new.
+    #[test]
+    fn max_session_id_is_zero_for_a_library_with_no_history() {
+        let conn = in_memory_sessions();
+        assert_eq!(max_session_id(&conn).expect("query runs"), 0);
+    }
+
+    /// The regression this pairs with: baselining at the newest id must leave
+    /// `list_sessions_after` returning NOTHING for a library that has only
+    /// pre-existing history. This is the exact assertion that would have
+    /// caught the 485-set import.
+    #[test]
+    fn baselining_at_the_newest_id_imports_no_history() {
+        let conn = in_memory_sessions();
+        insert_session(&conn, Some("old"), 1_625_000_000, Some(1_625_003_600));
+        insert_session(&conn, Some("older"), 1_700_000_000, Some(1_700_003_600));
+
+        let baseline = max_session_id(&conn).expect("query runs");
+        assert!(
+            list_sessions_after(&conn, baseline)
+                .expect("query runs")
+                .is_empty(),
+            "a freshly baselined agent must import none of the existing history"
+        );
+        assert_eq!(
+            list_sessions_after(&conn, 0).expect("query runs").len(),
+            2,
+            "...while a 0 watermark still sees all of it — the old behaviour"
+        );
+
+        // And a set played AFTER linking is still picked up.
+        let after_linking = insert_session(&conn, Some("tonight"), 1_786_100_000, None);
+        let found = list_sessions_after(&conn, baseline).expect("query runs");
+        assert_eq!(found.len(), 1, "go-forward must not mean go-nowhere");
+        assert_eq!(found[0].id, after_linking);
     }
 
     #[allow(clippy::too_many_arguments)]
