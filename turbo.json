@@ -4,6 +4,24 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
+      // Turborepo runs each task in a scrubbed environment: a variable set on
+      // the Vercel project reaches the build ONLY if it is named here. Vercel
+      // prints a "set on your project, but missing from turbo.json" warning
+      // for every one it strips, but the build still succeeds, so the failure
+      // is silent unless someone reads the log.
+      //
+      // SENTRY_AUTH_TOKEN was stripped from every production build until now.
+      // @sentry/nextjs does not fail the build without it — it warns and skips
+      // both steps ("Will not create release", "Will not upload source maps"),
+      // so errors kept arriving in Sentry and only the stack traces were
+      // wrong: minified Turbopack output, un-symbolicated, with no release to
+      // associate maps with. Exactly the kind of break that survives because
+      // the dashboard looks alive.
+      //
+      // `passThroughEnv`, not `env`: this value is consumed by the build tool
+      // rather than baked into the output, so rotating the token should not
+      // invalidate the build cache.
+      "passThroughEnv": ["SENTRY_AUTH_TOKEN"],
       "outputs": [".next/**", "!.next/cache/**", "dist/**"]
     },
     "lint": {},
