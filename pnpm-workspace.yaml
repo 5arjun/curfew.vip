@@ -23,10 +23,16 @@ packages:
 # succeeds, and the only symptom is that every web stack trace in Sentry stays
 # minified — a silent failure, which is why this is spelled out rather than left
 # at pnpm's placeholder.
+#
+# core-js arrives transitively under posthog-js. Its postinstall is a funding
+# appeal printed to stdout — it compiles nothing and ships no binary, so
+# denying it costs the install nothing and keeps one less script running.
 allowBuilds:
   '@sentry/cli': true
+  core-js: false
   sharp: false
   unrs-resolver: false
 ignoredBuiltDependencies:
+  - core-js
   - sharp
   - unrs-resolver

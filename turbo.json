@@ -22,6 +22,17 @@
       // rather than baked into the output, so rotating the token should not
       // invalidate the build cache.
       "passThroughEnv": ["SENTRY_AUTH_TOKEN"],
+
+      // `env`, not `passThroughEnv`, for the opposite reason: both are
+      // NEXT_PUBLIC_, so Next INLINES them into the client bundle at build
+      // time. They are part of the output, so they have to be part of the
+      // cache key — otherwise pointing the project at a different PostHog
+      // project would replay a cached build still carrying the old key.
+      //
+      // Without them named here Turborepo scrubs both, PostHog initialises
+      // with no key, and analytics is simply absent in production while every
+      // build stays green — the same silent failure SENTRY_AUTH_TOKEN had.
+      "env": ["NEXT_PUBLIC_POSTHOG_KEY", "NEXT_PUBLIC_POSTHOG_HOST"],
       "outputs": [".next/**", "!.next/cache/**", "dist/**"]
     },
     "lint": {},
