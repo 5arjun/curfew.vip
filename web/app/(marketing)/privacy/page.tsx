@@ -35,10 +35,17 @@ import { pageMetadata } from "@/lib/seo";
 // The two CalOPPA disclosures SURVIVE the change rather than being dropped:
 // §22575(b)(6) is still a clean "no" (PostHog is proxied through this origin
 // and sees only Curfew), and §22575(b)(5) got STRONGER, because respecting DNT
-// went from vacuously true to actually implemented. That last sentence is a
-// promise enforced by one line of code: `respect_dnt: true` in
-// lib/posthog/client.ts. The two move together — turning the flag off makes
-// this page false.
+// went from vacuously true to actually implemented — and now covers Global
+// Privacy Control too, which the review named and which carries real CCPA
+// weight.
+//
+// That paragraph is backed by `measurementRefused()` in lib/posthog/client.ts,
+// which returns BEFORE posthog-js is imported. Do not "simplify" it down to
+// posthog-js's own `respect_dnt` option: that was the first implementation and
+// it was checked live on 2026-08-19, on a preview deploy in a DNT browser. It
+// suppresses capture but still initialises the library, still fetches remote
+// config, and still sets the `ph_phc_…` cookie — which would make the words
+// "no analytics cookie set" on this page a lie. The two files move together.
 //
 // ⚠️ ONE GATE SURVIVES THAT REVIEW. "How it's used" grants Curfew the right
 // to email and text you about the product. Neither channel is built — there
@@ -217,10 +224,11 @@ export default function PrivacyPage() {
               </LegalP>
               <LegalP>
                 <strong>Do Not Track.</strong> Some browsers send a &ldquo;do not track&rdquo;
-                signal, and there is no agreed standard for answering it. Curfew answers it anyway.
-                With that signal on, the analytics never starts: no pages counted, no clicks
-                recorded, no session replayed, and no analytics cookie set. You get the entire
-                product, minus the measuring, and you don&rsquo;t have to ask.
+                signal, and some send the newer Global Privacy Control. There is no agreed standard
+                for answering either one. Curfew answers both anyway. With either signal on, the
+                analytics never starts: the code for it is not even loaded, so no pages are
+                counted, no clicks recorded, no session replayed, and no analytics cookie set. You
+                get the entire product, minus the measuring, and you don&rsquo;t have to ask.
               </LegalP>
             </>
           ),

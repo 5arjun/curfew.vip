@@ -18,6 +18,36 @@ import { POSTHOG_KEY, POSTHOG_PROXY_PATH } from "./config";
 // rather than papering it with a `__loaded` check and a retry.
 let ready: Promise<PostHog | null> | null = null;
 
+// True when the browser is asking not to be measured, by either signal:
+// Do Not Track (the older header-era one, still what most browsers expose) or
+// Global Privacy Control (the newer one, and the one with actual legal weight
+// under CCPA). The 2026-08-18 legal review named both.
+//
+// VERIFIED THE HARD WAY, 2026-08-19: posthog-js's own `respect_dnt: true` is
+// NOT sufficient to back the promise /privacy makes. It suppresses event
+// capture, but the library still initialises, still fetches remote config, and
+// still SETS ITS COOKIE (`ph_phc_…`) — observed live on a preview deploy in a
+// browser with DNT on. The policy says "no analytics cookie set", so the only
+// honest implementation is to never load the library at all. `respect_dnt`
+// stays on below as a second line, but this is the one that makes the sentence
+// true. Deleting this function silently falsifies a published privacy policy.
+function measurementRefused(): boolean {
+  if (typeof navigator === "undefined") return false;
+
+  const nav = navigator as Navigator & {
+    globalPrivacyControl?: boolean;
+    msDoNotTrack?: string;
+  };
+  const win = window as Window & { doNotTrack?: string };
+
+  if (nav.globalPrivacyControl === true) return true;
+
+  // Browsers have historically spelled the affirmative as "1" or "yes", and
+  // hung the property off three different objects.
+  const dnt = nav.doNotTrack ?? win.doNotTrack ?? nav.msDoNotTrack;
+  return dnt === "1" || dnt === "yes";
+}
+
 export function ensurePostHog(): Promise<PostHog | null> {
   if (ready) return ready;
 
@@ -26,6 +56,11 @@ export function ensurePostHog(): Promise<PostHog | null> {
     // vars landed) means no PostHog at all — not a broken one. Returning null
     // rather than throwing keeps every caller's `?.` path the quiet one.
     if (!POSTHOG_KEY || typeof window === "undefined") return null;
+
+    // Before the import, not after: returning here means posthog-js is never
+    // even fetched, so there is no cookie, no config request, and no chunk on
+    // the wire. That is what /privacy promises.
+    if (measurementRefused()) return null;
 
     // Dynamic, not a top-level import: posthog-js with session replay is a
     // sizeable dependency, and instrumentation-client.ts is on the critical
@@ -42,9 +77,11 @@ export function ensurePostHog(): Promise<PostHog | null> {
       // it is a link target for us, not a request path for the DJ's browser.
       ui_host: "https://us.posthog.com",
 
-      // The privacy policy's Do Not Track paragraph promises this is honoured
-      // (/privacy, "Cookies"). posthog-js implements it natively; the promise
-      // and this flag move together, so don't turn one off without the other.
+      // Belt and braces. measurementRefused() above has already returned for
+      // any browser this flag would apply to, so in practice this never fires
+      // — it is here to cover any DNT spelling posthog-js recognises and the
+      // check above doesn't. It is NOT what backs the privacy policy; see the
+      // comment on measurementRefused() for why it can't be.
       respect_dnt: true,
 
       // Anonymous visitors still produce events (that IS the prospective-DJ
