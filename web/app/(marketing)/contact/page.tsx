@@ -14,7 +14,7 @@ import { pageMetadata } from "@/lib/seo";
 // it's for, no posture about what it isn't.
 
 export const metadata: Metadata = pageMetadata({
-  title: "Curfew — contact",
+  title: "Curfew · contact",
   description: "How to reach Curfew: support, data requests, and questions before you join.",
   path: "/contact",
 });
@@ -22,7 +22,7 @@ export const metadata: Metadata = pageMetadata({
 const DOORS = [
   {
     title: "Support",
-    body: "Something broken, something confusing, a set that didn't land where it should — say what happened and when.",
+    body: "Something broken, something confusing, a set that didn't land where it should. Say what happened and when.",
     label: "support@curfew.vip",
     href: "mailto:support@curfew.vip",
   },
@@ -47,7 +47,7 @@ export default function ContactPage() {
         <p className="lp-feat-eyebrow">Contact</p>
         <h1 className="lp-feat-title">Write to us.</h1>
         <p className="lp-sub lp-faq-sub">
-          One address for everything — questions before you join, problems with a set, your data.
+          One address for everything: questions before you join, problems with a set, your data.
           Mail goes straight to the people building Curfew.
         </p>
       </header>

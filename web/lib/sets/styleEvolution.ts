@@ -162,7 +162,7 @@ export interface StyleEvolutionModel {
   /** Every synced set, dated or not (Story 4.7 AC-8, added at code review
    *  2026-08-07). AC-8 scopes the summary tile row to "≥1 set" — and the view
    *  is handed only this model, so without a count it had no way to tell a DJ
-   *  with NO history from one with a month of it, and rendered four "—" tiles
+   *  with NO history from one with a month of it, and rendered four "-" tiles
    *  at a DJ who has never synced anything. The 0-set empty state is a
    *  separate, unaffected case that AC-8 explicitly does not narrow. */
   setCount: number;
@@ -757,7 +757,7 @@ function latestWithDelta(
  * exactly the case where 100% of the data was excluded (code review,
  * 2026-08-07). AC-6/AC-7 call these counts "never omitted", so the fallback
  * reports the latest bucket that actually excluded something: the tile then
- * reads "—" WITH the reason, instead of "—" with no explanation.
+ * reads "-" WITH the reason, instead of "-" with no explanation.
  */
 function latestNonZero(counts: Array<number | null>): number {
   for (let i = counts.length - 1; i >= 0; i--) {

@@ -110,7 +110,7 @@ export function ConversionRateMeter({
           </p>
           {rate.lowConfidence && (
             <p className="lu-disclosure">
-              Only {rate.added} {rate.added === 1 ? "track" : "tracks"} added in this window — early read
+              Only {rate.added} {rate.added === 1 ? "track" : "tracks"} added in this window · early read
             </p>
           )}
         </>

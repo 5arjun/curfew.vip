@@ -277,7 +277,7 @@ export function AgingShelf({ model }: { model: AgingShelfModel }) {
                the count and rendered "40held back" (caught in the browser, not
                by any gate — nothing type-checks rendered prose). */
             <span className="lu-shelf-note">
-              {`${model.suppressedNoPlayCount} held back — Curfew can't tell how long it has been watching`}
+              {`${model.suppressedNoPlayCount} held back: Curfew can't tell how long it has been watching`}
             </span>
           )}
         </p>

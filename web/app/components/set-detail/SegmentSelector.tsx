@@ -161,8 +161,8 @@ export function SegmentSelector({
                   </span>
                 </span>
                 {!segment.confirmed && <span className="sd-segment-chip-dot" aria-hidden="true" />}
-                {!segment.confirmed && <span className="sr-only"> — suggested, not yet confirmed</span>}
-                {editing && <span className="sr-only"> — editing this dancefloor</span>}
+                {!segment.confirmed && <span className="sr-only">, suggested, not yet confirmed</span>}
+                {editing && <span className="sr-only">, editing this dancefloor</span>}
               </button>
             </li>
           );

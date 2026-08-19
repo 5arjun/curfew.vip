@@ -29,10 +29,10 @@ import {
 export const SETTINGS_AGENT_STATE_COPY: Record<AgentSyncState, string> = {
   Idle: "Up to date",
   Syncing: "Syncing…",
-  Queued: "Queued — will sync when you're back online.",
+  Queued: "Queued. Will sync when you're back online.",
   Failed: "Sync interrupted. Retrying automatically.",
-  DriveNotConnected: "Archive unreachable — reconnect drive to resume.",
-  FormatDriftPaused: "Format change detected — sync paused until verified.",
+  DriveNotConnected: "Archive unreachable. Reconnect drive to resume.",
+  FormatDriftPaused: "Format change detected. Sync paused until verified.",
 };
 
 export const NO_AGENT_COPY = "No agent linked";

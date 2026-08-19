@@ -119,7 +119,7 @@ function throwWriteError(operation: string, error: PostgrestFailure): never {
 function assertRowMatched(operation: string, data: { id: string }[] | null): void {
   if (data != null && data.length > 0) return;
   if (process.env.NODE_ENV !== "production") {
-    console.error(`${operation}: matched no row — id is stale, deleted, or not this DJ's`);
+    console.error(`${operation}: matched no row: id is stale, deleted, or not this DJ's`);
   }
   throw new SegmentWriteError(
     "not-permitted",

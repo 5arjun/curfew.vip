@@ -58,7 +58,7 @@ export function resolveApiKey(env: {
   const key = env.STRIPE_RESTRICTED_KEY || env.STRIPE_SECRET_KEY;
   if (!key) {
     throw new Error(
-      "Missing STRIPE_RESTRICTED_KEY / STRIPE_SECRET_KEY — see web/README.md#Environment",
+      "Missing STRIPE_RESTRICTED_KEY / STRIPE_SECRET_KEY, see web/README.md#Environment",
     );
   }
   return key;

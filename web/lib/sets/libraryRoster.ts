@@ -111,7 +111,7 @@ export function unidentifiableTracksDisclosure(
   const one = excludedNoIdentityCount === 1;
   return `Across your whole library, ${excludedNoIdentityCount} ${
     one ? "track is" : "tracks are"
-  } missing a title or artist tag — without both, ${
+  } missing a title or artist tag. Without both, ${
     one ? "it can't" : "they can't"
   } be identified, so ${one ? "it isn't" : "they aren't"} counted in any of these figures.`;
 }

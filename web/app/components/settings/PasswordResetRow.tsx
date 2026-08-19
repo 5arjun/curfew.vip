@@ -33,12 +33,12 @@ export function PasswordResetRow() {
         </button>
         {state === "sent" && (
           <p className="st-inline-ok" role="status">
-            Reset link sent — check your email.
+            Reset link sent. Check your email.
           </p>
         )}
         {state === "failed" && (
           <p className="st-inline-error" role="alert">
-            Link not sent — retry.
+            Link not sent. Retry.
             <button type="button" className="st-retry" onClick={() => void send()}>
               Retry
             </button>

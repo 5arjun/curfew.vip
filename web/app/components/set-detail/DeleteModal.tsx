@@ -95,11 +95,11 @@ export function DeleteModal({
           Delete this set?
         </h2>
         <p className="sd-modal-body">
-          This removes it from Curfew for good — it can&apos;t be undone. Your Serato history and
+          This removes it from Curfew for good and can&apos;t be undone. Your Serato history and
           library aren&apos;t touched.
         </p>
         {error && (
-          <p className="sd-modal-error">Something went wrong — nothing was deleted. Try again.</p>
+          <p className="sd-modal-error">Something went wrong. Nothing was deleted, so try again.</p>
         )}
         <div className="sd-modal-actions">
           <button

@@ -374,7 +374,7 @@ export function ArcRibbon({ section }: { section: React.RefObject<HTMLElement | 
 
       <div className="lp-readout" data-shown="false" ref={readoutNode} aria-hidden="true">
         <span className="lp-readout-value" ref={bpmNode}>
-          —
+          -
         </span>
         <span className="lp-readout-unit">BPM</span>
       </div>
@@ -425,7 +425,7 @@ export function ArcRibbon({ section }: { section: React.RefObject<HTMLElement | 
           }}
         >
           <p className="lp-now-head">
-            {arc.points.length} tracks · {clockAt(0)} — {clockAt(1)}
+            {arc.points.length} tracks · {clockAt(0)} to {clockAt(1)}
           </p>
           <p className="lp-now-title" ref={nowNode} />
         </div>
@@ -439,7 +439,7 @@ export function ArcRibbon({ section }: { section: React.RefObject<HTMLElement | 
           }}
         >
           <p className="lp-tracklist-head">
-            {arc.points.length} tracks · {clockAt(0)} — {clockAt(1)}
+            {arc.points.length} tracks · {clockAt(0)} to {clockAt(1)}
           </p>
           <div className="lp-tracklist-window" ref={windowNode}>
             <ol className="lp-tracklist-rows" data-shown="false" ref={listNode}>

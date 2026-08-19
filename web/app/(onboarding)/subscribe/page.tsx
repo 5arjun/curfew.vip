@@ -83,7 +83,7 @@ export default async function SubscribePage() {
         ) : (
           <>
             <p className="lp-body lp-auth-tag">
-              One plan, everything in it. Every set you play from tonight on, kept — and yours to
+              One plan, everything in it. Every set you play from tonight on, kept and yours to
               keep reading back long after the night is over.
             </p>
 

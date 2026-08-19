@@ -74,7 +74,7 @@ export function OdometerCard({
       <dl className="odo-row">
         {stats.map((stat) => (
           <div key={stat.label} className="odo-stat">
-            <dd>{stat.target === 0 ? "—" : stat.value}</dd>
+            <dd>{stat.target === 0 ? "-" : stat.value}</dd>
             <dt aria-label={stat.full}>{stat.label}</dt>
           </div>
         ))}

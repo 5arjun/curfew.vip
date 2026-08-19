@@ -27,7 +27,7 @@ import "../landing.css";
 // important query — and the tagline alone. Brand-first with an em dash, which
 // is the house style every other page here already follows.
 export const metadata: Metadata = pageMetadata({
-  title: "Curfew — the DJ set archive that builds itself",
+  title: "Curfew · the DJ set archive that builds itself",
   description:
     "Curfew reads the sets you play in Serato and gives you the only baseline that means anything: your own. No plugin, no upload, nothing to file.",
   path: "/",

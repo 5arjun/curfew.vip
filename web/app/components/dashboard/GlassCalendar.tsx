@@ -150,7 +150,7 @@ export function GlassCalendar({ marks }: { marks: DayMarks }) {
         data-selected={isSelected || undefined}
         data-today={(day.isToday && !isSelected) || undefined}
         data-marked={(mark && !isSelected) || undefined}
-        aria-label={`${format(day.date, "MMMM d")}${mark ? ` — ${mark.count} ${mark.count === 1 ? "set" : "sets"}` : ""}`}
+        aria-label={`${format(day.date, "MMMM d")}${mark ? `, ${mark.count} ${mark.count === 1 ? "set" : "sets"}` : ""}`}
       >
         {getDate(day.date)}
         {mark && !isSelected && (

@@ -11,7 +11,7 @@ import { LoginClient } from "./login-client";
 // have its own metadata.
 
 export const metadata: Metadata = pageMetadata({
-  title: "Curfew — start your archive",
+  title: "Curfew · start your archive",
   description:
     "One plan, everything in it: $6.99/month billed yearly, or $7.99 month to month. Create the account tonight's set will land in, or sign back in.",
   // Canonicalised WITHOUT the ?intent=join variant on purpose: the two URLs

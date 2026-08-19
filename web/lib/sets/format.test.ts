@@ -23,7 +23,7 @@ describe("formatDuration", () => {
   });
 
   it("returns an em dash for null", () => {
-    expect(formatDuration(null)).toBe("—");
+    expect(formatDuration(null)).toBe("-");
   });
 });
 
@@ -64,8 +64,8 @@ describe("formatSetDate", () => {
   const LA = "America/Los_Angeles";
 
   it("produces an uppercase mono-style date, or an em dash", () => {
-    expect(formatSetDate(null, LA)).toBe("—");
-    expect(formatSetDate("not-a-date", LA)).toBe("—");
+    expect(formatSetDate(null, LA)).toBe("-");
+    expect(formatSetDate("not-a-date", LA)).toBe("-");
     // Structure: WEEKDAY · D MON YYYY, all uppercase.
     expect(formatSetDate("2026-06-21T21:26:45.000Z", LA)).toMatch(
       /^[A-Z]{3} · \d{1,2} [A-Z]{3} 2026$/,
@@ -104,8 +104,8 @@ describe("formatClock and formatTimeRange (Story 7.7)", () => {
   });
 
   it("still degrades to an em dash on missing input", () => {
-    expect(formatClock(null, "America/Los_Angeles")).toBe("—");
-    expect(formatTimeRange(null, null, "America/Los_Angeles")).toBe("—");
+    expect(formatClock(null, "America/Los_Angeles")).toBe("-");
+    expect(formatTimeRange(null, null, "America/Los_Angeles")).toBe("-");
   });
 });
 

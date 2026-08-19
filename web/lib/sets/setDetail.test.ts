@@ -500,7 +500,7 @@ describe("formatPlayedLength", () => {
     expect(formatPlayedLength(381_000)).toBe("6:21");
     expect(formatPlayedLength(59_400)).toBe("0:59");
     expect(formatPlayedLength(3_723_000)).toBe("1:02:03");
-    expect(formatPlayedLength(null)).toBe("—");
-    expect(formatPlayedLength(undefined)).toBe("—");
+    expect(formatPlayedLength(null)).toBe("-");
+    expect(formatPlayedLength(undefined)).toBe("-");
   });
 });

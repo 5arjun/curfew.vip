@@ -98,7 +98,7 @@ function entryFor(zone: string): { formatter: Intl.DateTimeFormat; usable: boole
     };
   } catch {
     if (process.env.NODE_ENV !== "production") {
-      console.error(`[civilTime] unknown time zone ${JSON.stringify(zone)} — falling back to UTC`);
+      console.error(`[civilTime] unknown time zone ${JSON.stringify(zone)}, falling back to UTC`);
     }
     entry = {
       formatter: zone === FALLBACK_ZONE ? throwingUtcFallback() : entryFor(FALLBACK_ZONE).formatter,

@@ -154,7 +154,7 @@ export default async function LibraryUtilizationPage() {
           contradicts the subtitle above (which is about the library) or the
           disclosures below (which name specific exclusions). */}
       <p className="lu-capture-note">
-        Everything here is measured from the sets Curfew has captured — your archive, building from
+        Everything here is measured from the sets Curfew has captured: your archive, building from
         here.
       </p>
 

@@ -238,7 +238,7 @@ export function LandingNav() {
         <span className="lp-nav-slot">
           {/* The mark is the way home (Arjun, 2026-08-15) — a link, not an
               emblem. It stays clickable mid-flight; the travel only moves it. */}
-          <Link className="lp-nav-mark" ref={markRef} href="/" aria-label="Curfew — home">
+          <Link className="lp-nav-mark" ref={markRef} href="/" aria-label="Curfew, home">
             {/* The ink is a child because the mark is masked: a mask clips
                 everything the element paints, focus ring included, so the
                 ring lives on the link and the mask on this span. */}

@@ -50,11 +50,11 @@ type Feature = {
 const FEATURES: Feature[] = [
   {
     name: "The set",
-    claim: "Every night comes back as it actually happened — not as you remember it.",
+    claim: "Every night comes back as it actually happened, not as you remember it.",
     facts: [
-      "Every track in order, against the clock — the whole night on one screen",
+      "Every track in order, against the clock: the whole night on one screen",
       "The night’s arc: energy, keys and BPM as the hours move",
-      "The dancefloor detection engine marks the stretch that mattered — drag to correct it, and it learns",
+      "The dancefloor detection engine marks the stretch that mattered; drag to correct it, and it learns",
       "Stats measured on the real dancefloor, not the soundcheck",
       "Step back into any night, months later, exactly as you played it",
     ],
@@ -64,9 +64,9 @@ const FEATURES: Feature[] = [
     name: "Style evolution",
     claim: "What you played tonight, against every night before it.",
     facts: [
-      "Watch your sound move month by month — genres, keys, tempo",
+      "Watch your sound move month by month: genres, keys, tempo",
       "See your genre mix shift set by set, and when a new sound enters the rotation",
-      "Your keys on a real Camelot wheel — where your harmonic comfort zone sits",
+      "Your keys on a real Camelot wheel, showing where your harmonic comfort zone sits",
       "Catch the drift while it’s happening, not a year later",
     ],
     film: { src: "/landing/style-evolution.mp4", poster: "/landing/style-evolution-poster.jpg" },
@@ -75,7 +75,7 @@ const FEATURES: Feature[] = [
     name: "The archive",
     claim: "Every set files itself the night you play it.",
     facts: [
-      "Curfew reads Serato when the set ends — no export, no ritual",
+      "Curfew reads Serato when the set ends: no export, no ritual",
       "Your whole history in one place, newest night on top",
       "Jump to any set or track with one search",
       "No signal at the gig? The set is captured on the spot and syncs when you’re back",
@@ -90,7 +90,7 @@ const FEATURES: Feature[] = [
       "See what you own against what you actually play",
       "The records you bought and never reached for, surfaced",
       "Send forgotten records to a prep crate and give them a night out",
-      "Know your workhorses — the tracks that earn a slot every set",
+      "Know your workhorses: the tracks that earn a slot every set",
       "How long new music waits before its first play",
     ],
   },
@@ -103,8 +103,8 @@ export function FeatureHero() {
       <p className="lp-feat-eyebrow">Features</p>
       <h1 className="lp-feat-title">Fully automatic.</h1>
       <p className="lp-sub lp-feat-sub">
-        Curfew reads Serato and your library&rsquo;s own tags. No plugin, no upload, no manual work
-        — you play the way you already play, and the archive builds itself.
+        Curfew reads Serato and your library&rsquo;s own tags. No plugin, no upload, no manual work.
+        You play the way you already play, and the archive builds itself.
       </p>
       <ul className="lp-feat-chips" aria-label="How Curfew stays automatic">
         {CHIPS.map((chip) => (

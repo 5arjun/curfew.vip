@@ -160,7 +160,7 @@ export function StyleEvolutionView({ model }: { model: StyleEvolutionModel }) {
     const total = harmonicSeries.reduce((sum, h) => sum + (h?.excludedNoKey ?? 0), 0);
     if (total === 0) return null;
     const span = granularity === "week" ? "weeks" : "months";
-    return `${total} ${total === 1 ? "transition" : "transitions"} across these ${span} excluded — no key`;
+    return `${total} ${total === 1 ? "transition" : "transitions"} across these ${span} excluded · no key`;
   }, [harmonicSeries, granularity]);
   // A set with no readable start time has no bucket to sit in, so it is
   // absent from every metric here — including the wheel (G-4's caveat).

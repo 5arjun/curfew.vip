@@ -73,7 +73,7 @@ export function MostPlayedCard({
                 <span className="mp-sub"> {data.track.artist} · ×{data.track.plays}</span>
               </p>
             ) : (
-              <p className="mp-value mp-value--empty">—</p>
+              <p className="mp-value mp-value--empty">-</p>
             )}
           </div>
           <div className="mp-row">
@@ -84,10 +84,10 @@ export function MostPlayedCard({
                 <span className="mp-sub"> ×{data.artist.plays}</span>
               </p>
             ) : (
-              <p className="mp-value mp-value--empty">—</p>
+              <p className="mp-value mp-value--empty">-</p>
             )}
           </div>
-          {empty && <p className="mp-quiet">Nothing on the decks yet — the archive holds the rest.</p>}
+          {empty && <p className="mp-quiet">Nothing on the decks yet. The archive holds the rest.</p>}
         </motion.div>
       </AnimatePresence>
     </section>

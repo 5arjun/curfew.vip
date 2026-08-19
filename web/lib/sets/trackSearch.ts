@@ -316,9 +316,9 @@ export function hasSearchableTracks(index: TrackSearchIndex): boolean {
 export function trackSearchNoMatchCopy(matchCount: number, visibleCount: number): string | null {
   if (visibleCount > 0) return null;
   if (matchCount === 0) {
-    return "No track here matches that — Curfew has no play and no library entry under that name.";
+    return "No track here matches that. Curfew has no play and no library entry under that name.";
   }
   const noun = matchCount === 1 ? "track matches" : "tracks match";
   const pronoun = matchCount === 1 ? "it" : "them";
-  return `${matchCount} ${noun} that, but only in short or low-confidence sets — reveal to see ${pronoun}.`;
+  return `${matchCount} ${noun} that, but only in short or low-confidence sets, so reveal to see ${pronoun}.`;
 }

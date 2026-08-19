@@ -27,7 +27,7 @@ const ONE_AND_DONE_NO_PLAYS_COPY =
   "Nothing here yet. Once you've played a few sets, anything you try once and move on from lands here.";
 
 const ONE_AND_DONE_ALL_REPEATED_COPY =
-  "Nothing here yet — every track you've played has come round again. Anything you try once and move on from lands here.";
+  "Nothing here yet. Every track you've played has come round again. Anything you try once and move on from lands here.";
 
 /**
  * One-and-done (Story 4.9, AC-6) — tracks played exactly once: the actionable
@@ -88,7 +88,7 @@ export function OneAndDone({ model, zone }: { model: OneAndDoneModel; zone: stri
               // "never omitted, never guessed" contract AD-11 asks for.
               value: Number.isFinite(row.lastPlayedMs)
                 ? formatDayDate(new Date(row.lastPlayedMs).toISOString(), zone)
-                : "—",
+                : "-",
             }))}
             visibleRows={ONE_AND_DONE_VISIBLE_ROWS}
           />

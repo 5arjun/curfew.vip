@@ -310,7 +310,7 @@ describe("Workhorses and OneAndDone thread their rows to the DOM (AC-5, AC-6)", 
       />,
     );
     expect(undated).toContain("No Time");
-    expect(undated).toContain("—");
+    expect(undated).toContain("-");
   });
 
   // NEGATIVE CONTROL.

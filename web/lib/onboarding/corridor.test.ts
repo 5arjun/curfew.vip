@@ -141,16 +141,16 @@ describe("nextSetupStep", () => {
 
 describe("setupStepLabel", () => {
   it("counts three steps where billing is live", () => {
-    expect(setupStepLabel("subscribe", true)).toBe("Set up — step 1 of 3");
-    expect(setupStepLabel("phone", true)).toBe("Set up — step 2 of 3");
-    expect(setupStepLabel("agent", true)).toBe("Set up — step 3 of 3");
+    expect(setupStepLabel("subscribe", true)).toBe("Set up · step 1 of 3");
+    expect(setupStepLabel("phone", true)).toBe("Set up · step 2 of 3");
+    expect(setupStepLabel("agent", true)).toBe("Set up · step 3 of 3");
   });
 
   it("counts two where /subscribe is skipped", () => {
     // The version every developer sees locally. A hardcoded "of 3" would
     // count a step that environment never shows.
-    expect(setupStepLabel("phone", false)).toBe("Set up — step 1 of 2");
-    expect(setupStepLabel("agent", false)).toBe("Set up — step 2 of 2");
+    expect(setupStepLabel("phone", false)).toBe("Set up · step 1 of 2");
+    expect(setupStepLabel("agent", false)).toBe("Set up · step 2 of 2");
   });
 });
 

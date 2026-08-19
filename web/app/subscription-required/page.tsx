@@ -29,7 +29,7 @@ import "../landing.css";
 // reactivating land somewhere true (AC-4).
 
 export const metadata: Metadata = {
-  title: "Curfew — subscription",
+  title: "Curfew · subscription",
   description: "Your Curfew subscription is inactive.",
   // Top-level, so it inherits no group layout's noindex — it needs its own
   // (launch checklist §1.6).
@@ -55,7 +55,7 @@ export default async function SubscriptionRequiredPage() {
         <div className="lp-auth-card" data-shown="true">
           <h1 className="lp-auth-title">Subscription inactive.</h1>
           <p className="lp-body lp-auth-tag">
-            Your archive is intact. The agent kept capturing every set regardless — nothing was
+            Your archive is intact. The agent kept capturing every set regardless. Nothing was
             lost, and nothing needs restoring. Reactivate and the dashboard returns with everything
             still in it.
           </p>

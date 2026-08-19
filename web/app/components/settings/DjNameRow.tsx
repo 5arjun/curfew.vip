@@ -115,7 +115,7 @@ export function DjNameRow({ initialName }: { initialName: string | null }) {
         />
         {failed && (
           <p id={`${inputId}-error`} className="st-inline-error" role="alert">
-            Change not saved — retry.
+            Change not saved. Retry.
             <button type="button" className="st-retry" disabled={saving} onClick={flush}>
               Retry
             </button>

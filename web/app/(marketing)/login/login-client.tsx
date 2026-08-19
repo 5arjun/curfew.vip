@@ -38,9 +38,9 @@ const appleSignInAvailable = process.env.NEXT_PUBLIC_APPLE_SIGNIN_AVAILABLE === 
 // What the plan buys, in the landing's own words — these rows are the sell,
 // so they stay claims about nights and records, never feature-matrix rows.
 const PITCH_FACTS = [
-  "Every set files itself the night you play it — no export, no ritual",
+  "Every set files itself the night you play it: no export, no ritual",
   "The full tracklist against the clock, the night’s arc, the real dancefloor",
-  "Watch your sound move month by month — genres, keys, tempo",
+  "Watch your sound move month by month: genres, keys, tempo",
   "Your library: what you own against what you actually play",
 ];
 
@@ -155,7 +155,7 @@ export function LoginClient() {
               re-entered; signUp() is safe to repeat (auth-copy.ts already
               names the already-registered case). */}
           <p className="lp-auth-switch">
-            Nothing arriving? Check spam — or if the address was wrong,{" "}
+            Nothing arriving? Check spam, or if the address was wrong,{" "}
             <button type="button" onClick={() => setAuthStatus("idle")}>
               go back
             </button>{" "}
@@ -179,7 +179,7 @@ export function LoginClient() {
           <p className="lp-body lp-auth-tag">
             {mode === "signup"
               ? "Create the account tonight’s set will land in."
-              : "Sign in — the archive is where you left it."}
+              : "Sign in. The archive is where you left it."}
           </p>
 
           {confirmationFailed && (
@@ -311,11 +311,11 @@ export function LoginClient() {
               ))}
             </ul>
             <div className="lp-auth-plan">
-              <p className="lp-feat-eyebrow lp-auth-plan-eyebrow">One plan — everything in it</p>
+              <p className="lp-feat-eyebrow lp-auth-plan-eyebrow">One plan, everything in it</p>
               <p className="lp-auth-price">
                 $6.99<span>/month</span>
               </p>
-              <p className="lp-auth-plan-terms">Billed yearly — or $7.99 month to month.</p>
+              <p className="lp-auth-plan-terms">Billed yearly, or $7.99 month to month.</p>
             </div>
           </div>
         </section>
@@ -457,7 +457,7 @@ function EnablePasskeyPrompt() {
         {!checking && !hasPasskey && !registered && (
           <div className="lp-auth-passkey">
             <p className="lp-body lp-auth-tag">
-              Add a passkey for faster sign-in next time — optional.
+              Add a passkey for faster sign-in next time. Optional.
             </p>
             <button
               type="button"

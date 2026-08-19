@@ -47,7 +47,7 @@ function resolveSecretKey(env: {
 }): string {
   const key = env.SUPABASE_SECRET_KEY;
   if (!key) {
-    throw new Error("Missing SUPABASE_SECRET_KEY — see web/README.md#Environment");
+    throw new Error("Missing SUPABASE_SECRET_KEY, see web/README.md#Environment");
   }
   return key;
 }
@@ -60,7 +60,7 @@ export function getSupabaseAdmin(): SupabaseClient<Database> {
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (!supabaseUrl) {
-    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL — see web/README.md#Environment");
+    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL, see web/README.md#Environment");
   }
 
   client = createClient<Database>(supabaseUrl, resolveSecretKey(process.env), {

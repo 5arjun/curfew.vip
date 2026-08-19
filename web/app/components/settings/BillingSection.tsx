@@ -30,7 +30,7 @@ export function BillingSection({
   // A failed read is not a confirmed "no subscription". Pitching Subscribe to
   // someone who may already be paying is the worse of the two wrong answers,
   // so an unknown status renders nothing — the same discipline the Account
-  // section's phone row applies when it shows "—" instead of "Not on file".
+  // section's phone row applies when it shows "-" instead of "Not on file".
   if (statusUnknown) return null;
 
   // Both halves below need a definite string. `offersSubscribeCta` returns

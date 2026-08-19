@@ -80,7 +80,7 @@ export default async function SettingsPage() {
           <DjNameRow initialName={profile.djName} />
           <div className="st-row">
             <span className="st-row-label">Email</span>
-            <span className="st-row-value">{profile.email ?? "—"}</span>
+            <span className="st-row-value">{profile.email ?? "-"}</span>
           </div>
           <div className="st-row">
             <span className="st-row-label">Phone</span>
@@ -89,7 +89,7 @@ export default async function SettingsPage() {
                 {/* "Not on file" is a confirmed fact; a failed djs read is
                     not that fact — render the honest unknown instead. */}
                 {profile.djsReadFailed
-                  ? "—"
+                  ? "-"
                   : profile.phone
                     ? maskPhone(profile.phone)
                     : "Not on file"}
@@ -97,7 +97,7 @@ export default async function SettingsPage() {
                   <span className="st-affix">verified · locked</span>
                 )}
               </span>
-              <p className="st-row-note">Changing your number needs verification — coming later.</p>
+              <p className="st-row-note">Changing your number needs verification. Coming later.</p>
             </div>
           </div>
           <PasswordResetRow />
@@ -125,7 +125,7 @@ export default async function SettingsPage() {
             <div className="st-row-cell">
               <span className="st-row-value">Coming soon</span>
               <p className="st-row-note">
-                Will suggest where you played from your device&apos;s location. You confirm it —
+                Will suggest where you played from your device&apos;s location. You confirm it;
                 nothing saves silently.
               </p>
             </div>

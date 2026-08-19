@@ -82,7 +82,7 @@ export function LinkHandoff() {
           download — instead of the marketing landing it pointed at when no
           such screen existed. */}
       <p className="lp-body lp-auth-tag">
-        Opening Curfew Agent — if nothing happens, make sure it&rsquo;s installed and running.
+        Opening Curfew Agent. If nothing happens, make sure it&rsquo;s installed and running.
       </p>
       <p className="lp-auth-switch">
         Don&rsquo;t have the agent yet? <Link href="/welcome">Get set up</Link>.

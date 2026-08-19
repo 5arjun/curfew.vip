@@ -37,7 +37,7 @@ describe("unidentifiableTracksDisclosure (Story 4.11 AC-6)", () => {
     // 1/10 clears the 5% bar (10%) so the singular branch is reachable.
     const disclosure = unidentifiableTracksDisclosure(1, 10);
     expect(disclosure).toBe(
-      "Across your whole library, 1 track is missing a title or artist tag — without both, " +
+      "Across your whole library, 1 track is missing a title or artist tag. Without both, " +
         "it can't be identified, so it isn't counted in any of these figures.",
     );
   });

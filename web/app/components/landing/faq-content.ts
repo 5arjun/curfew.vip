@@ -22,7 +22,7 @@ export const SECTIONS: Section[] = [
         id: "who-is-curfew-for",
         q: "Who is Curfew for?",
         a: [
-          "Working DJs who play real rooms in Serato — clubs, weddings, corporate nights, private events, bars, radio. If you finish a set wondering how the night actually went, Curfew is built for you.",
+          "Working DJs who play real rooms in Serato: clubs, weddings, corporate nights, private events, bars, radio. If you finish a set wondering how the night actually went, Curfew is built for you.",
           "It fits wedding and private-event DJs especially well: long nights where cocktail hour, dinner and the real dancefloor blur together are exactly what Curfew was built to pull apart.",
         ],
       },
@@ -30,7 +30,7 @@ export const SECTIONS: Section[] = [
         id: "what-is-curfew",
         q: "What is Curfew?",
         a: [
-          "Curfew is an archive of your DJ sets that builds itself. It connects to Serato through a small desktop app — the Curfew agent — and every night you play shows up on your dashboard: the full tracklist in order against the clock, the arc of the night, and how the set sits against the nights before it.",
+          "Curfew is an archive of your DJ sets that builds itself. It connects to Serato through a small desktop app called the Curfew agent, and every night you play shows up on your dashboard: the full tracklist in order against the clock, the arc of the night, and how the set sits against the nights before it.",
           "You never file anything, upload anything, or press record. You play; the archive keeps.",
         ],
       },
@@ -39,7 +39,7 @@ export const SECTIONS: Section[] = [
         q: "What do I need to use it?",
         a: [
           "Two things: Serato DJ on a Mac or Windows laptop, and the Curfew agent installed on that laptop. No hardware, no plugin inside Serato, nothing to export.",
-          "If you play on other software — Rekordbox, Traktor, Engine DJ — Curfew cannot read your sets yet. Serato is what it speaks today.",
+          "If you play on other software such as Rekordbox, Traktor or Engine DJ, Curfew cannot read your sets yet. Serato is what it speaks today.",
         ],
       },
       {
@@ -54,7 +54,7 @@ export const SECTIONS: Section[] = [
         q: "Will my old sets show up, or only new ones?",
         a: [
           "Your archive starts the day you join. Curfew files every set you play from then on; nights from before Curfew are not imported.",
-          "The value compounds from night one — after a month you can already see a month of your own history moving.",
+          "The value compounds from night one. After a month you can already see a month of your own history moving.",
         ],
       },
     ],
@@ -67,7 +67,7 @@ export const SECTIONS: Section[] = [
         id: "where-data-comes-from",
         q: "Where does the data come from?",
         a: [
-          "From Serato, and from the tags already on the tracks in your library — artist, title, BPM, key, genre. When a set ends, Curfew has the night: what you played, in what order, at what time.",
+          "From Serato, and from the tags already on the tracks in your library: artist, title, BPM, key, genre. When a set ends, Curfew has the night: what you played, in what order, at what time.",
           "Curfew never listens to audio and never needs the music files themselves.",
         ],
       },
@@ -75,15 +75,15 @@ export const SECTIONS: Section[] = [
         id: "dancefloor-detection",
         q: "What is the dancefloor detection engine?",
         a: [
-          "A night is longer than its dancefloor. If you play weddings or private events you know the shape: cocktail hour, dinner, speeches — and then the part everyone came for. Club nights have their own version: the empty first hour, the pack-down.",
-          "The dancefloor detection engine finds the stretch that actually mattered and draws that window on the set, so your stats are measured on the real dancefloor — not on the dinner hour.",
+          "A night is longer than its dancefloor. If you play weddings or private events you know the shape: cocktail hour, dinner, speeches, and then the part everyone came for. Club nights have their own version: the empty first hour, the pack-down.",
+          "The dancefloor detection engine finds the stretch that actually mattered and draws that window on the set, so your stats are measured on the real dancefloor, not on the dinner hour.",
         ],
       },
       {
         id: "dancefloor-wrong",
         q: "What if the engine gets the dancefloor wrong?",
         a: [
-          "Drag the edges. Your correction stands — the night’s stats recalculate against it — and the engine learns from what you fixed for next time. It is an estimate you can always overrule, never a verdict.",
+          "Drag the edges. Your correction stands, the night’s stats recalculate against it, and the engine learns from what you fixed for next time. It is an estimate you can always overrule, never a verdict.",
         ],
       },
       {
@@ -118,7 +118,7 @@ export const SECTIONS: Section[] = [
         id: "export-or-delete",
         q: "Can I get my data out, or delete everything?",
         a: [
-          "Yes, both — on request. Ask, and your archive comes back to you in a portable format; ask, and Curfew deletes the account and every row of data it owns. The agent’s own local database lives on your laptop and goes with the app.",
+          "Yes, both, on request. Ask, and your archive comes back to you in a portable format; ask, and Curfew deletes the account and every row of data it owns. The agent’s own local database lives on your laptop and goes with the app.",
           "A self-serve control is coming. Until then a request is handled by a person, not a queue.",
         ],
       },
@@ -139,12 +139,12 @@ export const SECTIONS: Section[] = [
         id: "slow-serato-down",
         q: "Does it run during my set, or slow Serato down?",
         a: [
-          "It never attaches to Serato and never touches audio. Its work happens after the night, not during it — while you play, it stays out of the way.",
+          "It never attaches to Serato and never touches audio. Its work happens after the night, not during it. While you play, it stays out of the way.",
         ],
       },
       {
         id: "usb-library",
-        q: "My library lives on a USB drive — does that work?",
+        q: "My library lives on a USB drive. Does that work?",
         a: [
           "Yes. Tell the agent where your library lives and it works from there. If the drive is unplugged the agent says so plainly, and picks up where it left off when the drive comes back.",
         ],
@@ -159,7 +159,7 @@ export const SECTIONS: Section[] = [
         id: "what-does-it-cost",
         q: "What does Curfew cost?",
         a: [
-          "One plan: $6.99 a month billed yearly, or $7.99 month to month. Every feature is in it — there are no tiers, and nothing sits behind a higher price.",
+          "One plan: $6.99 a month billed yearly, or $7.99 month to month. Every feature is in it. There are no tiers, and nothing sits behind a higher price.",
         ],
       },
       {
@@ -173,7 +173,7 @@ export const SECTIONS: Section[] = [
         id: "what-if-i-cancel",
         q: "What happens if I cancel?",
         a: [
-          "You stop paying — no lock-in, no wind-down call. Your data stays yours either way: export or deletion, on request, exactly as above.",
+          "You stop paying. No lock-in, no wind-down call. Your data stays yours either way: export or deletion, on request, exactly as above.",
         ],
       },
     ],

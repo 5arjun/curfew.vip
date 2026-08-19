@@ -95,7 +95,7 @@ export function StatsColumn({
             type="button"
             className="sd-stat sd-stat-harmonic"
             onClick={() => setOverlay("harmonic")}
-            aria-label="Harmonic mixing — open transition detail"
+            aria-label="Harmonic mixing, open transition detail"
           >
             <p className="sd-stat-label">In key</p>
             {keyedTransitions > 0 ? (
@@ -122,7 +122,7 @@ export function StatsColumn({
             type="button"
             className="sd-stat sd-stat-bpm"
             onClick={() => setOverlay("bpm")}
-            aria-label="Tempo — open BPM histogram"
+            aria-label="Tempo, open BPM histogram"
           >
             <p className="sd-stat-label">Tempo</p>
             {bpm.count > 0 ? (
@@ -152,7 +152,7 @@ export function StatsColumn({
             type="button"
             className="sd-stat sd-stat-genre"
             onClick={() => setOverlay("genre")}
-            aria-label="Genres — open full breakdown"
+            aria-label="Genres, open full breakdown"
           >
             <p className="sd-stat-label">Genres</p>
             {genres.buckets.length > 0 ? (
@@ -288,7 +288,7 @@ export function StatsColumn({
                   type="button"
                   className="sd-module-head"
                   onClick={() => setOverlay("artists")}
-                  aria-label="Most-played artists — open full list"
+                  aria-label="Most-played artists, open full list"
                 >
                   <span className="sd-stat-label">Most-played artists</span>
                   <span className="sd-module-more" aria-hidden="true">
@@ -331,7 +331,7 @@ export function StatsColumn({
 
         {/* G — reserved for Story 5.5 enrichment (AC-16). */}
         <section className="sd-module sd-module-reserved" aria-hidden="true">
-          <p className="sd-reserved-copy">Venue · crowd · notes — coming with enrichment</p>
+          <p className="sd-reserved-copy">Venue · crowd · notes, coming with enrichment</p>
         </section>
       </div>
 

@@ -30,7 +30,7 @@ import { pageMetadata } from "@/lib/seo";
 // opt-in, not bundled into these terms. Finding A; launch-checklist §5.
 
 export const metadata: Metadata = pageMetadata({
-  title: "Curfew — terms of service",
+  title: "Curfew · terms of service",
   description:
     "The agreement between you and Curfew, in plain words: one plan, your sets stay yours, cancel whenever.",
   path: "/terms",
@@ -54,7 +54,7 @@ export default function TermsPage() {
                 items={[
                   "One plan: $6.99 a month billed yearly, or $7.99 month to month. Cancel whenever.",
                   "Your sets are yours. Curfew stores and processes them only to run your archive.",
-                  "The agent is licensed to you, not sold — install it on the machines you play from.",
+                  "The agent is licensed to you, not sold. Install it on the machines you play from.",
                   "Don't abuse the service. Accounts that do can be suspended.",
                   "Curfew is provided as-is, and its estimates are estimates.",
                 ]}
@@ -73,14 +73,14 @@ export default function TermsPage() {
           body: (
             <>
               <LegalP>
-                Curfew is an archive of your DJ sets that builds itself: a small desktop app — the
-                Curfew agent — reads Serato on your laptop, and the web dashboard shows every night
+                Curfew is an archive of your DJ sets that builds itself: a small desktop app called the
+                Curfew agent reads Serato on your laptop, and the web dashboard shows every night
                 you play from the day you join onward. These terms cover both, plus everything else
                 under curfew.vip.
               </LegalP>
               <LegalP>
                 Your archive starts at signup. Nights from before Curfew are not imported, and
-                Curfew never reads or uploads your music files — what it keeps is the record of the
+                Curfew never reads or uploads your music files. What it keeps is the record of the
                 set: titles, times, keys, BPMs, and the stats built from them.
               </LegalP>
             </>
@@ -92,14 +92,14 @@ export default function TermsPage() {
           body: (
             <>
               <LegalP>
-                An account is one DJ. Keep the email and phone number on it real — they are how
-                Curfew reaches you if your archive needs attention — and keep your sign-in to
+                An account is one DJ. Keep the email and phone number on it real, because they are how
+                Curfew reaches you if your archive needs attention, and keep your sign-in to
                 yourself. What happens under your account is yours to answer for, so tell us
                 straight away if you think someone else has gotten in.
               </LegalP>
               <LegalP>
                 By giving Curfew that email and number you agree Curfew can contact you at both:
-                account mail, and messages about the product itself — new features, offers. The
+                account mail, and messages about the product itself: new features, offers. The
                 second kind you can stop any time, by the means the{" "}
                 <Link href="/privacy">privacy policy</Link> sets out. Message rates from your
                 carrier are yours.
@@ -116,12 +116,12 @@ export default function TermsPage() {
               <LegalP>
                 One plan, everything in it: $6.99 a month billed yearly, or $7.99 month to month.
                 The plan renews on its own until you cancel. Prices can change, but never mid-term
-                and never silently — you get notice by email first, and the new price only applies
+                and never silently. You get notice by email first, and the new price only applies
                 from your next renewal.
               </LegalP>
               <LegalP>
                 Cancel whenever. Your plan runs to the end of the period you paid for, then simply
-                stops — no wind-down call, no exit fee. Your data stays yours either way: export or
+                stops. No wind-down call, no exit fee. Your data stays yours either way: export or
                 deletion, on request, exactly as the <Link href="/privacy">privacy policy</Link>{" "}
                 describes. If a charge ever looks wrong, write to us and we will sort it out.
               </LegalP>
@@ -136,7 +136,7 @@ export default function TermsPage() {
               <LegalP>
                 The Curfew agent is licensed to you for as long as you have an account: install it
                 on the machines you play from and use it with the service. That license is the
-                whole grant — don&rsquo;t redistribute the agent, resell it, or try to take it
+                whole grant: don&rsquo;t redistribute the agent, resell it, or try to take it
                 apart, except where the law says that last part can&rsquo;t be waived.
               </LegalP>
               <LegalP>
@@ -154,7 +154,7 @@ export default function TermsPage() {
               <LegalP>
                 The record of every set you play belongs to you. Curfew takes only the license it
                 needs to run the service: to store your sets, compute your stats, and show them
-                back to you. Sets are private to your account — no public profiles, no feed, and
+                back to you. Sets are private to your account. No public profiles, no feed, and
                 Curfew never sells your data or hands it to advertisers. How Curfew itself contacts
                 you, and how to stop it, is in the <Link href="/privacy">privacy policy</Link>.
               </LegalP>
@@ -169,7 +169,7 @@ export default function TermsPage() {
               <LegalP>
                 Use Curfew to archive the sets you play. Don&rsquo;t probe, overload, or break the
                 service; don&rsquo;t try to reach data that isn&rsquo;t yours; don&rsquo;t resell
-                access or automate accounts. An account doing any of that can be suspended — with
+                access or automate accounts. An account doing any of that can be suspended, with
                 notice and a chance to respond where that&rsquo;s possible, immediately where
                 it&rsquo;s not.
               </LegalP>
@@ -182,7 +182,7 @@ export default function TermsPage() {
           body: (
             <>
               <LegalP>
-                Curfew works to keep every night you play captured and every number honest — and is
+                Curfew works to keep every night you play captured and every number honest, and is
                 still provided as-is, without warranties. Estimates are estimates: dancefloor
                 detection draws a window you can always overrule, and stats are only as good as the
                 tags on your tracks. Outages, data loss, and mistakes are things we work hard

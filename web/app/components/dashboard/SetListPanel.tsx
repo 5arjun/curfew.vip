@@ -203,7 +203,7 @@ export function SetListPanel({ rows }: { rows: SetRowModel[] }) {
           <div className="dz-list-scroll" ref={scrollRef}>
             {rows.length === 0 ? (
               <p className="dz-list-empty">
-                Your archive opens with your first captured set — every night lands here, searchable.
+                Your archive opens with your first captured set. Every night lands here, searchable.
               </p>
             ) : (
               <>
@@ -212,7 +212,7 @@ export function SetListPanel({ rows }: { rows: SetRowModel[] }) {
                     {showLowConfidence ? (
                       <>
                         Showing {lowConfidenceTotal} low-confidence{" "}
-                        {lowConfidenceTotal === 1 ? "session" : "sessions"} —{" "}
+                        {lowConfidenceTotal === 1 ? "session" : "sessions"} ·{" "}
                         <button
                           type="button"
                           className="dz-list-hidden-toggle"
@@ -223,7 +223,7 @@ export function SetListPanel({ rows }: { rows: SetRowModel[] }) {
                       </>
                     ) : (
                       <>
-                        {hiddenCount} low-confidence {hiddenCount === 1 ? "session" : "sessions"} hidden —{" "}
+                        {hiddenCount} low-confidence {hiddenCount === 1 ? "session" : "sessions"} hidden ·{" "}
                         <button
                           type="button"
                           className="dz-list-hidden-toggle"
@@ -236,7 +236,7 @@ export function SetListPanel({ rows }: { rows: SetRowModel[] }) {
                   </p>
                 )}
                 {visibleRows.length === 0 && availableRows.length > 0 && (
-                  <p className="dz-list-empty">No sets match — try a date, a song, or an artist.</p>
+                  <p className="dz-list-empty">No sets match. Try a date, a song, or an artist.</p>
                 )}
               </>
             )}

@@ -47,7 +47,7 @@ export default function GlobalError({
             Something went sideways.
           </h1>
           <p style={{ color: "var(--color-on-surface-variant)", margin: 0, lineHeight: 1.6 }}>
-            The page failed to load. Your sets and history are untouched — this is a display
+            The page failed to load. Your sets and history are untouched. This is a display
             problem, not a data one.
           </p>
           <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center" }}>

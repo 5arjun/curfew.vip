@@ -57,7 +57,7 @@ export function resolvePriceId(interval: unknown, env: PriceEnv): string {
   const key = PRICE_ENV_KEY[parsed];
   const priceId = env[key];
   if (!priceId) {
-    throw new Error(`Missing ${key} — Stripe Price ids are not configured for this environment`);
+    throw new Error(`Missing ${key}: Stripe Price ids are not configured for this environment`);
   }
   return priceId;
 }

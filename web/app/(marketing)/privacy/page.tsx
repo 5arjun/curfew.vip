@@ -36,9 +36,9 @@ import { pageMetadata } from "@/lib/seo";
 // launch-checklist §5.
 
 export const metadata: Metadata = pageMetadata({
-  title: "Curfew — privacy policy",
+  title: "Curfew · privacy policy",
   description:
-    "What Curfew collects (the record of your sets — never your music files), who touches it, and how to get it out or delete it.",
+    "What Curfew collects (the record of your sets, never your music files), who touches it, and how to get it out or delete it.",
   path: "/privacy",
 });
 
@@ -48,7 +48,7 @@ export default function PrivacyPage() {
       eyebrow="Privacy policy"
       title="What Curfew knows."
       sub="Exactly what Curfew collects, why, who touches it, and how you get it out. No tracking
-        confessions buried in section nine — there's nothing to bury."
+        confessions buried in section nine, because there's nothing to bury."
       updated="Effective August 16, 2026"
       sections={[
         {
@@ -57,10 +57,10 @@ export default function PrivacyPage() {
           body: (
             <LegalList
               items={[
-                "Your music files never leave your laptop. Curfew syncs the record of a set — titles, times, keys, BPMs — never audio.",
+                "Your music files never leave your laptop. Curfew syncs the record of a set: titles, times, keys, BPMs. Never audio.",
                 "Your sets are private to your account. No public profiles, no feed.",
                 "Curfew doesn't sell your data, and runs no advertising trackers.",
-                "Curfew may email or text you about Curfew — new features, offers. One reply stops it.",
+                "Curfew may email or text you about Curfew: new features, offers. One reply stops it.",
                 "Export everything or delete everything, any time, by asking.",
               ]}
             />
@@ -82,7 +82,7 @@ export default function PrivacyPage() {
               </LegalP>
               <LegalP>
                 <strong>Agent status.</strong> Whether the agent is reachable and syncing, and
-                which version it runs — so the dashboard can tell you plainly when something needs
+                which version it runs, so the dashboard can tell you plainly when something needs
                 attention.
               </LegalP>
               <LegalP>
@@ -100,7 +100,7 @@ export default function PrivacyPage() {
             <>
               <LegalP>
                 Your music. Curfew never listens to audio, never uploads a music file, and never
-                needs either — your library stays on your laptop, whole. There is no microphone
+                needs either. Your library stays on your laptop, whole. There is no microphone
                 access, no location tracking, and no reading of anything on your machine beyond
                 what running your archive requires.
               </LegalP>
@@ -115,7 +115,7 @@ export default function PrivacyPage() {
               <LegalP>
                 From you, when you create the account. From the agent on your laptop, which reads
                 Serato and the tags on your tracks. And if you sign in with Google or Apple, that
-                provider shares your name and email with Curfew — nothing more, and only because
+                provider shares your name and email with Curfew. Nothing more, and only because
                 you chose it.
               </LegalP>
             </>
@@ -132,10 +132,10 @@ export default function PrivacyPage() {
                 is how a person reaches you if your archive needs attention.
               </LegalP>
               <LegalP>
-                Curfew may also use your email or your number to tell you about the product itself
-                — new features, offers, things worth knowing. That is Curfew writing to you about
+                Curfew may also use your email or your number to tell you about the product itself:
+                new features, offers, things worth knowing. That is Curfew writing to you about
                 Curfew, and nothing more: your details are never sold, rented, or handed to anyone
-                else to advertise with. Stop those messages any time — reply STOP to a text, use
+                else to advertise with. Stop those messages any time. Reply STOP to a text, use
                 the unsubscribe link in an email, or write to{" "}
                 <a href="mailto:support@curfew.vip?subject=Unsubscribe">support@curfew.vip</a>.
                 Account mail keeps coming, because it is how the service reaches you.
@@ -153,18 +153,18 @@ export default function PrivacyPage() {
               </LegalP>
               <LegalList
                 items={[
-                  "Supabase — the database and sign-in.",
-                  "Vercel — hosting for the site and dashboard.",
-                  "Cloudflare — the domain, and the front door every request comes through.",
-                  "Stripe — payment and billing.",
-                  "Resend — delivery of account email.",
-                  "Sentry — crash reports from the agent and the website.",
+                  "Supabase: the database and sign-in.",
+                  "Vercel: hosting for the site and dashboard.",
+                  "Cloudflare: the domain, and the front door every request comes through.",
+                  "Stripe: payment and billing.",
+                  "Resend: delivery of account email.",
+                  "Sentry: crash reports from the agent and the website.",
                 ]}
               />
               <LegalP>
                 When you pay for Curfew, your card details go to Stripe and never touch
                 Curfew&rsquo;s servers. If you signed in with Google or Apple, that provider knows
-                you have an account here — that is what signing in with them means. None of these
+                you have an account here, which is what signing in with them means. None of these
                 services may use your data for anything beyond the job named above.
               </LegalP>
             </>
@@ -183,14 +183,14 @@ export default function PrivacyPage() {
               </LegalP>
               <LegalP>
                 No one is allowed to follow you off this site. Curfew lets no third party collect
-                anything about what you do here, or anywhere else, over time — there is no ad
+                anything about what you do here, or anywhere else, over time. There is no ad
                 network in the page and nothing to sell if there were.
               </LegalP>
               <LegalP>
                 <strong>Do Not Track.</strong> Some browsers send a &ldquo;do not track&rdquo;
                 signal, and there is no agreed standard for answering it. Curfew doesn&rsquo;t need
                 one: it does no behavioral tracking to switch off, so the signal changes nothing
-                here — you are already getting what it asks for.
+                here. You are already getting what it asks for.
               </LegalP>
             </>
           ),
@@ -205,13 +205,13 @@ export default function PrivacyPage() {
                 <a href="mailto:support@curfew.vip?subject=Data%20export%20request">
                   support@curfew.vip
                 </a>{" "}
-                and your archive comes back to you in a portable format — or Curfew deletes the
+                and your archive comes back to you in a portable format, or Curfew deletes the
                 account and every row of data it owns. Requests are handled by a person, not a
                 queue; a self-serve control is coming. The agent&rsquo;s own local database lives
                 on your laptop and goes with the app.
               </LegalP>
               <LegalP>
-                Some places give you these rights by statute — to see your data, correct it, take
+                Some places give you these rights by statute: to see your data, correct it, take
                 it with you, have it erased. Curfew is sold in the US and built to that standard,
                 and doesn&rsquo;t check which rules you fall under before answering: ask, and the
                 address above does all four, for anyone.
@@ -225,7 +225,7 @@ export default function PrivacyPage() {
           body: (
             <>
               <LegalP>
-                As long as your account exists — the archive is the product, so nothing is aged
+                As long as your account exists. The archive is the product, so nothing is aged
                 out. Cancel and your data stays yours to export or delete, exactly as above; delete
                 the account and it&rsquo;s gone from Curfew&rsquo;s side.
               </LegalP>
@@ -246,7 +246,7 @@ export default function PrivacyPage() {
                 Questions, or anything here that doesn&rsquo;t match what you see the product do:{" "}
                 <a href="mailto:support@curfew.vip">support@curfew.vip</a>. See also the{" "}
                 <Link href="/faq#music-files-uploaded">FAQ&rsquo;s &ldquo;Your data&rdquo;</Link>{" "}
-                section — the same promises, shorter.
+                section, which makes the same promises in fewer words.
               </LegalP>
             </>
           ),

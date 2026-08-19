@@ -17,9 +17,9 @@ type Failure = "retry" | "signedOut" | "gone" | "unavailable";
 type State = { kind: "idle" } | { kind: "starting" } | { kind: "failed"; why: Failure };
 
 const FAILURE_COPY: Record<Failure, string> = {
-  retry: "Couldn't open billing management — retry.",
-  signedOut: "Your session expired — sign in again to manage billing.",
-  gone: "This subscription is no longer active — reload the page.",
+  retry: "Couldn't open billing management. Retry.",
+  signedOut: "Your session expired. Sign in again to manage billing.",
+  gone: "This subscription is no longer active. Reload the page.",
   unavailable: "Billing management is unavailable right now.",
 };
 

@@ -127,11 +127,11 @@ export const OG_IMAGE = {
   url: "/opengraph-image.jpg",
   width: 1200,
   height: 630,
-  alt: "Curfew — every set has a shape. You have never seen yours.",
+  alt: "Curfew: every set has a shape. You have never seen yours.",
 } as const;
 
 type PageInput = {
-  /** Full `<title>`, verbatim. Brand-first ("Curfew — …"), as every page here already is. */
+  /** Full `<title>`, verbatim. Brand-first ("Curfew · …"), as every page here already is. */
   title: string;
   description: string;
   /** Site-relative, with the leading slash — becomes the canonical and `og:url`. */

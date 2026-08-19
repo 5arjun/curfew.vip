@@ -15,7 +15,7 @@ import { NEW_SEGMENT_ID, type SegmentEditor } from "./useSegmentEditor";
 /** Transition copy — descriptive, never a judgement of the mixing
  * ("in key"/"out of key", post-review wording ruling). */
 function transitionLabel(t: Transition): string {
-  const keys = `${t.fromKey ?? "—"} → ${t.toKey ?? "—"}`;
+  const keys = `${t.fromKey ?? "-"} → ${t.toKey ?? "-"}`;
   const state = t.state === "smooth" ? "in key" : t.state === "clash" ? "out of key" : "no key";
   return `${keys} · ${state}`;
 }
@@ -173,7 +173,7 @@ export function Tracklist({
         <div className="sd-focus-pill-row">
           <button type="button" className="sd-focus-pill" onClick={onDismissFocus}>
             Focused: {focus.label} <span aria-hidden="true">✕</span>
-            <span className="sr-only">— clear focus</span>
+            <span className="sr-only">, clear focus</span>
           </button>
         </div>
       )}
@@ -280,7 +280,7 @@ export function Tracklist({
                   ) : (
                     <>
                       <p className="sd-row-title">{play.title ?? "Unknown title"}</p>
-                      <p className="sd-row-artist">{play.artist ?? "—"}</p>
+                      <p className="sd-row-artist">{play.artist ?? "-"}</p>
                     </>
                   )}
                 </div>
@@ -306,7 +306,7 @@ export function Tracklist({
                         : undefined
                     }
                   >
-                    {play.camelot_key ?? "—"}
+                    {play.camelot_key ?? "-"}
                   </span>
                 </div>
               </div>

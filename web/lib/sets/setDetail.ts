@@ -556,9 +556,9 @@ export function arcPeakPosition(plays: SyncPlay[]): number | null {
 
 /* ── Formatting ──────────────────────────────────────────────────────── */
 
-/** Played-length as `m:ss` (or `h:mm:ss` past an hour), e.g. `6:21`. `null` → "—". */
+/** Played-length as `m:ss` (or `h:mm:ss` past an hour), e.g. `6:21`. `null` → "-". */
 export function formatPlayedLength(ms: number | null | undefined): string {
-  if (ms == null || !Number.isFinite(ms) || ms < 0) return "—";
+  if (ms == null || !Number.isFinite(ms) || ms < 0) return "-";
   const totalSec = Math.round(ms / 1000);
   const h = Math.floor(totalSec / 3600);
   const m = Math.floor((totalSec % 3600) / 60);

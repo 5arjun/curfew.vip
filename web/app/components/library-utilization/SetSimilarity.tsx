@@ -24,7 +24,7 @@ const SIMILARITY_TOO_FEW_SETS_COPY =
   "Two sets is the minimum for a comparison. Once there's another night to hold this one against, the overlap shows up here.";
 
 const SIMILARITY_NOTHING_TO_COMPARE_COPY =
-  "No overlap to show yet — there aren't enough named tracks in these sets to compare them. As more of your plays come through with track names, this fills in.";
+  "No overlap to show yet. There aren't enough named tracks in these sets to compare them. As more of your plays come through with track names, this fills in.";
 
 function pct(share: number): string {
   return `${Math.round(share * 100)}%`;
@@ -113,7 +113,7 @@ export function SetSimilarity({ model }: { model: SetSimilarityModel }) {
               the card and under the nav rail (Arjun, 2026-08-18). */}
           <InfoTip label="How set similarity is calculated" align="start">
             Each cell counts the tracks two sets have in common, divided by the number of distinct
-            identified tracks across both — so two identical sets read 100%, and two with nothing in
+            identified tracks across both, so two identical sets read 100%, and two with nothing in
             common read 0%. A track counts once per set no matter how often you played it, and tracks
             Curfew couldn&rsquo;t identify are left out of both halves. A blank cell means one of the
             two sets had no identified tracks at all, which is unknown rather than zero.

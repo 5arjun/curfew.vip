@@ -109,7 +109,7 @@ function SignOutModal({ onCancel }: { onCancel: () => void }) {
         </h2>
         <p className="st-modal-body">Your sets stay archived. The agent keeps capturing.</p>
         {error && (
-          <p className="st-modal-error">Something went sideways — you&apos;re still signed in.</p>
+          <p className="st-modal-error">Something went sideways. You&apos;re still signed in.</p>
         )}
         <div className="st-modal-actions">
           <button

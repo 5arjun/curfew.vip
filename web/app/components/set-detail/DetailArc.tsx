@@ -490,7 +490,7 @@ function DetailArcChart({
       <div className="sd-arc sd-arc-fallback dz-shell" role="img" aria-label={caption}>
         <span className="dz-dots" aria-hidden="true" />
         <p className="sd-arc-fallback-copy">
-          {geo.count === 1 ? "Single track — no arc to draw." : "No tempo data — no arc to draw."}
+          {geo.count === 1 ? "Single track, so no arc to draw." : "No tempo data, so no arc to draw."}
         </p>
       </div>
     );

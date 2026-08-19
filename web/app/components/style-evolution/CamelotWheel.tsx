@@ -196,7 +196,7 @@ function CamelotWheelPlot({ wheel, caption }: { wheel: CamelotWheelModel; captio
             </button>
             <span role="tooltip" id={tipId} className="se-chart-info-tip">
               Every track&rsquo;s key maps to one wedge: 1&ndash;12 around the clock, minor keys (A) on the inner
-              ring, major (B) on the outer. The more you play a key, the more vivid its wedge — an empty outline
+              ring, major (B) on the outer. The more you play a key, the more vivid its wedge. An empty outline
               means you&rsquo;ve never played it. Neighbouring wedges, and the same number across rings, mix in key:
               a bright cluster is your harmonic home turf.
             </span>

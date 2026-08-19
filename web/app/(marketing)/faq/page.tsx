@@ -10,9 +10,9 @@ import { faqJsonLd, jsonLdScriptProps, pageMetadata } from "@/lib/seo";
 // MarketingMesh.tsx) and landing.css.
 
 export const metadata: Metadata = pageMetadata({
-  title: "Curfew — asked, answered",
+  title: "Curfew · asked, answered",
   description:
-    "What Curfew reads, what leaves your laptop (the record of the set — never your music files), and what the one plan costs. Straight answers.",
+    "What Curfew reads, what leaves your laptop (the record of the set, never your music files), and what the one plan costs. Straight answers.",
   path: "/faq",
 });
 

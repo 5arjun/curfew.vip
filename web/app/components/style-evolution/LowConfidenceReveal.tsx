@@ -49,14 +49,14 @@ export function LowConfidenceReveal({
     <p className="se-hidden-note">
       {revealed ? (
         <>
-          Showing {hiddenCount} {descriptor} {sessions} —{" "}
+          Showing {hiddenCount} {descriptor} {sessions} ·{" "}
           <button type="button" className="se-hidden-toggle" onClick={onHide}>
             hide
           </button>
         </>
       ) : (
         <>
-          {hiddenCount} {descriptor} {sessions} hidden —{" "}
+          {hiddenCount} {descriptor} {sessions} hidden ·{" "}
           <button type="button" className="se-hidden-toggle" onClick={onReveal}>
             show
           </button>

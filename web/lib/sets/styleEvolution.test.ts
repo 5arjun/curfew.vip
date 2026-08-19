@@ -973,7 +973,7 @@ describe("summary-tile code-review 2026-08-07 regressions", () => {
   it("carries a set count so AC-8's tile row can tell 'no history' from 'one month of history'", () => {
     // AC-8 narrows the gate for a DJ with ">=1 set but <2 months" and
     // explicitly does NOT touch the 0-set case. The view is handed only this
-    // model, so without a count it rendered four "—" tiles at a DJ who has
+    // model, so without a count it rendered four "-" tiles at a DJ who has
     // never synced anything.
     expect(buildStyleEvolution([]).setCount).toBe(0);
     expect(

@@ -8,7 +8,7 @@ import { ResetPasswordForm } from "./reset-password-form";
 // needs its own noindex (launch checklist §1.6). It had no metadata at all
 // before this pass, which meant it was also carrying the root layout's title.
 export const metadata: Metadata = {
-  title: "Curfew — set a new password",
+  title: "Curfew · set a new password",
   description: "Set a new password for your Curfew account.",
   ...NOINDEX,
 };

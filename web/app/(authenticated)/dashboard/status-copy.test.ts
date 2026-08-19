@@ -4,12 +4,15 @@ import { AGENT_STATUS_COPY, AGENT_SYNCING_COPY, agentStatusLine } from "./status
 
 describe("AGENT_STATUS_COPY", () => {
   it("quotes the EXPERIENCE.md Failure Register verbatim", () => {
-    // Character-exact, including the em dashes and the curly apostrophe in
-    // "you're" — paraphrasing here is the specific thing UX-DR18 forbids.
-    expect(AGENT_STATUS_COPY.Queued).toBe("Queued — will sync when you're back online.");
+    // Character-exact, including the curly apostrophe in "you're" —
+    // paraphrasing here is the specific thing UX-DR18 forbids. The em dashes
+    // the Register originally carried were removed product-wide (2026-08-19,
+    // Arjun: no em dash anywhere a DJ can see one); the sentences are
+    // otherwise untouched.
+    expect(AGENT_STATUS_COPY.Queued).toBe("Queued. Will sync when you're back online.");
     expect(AGENT_STATUS_COPY.Failed).toBe("Sync interrupted. Retrying automatically.");
     expect(AGENT_STATUS_COPY.FormatDriftPaused).toBe(
-      "Format change detected — sync paused until verified.",
+      "Format change detected. Sync paused until verified.",
     );
   });
 
@@ -34,7 +37,7 @@ describe("AGENT_STATUS_COPY", () => {
 describe("agentStatusLine", () => {
   it("maps the three Failure-Register states to their exact lines", () => {
     expect(agentStatusLine("Queued")).toEqual({
-      text: "Queued — will sync when you're back online.",
+      text: "Queued. Will sync when you're back online.",
       tone: "report",
     });
     expect(agentStatusLine("Failed")).toEqual({
@@ -42,7 +45,7 @@ describe("agentStatusLine", () => {
       tone: "report",
     });
     expect(agentStatusLine("FormatDriftPaused")).toEqual({
-      text: "Format change detected — sync paused until verified.",
+      text: "Format change detected. Sync paused until verified.",
       tone: "report",
     });
   });

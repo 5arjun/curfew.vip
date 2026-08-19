@@ -9,9 +9,9 @@ import { pageMetadata } from "@/lib/seo";
 // landing.css.
 
 export const metadata: Metadata = pageMetadata({
-  title: "Curfew — fully automatic",
+  title: "Curfew · fully automatic",
   description:
-    "Curfew reads Serato's session files and your library's own tags. No plugin, no upload, no manual work — the archive builds itself.",
+    "Curfew reads Serato's session files and your library's own tags. No plugin, no upload, no manual work. The archive builds itself.",
   path: "/features",
 });
 

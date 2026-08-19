@@ -38,7 +38,7 @@ describe("settingsAgentLine", () => {
 
   it("speaks DriveNotConnected — EXPERIENCE.md scopes that state to tray + Settings", () => {
     expect(settingsAgentLine(snapshotAgedMs(60_000, "DriveNotConnected")).text).toBe(
-      "Archive unreachable — reconnect drive to resume. · 1 min ago",
+      "Archive unreachable. Reconnect drive to resume. · 1 min ago",
     );
   });
 

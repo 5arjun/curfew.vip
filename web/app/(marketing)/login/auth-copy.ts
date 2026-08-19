@@ -4,10 +4,10 @@
 // doesn't name a specific line for, kept in the same calm, no-exclamation-point
 // register.
 export const AUTH_FAILURE_COPY = {
-  wrongPassword: "Credentials not recognized — try again.",
-  emailAlreadyRegistered: "Account already archived — log in instead.",
+  wrongPassword: "Credentials not recognized. Try again.",
+  emailAlreadyRegistered: "Account already archived. Log in instead.",
   emailNotConfirmed: "Check your email to confirm your account first.",
-  generic: "Something went sideways — try again.",
+  generic: "Something went sideways. Try again.",
 } as const;
 
 type SignInErrorShape = { code?: string | null; message: string };

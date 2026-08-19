@@ -75,7 +75,7 @@ export function RotationSize({ model }: { model: RotationSizeModel }) {
           {/* AC-7/D-21: the window is fixed, and saying so is what stops it
               reading as a figure the dropdown above forgot to move. */}
           <p className="lu-disclosure" aria-hidden="true">
-            Across the last {model.windowDays} days — {model.setCount}{" "}
+            Across the last {model.windowDays} days · {model.setCount}{" "}
             {model.setCount === 1 ? "set" : "sets"}
           </p>
         </>

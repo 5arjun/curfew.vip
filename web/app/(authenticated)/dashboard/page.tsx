@@ -96,7 +96,7 @@ export default async function DashboardPage({
           <span className="dz-dots" aria-hidden="true" />
           <p className="dz-hero-cold-title">Your first set lands here.</p>
           <p className="dz-hero-cold-body">
-            Play a night and Curfew traces it — the arc of the tempo, the dancefloor it finds, the
+            Play a night and Curfew traces it: the arc of the tempo, the dancefloor it finds, the
             numbers that made it.
           </p>
         </section>

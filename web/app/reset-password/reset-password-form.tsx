@@ -20,7 +20,7 @@ export function ResetPasswordForm() {
     setPending(true);
     const password = String(new FormData(event.currentTarget).get("password") ?? "");
     const result = await updatePassword(password).catch(
-      () => ({ ok: false, error: "Password not changed — try again." }) as const,
+      () => ({ ok: false, error: "Password not changed. Try again." }) as const,
     );
     if (result.ok) {
       // Back into the app: Settings is where the reset began, and for a DJ

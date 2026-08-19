@@ -20,7 +20,7 @@ import { tileBucketLabel, type Granularity, type SummaryTiles, type TileReading 
 
 /** `+4` / `−3` / `+0.3` — a signed, fixed-precision delta string. Never
  *  called when `delta` is `null` (AC-5: no delta markup at all, not a
- *  fabricated `—`). */
+ *  fabricated `-`). */
 function signed(delta: number, decimals: number): string {
   const rounded = Math.abs(delta) < 10 ** -decimals / 2 ? 0 : delta;
   const sign = rounded > 0 ? "+" : rounded < 0 ? "−" : "±";
@@ -80,7 +80,7 @@ function tileSpec(
   deltaFmt: (d: number) => string,
   hint: string | null,
 ): TileSpec {
-  if (!reading) return { key, label, valueText: "—", deltaText: null, comparison: null, hint };
+  if (!reading) return { key, label, valueText: "-", deltaText: null, comparison: null, hint };
   return {
     key,
     label,
@@ -107,7 +107,7 @@ function SummaryTile({ label, valueText, deltaText, comparison, hint }: Omit<Til
         {valueText}
       </p>
       {/* AC-5: no delta markup at all when there is nothing to compare
-          against — never an empty string, never a "—" that would read as a
+          against — never an empty string, never a "-" that would read as a
           real measured flatline. */}
       {deltaText && comparison && (
         <p className="se-tile-delta" aria-hidden="true">
@@ -151,7 +151,7 @@ export function SummaryTileRow({ tiles, granularity }: { tiles: SummaryTiles; gr
       (v) => `${Math.round(v * 100)}%`,
       (d) => `${signed(d * 100, 0)}pp`,
       tiles.harmonicExcludedNoKey > 0
-        ? `${tiles.harmonicExcludedNoKey} ${tiles.harmonicExcludedNoKey === 1 ? "transition" : "transitions"} excluded — no key`
+        ? `${tiles.harmonicExcludedNoKey} ${tiles.harmonicExcludedNoKey === 1 ? "transition" : "transitions"} excluded · no key`
         : null,
     ),
     tileSpec(
@@ -162,7 +162,7 @@ export function SummaryTileRow({ tiles, granularity }: { tiles: SummaryTiles; gr
       (v) => `${mmss(v)} / track`,
       (d) => `${signed(d, 0)}s`,
       tiles.mixPaceExcludedCount > 0
-        ? `${tiles.mixPaceExcludedCount} ${tiles.mixPaceExcludedCount === 1 ? "play" : "plays"} excluded — no duration`
+        ? `${tiles.mixPaceExcludedCount} ${tiles.mixPaceExcludedCount === 1 ? "play" : "plays"} excluded · no duration`
         : null,
     ),
   ];

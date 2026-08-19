@@ -134,7 +134,7 @@ export function SetHeader({
       </p>
 
       {isLowConfidence(set) && (
-        <p className="sd-confidence-note">Low-confidence session — likely a soundcheck or rehearsal</p>
+        <p className="sd-confidence-note">Low-confidence session, likely a soundcheck or rehearsal</p>
       )}
 
       <p className="sd-scope-line">{scopeLine}</p>

@@ -103,16 +103,16 @@ export async function updatePassword(password: string): Promise<UpdatePasswordRe
     const { data: claimsData } = await supabase.auth.getClaims();
     const amr = (claimsData?.claims as { amr?: unknown } | undefined)?.amr;
     if (!hasRecentInboxProof(amr, Date.now())) {
-      return { ok: false, error: "Reset link expired — request a new one." };
+      return { ok: false, error: "Reset link expired. Request a new one." };
     }
 
     const { error } = await supabase.auth.updateUser({ password });
     if (error) {
-      return { ok: false, error: "Password not changed — try again." };
+      return { ok: false, error: "Password not changed. Try again." };
     }
     return { ok: true };
   } catch {
-    return { ok: false, error: "Password not changed — try again." };
+    return { ok: false, error: "Password not changed. Try again." };
   }
 }
 

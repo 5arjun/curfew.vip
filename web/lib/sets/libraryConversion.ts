@@ -558,11 +558,11 @@ export function libraryConversionSummary(
   const delta = last.rate - first.rate;
 
   if (Math.abs(delta) < RATE_STEADY_THRESHOLD) {
-    return `${lastPhrase} — about the same as ${monthLabel(first.bucket, withYear)}.`;
+    return `${lastPhrase}, about the same as ${monthLabel(first.bucket, withYear)}.`;
   }
 
   const direction = delta > 0 ? "up" : "down";
-  return `${lastPhrase} — ${direction} from ${pct(first.rate)} in ${monthLabel(first.bucket, withYear)}.`;
+  return `${lastPhrase}, ${direction} from ${pct(first.rate)} in ${monthLabel(first.bucket, withYear)}.`;
 }
 
 /**
@@ -644,7 +644,7 @@ export function undatedDisclosure(
     );
   }
   if (parts.length === 0) return null;
-  return `${parts.join(", and ")} — not counted here.`;
+  return `${parts.join(", and ")}. Not counted here.`;
 }
 
 /* ── Time-to-first-play (Story 4.5, FR-13) ──────────────────────────────── */
@@ -994,7 +994,7 @@ export function timeToFirstPlaySummary(model: TimeToFirstPlayModel): string {
     }
     const age = model.neverPlayedAverageAgeMs;
     const waiting = `${unplayed} ${unplayed === 1 ? "track has" : "tracks have"} been added but not played yet`;
-    return age === null ? `${waiting}.` : `${waiting} — averaging ${formatElapsed(age)} on the shelf.`;
+    return age === null ? `${waiting}.` : `${waiting}, averaging ${formatElapsed(age)} on the shelf.`;
   }
 
   // `playedCount >= MIN_TIME_TO_FIRST_PLAY_DEBUTS` guarantees a non-null
@@ -1005,7 +1005,7 @@ export function timeToFirstPlaySummary(model: TimeToFirstPlayModel): string {
   const base =
     unplayed === 0
       ? `${debuts}.`
-      : `${debuts} — ${unplayed} ${unplayed === 1 ? "other hasn't" : "others haven't"} been played yet.`;
+      : `${debuts}. ${unplayed} ${unplayed === 1 ? "other hasn't" : "others haven't"} been played yet.`;
 
   // The early-read qualifier rides in the SAME generator as the figure it
   // qualifies, not just in the component — this module has twice shipped an
@@ -1013,7 +1013,7 @@ export function timeToFirstPlaySummary(model: TimeToFirstPlayModel): string {
   // user sees while a screen-reader user does not would be the third time
   // (Story 4.5 review, finding 2; Sally's condition on the ruling).
   const earlyRead = isEarlyReadAverage(model)
-    ? ` Only ${playedCount} ${playedCount === 1 ? "debut" : "debuts"} so far — early read.`
+    ? ` Only ${playedCount} ${playedCount === 1 ? "debut" : "debuts"} so far, an early read.`
     : "";
   return `${base}${earlyRead}`;
 }

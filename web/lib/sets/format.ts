@@ -24,11 +24,11 @@ import { civilFromIso, usableZoneOr } from "./civilTime";
 
 /** Mono header date, e.g. "SAT · 21 JUN 2026". Uppercased for the console voice. */
 export function formatSetDate(iso: string | null, zone: string): string {
-  if (!iso) return "—";
+  if (!iso) return "-";
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
+  if (Number.isNaN(d.getTime())) return "-";
   const civil = civilFromIso(iso, zone);
-  if (!civil) return "—";
+  if (!civil) return "-";
   // Names through `toLocaleDateString` (locale-shaped, out of scope), numerics
   // off the civil triple — never `getDate`/`getFullYear`, which would read the
   // process's zone and disagree with the month name beside them. Both sides
@@ -75,9 +75,9 @@ export function formatSessionLabel(identity: string): string {
   return `SET ${identity.slice(0, 8).toUpperCase()}`;
 }
 
-/** Human set length, e.g. "5h 56m", "56m", "0m". `null`/non-finite → "—". */
+/** Human set length, e.g. "5h 56m", "56m", "0m". `null`/non-finite → "-". */
 export function formatDuration(seconds: number | null): string {
-  if (seconds == null || !Number.isFinite(seconds)) return "—";
+  if (seconds == null || !Number.isFinite(seconds)) return "-";
   if (seconds < 60) return seconds <= 0 ? "0m" : "1m";
   let hours = Math.floor(seconds / 3600);
   let minutes = Math.round((seconds % 3600) / 60);
@@ -98,11 +98,11 @@ export function formatTrackCount(count: number): string {
    surfaces speak title-case Hanken, not the console voice above. Same
    locale/timezone discipline: a gig's date and clock are the DJ's local ones. */
 
-/** Row/hero date in the set's own zone, e.g. "Fri, Aug 1". `null`/garbage → "—". */
+/** Row/hero date in the set's own zone, e.g. "Fri, Aug 1". `null`/garbage → "-". */
 export function formatDayDate(iso: string | null, zone: string): string {
-  if (!iso) return "—";
+  if (!iso) return "-";
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
+  if (Number.isNaN(d.getTime())) return "-";
   return d.toLocaleDateString([], {
     weekday: "short",
     month: "short",
@@ -112,16 +112,16 @@ export function formatDayDate(iso: string | null, zone: string): string {
 }
 
 /**
- * The clock the DJ saw, e.g. "10:14 PM". `null`/garbage → "—".
+ * The clock the DJ saw, e.g. "10:14 PM". `null`/garbage → "-".
  *
  * This is the label whose wrongness was most visible: a set that started at
  * 10:14 PM in Los Angeles rendered "5:14 AM" server-side, which is not a time
  * anyone plays a club set at.
  */
 export function formatClock(iso: string | null, zone: string): string {
-  if (!iso) return "—";
+  if (!iso) return "-";
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
+  if (Number.isNaN(d.getTime())) return "-";
   return d.toLocaleTimeString([], {
     hour: "numeric",
     minute: "2-digit",
@@ -137,13 +137,13 @@ export function formatTimeRange(
 ): string {
   const start = formatClock(startIso, zone);
   const end = formatClock(endIso, zone);
-  if (start === "—" && end === "—") return "—";
+  if (start === "-" && end === "-") return "-";
   return `${start} – ${end}`;
 }
 
-/** Whole-number BPM for stat rows, e.g. "125". `null`/non-finite → "—". */
+/** Whole-number BPM for stat rows, e.g. "125". `null`/non-finite → "-". */
 export function formatBpm(bpm: number | null | undefined): string {
-  return typeof bpm === "number" && Number.isFinite(bpm) ? `${Math.round(bpm)}` : "—";
+  return typeof bpm === "number" && Number.isFinite(bpm) ? `${Math.round(bpm)}` : "-";
 }
 
 /**

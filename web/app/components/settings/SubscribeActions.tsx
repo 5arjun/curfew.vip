@@ -17,8 +17,8 @@ type State = "idle" | "starting" | "failed";
 const OPTIONS: { interval: BillingInterval; label: string; primary: boolean }[] = [
   // Yearly first and emphasized — it's the price the marketing surfaces lead
   // with ("$6.99/month. Billed yearly — or $7.99 month to month").
-  { interval: "annual", label: "Billed yearly — $6.99/mo", primary: true },
-  { interval: "monthly", label: "Month to month — $7.99/mo", primary: false },
+  { interval: "annual", label: "Billed yearly · $6.99/mo", primary: true },
+  { interval: "monthly", label: "Month to month · $7.99/mo", primary: false },
 ];
 
 export function SubscribeActions() {
@@ -86,7 +86,7 @@ export function SubscribeActions() {
         <p className="st-row-note">Card details go to Stripe, never to Curfew.</p>
         {state === "failed" && (
           <p className="st-inline-error" role="alert">
-            Couldn&apos;t open checkout — retry.
+            Couldn&apos;t open checkout. Retry.
           </p>
         )}
       </div>

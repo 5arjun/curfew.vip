@@ -23,7 +23,7 @@ export type SettingsProfile = {
   subscriptionStatus: string | null;
   /**
    * True when the `djs` row read failed — phone/djName/subscriptionStatus are
-   * UNKNOWN, not absent, and the phone row must render "—", never the
+   * UNKNOWN, not absent, and the phone row must render "-", never the
    * confirmed-null copy "Not on file" (§5 reserves that for a truly
    * phone-less DJ).
    */

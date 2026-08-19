@@ -515,7 +515,7 @@ export function repeatTrackRateSummary(model: RepeatTrackRateModel): string {
   // and naming 5 states a population the DJ does not have.
   return (
     `On a typical night, ${pct(model.rate)} of what you play has already turned up in ` +
-    `the up-to-${model.windowSets} sets before it — averaged across ${nights}.`
+    `the up-to-${model.windowSets} sets before it, averaged across ${nights}.`
   );
 }
 
@@ -583,7 +583,7 @@ function disambiguateLabels(labels: string[]): string[] {
  * shares a day AND has no session label at all.
  *
  * Undated sets cannot reach here: `buildSetSimilarity` reads `index.dated`, so
- * every axis has a real date and there is no `"—"` case to design for.
+ * every axis has a real date and there is no `"-"` case to design for.
  */
 function buildAxisDayLabels(recent: IndexedSet[]): string[] {
   // Story 7.7: each set's own zone, carried on the index — see `IndexedSet.zone`.
@@ -1153,7 +1153,7 @@ export function unlinkableTracksDisclosure(index: UtilizationIndex): string | nu
   const total = index.trackIdByKey.size;
   return (
     `${n} of the ${total} ${plural(total, "track", "tracks")} here ${plural(n, "has", "have")} ` +
-    `no identity Curfew can open a page on — that needs both a title and an artist tag. ` +
+    `no identity Curfew can open a page on, which needs both a title and an artist tag. ` +
     `${plural(n, "It", "They")} still ${plural(n, "shows", "show")} in the lists and in search, without a link.`
   );
 }

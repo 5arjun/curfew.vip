@@ -70,7 +70,7 @@ export default async function WelcomePage() {
         <p className="lp-feat-eyebrow">{setupStepLabel("agent", sellsSubscriptions)}</p>
         <h1 className="lp-auth-title">Now, the agent.</h1>
         <p className="lp-body lp-auth-tag">
-          Your account is ready — and empty. The agent is the part that fills it: a small app on
+          Your account is ready, and empty. The agent is the part that fills it: a small app on
           the laptop that runs Serato. Install it once and every set you play files itself.
         </p>
 
@@ -92,7 +92,7 @@ export default async function WelcomePage() {
             <span className="lp-ob-n" aria-hidden="true">
               03
             </span>
-            Choose &ldquo;Link Account&rdquo; from its menu — it opens this site and connects
+            Choose &ldquo;Link Account&rdquo; from its menu. It opens this site and connects
             itself to your account.
           </li>
           <li>
@@ -155,7 +155,7 @@ export default async function WelcomePage() {
             dashboard's AgentStatusBanner keeps telling the story until an
             agent reports in, so leaving here loses nothing. */}
         <Link href="/dashboard" className="lp-ob-skip">
-          Set it up later — go to the dashboard
+          Set it up later: go to the dashboard
         </Link>
       </div>
     </main>

@@ -12,9 +12,9 @@ import type { AgentSyncState } from "@/lib/sets/agentStatus";
  * deliberately absent — see {@link agentStatusLine} for what that absence means.
  */
 export const AGENT_STATUS_COPY = {
-  Queued: "Queued — will sync when you're back online.",
+  Queued: "Queued. Will sync when you're back online.",
   Failed: "Sync interrupted. Retrying automatically.",
-  FormatDriftPaused: "Format change detected — sync paused until verified.",
+  FormatDriftPaused: "Format change detected. Sync paused until verified.",
 } as const;
 
 /**

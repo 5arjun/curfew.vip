@@ -25,7 +25,7 @@ function resolveWebhookSecret(env: {
 }): string {
   const secret = env.STRIPE_WEBHOOK_SECRET;
   if (!secret) {
-    throw new Error("Missing STRIPE_WEBHOOK_SECRET — see web/README.md#Environment");
+    throw new Error("Missing STRIPE_WEBHOOK_SECRET, see web/README.md#Environment");
   }
   return secret;
 }

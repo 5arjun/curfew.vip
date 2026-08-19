@@ -331,7 +331,7 @@ function KeyCode({ raw }: { raw: string | null }) {
           : undefined
       }
     >
-      {raw ?? "—"}
+      {raw ?? "-"}
     </span>
   );
 }
@@ -380,7 +380,7 @@ function HarmonicOverlay({
                 onClick={() =>
                   setFocus({
                     key,
-                    label: `${t.fromKey ?? "—"} → ${t.toKey ?? "—"}`,
+                    label: `${t.fromKey ?? "-"} → ${t.toKey ?? "-"}`,
                     positions: [t.fromPosition, t.toPosition],
                   })
                 }

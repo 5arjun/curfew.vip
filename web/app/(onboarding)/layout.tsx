@@ -19,7 +19,7 @@ import "../landing.css";
 // mid-signup screens, meaningless out of context and thin content in Google's
 // sense. Same defence-in-depth argument as the (authenticated) group's layout.
 export const metadata: Metadata = {
-  title: "Curfew — set up",
+  title: "Curfew · set up",
   description: "Finish setting up your Curfew account.",
   ...NOINDEX,
 };

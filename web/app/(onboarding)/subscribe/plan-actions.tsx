@@ -121,7 +121,7 @@ export function PlanActions() {
 
       {state === "failed" && (
         <p className="lp-ob-plan-error" role="alert">
-          Couldn&apos;t open checkout — retry.
+          Couldn&apos;t open checkout. Retry.
         </p>
       )}
     </div>

@@ -215,5 +215,5 @@ export function setupStepLabel(
 ): string {
   const total = sellsSubscriptions ? 3 : 2;
   const index = step === "subscribe" ? 1 : (step === "phone" ? 2 : 3) - (sellsSubscriptions ? 0 : 1);
-  return `Set up — step ${index} of ${total}`;
+  return `Set up · step ${index} of ${total}`;
 }

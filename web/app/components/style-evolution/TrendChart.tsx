@@ -891,8 +891,8 @@ function TrendChartPlot({
                 </button>
                 <span role="tooltip" id={tipId} className="se-chart-info-tip">
                   Each point is the month you ADDED the tracks, not the month you played them. The most recent months
-                  are missing on purpose — they haven&rsquo;t had their full {conversionWindow} days yet. Shortening
-                  the window asks a harder question (how FAST new music reaches a set), so rates fall — but more
+                  are missing on purpose: they haven&rsquo;t had their full {conversionWindow} days yet. Shortening
+                  the window asks a harder question (how FAST new music reaches a set), so rates fall, but more
                   months qualify, so the line reaches closer to today.
                 </span>
               </span>

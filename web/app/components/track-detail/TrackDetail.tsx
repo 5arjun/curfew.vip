@@ -120,7 +120,7 @@ export function TrackDetail({
           as a failure. Keyed on the roster rather than on the id string. */}
       {plays.length > 0 && !identity.inRoster && (
         <p className="td-disclosure">
-          This track is not in your current library sync — you have played it, but Curfew does not
+          This track is not in your current library sync. You have played it, but Curfew does not
           see it in your library now.
         </p>
       )}
@@ -288,7 +288,7 @@ function TrackBody({
               <span>
                 First played{" "}
                 {history.firstPlayedMs === null ? (
-                  "—"
+                  "-"
                 ) : (
                   <ClientDayDate ms={history.firstPlayedMs} zone={history.firstPlayedZone} />
                 )}
@@ -296,7 +296,7 @@ function TrackBody({
               <span>
                 Last played{" "}
                 {history.lastPlayedMs === null ? (
-                  "—"
+                  "-"
                 ) : (
                   <ClientDayDate ms={history.lastPlayedMs} zone={history.lastPlayedZone} />
                 )}
@@ -315,7 +315,7 @@ function TrackBody({
                       // Never a guessed date (D-8). An em dash says "unknown"
                       // without inventing one — the same treatment
                       // `OneAndDone` gives an undated play.
-                      "—"
+                      "-"
                     ) : (
                       // This row IS one set, so it gets that set's own zone.
                       <ClientDayDate ms={row.startedAtMs} zone={row.zone} />
@@ -387,7 +387,7 @@ const NO_SURVIVING_PLAYS_COPY =
   "Every play of this so far was in a short or low-confidence set. Reveal them above to see them.";
 const NO_RIDE_TIME_COPY = "No play of this has carried a duration yet.";
 const NO_NEIGHBOURS_COPY =
-  "Nothing has landed either side of this yet — it has only opened or closed the sets it was in.";
+  "Nothing has landed either side of this yet. It has only opened or closed the sets it was in.";
 
 /**
  * One side of AC-10's neighbours.

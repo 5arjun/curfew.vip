@@ -301,10 +301,10 @@ describe("unknown-add-date disclosure (D-10 / AC-7)", () => {
 
   it("uses singular and plural phrasing correctly", () => {
     const one = buildLibraryConversion([added("a", null)], [], NOW);
-    expect(disclosureFor(one)).toBe("1 track has no known add date — not counted here.");
+    expect(disclosureFor(one)).toBe("1 track has no known add date. Not counted here.");
 
     const two = buildLibraryConversion([added("a", null), added("b", null)], [], NOW);
-    expect(disclosureFor(two)).toBe("2 tracks have no known add date — not counted here.");
+    expect(disclosureFor(two)).toBe("2 tracks have no known add date. Not counted here.");
   });
 
   it("joins both disclosures when both apply", () => {
@@ -315,7 +315,7 @@ describe("unknown-add-date disclosure (D-10 / AC-7)", () => {
       now,
     );
     expect(disclosureFor(model)).toBe(
-      "1 track has no known add date, and 1 recent month is still inside the 60-day window — not counted here.",
+      "1 track has no known add date, and 1 recent month is still inside the 60-day window. Not counted here.",
     );
   });
 });
@@ -398,7 +398,7 @@ describe("the chart summary (AC-2)", () => {
         ["2026-03", 10, 6],
       ]), DEFAULT_CONVERSION_WINDOW);
     expect(summary).toBe(
-      "6 of the 10 tracks added in March made it into a set within 60 days (60%) — up from 40% in January.",
+      "6 of the 10 tracks added in March made it into a set within 60 days (60%), up from 40% in January.",
     );
   });
 
@@ -418,7 +418,7 @@ describe("the chart summary (AC-2)", () => {
           ["2026-03", 100, 52],
         ]), DEFAULT_CONVERSION_WINDOW),
     ).toBe(
-      "52 of the 100 tracks added in March made it into a set within 60 days (52%) — about the same as January.",
+      "52 of the 100 tracks added in March made it into a set within 60 days (52%), about the same as January.",
     );
   });
 
@@ -692,7 +692,7 @@ describe("live conversion rate (Story 4.3, Decision E-1, AC-1/AC-3/AC-4)", () =>
     const rate = buildLiveConversionRate([added("dated", localIso(2026, 4, 20)), added("undated", null)], [], now, 60);
 
     expect(undatedDisclosure({ noAddDateCount: rate.noAddDateCount, pendingCohortCount: 0 }, rate.window)).toBe(
-      "1 track has no known add date — not counted here.",
+      "1 track has no known add date. Not counted here.",
     );
   });
 
@@ -701,9 +701,9 @@ describe("live conversion rate (Story 4.3, Decision E-1, AC-1/AC-3/AC-4)", () =>
     // folded into "no known add date" — these tracks HAVE a date.
     expect(
       undatedDisclosure({ noAddDateCount: 2, unreconciledDateCount: 3, pendingCohortCount: 0 }, 0),
-    ).toBe("2 tracks have no known add date, and 3 tracks have add dates Curfew can't reconcile — not counted here.");
+    ).toBe("2 tracks have no known add date, and 3 tracks have add dates Curfew can't reconcile. Not counted here.");
     expect(undatedDisclosure({ noAddDateCount: 0, unreconciledDateCount: 1, pendingCohortCount: 0 }, 0)).toBe(
-      "1 track has an add date Curfew can't reconcile — not counted here.",
+      "1 track has an add date Curfew can't reconcile. Not counted here.",
     );
   });
 
@@ -1133,20 +1133,20 @@ describe("time-to-first-play summary (AC-2, AC-3, AC-4)", () => {
 
   it("states the debut count, the average and the never-played count together", () => {
     expect(timeToFirstPlaySummary(modelWith(5, 3, 1))).toBe(
-      "5 tracks have debuted, an average of 3 days after being added — 1 other hasn't been played yet. Only 5 debuts so far — early read.",
+      "5 tracks have debuted, an average of 3 days after being added. 1 other hasn't been played yet. Only 5 debuts so far, an early read.",
     );
   });
 
   it("omits the never-played clause when every qualifying track has debuted", () => {
     expect(timeToFirstPlaySummary(modelWith(5, 3))).toBe(
-      "5 tracks have debuted, an average of 3 days after being added. Only 5 debuts so far — early read.",
+      "5 tracks have debuted, an average of 3 days after being added. Only 5 debuts so far, an early read.",
     );
   });
 
   it("never interpolates a bare adverbial phrase — a sub-day average reads as a noun phrase", () => {
     // The regression this test exists for: "a median of same day to debut".
     const summary = timeToFirstPlaySummary(modelWith(5, 0));
-    expect(summary).toBe("5 tracks have debuted, an average of under a minute after being added. Only 5 debuts so far — early read.");
+    expect(summary).toBe("5 tracks have debuted, an average of under a minute after being added. Only 5 debuts so far, an early read.");
     expect(summary).not.toContain("same day");
   });
 
@@ -1154,7 +1154,7 @@ describe("time-to-first-play summary (AC-2, AC-3, AC-4)", () => {
     const model = modelWith(1, 30, 9);
     expect(hasEnoughTimeToFirstPlayTracks(model)).toBe(true);
     expect(timeToFirstPlaySummary(model)).toBe(
-      "9 tracks have been added but not played yet — averaging 5 months on the shelf.",
+      "9 tracks have been added but not played yet, averaging 5 months on the shelf.",
     );
   });
 
@@ -1187,7 +1187,7 @@ describe("time-to-first-play summary (AC-2, AC-3, AC-4)", () => {
     const model = modelWith(TIME_TO_FIRST_PLAY_EARLY_READ_DEBUTS, 3);
     expect(isEarlyReadAverage(model)).toBe(true);
     expect(timeToFirstPlaySummary(model)).toContain(
-      `Only ${TIME_TO_FIRST_PLAY_EARLY_READ_DEBUTS} debuts so far — early read`,
+      `Only ${TIME_TO_FIRST_PLAY_EARLY_READ_DEBUTS} debuts so far, an early read`,
     );
   });
 

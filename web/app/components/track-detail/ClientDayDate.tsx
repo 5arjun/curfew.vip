@@ -28,14 +28,14 @@ import { formatDayDate } from "@/lib/sets/format";
 /**
  * Renders a day label from an epoch-ms timestamp, in `zone`.
  *
- * `placeholder` is what renders when the timestamp is not a real instant — an
- * em dash, distinct from the `null`-timestamp case callers already render as
- * "—" themselves.
+ * `placeholder` is what renders when the timestamp is not a real instant — a
+ * hyphen, the same blank marker callers already render for the `null`-timestamp
+ * case.
  */
 export function ClientDayDate({
   ms,
   zone,
-  placeholder = "–",
+  placeholder = "-",
 }: {
   ms: number;
   /** The IANA zone this date belongs to — the DJ's, never the viewer's. */
@@ -44,5 +44,5 @@ export function ClientDayDate({
 }) {
   if (!Number.isFinite(ms)) return <>{placeholder}</>;
   const label = formatDayDate(new Date(ms).toISOString(), zone);
-  return <>{label === "—" ? placeholder : label}</>;
+  return <>{label === "-" ? placeholder : label}</>;
 }

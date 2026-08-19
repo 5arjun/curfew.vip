@@ -302,7 +302,7 @@ describe("trackSearchNoMatchCopy (Non-negotiable 4; Story 4.7 R-2 shape)", () =>
 
   it("states Curfew has no record when there is truly no match", () => {
     expect(trackSearchNoMatchCopy(0, 0)).toBe(
-      "No track here matches that — Curfew has no play and no library entry under that name.",
+      "No track here matches that. Curfew has no play and no library entry under that name.",
     );
   });
 

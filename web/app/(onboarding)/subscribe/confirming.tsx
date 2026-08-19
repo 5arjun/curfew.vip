@@ -45,8 +45,8 @@ export function ConfirmingSubscription() {
     <div className="lp-ob-confirming">
       <p className="lp-body lp-auth-tag" role="status" aria-live="polite">
         {exhausted
-          ? "Your payment went through, but the confirmation is taking longer than it should. Nothing is lost and you have not been charged twice — get in touch and we'll finish this by hand."
-          : "Payment received. Confirming with Stripe — this takes a few seconds."}
+          ? "Your payment went through, but the confirmation is taking longer than it should. Nothing is lost and you have not been charged twice. Get in touch and we'll finish this by hand."
+          : "Payment received. Confirming with Stripe. This takes a few seconds."}
       </p>
 
       {exhausted && (

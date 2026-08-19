@@ -129,7 +129,7 @@ export function TimeToFirstPlay({ model }: { model: TimeToFirstPlayModel }) {
               carries the identical sentence. */}
           {isEarlyReadAverage(model) && (
             <p className="lu-disclosure" aria-hidden="true">
-              Only {playedCount} {playedCount === 1 ? "debut" : "debuts"} so far — early read
+              Only {playedCount} {playedCount === 1 ? "debut" : "debuts"} so far · early read
             </p>
           )}
         </>
@@ -140,7 +140,7 @@ export function TimeToFirstPlay({ model }: { model: TimeToFirstPlayModel }) {
                 // Carries the shelf age the `aria-label` states, so the two
                 // branches say the same thing (browser pass, 2026-08-07).
                 model.neverPlayedAverageAgeMs !== null
-                  ? ` — averaging ${formatElapsed(model.neverPlayedAverageAgeMs)} on the shelf`
+                  ? `, averaging ${formatElapsed(model.neverPlayedAverageAgeMs)} on the shelf`
                   : ""
               }.`
             : // Never "No tracks have debuted yet" when the population is made
