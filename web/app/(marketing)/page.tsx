@@ -62,6 +62,16 @@ function useStage(section: React.RefObject<HTMLElement | null>) {
       // frame should be arriving over a ghost, not over a still-lit scene.
       const exit = Math.min(1, Math.max(0, (p - 0.86) / 0.1));
       node.style.setProperty("--lp-stage-fade", (1 - exit * exit * (3 - 2 * exit)).toFixed(4));
+      // The vinyl turns 1:1 with the wheel — degrees per pixel, not per unit of
+      // stage progress, so the platter feels geared to the hand and the rate
+      // survives any retiming of the stage's height. It outlives the hero's
+      // 0.14 gate on purpose: the rail blinks off there, but a disc dying at
+      // the first wheel-click would read as broken, so it spins on while it
+      // dissolves, gone before the ribbon owns the frame. (Unregistered vars,
+      // per ref-property-setproperty-bug.)
+      node.style.setProperty("--lp-vinyl-spin", `${(p * travel * 0.4).toFixed(2)}deg`);
+      const rest = Math.min(1, Math.max(0, (p - 0.14) / 0.2));
+      node.style.setProperty("--lp-vinyl-fade", (1 - rest * rest * (3 - 2 * rest)).toFixed(4));
       let next = -1;
       // The hero holds the stage to itself until the ribbon starts inflating.
       if (p > 0.14) {
@@ -154,6 +164,18 @@ export default function LandingPage() {
       <section className="lp-stage" ref={stage}>
         <div className="lp-stage-sticky">
           <ArcRibbon section={stage} />
+
+          {/* The platter: half a record hanging off the right edge of the
+              opening frame, the works-with rail's backdrop. Decorative — the
+              rail carries the information, this carries the room — so it is
+              hidden from AT and takes no pointer. Spin and exit are scroll-
+              linked vars written by useStage. Two elements because the mask
+              that dissolves the disc into the scene must hold still in screen
+              space while the disc turns inside it: the outer frame carries
+              mask/filter/fade, the inner carries the image and the rotation. */}
+          <div className="lp-vinyl" aria-hidden="true">
+            <div className="lp-vinyl-disc" />
+          </div>
 
           <div className="lp-hero" data-shown={active < 0 ? "true" : "false"}>
             {/* The wordmark, not the word: same PNG-as-mask treatment the nav

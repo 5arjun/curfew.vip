@@ -1402,6 +1402,54 @@
   box-shadow: 0 0 8px var(--color-abyss-accent-glow);
 }
 
+/* ── Vinyl ──────────────────────────────────────────────────────────────────
+   The platter behind the works-with rail: half a record hung off the right
+   edge, the physical object the three wordmarks are abstractions of. It turns
+   1:1 with the scroll wheel (deg-per-pixel, written by useStage as an
+   UNREGISTERED var, per ref-property-setproperty-bug) and dissolves on its own
+   scroll-linked ramp — later than the rail's gate, so it spins out through the
+   ribbon's arrival instead of blinking off at the first wheel-click. Sized in
+   vh because it is furniture of the frame, not of the copy: half the disc is
+   ~the rail's width in every viewport that shows it. */
+.lp-vinyl {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  z-index: 1;
+  /* Near the frame's full height: at this scale the disc is architecture of
+     the opening frame rather than an object beside the rail — the first pass
+     sat at 52vh and read as a sticker (Arjun, 2026-08-19: "out of place"). */
+  width: clamp(46rem, 96vh, 70rem);
+  aspect-ratio: 1;
+  transform: translate(50%, -50%);
+  /* Seated into the abyss, not printed on it: under full ink, pulled toward
+     the scene's low saturation, and dissolved along its inner edge — the disc
+     emerges from the dark instead of ending in a silhouette. The mask lives
+     HERE, on the unrotated frame, so the dissolve holds still while the disc
+     turns inside it. The fade var multiplies to zero across p 0.14-0.34. */
+  opacity: calc(var(--lp-vinyl-fade, 1) * 0.7);
+  filter: saturate(0.7) brightness(0.8);
+  -webkit-mask-image: linear-gradient(
+    to right,
+    var(--shadow-ink-0) 6%,
+    var(--color-surface-void) 48%
+  );
+  mask-image: linear-gradient(
+    to right,
+    var(--shadow-ink-0) 6%,
+    var(--color-surface-void) 48%
+  );
+  pointer-events: none;
+}
+
+.lp-vinyl-disc {
+  width: 100%;
+  height: 100%;
+  background: url("/landing/vinyl.webp") center / contain no-repeat;
+  transform: rotate(var(--lp-vinyl-spin, 0deg));
+  will-change: transform;
+}
+
 /* ── Explorer captions ──────────────────────────────────────────────────── */
 .lp-captions {
   position: absolute;
@@ -1575,6 +1623,13 @@
     display: none;
   }
 
+  /* No platter on the phone: the rail has lain down across the bottom and the
+     right edge belongs to the hero's copy — a half-disc behind 2rem display
+     type is noise, not room. */
+  .lp-vinyl {
+    display: none;
+  }
+
   /* The rail lies down: three columns across the space between the hero's
      copy (ends ~52vh) and the resting horizon (~85vh). Statuses drop under
      their marks; the hairlines go with the vertical arrangement they ruled. */
@@ -1686,6 +1741,14 @@
   .lp-hero[data-shown="false"],
   .lp-support[data-shown="false"] {
     filter: none;
+  }
+
+  /* The record holds still — present at its resting angle, never tracking the
+     wheel. Its scroll-linked dissolve stays: opacity is not motion, and
+     without it the disc would sit over the ribbon film forever. */
+  .lp-vinyl-disc {
+    transform: none;
+    will-change: auto;
   }
 }
 
