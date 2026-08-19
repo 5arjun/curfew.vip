@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 import { withBotId } from "botid/next/config";
+import {
+  POSTHOG_ASSET_HOST,
+  POSTHOG_ASSET_PATH,
+  POSTHOG_INGEST_HOST,
+  POSTHOG_PROXY_PATH,
+} from "./lib/posthog/config";
 
 const nextConfig: NextConfig = {
   // Consume the workspace sync contract (@curfew/shared) directly from source.
@@ -33,6 +39,30 @@ const nextConfig: NextConfig = {
   // needs preserving on a GET.
   async redirects() {
     return [{ source: "/pricing", destination: "/#pricing", permanent: true }];
+  },
+
+  // Proxies PostHog through this origin, the same trade BotID's rewrites and
+  // Sentry's `tunnelRoute: "/monitoring"` already make below. The reasoning
+  // and the choice of `/relay` live in lib/posthog/config.ts.
+  //
+  // withBotId() APPENDS its two rewrites to whatever this returns (it awaits
+  // the existing `rewrites` and spreads it), so returning an array here is
+  // additive, not a replacement — the bot-protection challenge keeps working.
+  //
+  // Asset rule FIRST: `/relay/static/:path*` has to match before the catch-all
+  // `/relay/:path*` can swallow it, or the session-replay recorder gets
+  // fetched from the ingest host, which doesn't serve it.
+  async rewrites() {
+    return [
+      {
+        source: `${POSTHOG_ASSET_PATH}/:path*`,
+        destination: `${POSTHOG_ASSET_HOST}/static/:path*`,
+      },
+      {
+        source: `${POSTHOG_PROXY_PATH}/:path*`,
+        destination: `${POSTHOG_INGEST_HOST}/:path*`,
+      },
+    ];
   },
 };
 

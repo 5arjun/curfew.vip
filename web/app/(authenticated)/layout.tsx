@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getNavAvatar } from "@/lib/account/profile";
 import { NOINDEX } from "@/lib/seo";
 import { createClient } from "@/lib/supabase/server";
+import { PostHogIdentify } from "@/app/components/analytics/PostHogIdentify";
 import { FloatingNav } from "@/app/components/nav/FloatingNav";
 
 // Launch checklist §1.6: noindex the whole group, as defence in depth behind
@@ -41,13 +42,20 @@ export const metadata: Metadata = NOINDEX;
 // closed would bounce a signed-in DJ to /login mid-session. Same posture as
 // the phone gate, and for the same reason — the paywall is the only gate here
 // that fails closed, because that one guards revenue rather than polish.
-async function signedIn(): Promise<boolean> {
+//
+// Returns the `sub` alongside the verdict rather than just a boolean, so
+// PostHogIdentify can attribute the session without a SECOND auth round-trip
+// on every authenticated render. On the fail-open path the id is null — an
+// un-attributed session, which is the right degradation for analytics and
+// changes nothing about the gate itself.
+async function readSession(): Promise<{ allowed: boolean; userId: string | null }> {
   try {
     const supabase = await createClient();
     const { data } = await supabase.auth.getClaims();
-    return Boolean(data?.claims?.sub);
+    const userId = data?.claims?.sub ?? null;
+    return { allowed: Boolean(userId), userId: userId ? String(userId) : null };
   } catch {
-    return true;
+    return { allowed: true, userId: null };
   }
 }
 
@@ -56,7 +64,8 @@ async function signedIn(): Promise<boolean> {
 // fetches. Null (signed out / no Supabase env) keeps the nav's placeholder
 // icon.
 export default async function AuthenticatedLayout({ children }: { children: ReactNode }) {
-  if (!(await signedIn())) {
+  const { allowed, userId } = await readSession();
+  if (!allowed) {
     redirect("/login");
   }
 
@@ -65,6 +74,7 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
     <>
       {children}
       <FloatingNav avatar={avatar} />
+      <PostHogIdentify distinctId={userId} />
     </>
   );
 }

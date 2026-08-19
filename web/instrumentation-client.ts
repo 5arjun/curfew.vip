@@ -1,6 +1,7 @@
 import * as Sentry from "@sentry/nextjs";
 import { initBotId } from "botid/client/core";
 
+import { ensurePostHog } from "./lib/posthog/client";
 import { sentryCommonOptions } from "./lib/sentry-shared";
 
 // BotID runs an invisible client-side challenge and makes the verdict readable
@@ -33,6 +34,29 @@ initBotId({
 // Order matters only in that initBotId() runs first: its challenge should be in
 // flight as early as possible, and Sentry.init is not a prerequisite for it.
 Sentry.init(sentryCommonOptions);
+
+// PostHog (product analytics + session replay) starts LAST and off the
+// critical path, because it is the only one of the three whose value doesn't
+// depend on being early. BotID's challenge should be in flight immediately and
+// Sentry has to be up before the first error can be thrown; a pageview that
+// lands a few hundred milliseconds late is still the same pageview.
+//
+// Idle rather than immediate specifically for the landing route, which is
+// where prospective DJs arrive and which already spends its main-thread budget
+// on a WebGL mesh and several MP4s. The `timeout` is the ceiling: a busy page
+// still starts PostHog within 3s rather than never. See lib/posthog/client.ts.
+if (typeof window !== "undefined") {
+  const start = () => void ensurePostHog();
+  // `typeof` rather than `"requestIdleCallback" in window`: the DOM lib types
+  // the method as always present, so an `in` check narrows the else branch to
+  // `never` and stops the build. Safari before 17 really does lack it, so the
+  // fallback has to survive typechecking.
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(start, { timeout: 3000 });
+  } else {
+    window.setTimeout(start, 1500);
+  }
+}
 
 // Instruments App Router client-side navigations. Without it, errors thrown
 // during a soft navigation are attributed to whatever route was loaded first,

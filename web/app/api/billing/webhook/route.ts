@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 import { getStripe } from "@/lib/billing/stripe";
 import { RELEVANT_EVENT_TYPES, extractBillingFields, resolveSubscriptionId } from "@/lib/billing/webhook";
+import { captureServer } from "@/lib/posthog/server";
 import { getSupabaseAdmin } from "@/lib/supabase/service";
 
 // The Stripe webhook (Story 7.3, AD-18). This is the ONLY writer of `djs`'s
@@ -117,5 +118,26 @@ export async function POST(request: NextRequest) {
 
   // Zero rows updated (the ordering guard's own no-op) is success too — the
   // RPC raises nothing in that case, so not throwing IS the signal.
+
+  // Report the conversion from HERE rather than from the browser on the
+  // /subscribe return: this is the only place that knows Stripe actually
+  // charged, and it fires whether or not the DJ's tab survived the redirect.
+  // Awaited (not fire-and-forget) because the function may be frozen the
+  // instant this handler returns, which would drop the queued event.
+  //
+  // The `event.id` dedupe key makes a Stripe redelivery idempotent, which
+  // matters because the RPC's ordering guard deliberately makes redelivery a
+  // no-op rather than an error — so this line genuinely does run more than
+  // once for the same underlying change.
+  //
+  // Never gates the response: captureServer() swallows its own failures, so a
+  // PostHog outage cannot turn into a Stripe retry storm.
+  await captureServer(
+    fields.dj_id,
+    "subscription_status_changed",
+    { status: fields.status, stripe_event_type: event.type },
+    event.id,
+  );
+
   return NextResponse.json({ received: true });
 }
