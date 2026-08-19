@@ -437,12 +437,17 @@ export function Diptych() {
 }
 
 /* ── Beat 05 — the pinned capability stepper ──────────────────────────────── */
-// TWO FILMS ACROSS FOUR STEPS (Arjun, 2026-08-14). The media is keyed off the
+// FOUR FILMS ACROSS FIVE STEPS (Arjun, 2026-08-19). The media is keyed off the
 // step rather than owned by it, because a step that owns its own <video> is a
 // step that remounts the element every time the index changes — and a remount
 // restarts playback at frame 0. Steps 01→02 are one continuous take of set
-// detail and 03→04 one of style evolution, so each film keeps running
-// underneath while the copy changes against scroll.
+// detail, so that film keeps running underneath while the copy changes against
+// scroll; 03, 04 and 05 are a film each.
+//
+// The step count is the source of truth for how tall this section is: the
+// sticky pane holds for one screenful per step, and `--lp-step-count` (set on
+// the section below) is what landing.css multiplies. Adding a step here without
+// that var would pin five steps inside four screenfuls of travel.
 type Film = { src: string; poster: string; start?: number };
 
 const FILMS: Film[] = [
@@ -452,13 +457,26 @@ const FILMS: Film[] = [
   // rather than still settling onto the screen (Arjun, 2026-08-14). Beat 03
   // plays the SAME file from its head, so the two are not redundant.
   { src: "/landing/set-detail-3.mp4", poster: "/landing/set-detail-3-poster.jpg", start: 0.5 },
-  // 03-04 — style evolution, recorded 2026-08-14. NOTE: this take never leaves
-  // the Style Evolution screen, so step 04 ("The library") plays footage of a
-  // different feature. Flagged to Arjun. There is no still to fall back to:
-  // `library.jpg` turned out to be a stray browser screenshot of an old
-  // landing build, not a product still, and was deleted 2026-08-14 — step 04
-  // waits on the real library-utilization film like /features does.
+  // 03 — style evolution, recorded 2026-08-14.
   { src: "/landing/style-evolution.mp4", poster: "/landing/style-evolution-poster.jpg" },
+  // 04 — library utilization, recorded 2026-08-19, and the end of a mismatch
+  // this file flagged and shipped anyway: step 04 read "The library" over
+  // style-evolution footage for five days, because no library take existed and
+  // the one stand-in candidate turned out to be a stray browser screenshot (see
+  // FeatureBeats.tsx). The step and its film are now the same feature.
+  //
+  // 05 — the per-track screen, same session. Both enter at the midpoint (Arjun,
+  // 2026-08-19: "start both of them half way"), which is where each take has
+  // finished establishing its header and is inside the substance: rotation and
+  // the set-similarity grid for the library, the clock and ride time for the
+  // track. Both loop back to their own heads afterwards, so nothing is lost —
+  // the seek fires once per source, not once per loop (see BeatVideo).
+  {
+    src: "/landing/library-utilization.mp4",
+    poster: "/landing/library-utilization-poster.jpg",
+    start: 0.5,
+  },
+  { src: "/landing/track-detail.mp4", poster: "/landing/track-detail-poster.jpg", start: 0.5 },
 ];
 
 type Step = { n: string; title: string; body: string; film: number };
@@ -491,7 +509,15 @@ const STEPS: Step[] = [
     // actually trades on is money already spent. The replacement keeps the
     // page's shape: second person, a flat statement, then the turn.
     body: "You keep buying music. Curfew shows you what never leaves the shelf.",
-    film: 1,
+    film: 2,
+  },
+  {
+    n: "05",
+    title: "The track",
+    // The zoom all the way in, and the last thing the tour shows: four steps
+    // about nights and months, then one record and everything it has done.
+    body: "Any record you own, and everything it has done in your sets. Where in the night it lands, how long you ride it, what you mix into it.",
+    film: 3,
   },
 ];
 
@@ -531,7 +557,17 @@ export function Stepper() {
   return (
     // The hero's "See features" anchor lands here — the stepper IS the feature
     // tour, so the link goes to the thing rather than to a list about it.
-    <section className="lp-stepper" id="features" ref={section}>
+    //
+    // --lp-step-count carries STEPS.length into landing.css, which multiplies it
+    // by 100vh for the section's height and divides by it for the rail's step
+    // notches. Both used to be hand-typed constants (400vh, three notches at
+    // 25/50/75%) that a fifth step would have silently desynced.
+    <section
+      className="lp-stepper"
+      id="features"
+      ref={section}
+      style={{ "--lp-step-count": STEPS.length } as React.CSSProperties}
+    >
       <div className="lp-stepper-sticky">
         <div className="lp-stepper-copy">
           {/* The scroll rail, replacing the dot tabs (Arjun, 2026-08-14: "the
