@@ -63,17 +63,55 @@ type NavigatorWithMemory = Navigator & { deviceMemory?: number };
  * So width now chooses the ARRANGEMENT, and this flag is back to the one thing
  * it is named for. The SVG stays for scarce memory and for no-WebGL — it is
  * still the only render some devices will get.
+ *
+ * THE NO-WEBGL HALF WAS ONLY EVER A COMMENT (2026-08-19). Memory was the sole
+ * question this asked, so a browser with ≥4GB and no WebGL took the canvas
+ * branch: three threw "Error creating WebGL context." (WEB-2 in Sentry, one
+ * production visitor on Windows Chrome), and because the throw happens inside
+ * R3F's async setup it surfaces as an unhandled rejection rather than a render
+ * error — so the page survived and beat 02 was simply EMPTY. The SVG below was
+ * already built, already correct, and already faded to `opacity: 0` by
+ * `data-hidden`. Asking the question the flag is named for is the whole fix.
  */
 function useCanRender3D(): boolean {
-  const scarceMemory = useSyncExternalStore(
+  return useSyncExternalStore(
     () => () => {},
     () => {
       const memory = (navigator as NavigatorWithMemory).deviceMemory;
-      return typeof memory === "number" && memory < 4;
+      if (typeof memory === "number" && memory < 4) return false;
+      return supportsWebgl2();
     },
     () => false,
   );
-  return !scarceMemory;
+}
+
+/**
+ * Whether this browser can give the ribbon the context it needs — cached for
+ * the session, since the answer cannot change within one, and because
+ * `getSnapshot` runs on every render and must not build a canvas each time.
+ *
+ * `webgl2` specifically: three's WebGLRenderer asks for that one name and
+ * nothing else (`const contextName = 'webgl2'`, three.module.js), so testing
+ * `webgl` would answer a question nobody asked. Same probe as SilkBackdrop's,
+ * which carries the longer version of this note.
+ */
+let webgl2Supported: boolean | null = null;
+
+function supportsWebgl2(): boolean {
+  if (webgl2Supported !== null) return webgl2Supported;
+  try {
+    const probe = document.createElement("canvas").getContext("webgl2");
+    // Hand the context slot straight back: the landing already holds six of the
+    // browser's ~16 (see LandingNav.tsx), and the canvas is about to ask for
+    // one of its own.
+    probe?.getExtension("WEBGL_lose_context")?.loseContext();
+    webgl2Supported = probe != null;
+  } catch {
+    // Getting a context can throw outright rather than return null (a blocked
+    // or crashed GPU process). Same answer either way.
+    webgl2Supported = false;
+  }
+  return webgl2Supported;
 }
 
 type Colors = {
