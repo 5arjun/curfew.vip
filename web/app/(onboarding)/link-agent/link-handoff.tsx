@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { capture } from "@/lib/posthog/client";
 import { createClient } from "@/lib/supabase/client";
 
 // Reads the *browser* Supabase client's already-issued session (this page
@@ -42,6 +43,28 @@ export function LinkHandoff() {
           refresh_token: session.refresh_token,
           nonce,
         });
+
+        // NOT named `agent_linked`, and deliberately so. This page cannot
+        // observe whether linking worked: the handoff is a custom-scheme
+        // redirect, and as the comment further down records, a browser gives
+        // no callback when the scheme isn't registered. An `agent_linked`
+        // fired here would count DJs who never installed the agent, which is
+        // worse than not measuring it — it would read as a healthy step while
+        // hiding the exact drop-off it was added to find.
+        //
+        // What this DOES prove is that a DJ with a valid session reached the
+        // handoff and it fired. Pairing it with a real linked signal (which
+        // has to come from the agent's first contact, and the agent talks to
+        // Supabase directly rather than through this app) is what would close
+        // the gap.
+        //
+        // `has_nonce` separates the two ways in: the agent's tray "Link
+        // Account" button supplies one, a DJ navigating here by hand does not.
+        void capture("agent_link_started", { has_nonce: Boolean(nonce) });
+
+        // Not awaited: a custom-scheme navigation does not unload this page,
+        // so the queued event still sends, and the handoff should not wait on
+        // analytics.
         window.location.href = `curfew-agent://link?${params.toString()}`;
       })
       .catch(() => {

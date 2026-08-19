@@ -82,3 +82,50 @@ export async function captureServer(
     console.error("posthog: server capture failed", event, err);
   }
 }
+
+// A DJ has an account. The top of the funnel's second half, and the event both
+// auth routes report because a signup can arrive through either of them:
+// /auth/callback for Google and Apple, /auth/confirm for email.
+//
+// Fired from the SERVER rather than the browser for the same reason the Stripe
+// conversion is: the OAuth and email-confirmation round trips both end in a
+// redirect, and a browser-side capture racing a redirect is a capture that
+// sometimes doesn't happen.
+//
+// TWO INDEPENDENT GUARDS, because each covers a case the other doesn't:
+//
+//   1. `signup:<id>` as the dedupe key means PostHog keeps the first of these
+//      and drops the rest. Both routes run on every subsequent sign-in too, so
+//      without this the event would count logins, not signups.
+//   2. The age window, because guard 1 rests on PostHog retaining a dedupe
+//      record indefinitely, and a returning DJ signing in months later must
+//      not be able to re-report their own signup if it ever ages out.
+//
+// The window is a DAY, not minutes: on the email path `created_at` is stamped
+// when the form is submitted, but this route doesn't run until the DJ opens
+// the confirmation mail, which can easily be an hour later and sometimes the
+// next morning. The known cost is that a confirmation opened more than 24h
+// after signing up goes unreported — rare, and much the better failure than
+// counting every login as a new account.
+const SIGNUP_REPORTABLE_FOR_MS = 24 * 60 * 60 * 1000;
+
+export async function captureSignupCompleted(user: {
+  id: string;
+  created_at?: string;
+  app_metadata?: { provider?: string };
+}): Promise<void> {
+  if (!user.created_at) return;
+
+  const age = Date.now() - Date.parse(user.created_at);
+  // Checked BEFORE the client is constructed, so a returning DJ's sign-in
+  // costs nothing — no PostHog client, no network, no added latency on the
+  // hot path every login walks. Only a genuinely new account pays for this.
+  if (!Number.isFinite(age) || age < 0 || age > SIGNUP_REPORTABLE_FOR_MS) return;
+
+  await captureServer(
+    user.id,
+    "signup_completed",
+    { provider: user.app_metadata?.provider ?? "email" },
+    `signup:${user.id}`,
+  );
+}

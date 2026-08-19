@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { type NextRequest } from "next/server";
 import { billingEnabled } from "@/lib/billing/checkout";
 import { CHECKOUT_PENDING_COOKIE, nextSetupStep, readSetupState } from "@/lib/onboarding/corridor";
+import { captureSignupCompleted } from "@/lib/posthog/server";
 import { createClient } from "@/lib/supabase/server";
 
 // OAuth callback (Google/Apple), separate from confirm/route.ts (email-OTP).
@@ -31,6 +32,10 @@ export async function GET(request: NextRequest) {
       // — Story 2.3c Task 5.4), so neither ever flips `exchanged` back to
       // false via this shared catch.
       if (exchanged && data.user) {
+        // Awaited, not fired and forgotten: the function may be frozen the
+        // moment the redirect below is returned. It self-limits to genuinely
+        // new accounts and costs a returning DJ nothing — see its own comment.
+        await captureSignupCompleted(data.user);
         destination = nextSetupStep({
           sellsSubscriptions: billingEnabled(process.env),
           checkoutPending:
