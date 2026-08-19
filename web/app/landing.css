@@ -1978,14 +1978,14 @@
    Stepper's scroll handler), so there are no transitions here at all — a
    transition on a scroll-linked value is lag, not easing (same rule as
    --lp-dock above). The faint notches mark where the steps hand over, so the
-   line also says how many of these there are — four notches for five steps
-   (Arjun, 2026-08-19), three when there were four.
+   line also says how many of these there are — three notches for four steps.
 
    Hand-written rather than derived from --lp-step-count like the height above:
    a stop per boundary is a list CSS cannot generate, and the repeating-gradient
    that could is a period of 100%/N that drifts against the notch's own width.
-   So this stack is the one place the step count is still typed twice. If STEPS
-   grows again, the boundaries are i/N for i = 1..N-1. */
+   So this stack is the one place the step count is still typed twice, and it
+   went briefly wrong in exactly that way today — five steps landed with four
+   notches, then came back to four. The boundaries are i/N for i = 1..N-1. */
 .lp-stepper-rail {
   position: absolute;
   left: 0;
@@ -1994,10 +1994,9 @@
   width: 2px;
   border-radius: 1px;
   background:
-    radial-gradient(circle at 50% 20%, var(--color-abyss-text-45) 0 2px, var(--shadow-ink-0) 2.5px),
-    radial-gradient(circle at 50% 40%, var(--color-abyss-text-45) 0 2px, var(--shadow-ink-0) 2.5px),
-    radial-gradient(circle at 50% 60%, var(--color-abyss-text-45) 0 2px, var(--shadow-ink-0) 2.5px),
-    radial-gradient(circle at 50% 80%, var(--color-abyss-text-45) 0 2px, var(--shadow-ink-0) 2.5px),
+    radial-gradient(circle at 50% 25%, var(--color-abyss-text-45) 0 2px, var(--shadow-ink-0) 2.5px),
+    radial-gradient(circle at 50% 50%, var(--color-abyss-text-45) 0 2px, var(--shadow-ink-0) 2.5px),
+    radial-gradient(circle at 50% 75%, var(--color-abyss-text-45) 0 2px, var(--shadow-ink-0) 2.5px),
     var(--color-abyss-text-22);
 }
 

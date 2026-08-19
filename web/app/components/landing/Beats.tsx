@@ -340,6 +340,19 @@ function useSettleScale<T extends HTMLElement>(section: React.RefObject<HTMLElem
   return node;
 }
 
+/**
+ * EVERY FILM ON THIS PAGE ENTERS AT ITS MIDPOINT (Arjun, 2026-08-19: "all
+ * starting half way through"). One rule applied to all four — the cover, the
+ * diptych, and both stepper films — rather than a per-beat number argued case
+ * by case: the takes all open on a header settling onto the screen, and halfway
+ * is where each is already inside its own substance.
+ *
+ * Nothing is lost by skipping the head. The seek fires once per source, not
+ * once per loop, so every film still cycles the whole way round afterwards
+ * (see BeatVideo).
+ */
+const MIDPOINT = 0.5;
+
 /* ── Beat 03 — the handoff ─────────────────────────────────────────────────
    FRAMED, NOT FULL-BLEED (Arjun, 2026-08-15: "i'm not sure if im the biggest
    fan of the large video in the middle"). The full-viewport treatment was the
@@ -378,13 +391,16 @@ export function CoverMedia() {
                reduced motion, Save-Data — gets the beat's actual frame, not
                the take's zoomed-in head. */
             poster="/landing/set-detail-3-cover-poster.jpg"
-            /* The take opens on its own auto-zoomed close-up and does not
-               pull back to the whole screen until ~a third in. 0.3 is where
-               the sweep shows the entire night — arc, tracklist, panels —
-               which is the one frame that IS "see everything". The stepper
-               enters the same file at 0.5, inside the tracklist, so the two
-               beats still show different moments. */
-            start={0.3}
+            /* 0.3 UNTIL 2026-08-19, when the page went to one entry rule for
+               all four films ("all starting half way through"). 0.3 was where
+               the take's sweep shows the entire night — arc, tracklist, panels
+               — which is the one frame that literally IS "see everything", and
+               it also kept this beat on a different moment than the stepper's
+               pass over the same file. Both of those are real losses; the
+               consistency was Arjun's call and it is the whole page's rule now.
+               The poster is still cut at 0.3, so a reduced-motion reader gets
+               the frame this beat was composed around either way. */
+            start={MIDPOINT}
           />
         </div>
         <div className="lp-overcopy lp-overcopy--left" ref={copy}>
@@ -423,6 +439,7 @@ export function Diptych() {
           className="lp-diptych-film"
           src="/landing/dashboard-3.mp4"
           poster="/landing/dashboard-3-poster.jpg"
+          start={MIDPOINT}
         />
         <div className="lp-overcopy lp-overcopy--right" ref={copy}>
           <h2 className="lp-h2">You don&rsquo;t do anything.</h2>
@@ -437,46 +454,47 @@ export function Diptych() {
 }
 
 /* ── Beat 05 — the pinned capability stepper ──────────────────────────────── */
-// FOUR FILMS ACROSS FIVE STEPS (Arjun, 2026-08-19). The media is keyed off the
-// step rather than owned by it, because a step that owns its own <video> is a
-// step that remounts the element every time the index changes — and a remount
-// restarts playback at frame 0. Steps 01→02 are one continuous take of set
-// detail, so that film keeps running underneath while the copy changes against
-// scroll; 03, 04 and 05 are a film each.
+// THREE FILMS ACROSS FOUR STEPS. The media is keyed off the step rather than
+// owned by it, because a step that owns its own <video> is a step that remounts
+// the element every time the index changes — and a remount restarts playback at
+// frame 0. Steps 01→02 are one continuous take of set detail, so that film keeps
+// running underneath while the copy changes against scroll; 03 and 04 are a film
+// each.
+//
+// THE LANDING PLAYS FOUR FILMS AND THE TRACK SCREEN IS NOT ONE OF THEM (Arjun,
+// 2026-08-19: "the 4 videos should be the set detail, dashboard, library util,
+// and style evolution. we don't need the song detail there"). The four are
+// counted across the whole run to the bottom, not inside this component: set
+// detail (the cover, beat 03), dashboard (the diptych, beat 04), then style
+// evolution and library utilization here. A fifth step for the track screen was
+// added earlier today and is reverted — it lives on /features, where the
+// catalogue can afford a fifth row and the tour cannot afford a fifth screenful.
 //
 // The step count is the source of truth for how tall this section is: the
 // sticky pane holds for one screenful per step, and `--lp-step-count` (set on
-// the section below) is what landing.css multiplies. Adding a step here without
-// that var would pin five steps inside four screenfuls of travel.
+// the section below) is what landing.css multiplies.
 type Film = { src: string; poster: string; start?: number };
 
 const FILMS: Film[] = [
   // 01-02 — the set-detail screen, recorded 2026-08-14. This also retires the
   // V3 (segment-editor drag) placeholder: step 02 now shows the real thing.
-  // Entered at the midpoint, where the take is already inside the tracklist
-  // rather than still settling onto the screen (Arjun, 2026-08-14). Beat 03
-  // plays the SAME file from its head, so the two are not redundant.
-  { src: "/landing/set-detail-3.mp4", poster: "/landing/set-detail-3-poster.jpg", start: 0.5 },
+  { src: "/landing/set-detail-3.mp4", poster: "/landing/set-detail-3-poster.jpg", start: MIDPOINT },
   // 03 — style evolution, recorded 2026-08-14.
-  { src: "/landing/style-evolution.mp4", poster: "/landing/style-evolution-poster.jpg" },
+  {
+    src: "/landing/style-evolution.mp4",
+    poster: "/landing/style-evolution-poster.jpg",
+    start: MIDPOINT,
+  },
   // 04 — library utilization, recorded 2026-08-19, and the end of a mismatch
   // this file flagged and shipped anyway: step 04 read "The library" over
   // style-evolution footage for five days, because no library take existed and
   // the one stand-in candidate turned out to be a stray browser screenshot (see
   // FeatureBeats.tsx). The step and its film are now the same feature.
-  //
-  // 05 — the per-track screen, same session. Both enter at the midpoint (Arjun,
-  // 2026-08-19: "start both of them half way"), which is where each take has
-  // finished establishing its header and is inside the substance: rotation and
-  // the set-similarity grid for the library, the clock and ride time for the
-  // track. Both loop back to their own heads afterwards, so nothing is lost —
-  // the seek fires once per source, not once per loop (see BeatVideo).
   {
     src: "/landing/library-utilization.mp4",
     poster: "/landing/library-utilization-poster.jpg",
-    start: 0.5,
+    start: MIDPOINT,
   },
-  { src: "/landing/track-detail.mp4", poster: "/landing/track-detail-poster.jpg", start: 0.5 },
 ];
 
 type Step = { n: string; title: string; body: string; film: number };
@@ -510,14 +528,6 @@ const STEPS: Step[] = [
     // page's shape: second person, a flat statement, then the turn.
     body: "You keep buying music. Curfew shows you what never leaves the shelf.",
     film: 2,
-  },
-  {
-    n: "05",
-    title: "The track",
-    // The zoom all the way in, and the last thing the tour shows: four steps
-    // about nights and months, then one record and everything it has done.
-    body: "Any record you own, and everything it has done in your sets. Where in the night it lands, how long you ride it, what you mix into it.",
-    film: 3,
   },
 ];
 
