@@ -432,6 +432,26 @@
     visibility var(--motion-duration-fast);
 }
 
+/* `align="start"` — the panel pinned to the trigger's LEFT edge, growing
+   rightward. The `right: 0` default above assumes a trigger near the right of
+   a wide card (Style Evolution's chart subtitles, where it was written); a
+   trigger sitting a few words in from the left instead sends a 280px panel
+   off the card and under the nav rail, which is where Set Similarity's
+   explainer was opening. `max-width` is unchanged: it still caps the measure
+   and still keeps the panel on-screen, only from the other edge. */
+.se-chart-info--start .se-chart-info-tip {
+  right: auto;
+  left: 0;
+  /* Its own viewport term, and a bigger one than the default's 8rem. The two
+     variants overflow in OPPOSITE directions, and only one of those directions
+     costs anything: a panel running off the LEFT edge is invisible, while one
+     running off the RIGHT makes the whole page scroll sideways. Measured at
+     390px, where this trigger sits 158px in (it follows a four-word heading,
+     not a one-word one) and the default cap left a 30px horizontal scroll on
+     the page. 11rem clears it at 320px too. */
+  max-width: min(280px, calc(100vw - 11rem));
+}
+
 /* Hover for mouse, `:focus-visible` for keyboard, and `aria-expanded` for
    touch. The last one matters: tapping a <button> does not reliably match
    :focus-visible under Chrome/Safari's heuristics and a touch device has no
@@ -509,21 +529,29 @@
    height of the value it names, so the axis stays honest about where the
    number actually sits. BPM numbers carry no "BPM" suffix — the unit is a
    given once you're looking at a chart titled BPM Range. */
-/* 4.2% — NOT 42px. The plot's x coordinates come out of TrendChart.tsx as
-   percentages of a 1000-unit viewBox, where Y_AXIS_GUTTER = 42 reserves
-   exactly 4.2% of the width. A fixed 42px only agreed with that at a card
-   width of exactly 1000px: wider, the labels floated left of their data;
-   narrower, this box overlapped the plot. Keep this in sync with
-   Y_AXIS_GUTTER / VIEW.width in TrendChart.tsx.
+/* A PERCENTAGE, never px. The plot's x coordinates come out of TrendChart.tsx
+   as percentages of a 1000-unit viewBox, so a fixed 42px only agreed with the
+   data at a card width of exactly 1000px: wider, the labels floated left of
+   their data; narrower, this box overlapped the plot.
+
+   The value itself now arrives FROM the component as `--se-yaxis` (4.2% for a
+   line-only chart, 6.4% for one that also prints a bar scale) — this rule used
+   to hard-code 4.2% under a comment asking the next editor to keep it in sync
+   with `Y_AXIS_GUTTER`, which is not a rule CSS can enforce or review can see
+   broken. The fallback keeps the narrow value for anything rendering this
+   class without the property.
+
    Narrowed 5.8% → 4.2% (Arjun, 2026-08-12: "quite a bit of a gap between the
    Y axis and the actual starting point of the graph"). The gutter was sized
    for the widest label a chart can produce, so on every chart that does NOT
    produce one — BPM's three digits, the fixed 0/50/100% ticks — it left a
-   band of dead air the width of the label again. */
+   band of dead air the width of the label again. That is exactly why the wider
+   value is now scoped to the charts that earn it instead of being restored for
+   all of them. */
 .se-chart-yaxis {
   position: absolute;
   inset: 0;
-  width: 4.2%;
+  width: var(--se-yaxis, 4.2%);
   pointer-events: none;
   z-index: 4;
 }
@@ -538,8 +566,14 @@
   color: var(--color-abyss-accent);
   opacity: 0.75;
   width: max-content;
-  max-width: 54px;
   line-height: 1.2;
+  /* `text-wrap`, not the older shorthand, whose property NAME contains a word
+     the colour guard reads as a named colour. The 54px cap this replaces was
+     there to stop the widest label escaping the gutter; it stopped it by
+     WRAPPING it instead, which is how "120 tracks" came to sit across two
+     lines under the 100% tick. The gutter is now sized for the label
+     (`--se-yaxis`), so the label no longer has to be broken to fit it. */
+  text-wrap: nowrap;
 }
 
 /* Above phone width the labels hang off the RIGHT of the gutter, so a short
@@ -563,6 +597,21 @@
   color: var(--color-abyss-text-45);
   opacity: 1;
   font-size: 9.5px;
+}
+
+/* The one label anchored to the LEFT of the gutter rather than the right (the
+   rule above flips every other one at this width). It is the widest label a
+   chart can produce and the only one whose width is unbounded — the count has
+   as many digits as the DJ has tracks — so it is the one that can still
+   outgrow a percentage-sized gutter on a narrow card. Anchored left, that
+   overflow runs into the empty band the bar inset reserves in front of the
+   first group; anchored right, it ran off the card's left edge. */
+@media (min-width: 640.02px) {
+  .se-chart-ylabel--bars {
+    left: 0;
+    right: auto;
+    text-align: left;
+  }
 }
 
 .se-chart-svg {

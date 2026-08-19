@@ -85,9 +85,20 @@ export type TrendMetric = "bpm" | "genre" | "library" | "harmonic";
 
 const VIEW = { width: 1000, height: 260, padding: 28 };
 const Y_AXIS_GUTTER = 42; // left margin reserved for the y-axis labels (4.2% of VIEW.width)
+/** The gutter a chart that ALSO carries the bar-scale label needs. "120 tracks"
+ *  / "53 plays" is roughly twice the width of a "100%" tick, and inside the
+ *  42-unit gutter it wrapped onto two lines and crowded the tick above it
+ *  (Arjun, 2026-08-18 — the library trend). Both values reach the stylesheet as
+ *  the `--se-yaxis` custom property below, so the CSS box and the viewBox
+ *  coordinates can no longer be edited apart. */
+const Y_AXIS_GUTTER_WIDE = 64;
 /** Minimum vertical separation, in viewBox units, between two gutter labels
- *  before one is nudged clear of the other (~one line of the label type). */
-const AXIS_LABEL_CLEARANCE = 15;
+ *  before one is nudged clear of the other — the two half line-heights (10.5px
+ *  and 9.5px type) plus air. 15 → 18 alongside the gutter widening below: the
+ *  old value was the two labels touching, which was tolerable while the wider
+ *  one wrapped and the eye had a line break to read the split by, and is not
+ *  now that both are single lines. */
+const AXIS_LABEL_CLEARANCE = 18;
 const BAND_FILL_SAMPLES = 24; // per run — dense enough that the sampled ribbon reads as smooth
 /** Named categories given their own bar. Dropped 6→5 (2026-08-06, Arjun:
  *  "is it possible to make the bars wider? maybe we show 5 instead of 6") —
@@ -147,10 +158,33 @@ function libraryHoverDetail(played: number, added: number, window: ConversionWin
   return `${played} of ${added} tracks played within ${window} days (${pct}%)`;
 }
 
-function xForIndex(i: number, count: number): number {
+/** A month's group of bars, in viewBox units, for a given bucket count and
+ *  gutter — the same `0.84 × pitch, capped` rule the render uses, hoisted so
+ *  the x scale can reserve half a group at each end BEFORE the groups are
+ *  measured (see `xForIndex`). */
+function barGroupWidthFor(count: number, gutter: number): number {
+  const usable = VIEW.width - VIEW.padding * 2 - gutter;
+  const pitch = count > 1 ? usable / (count - 1) : usable;
+  return Math.min(pitch * 0.84, BAR_GROUP_MAX_WIDTH);
+}
+
+/**
+ * `inset` reserves half a bar group at each end of the scale.
+ *
+ * Bar groups are centred on their bucket's x (`translateX(-50%)`), and the
+ * first bucket used to sit exactly ON the axis line — so half of February's
+ * group was drawn underneath the y-axis labels, which printed "50%" and "0%"
+ * straight over the bar (Arjun, 2026-08-18). The line metrics don't need the
+ * inset, so they don't get one: only a chart that draws bars pays the width.
+ *
+ * Half a group measured against the UN-inset pitch is always enough room,
+ * because insetting only shortens the pitch, and a shorter pitch can only make
+ * the group narrower.
+ */
+function xForIndex(i: number, count: number, gutter: number, inset: number): number {
   if (count <= 1) return VIEW.width / 2;
-  const usable = VIEW.width - VIEW.padding * 2 - Y_AXIS_GUTTER;
-  return VIEW.padding + Y_AXIS_GUTTER + (usable * i) / (count - 1);
+  const usable = VIEW.width - VIEW.padding * 2 - gutter - inset * 2;
+  return VIEW.padding + gutter + inset + (usable * i) / (count - 1);
 }
 
 // Fixed to 4 decimal places (Story 4.7 fix — found while all three metrics
@@ -431,7 +465,9 @@ function TrendChartPlot({
   conversionWindow?: ConversionWindow;
   caption: string;
 }) {
-  const xs = useMemo(() => buckets.map((_, i) => xForIndex(i, buckets.length)), [buckets]);
+  // `xs` is computed further down, once `hasBars`/`hasLibraryBars` are known —
+  // the x scale reserves room for the bar groups and the gutter widens for
+  // their scale label, and both answers depend on whether any bar is drawn.
 
   // Effective genre/key COUNT (D-1/D-2's entropy, converted) — the plotted
   // quantity itself is now the same deterministic number the axis and
@@ -640,6 +676,21 @@ function TrendChartPlot({
   // back. Reachable on real data (whole months normalize entirely to "Other").
   const hasCategoryRow = ranked.length > 0;
 
+  /* ── The x scale, and the gutter it starts after ───────────────────────── */
+
+  // A chart that draws bars also prints their scale in the gutter ("120
+  // tracks" / "53 plays"), which needs a wider box than a "100%" tick, and
+  // needs its groups kept off the axis. Neither is knowable until here, which
+  // is why the scale is built at this point rather than at the top of the
+  // component. Both numbers reach the stylesheet as `--se-yaxis` below.
+  const anyBars = hasBars || hasLibraryBars;
+  const yAxisGutter = anyBars ? Y_AXIS_GUTTER_WIDE : Y_AXIS_GUTTER;
+  const barInset = anyBars ? barGroupWidthFor(buckets.length, yAxisGutter) / 2 : 0;
+  const xs = useMemo(
+    () => buckets.map((_, i) => xForIndex(i, buckets.length, yAxisGutter, barInset)),
+    [buckets, yAxisGutter, barInset],
+  );
+
   /* ── Y domains ─────────────────────────────────────────────────────────── */
 
   // Real observed BPM min/max (unpadded) — what the y-axis labels show, so a
@@ -768,7 +819,7 @@ function TrendChartPlot({
 
   // 0.84 of the bucket pitch: the remaining 16% is the air that separates one
   // month's group of bars from the next.
-  const groupWidth = buckets.length > 1 ? xs[1] - xs[0] : VIEW.width - VIEW.padding * 2 - Y_AXIS_GUTTER;
+  const groupWidth = buckets.length > 1 ? xs[1] - xs[0] : VIEW.width - VIEW.padding * 2 - yAxisGutter;
   const barGroupWidth = Math.min(groupWidth * 0.84, BAR_GROUP_MAX_WIDTH);
   const barBottomPct = (VIEW.padding / VIEW.height) * 100;
   const barBandPct = ((VIEW.height - VIEW.padding * 2) / VIEW.height) * 100 * BAR_MAX_FRACTION;
@@ -788,7 +839,15 @@ function TrendChartPlot({
        bury both controls. The plot is the actual graphic; `caption` remains its
        text-equivalent (AC-4), and the same string is still the visible caption
        below. */
-    <div ref={rootRef} className="se-chart se-chart-full dz-shell">
+    <div
+      ref={rootRef}
+      className="se-chart se-chart-full dz-shell"
+      // The y-axis gutter, published to CSS. `.se-chart-yaxis`'s width used to
+      // be a hand-copied 4.2% with a comment asking the next editor to keep it
+      // in sync with `Y_AXIS_GUTTER` — which is a rule a stylesheet cannot
+      // enforce and a review cannot see broken. One source now, two consumers.
+      style={{ "--se-yaxis": pctX(yAxisGutter) } as React.CSSProperties}
+    >
       <span className="dz-dots" aria-hidden="true" />
 
       <div className="se-chart-head">

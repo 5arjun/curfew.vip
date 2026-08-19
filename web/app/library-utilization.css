@@ -237,32 +237,63 @@
   padding: 0 4px;
 }
 
+/* STACKED, not side by side (Arjun, 2026-08-18: "there's so much dead space
+   here"). The meter was a 340px column holding a pip row, one percentage and
+   one sentence — about 110px of content — beside a 320px chart, so the row
+   ended with a 340 × 300px hole under the meter that nothing on this page
+   could fill.
+   `align-items: start` had already refused to paper over it with stretch, for
+   the right reason: a card padded out to a neighbour's height is the same
+   emptiness moved inside the card. The fix is the other axis. The meter is now
+   a full-width STRIP above the trend — the headline number, then its history —
+   which is the composition the two were always describing, and it hands the
+   chart the full width besides.
+   `minmax(0, 1fr)`, not a bare `1fr`: a grid track's implicit minimum is
+   `auto`, i.e. its content's min-content width, so a bare `1fr` lets a long
+   unbreakable track title push the column WIDER than the page. */
 .lu-conversion-body {
   display: grid;
-  grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   /* One gutter for the whole page — this row and both `.lu-pair`s. */
   gap: var(--lu-gutter);
-  /* `start`, not `stretch` (Arjun, 2026-08-12). Stretching made the meter — a
-     percentage, a pip row and one sentence — as tall as a 260px chart, so
-     two-thirds of that card was empty. Aligning the pair was the ask; matching
-     their heights was never part of it, and equal heights bought the emptiness
-     the same conversation called out. Both cards still START on the same line,
-     which is the thing that was actually broken. */
-  align-items: start;
 }
 
-@media (max-width: 900px) {
-  .lu-conversion-body {
-    /* `minmax(0, 1fr)`, not a bare `1fr` — a grid track's implicit minimum is
-       `auto`, i.e. its content's min-content width, so a bare `1fr` lets a long
-       unbreakable track title push the column WIDER than the page. The
-       desktop rule above has always guarded this; both collapse rules were
-       written as bare `1fr` and only got away with it because the modules that
-       could blow out were capped at 440px until this layout pass removed the
-       caps. Verified against the aging shelf at 390px, which blew its column
-       out to 1307px before this. */
-    grid-template-columns: minmax(0, 1fr);
-  }
+/* ─── Stat strip — a stat module laid out along the row rather than down the
+   column, for the modules that are one figure and one sentence and would
+   otherwise sit in a column taller than they are (the conversion meter, time
+   to first play). The card is full width; the CONTENT is what fills it, so
+   there is no padded-out box pretending to be full.
+
+   Everything stays in DOM order, which is also reading order: the pips, then
+   the sentence they quantify, then any hedge on it. */
+.lu-strip {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 28px;
+  padding: 16px 22px;
+}
+
+/* The sentence takes the room, so the disclosures land against the right edge
+   at desktop widths and drop below at narrow ones — `280px` is the basis at
+   which the readout stops sharing its line rather than wrapping to three. */
+.lu-strip > .lu-stat-readout,
+.lu-strip > .lu-stat-empty {
+  flex: 1 1 280px;
+}
+
+/* `.lu-stat-head` is a full-width flex row of its own inside the module (the
+   heading, and on some modules a control), so it must not be squeezed into the
+   strip beside the figure — it keeps its own line above it. */
+.lu-strip > .lu-stat-head {
+  flex: 1 0 100%;
+}
+
+/* A gated module's empty state is a card of its own (`InsufficientHistory`
+   renders `.se-empty.dz-shell`), so it takes the whole line rather than being
+   squeezed beside a figure that is not being stated. */
+.lu-strip > .se-empty {
+  flex: 1 0 100%;
 }
 
 /* One cell of the conversion pair: a heading, then a card. Both columns use it
@@ -618,6 +649,34 @@
   }
 }
 
+/* Three across — workhorses, one-and-done, the aging shelf (Arjun,
+   2026-08-18). Three bounded scrolling lists of the same shape and the same
+   subject, so the row reads as one thought rather than as a pair plus a
+   straggler; see `page.tsx`'s "Tracks" block for why the shelf moved here.
+
+   Each column lands around 420px on a 1300px page, which is wider than the
+   440px cap these very modules shipped under, so nothing in a row is tighter
+   than it was when it had half the page.
+
+   It collapses straight to ONE column rather than passing through two: three
+   items in a two-column grid leaves a half-empty cell, which is the shape this
+   row exists to remove. That is also why its breakpoint is its own rather than
+   `.lu-pair`'s 900px — a trio runs out of column width before a pair does, and
+   holding it to the page-wide step would mean three ~250px lists at the bottom
+   of the range. */
+.lu-trio {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--lu-gutter);
+  align-items: start;
+}
+
+@media (max-width: 1180px) {
+  .lu-trio {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* ─── Track rows (AC-5 workhorses, AC-6 one-and-done) ───────────────────── */
 
 /* Scrolls in place rather than hiding its tail behind a "Show the other N"
@@ -759,7 +818,9 @@
   align-items: center;
   justify-content: center;
   font-family: var(--font-geist-mono);
-  font-size: 9px;
+  /* Raised with the cells (2026-08-18). 9px was the smallest type on the page
+     and it labelled the axis a DJ has to read to know which night a row is. */
+  font-size: 10px;
   letter-spacing: 0.04em;
   color: var(--color-abyss-text-45);
   /* A date is longer than the bare session number the axis used to show, so
@@ -847,17 +908,50 @@
   min-height: 24px;
 }
 
+/* 9px → 11.5px, and the row 26px → 32px (Arjun, 2026-08-18: "the %'s on this
+   are hard to read"). 9px mono was sized for a 10-column grid inside a 440px
+   card; the module has been full-width since the 2026-08-13 layout pass, which
+   gives every cell ~110px on a 1300px page — so the type was small for a box
+   four times wider than the number in it. The cell keeps `min-height` rather
+   than a fixed height so a narrower page still shrinks the grid before the
+   text.
+   Weight 500, not the default: the label sits on a cyan wash that gets denser
+   with the value, and a hairline glyph is exactly what that wash swallows. */
 .lu-sim-cell {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 26px;
+  min-height: 32px;
   border-radius: 4px;
   font-family: var(--font-geist-mono);
-  font-size: 9px;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
   color: var(--color-abyss-text);
 }
+
+/* ONE foreground for the whole ramp, and the halo is what carries it (Arjun,
+   2026-08-18, choosing this over a flip to dark ink).
+
+   The flip was tried and reverted. It read better at the bright end and worse
+   in the middle: `data-dense` switched at share 0.25, but the two foregrounds
+   do not actually cross until ~0.49, so every cell between them swapped an
+   8.1:1 light reading for a 2.2:1 dark one — six cells made worse to fix
+   seven. Measured off the real composite, not eyeballed; the harness that
+   showed it is gone with the scratch, so the numbers are here instead:
+
+     share   light    dark ink
+     0.25    8.09     2.23
+     0.40    5.38     3.35
+     0.49    4.26     4.23   <- the actual crossover
+     1.00    1.44    12.56
+
+   Note the honest limit of this choice: a shadow lifts LEGIBILITY, not the
+   computed ratio, so the dense end still measures ~1.4:1 against the fill.
+   That is a knowing trade, not an oversight. The only fixes that would move
+   the number are capping the ramp's top opacity or picking a fill deeper than
+   the pale accent — both design changes, both bigger than this. */
 
 /* THE INTENSITY RAMP, on its OWN LAYER. `no-hardcoded-colors.test.ts` rejects
    hex literals, every alpha-bearing colour function, the modern colour spaces,
@@ -888,13 +982,35 @@
    background). This is what keeps the number readable at every intensity. */
 .lu-sim-cell-value {
   position: relative;
+  /* The ramp runs from 8% to 100% opacity under this text, so the SAME
+     foreground has to hold against both the card and a near-solid cyan fill.
+     A dark halo is what makes it hold at the top of the ramp without the
+     bottom of the ramp needing a second, lighter colour — and it costs
+     nothing where the fill is faint. `--shadow-ink-40` rather than a literal:
+     the colour guard rejects every alpha-bearing function by design, and this
+     token is the app's existing answer for exactly that.
+
+     The SECOND layer is the one that answers the bright end (Arjun,
+     2026-08-18: "just a bit more shadow on the lighter colors"). Its blur is
+     driven by the cell's own `--lu-sim-intensity`, which inherits down from
+     the cell where the component sets it — so the halo grows with the wash it
+     has to hold against. At the 0.08 floor it is a 0.6px rim, i.e. the faint
+     cells keep the treatment they already had; at full density it is a 7px
+     halo. Scaling the BLUR rather than the alpha is what makes this possible
+     at all: the colour guard rejects every function that could interpolate a
+     colour, so a per-cell alpha is not available to us. */
+  text-shadow:
+    0 1px 2px var(--shadow-ink-40),
+    0 0 calc(var(--lu-sim-intensity, 0.08) * 7px) var(--shadow-ink-80);
 }
 
 /* The diagonal, and pairs where a set had no identified track. Blank, not
    "0%" — 0 divided by 0 is unknown, not zero. */
 .lu-sim-cell-empty {
   display: block;
-  min-height: 26px;
+  /* Tracks `.lu-sim-cell`'s min-height — a blank cell shorter than its
+     populated neighbours would notch the grid's rows. */
+  min-height: 32px;
   border-radius: 4px;
   background-color: var(--color-abyss-hairline);
   opacity: 0.4;

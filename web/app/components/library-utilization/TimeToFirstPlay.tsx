@@ -80,7 +80,13 @@ export function TimeToFirstPlay({ model }: { model: TimeToFirstPlayModel }) {
     // `role="group"`, not `<section>` (Story 4.9; deferred-work R-10) — see
     // `ConversionRateMeter` for the reasoning. The accessible name is retained
     // exactly; only its landmark status is dropped.
-    <div className="lu-module dz-shell" role="group" aria-label={summary}>
+    // `.lu-strip` (Arjun, 2026-08-18): this module is now the full width of the
+    // page rather than half of a row whose other half is the 447px aging shelf,
+    // so its content lays out along the row instead of down a column three
+    // lines deep in a card six times that tall. Same treatment, same class, as
+    // the conversion meter at the top of the page — the two are the page's only
+    // one-figure-and-a-sentence modules. See `page.tsx`'s "First play" block.
+    <div className="lu-module lu-strip dz-shell" role="group" aria-label={summary}>
       <span className="dz-dots" aria-hidden="true" />
       <div className="lu-stat-head">
         <h3 className="lu-stat-label">Time to first play</h3>

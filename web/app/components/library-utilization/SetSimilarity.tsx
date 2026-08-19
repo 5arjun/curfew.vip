@@ -108,7 +108,10 @@ export function SetSimilarity({ model }: { model: SetSimilarityModel }) {
       <div className="lu-stat-head">
         <h3 className="lu-stat-label">
           Set similarity
-          <InfoTip label="How set similarity is calculated">
+          {/* `align="start"`: this trigger sits four words in from the card's
+              left edge, so the default right-pinned panel grew leftward off
+              the card and under the nav rail (Arjun, 2026-08-18). */}
+          <InfoTip label="How set similarity is calculated" align="start">
             Each cell counts the tracks two sets have in common, divided by the number of distinct
             identified tracks across both — so two identical sets read 100%, and two with nothing in
             common read 0%. A track counts once per set no matter how often you played it, and tracks
@@ -260,6 +263,23 @@ function Row({
           <span
             key={`${row}-${col}`}
             className="lu-sim-cell"
+            // The ramp below runs a LIGHT cyan up to full opacity, and the
+            // cell's percentage is near-white — so the denser the cell, the
+            // closer the two got, until a high-overlap pair printed white on
+            // `#7fd8f2` at about 1.4:1 (Arjun, 2026-08-18: "the %'s on this are
+            // hard to read"). It was also the failure the ramp's own
+            // pseudo-element exists to prevent, arriving from the other
+            // direction: that fix stopped the TEXT being faded, not the ground
+            // under it being brightened.
+            //
+            // The answer lives entirely in the stylesheet, deliberately: the
+            // foreground stays ONE colour at every density and the halo under
+            // it grows with `--lu-sim-intensity`. A `data-dense` flip to dark
+            // ink was tried here first and reverted — it switched sides well
+            // before the two readings actually cross, so it improved the
+            // bright end by making the middle of the ramp worse. The numbers
+            // are recorded on `.lu-sim-cell-value` in `library-utilization.css`.
+            //
             // `aria-hidden` sits HERE rather than on the grid, since the axes
             // became links — see this module's doc comment. Without it the
             // 100 cell percentages re-enter the accessibility tree, which is

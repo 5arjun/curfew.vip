@@ -27,10 +27,27 @@ import { useId, useState, type ReactNode } from "react";
  */
 export function InfoTip({
   label,
+  align = "end",
   children,
 }: {
   /** The button's accessible name — a question, e.g. "How X is calculated". */
   label: string;
+  /**
+   * Which edge the panel is pinned to — the side it grows AWAY from.
+   *
+   * `"end"` (the default, and Style Evolution's original behaviour) pins the
+   * tip's right edge to the trigger and grows leftward, which is right for a
+   * trigger sitting at the END of a long subtitle line: there is a card's worth
+   * of room on that side and none on the other.
+   *
+   * `"start"` is for a trigger that sits at the START of its line — Set
+   * Similarity's, which follows a four-word heading. A 280px panel growing
+   * leftward from there ran off the card, off the page's left gutter and under
+   * the nav rail, so the explanation opened somewhere unreadable (Arjun,
+   * 2026-08-18: "the tool top for set similarity shows up to the left where no
+   * one can read it").
+   */
+  align?: "start" | "end";
   /** The explanation. Plain text or inline markup; it lands in a `role="tooltip"`. */
   children: ReactNode;
 }) {
@@ -38,7 +55,7 @@ export function InfoTip({
   const [open, setOpen] = useState(false);
 
   return (
-    <span className="se-chart-info">
+    <span className={align === "start" ? "se-chart-info se-chart-info--start" : "se-chart-info"}>
       <button
         type="button"
         className="se-chart-info-btn"

@@ -431,9 +431,36 @@ function renderBody(
           `LibraryUtilizationReveal` as a page-level primitive rather than
           welded to these modules. */}
       <h2 className="lu-group-heading">Tracks</h2>
-      <div className="lu-pair">
+      {/* THREE across, and the third is the aging shelf (Arjun, 2026-08-18 —
+          "First play has so much empty space under it").
+
+          Story 4.9 left a note under "First play" below suggesting exactly this
+          move: the shelf belongs next to one-and-done, since both are neglect
+          lists. It declined to make it because re-siting shipped UI is not a
+          decision a merge takes on its own. The layout is now the argument for
+          it as well as the reading: the shelf is a 447px list and
+          time-to-first-play is three lines, so pairing those two put a ~380px
+          hole under the page's last stat — while the two lists it actually
+          belongs with sat in a row of their own.
+
+          The three are the same SHAPE (a bounded, scrolling list of tracks) as
+          well as the same subject, which is what makes a trio read as one row
+          rather than as two things and a straggler. They stay complements
+          rather than duplicates: workhorses is what you lean on, one-and-done
+          is what you played once and dropped, the shelf is what you never
+          reached at all.
+
+          `AgingShelf` renders its own `<h2>Aging shelf</h2>`, so this row's
+          heading does not name it — the same arrangement it had under "First
+          play", unchanged by the move. It also renders a `<section aria-label>`
+          where every other module here is a `<div role="group">` (R-10), so the
+          page carries 3 landmarks rather than 2. That inconsistency predates
+          this move and is unaffected by it; it stays logged in
+          `deferred-work.md` rather than being fixed in passing. */}
+      <div className="lu-trio">
         <Workhorses model={workhorses} />
         <OneAndDone model={oneAndDone} zone={zone} />
+        <AgingShelf model={agingShelf} />
       </div>
 
       {/* ── First play ────────────────────────────────────────────────────
@@ -468,64 +495,31 @@ function renderBody(
           Below the pair rather than above it, per `LibraryUtilizationView`'s
           own note that further modules are expected to grow below it. */}
       <h2 className="lu-group-heading">First play</h2>
-      {/* Layout pass (Arjun, 2026-08-13): these two were the last direct `.lu`
-          children still capped at 440px, stacked one above the other, which
-          left an 864 × 590px empty rectangle down the right of the page's
-          final screen — the single worst piece of the dead space this pass
-          exists to remove. They are now a `.lu-pair` like the two rows above,
-          so the page has exactly two row shapes (halves, and full width)
-          instead of five widths.
+      {/* A full-width STRIP, alone (Arjun, 2026-08-18). Its history:
 
-          Pairing them is defensible on the content too: both are about a
-          track's distance from a dancefloor in TIME — how long the played ones
-          waited, and how long the unplayed ones have been waiting.
+          2026-08-13 paired it with the aging shelf, to close an 864 × 590px
+          hole left by two 440px-capped cards stacked in a 1304px field. That
+          closed the hole on the right and opened a smaller one underneath —
+          three lines of stat beside a 447px scrolling list — which is what
+          "First play has so much empty space under it" is. The pairing was
+          defensible on the content (both are about a track's distance from a
+          dancefloor in TIME) but not on the shapes, and shape is what a row
+          layout is actually made of.
 
-          **Open copy question, flagged rather than decided.** The `<h2>First
-          play</h2>` above now sits over a two-card row whose right card is the
-          shelf, and it only describes the left one. The DOM heading order is
-          unchanged (`First play`, then `AgingShelf`'s own `<h2>`), so nothing
-          about heading navigation moved — but the visible label is now doing
-          less work than it looks like it is. Renaming it to cover both is a
-          copy decision, which is not this pass's to make. */}
-      <div className="lu-pair">
-        <TimeToFirstPlay model={timeToFirstPlay} />
+          The shelf has moved up to the "Tracks" row, where it is one of three
+          lists of the same height; see that row for the reasoning, which Story
+          4.9 had already written down and left open. This module keeps the
+          `First play` heading it always had — and now the heading covers
+          exactly what is under it, which retires the open copy question the
+          2026-08-13 note recorded rather than leaving it to a rename.
 
-      {/* ── Shelf ─────────────────────────────────────────────────────────
-          Story 4.4's aging shelf, kept at the placement it SHIPPED with — a
-          sibling below `TimeToFirstPlay`, outside `LibraryUtilizationView`,
-          for the same reason stated at length above: the shelf has no trailing
-          window, so nesting it under the shared conversion dropdown would put
-          a window-independent list under a control that visibly does not move
-          it.
-
-          Story 4.9 had left a note here suggesting the shelf belongs NEXT TO
-          one-and-done under "Tracks", since both are neglect lists. 4.4 landed
-          first and placed it here, and re-siting shipped UI is not a decision
-          a merge should make on its own — so the suggestion is recorded as
-          still open rather than silently applied or silently dropped. It needs
-          no heading from this page: `AgingShelf` renders its own `<h2>Aging
-          shelf</h2>`, and adding one here put TWO H2s over one module in the
-          rendered outline — caught by the post-merge browser pass, not by
-          reading the diff.
-
-          One inconsistency left deliberately: `AgingShelf` renders a
-          `<section aria-label>`, so the page's landmark count is 3 rather than
-          the 2 that R-10's fix established by converting every module to
-          `<div role="group">`. 4.4 shipped it that way in parallel; changing
-          another story's markup is not a merge decision. Logged in
-          `deferred-work.md` instead.
-
-          The two lists remain complements, not duplicates, and the distinction
-          is the reason a merge could reasonably leave them apart: one-and-done
-          is about tracks the DJ DID play and dropped; the shelf is about
-          tracks never reached at all.
-
-          Unlike the modules above it this one IS a client component, but only
-          for a single `useState` holding the sort direction — the whole model
-          is computed on the server and passed in, so the page itself stays a
-          server component and no data work crosses the boundary. */}
-        <AgingShelf model={agingShelf} />
-      </div>
+          `.lu-strip` is the conversion meter's own treatment: a card the width
+          of the page whose CONTENT runs along the row, so nothing is padded out
+          to look full. It stays OUTSIDE `LibraryUtilizationView` for the reason
+          stated at length above — no trailing window, so it must not sit under
+          a dropdown that visibly does not move it — and that is unchanged by
+          the layout. */}
+      <TimeToFirstPlay model={timeToFirstPlay} />
 
       {/* Last, so they sit under everything they speak for.
 

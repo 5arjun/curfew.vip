@@ -223,12 +223,31 @@
 
 /* ─── Set rows (AC-7) ───────────────────────────────────────────────────── */
 
+/* Laid out in COLUMNS, not one full-page row per set (Arjun, 2026-08-18: "so
+   much empty space between the set and date").
+
+   These modules are deliberately full-width (see `.td-module`), and a row of
+   two short items with `justify-content: space-between` in a 1250px card puts
+   ~1100px of nothing between the set and the night it was played — the two
+   halves of one fact, too far apart to read as one. Nothing was wrong with the
+   row; there was simply four times more width than one row needs.
+
+   `columns` rather than a grid because the flow direction is what matters: a
+   grid fills left-to-right, which would scatter a date-ordered list across the
+   card, while multicol fills each column top-to-bottom and then moves right,
+   so reading order stays the order the list is sorted in. The list also
+   shortens to whatever fits — at phone width it is a single column, exactly
+   what it was before.
+
+   `break-inside` on the row keeps a set and its date from being split across a
+   column boundary. The trailing hairline at the foot of each column but the
+   last is deliberate — it reads as a list that continues, which it does. */
 .td-set-list {
   list-style: none;
   margin: 4px 0 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
+  columns: 260px;
+  column-gap: 40px;
 }
 
 .td-set-row {
@@ -240,6 +259,9 @@
   border-bottom: 1px solid var(--color-abyss-hairline);
   /* 24px floor for SC 2.5.8 — every row here holds a link. */
   min-height: 24px;
+  /* A set and the night it was played must not be split across a column
+     boundary — see `.td-set-list`. */
+  break-inside: avoid;
 }
 
 .td-set-row:last-child {

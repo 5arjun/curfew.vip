@@ -90,7 +90,13 @@ export function ConversionRateMeter({
     // change is what aligns them; `.lu-conversion-cell` is the shared wrapper.
     <div className="lu-conversion-cell">
       <h3 className="lu-stat-label">Conversion rate</h3>
-      <div className="lu-module dz-shell" role="group" aria-label={summary}>
+      {/* `.lu-strip` (Arjun, 2026-08-18): the meter is a full-width band above
+          the trend now, not a 340px column beside it, so its content lays out
+          along the row — pips, the sentence, then any hedge on it. The card
+          used to be three short lines in a column 300px taller than they
+          filled; that hole was the dead space, and stacking is what removed
+          it rather than stretching something to cover it. */}
+      <div className="lu-module lu-strip dz-shell" role="group" aria-label={summary}>
       <span className="dz-dots" aria-hidden="true" />
       {rate.added > 0 ? (
         <>
