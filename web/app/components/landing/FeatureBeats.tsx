@@ -11,14 +11,19 @@ import { MarketingFooter } from "./MarketingFooter";
 // data-shown reveals), one register calmer: the landing is a film, this page
 // is the catalogue.
 //
-// The fourth row has no film yet — Arjun is recording the library-utilization
-// take. Until it exists the row runs BARE: full-width copy, facts in three
-// columns, no media frame. Deliberately not a stand-in image: the only
-// candidate (library.jpg) turned out to be a stray browser screenshot of an
-// old landing build — visible URL bar, visible dock — committed as if it were
-// a product still (2026-08-14; genre-key.jpg and style-evolution.jpg were the
-// same capture, all three deleted). When the film lands, add { src, poster }
-// to the entry below and the row becomes a normal one.
+// EVERY ROW HAS ITS FILM NOW (Arjun, 2026-08-19). "The library" ran BARE for
+// five days — full-width copy, no media frame — because the library-utilization
+// take did not exist and the only stand-in candidate (library.jpg) turned out
+// to be a stray browser screenshot of an old landing build, URL bar and dock
+// included, committed as if it were a product still (2026-08-14; genre-key.jpg
+// and style-evolution.jpg were the same capture, all three deleted). The take
+// arrived, so the bare branch below is now dead weight kept for the next film
+// that is owed rather than a state the page is actually in.
+//
+// "The track" is the fifth row and the page's newest: the per-track screen you
+// land on from the library search — play history, the hour it works, ride time,
+// what you mix into it and out of it. It closes the page's zoom, night → month
+// → archive → shelf → one record.
 
 // "Reads Serato", not the mechanism behind it (Arjun, 2026-08-15: "I'm
 // trying to avoid spilling to the user how we actually get this data") —
@@ -93,6 +98,22 @@ const FEATURES: Feature[] = [
       "Know your workhorses: the tracks that earn a slot every set",
       "How long new music waits before its first play",
     ],
+    film: {
+      src: "/landing/library-utilization.mp4",
+      poster: "/landing/library-utilization-poster.jpg",
+    },
+  },
+  {
+    name: "The track",
+    claim: "Any record you own, and everything it has done in your sets.",
+    facts: [
+      "Search your plays and your library, and land on any record in one step",
+      "Every play and every set it turned up in, first night to last",
+      "The hour it works: where in the night this one actually lands",
+      "How long you typically ride it before the next record",
+      "What you mix into it and out of it, ranked by how often",
+    ],
+    film: { src: "/landing/track-detail.mp4", poster: "/landing/track-detail-poster.jpg" },
   },
 ];
 
