@@ -454,21 +454,29 @@ export function Diptych() {
 }
 
 /* ── Beat 05 — the pinned capability stepper ──────────────────────────────── */
-// THREE FILMS ACROSS FOUR STEPS. The media is keyed off the step rather than
-// owned by it, because a step that owns its own <video> is a step that remounts
-// the element every time the index changes — and a remount restarts playback at
-// frame 0. Steps 01→02 are one continuous take of set detail, so that film keeps
-// running underneath while the copy changes against scroll; 03 and 04 are a film
-// each.
+// FOUR FILMS, ONE PER STEP (Arjun, 2026-08-19: "the first video should show the
+// dashboard, not set detail. so in total 4 videos shown"). This ran THREE films
+// across four steps until now: 01 and 02 shared one continuous set-detail take,
+// so the film kept running underneath while only the copy changed against
+// scroll. Step 01 is the dashboard now, which ends that — 01→02 becomes a source
+// change like every other step boundary, and set detail enters at its own
+// midpoint when 02 arrives instead of being already underway.
 //
-// THE LANDING PLAYS FOUR FILMS AND THE TRACK SCREEN IS NOT ONE OF THEM (Arjun,
+// The media is still keyed off the step rather than owned by it, because a step
+// that owns its own <video> is a step that remounts the element every time the
+// index changes — and a remount restarts playback at frame 0.
+//
+// ALL FOUR FILMS ARE IN HERE NOW, and that is what moved. They used to be
+// counted across the whole run to the bottom, not inside this component (Arjun,
 // 2026-08-19: "the 4 videos should be the set detail, dashboard, library util,
-// and style evolution. we don't need the song detail there"). The four are
-// counted across the whole run to the bottom, not inside this component: set
-// detail (the cover, beat 03), dashboard (the diptych, beat 04), then style
-// evolution and library utilization here. A fifth step for the track screen was
-// added earlier today and is reverted — it lives on /features, where the
-// catalogue can afford a fifth row and the tour cannot afford a fifth screenful.
+// and style evolution. we don't need the song detail there") — set detail at the
+// cover (beat 03), dashboard at the diptych (beat 04), style evolution and
+// library utilization here. That ruling is now satisfied inside this one
+// component, which means beats 03 and 04 above replay two of these same four.
+// That duplication is the open question this change leaves behind, not one it
+// settled. The track screen is still not among the four: it lives on /features,
+// where the catalogue can afford a fifth row and the tour cannot afford a fifth
+// screenful.
 //
 // The step count is the source of truth for how tall this section is: the
 // sticky pane holds for one screenful per step, and `--lp-step-count` (set on
@@ -476,8 +484,11 @@ export function Diptych() {
 type Film = { src: string; poster: string; start?: number };
 
 const FILMS: Film[] = [
-  // 01-02 — the set-detail screen, recorded 2026-08-14. This also retires the
-  // V3 (segment-editor drag) placeholder: step 02 now shows the real thing.
+  // 01 — the dashboard, recorded 2026-08-14. The same take beat 04's diptych
+  // runs, at the same entry point.
+  { src: "/landing/dashboard-3.mp4", poster: "/landing/dashboard-3-poster.jpg", start: MIDPOINT },
+  // 02 — the set-detail screen, recorded 2026-08-14. This also retires the
+  // V3 (segment-editor drag) placeholder: step 02 shows the real thing.
   { src: "/landing/set-detail-3.mp4", poster: "/landing/set-detail-3-poster.jpg", start: MIDPOINT },
   // 03 — style evolution, recorded 2026-08-14.
   {
@@ -510,13 +521,13 @@ const STEPS: Step[] = [
     n: "02",
     title: "The dancefloor",
     body: "Curfew\u2019s dancefloor detection engine estimates when your real dancefloor is. You can edit and the engine will learn.",
-    film: 0,
+    film: 1,
   },
   {
     n: "03",
     title: "The drift",
     body: "What you played tonight versus your sets in the past. Learn to evolve as a DJ.",
-    film: 1,
+    film: 2,
   },
   {
     n: "04",
@@ -527,7 +538,7 @@ const STEPS: Step[] = [
     // actually trades on is money already spent. The replacement keeps the
     // page's shape: second person, a flat statement, then the turn.
     body: "You keep buying music. Curfew shows you what never leaves the shelf.",
-    film: 2,
+    film: 3,
   },
 ];
 
