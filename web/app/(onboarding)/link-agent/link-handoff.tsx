@@ -5,12 +5,19 @@ import { useEffect, useState } from "react";
 import { capture } from "@/lib/posthog/client";
 import { createClient } from "@/lib/supabase/client";
 
-// Reads the *browser* Supabase client's already-issued session (this page
-// does not itself authenticate anyone — Stories 2.3a/2.3b/2.3d already did,
-// or the DJ just signed in via the server guard's /login redirect) and hands
-// its access/refresh tokens off to the agent via a custom-scheme redirect.
-// No new database row, no new API route, no new Supabase mutation (AD-8/
-// AD-14 by construction).
+// Checks the *browser* Supabase client has a session at all (this page does
+// not itself authenticate anyone — Stories 2.3a/2.3b/2.3d already did, or the
+// DJ just signed in via the server guard's /login redirect), then asks
+// /api/agent/session for a SECOND, independent session and hands *those*
+// tokens to the agent via a custom-scheme redirect.
+//
+// It used to hand over `session.access_token`/`session.refresh_token` — the
+// browser's own. That put both parties in one refresh-token rotation family,
+// and since Supabase rotates on every refresh and the two refresh
+// independently, whichever went second was rejected: the agent wiped its
+// keychain entry and went "Sync failed", or the DJ got logged out of the
+// site. See `app/api/agent/session/route.ts` for the full account. The
+// browser's session is now never handed anywhere.
 // How long to keep watching for the agent's first heartbeat before falling
 // back to the manual copy. The agent beats on every sync-queue drain pass, so
 // a healthy link shows up in seconds; this only needs to outlast one slow
@@ -20,7 +27,7 @@ const CONFIRM_POLL_MS = 2_000;
 
 export function LinkHandoff() {
   const [status, setStatus] = useState<
-    "opening" | "confirmed" | "no-session" | "error"
+    "opening" | "confirmed" | "no-session" | "handoff-failed" | "error"
   >("opening");
 
   useEffect(() => {
@@ -84,12 +91,6 @@ export function LinkHandoff() {
           return;
         }
 
-        const params = new URLSearchParams({
-          access_token: session.access_token,
-          refresh_token: session.refresh_token,
-          nonce,
-        });
-
         // NOT named `agent_linked`, and deliberately so. This page cannot
         // observe whether linking worked: the handoff is a custom-scheme
         // redirect, and as the comment further down records, a browser gives
@@ -121,6 +122,51 @@ export function LinkHandoff() {
           .maybeSingle<{ updated_at: string }>();
         if (cancelled) return;
 
+        // The agent's own session, minted server-side. Deliberately after the
+        // baseline read and before the redirect: the baseline only has to
+        // predate the handoff, and reading it first keeps it the older of the
+        // two, which is the safe direction.
+        // Caught here rather than by the trailing `.catch`: an offline
+        // browser or a request that dies in flight is not a session problem,
+        // and that handler's "checking your session" copy would be a lie.
+        let response: Response;
+        try {
+          response = await fetch("/api/agent/session", { method: "POST" });
+        } catch {
+          if (!cancelled) setStatus("handoff-failed");
+          return;
+        }
+        if (cancelled) return;
+
+        if (!response.ok) {
+          // A 401 means the cookie session the server sees is gone even
+          // though the browser client still held one — same dead end as
+          // having no session at all, so it gets the copy that says so.
+          setStatus(response.status === 401 ? "no-session" : "handoff-failed");
+          return;
+        }
+
+        const tokens = (await response.json().catch(() => null)) as {
+          access_token?: string;
+          refresh_token?: string;
+        } | null;
+        if (cancelled) return;
+
+        // The route already rejects a session missing either token, so this
+        // is the client half of the same guard: `new URLSearchParams` turns an
+        // `undefined` into the literal string "undefined", which the agent
+        // would persist to the keychain and only fail on an hour later.
+        if (!tokens?.access_token || !tokens.refresh_token) {
+          setStatus("handoff-failed");
+          return;
+        }
+
+        const params = new URLSearchParams({
+          access_token: tokens.access_token,
+          refresh_token: tokens.refresh_token,
+          nonce,
+        });
+
         // Not awaited: a custom-scheme navigation does not unload this page,
         // so the queued event still sends, and the handoff should not wait on
         // analytics.
@@ -142,6 +188,19 @@ export function LinkHandoff() {
     return (
       <p className="lp-auth-error" role="alert">
         Your session expired. Go back and sign in, then return to this page.
+      </p>
+    );
+  }
+
+  // Distinct from "error" below, which is only ever the session read. This
+  // one is the agent's session failing to mint, and it is worth its own copy
+  // because the recovery differs: nothing was handed to the agent, so the DJ
+  // should start the handshake again from the tray rather than sign in again.
+  if (status === "handoff-failed") {
+    return (
+      <p className="lp-auth-error" role="alert">
+        We couldn&rsquo;t set up the link. Click Link Account in Curfew Agent to
+        try again.
       </p>
     );
   }
