@@ -3,13 +3,26 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 // The service-role client (Story 7.3, AD-18). Mirrors `lib/billing/stripe.ts`'s
 // discipline — one lazy factory, imported everywhere, never `createClient(...)`
 // inline at a call site. Deliberately `@supabase/supabase-js`, not
-// `@supabase/ssr`: this is a server-to-server call the Stripe webhook makes,
-// with no browser, no cookies, and no DJ session to refresh or persist.
+// `@supabase/ssr`: its callers make server-to-server calls with no browser and
+// no cookies, and there is no DJ session on it to refresh or persist.
 //
-// This client's ONLY sanctioned use in this codebase is calling
-// `apply_subscription_event` via `.rpc(...)`. Never `.from("djs")...` or any
-// other table read/write with it — the whole point of AD-18's scoped-function
-// design is that the elevated key never touches a raw table statement.
+// Never `.from("djs")...` or any other table read/write with it — the whole
+// point of AD-18's scoped-function design is that the elevated key never
+// touches a raw table statement. That prohibition is unchanged and absolute.
+//
+// Two sanctioned uses, not one (this said "ONLY ... `apply_subscription_event`"
+// until 2026-08-20):
+//
+//   1. `apply_subscription_event` via `.rpc(...)` — Story 7.3's Stripe webhook.
+//   2. `auth.admin.generateLink(...)` — `app/api/agent/session/route.ts`, which
+//      mints the desktop agent its own Supabase session so it stops sharing a
+//      refresh-token rotation family with the browser.
+//
+// (2) is widening the list deliberately rather than quietly. It respects
+// AD-18's actual rule: `auth.admin` is GoTrue's own API, not a raw statement
+// against a `public` table, so the elevated key still never issues one — which
+// is also why the `Database` type below stays empty of `Tables`/`Views` and
+// why it needed no entry to type-check.
 
 // This project has no generated Database types (every other Supabase call
 // site types selects inline instead, e.g. `.maybeSingle<{...}>()`). `.rpc()`
