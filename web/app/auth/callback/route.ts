@@ -4,6 +4,7 @@ import { type NextRequest } from "next/server";
 import { billingEnabled } from "@/lib/billing/checkout";
 import { CHECKOUT_PENDING_COOKIE, nextSetupStep, readSetupState } from "@/lib/onboarding/corridor";
 import { captureSignupCompleted } from "@/lib/posthog/server";
+import { recordSignupContact } from "@/lib/resend/contacts";
 import { createClient } from "@/lib/supabase/server";
 
 // OAuth callback (Google/Apple), separate from confirm/route.ts (email-OTP).
@@ -33,9 +34,20 @@ export async function GET(request: NextRequest) {
       // false via this shared catch.
       if (exchanged && data.user) {
         // Awaited, not fired and forgotten: the function may be frozen the
-        // moment the redirect below is returned. It self-limits to genuinely
-        // new accounts and costs a returning DJ nothing — see its own comment.
-        await captureSignupCompleted(data.user);
+        // moment the redirect below is returned. Both self-limit to genuinely
+        // new accounts and cost a returning DJ nothing — see their own
+        // comments.
+        //
+        // Concurrent, not sequential: these are two independent network hops
+        // on the last step of signup, and stacking them puts the sum of both
+        // latencies between the DJ and their dashboard. Promise.all rather
+        // than allSettled is safe only because NEITHER rejects — each swallows
+        // its own failures by design, since analytics and the mailing list are
+        // both worth less than the signup completing.
+        await Promise.all([
+          captureSignupCompleted(data.user),
+          recordSignupContact(data.user),
+        ]);
         destination = nextSetupStep({
           sellsSubscriptions: billingEnabled(process.env),
           checkoutPending:
