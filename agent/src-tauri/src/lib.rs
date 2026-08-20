@@ -143,12 +143,39 @@ struct TrayHandles {
     link_status: tauri::menu::MenuItem<tauri::Wry>,
 }
 
+/// The event the settings panel listens on to re-render its account row.
+///
+/// The panel is a *persistent* webview (`main` is shown/hidden, never
+/// recreated), so `ui/index.html`'s `invoke("get_linked_account")` runs once
+/// per process — not once per open. Without this push, a link that succeeded
+/// while the panel existed left it reading "Not linked yet" until the whole
+/// agent was restarted, which is exactly what happened on 2026-08-20: the
+/// token was in the keychain for eight minutes while the panel — the first
+/// screen a paying DJ meets — insisted nothing had happened.
+const LINK_STATUS_EVENT: &str = "link-status-changed";
+
+/// What the panel receives on [`LINK_STATUS_EVENT`]: the same shape
+/// [`get_linked_account`] returns, plus the reason the last attempt failed,
+/// if it did.
+#[derive(serde::Serialize, Clone)]
+struct LinkStatusChanged {
+    linked: bool,
+    email: Option<String>,
+    /// Human-readable and safe to display — a `LinkError`'s variant text,
+    /// never a token value (this crate's security-note convention).
+    error: Option<String>,
+}
+
 /// Refreshes the tray's "Linked as `<dj_id>`"/"Not linked" status text from
-/// the current in-memory auth state. Called after every auth state change —
-/// a live link succeeding or failing, and the startup eager-refresh
-/// finishing — so the tray never shows stale status (Task 6).
-fn update_link_status_display(app: &tauri::AppHandle) {
-    use tauri::Manager;
+/// the current in-memory auth state, and pushes the same change to the
+/// settings panel. Called after every auth state change — a live link
+/// succeeding or failing, and the startup eager-refresh finishing — so
+/// neither surface shows stale status (Task 6).
+///
+/// `error` is `Some` only on a rejected link, and is what turns the panel's
+/// silent no-op into a recoverable message.
+fn update_link_status_display(app: &tauri::AppHandle, error: Option<String>) {
+    use tauri::{Emitter, Manager};
 
     let auth_state = app.state::<auth::AuthState>();
     let text = match auth_state
@@ -165,6 +192,16 @@ fn update_link_status_display(app: &tauri::AppHandle) {
     if let Some(tray) = app.try_state::<TrayHandles>() {
         let _ = tray.link_status.set_text(text);
     }
+
+    let account = resolve_linked_account(app);
+    let _ = app.emit(
+        LINK_STATUS_EVENT,
+        LinkStatusChanged {
+            linked: account.linked,
+            email: account.email,
+            error,
+        },
+    );
 }
 
 /// Starts the "Link Account" handshake: mints this click's one-time CSRF
@@ -215,6 +252,13 @@ pub struct LinkedAccount {
 /// carries an email), then falls back to "is a refresh token stored at all".
 #[tauri::command]
 fn get_linked_account(app: tauri::AppHandle) -> LinkedAccount {
+    resolve_linked_account(&app)
+}
+
+/// The account row's state, resolved once and shared by the panel's initial
+/// `invoke` and by every [`LINK_STATUS_EVENT`] push, so the two can never
+/// disagree about what "linked" means.
+fn resolve_linked_account(app: &tauri::AppHandle) -> LinkedAccount {
     use auth::store::TokenStore;
     use tauri::Manager;
 
@@ -275,23 +319,57 @@ fn handle_link_url(app: &tauri::AppHandle, url: url::Url) {
         None => Err(auth::LinkError::NonceMismatch),
     };
 
+    // Every branch below reports, including the failures. These were
+    // `#[cfg(debug_assertions)]`-only until 2026-08-20, which meant a rejected
+    // link in a *release* build produced nothing at all: no log line, no tray
+    // change, no panel change. The DJ clicked, the browser handed off, and
+    // both ends stayed silent — indistinguishable from the app not being
+    // installed. A rejection the DJ can act on is the whole point of the
+    // handshake having a failure mode.
     match result {
         Ok(pair) => {
             let store = auth::store::KeyringTokenStore;
-            if let Err(_e) = auth::store::TokenStore::save(&store, &pair.refresh_token) {
-                #[cfg(debug_assertions)]
-                eprintln!("curfew-agent: failed to persist refresh token: {_e}");
-                update_link_status_display(app);
+            if let Err(e) = auth::store::TokenStore::save(&store, &pair.refresh_token) {
+                eprintln!("curfew-agent: failed to persist refresh token: {e}");
+                update_link_status_display(
+                    app,
+                    Some("Could not save the account to your keychain. Try linking again.".into()),
+                );
                 return;
             }
             *state.tokens.lock().expect("auth token mutex poisoned") = Some(pair);
+            update_link_status_display(app, None);
         }
-        Err(_e) => {
-            #[cfg(debug_assertions)]
-            eprintln!("curfew-agent: link URL rejected: {_e}");
+        Err(e) => {
+            eprintln!("curfew-agent: link URL rejected: {e}");
+            update_link_status_display(app, Some(link_rejection_message(&e)));
         }
     }
-    update_link_status_display(app);
+}
+
+/// Turns a [`auth::LinkError`] into something a DJ can act on, rather than
+/// the internal variant text.
+///
+/// `NonceMismatch` is the one that actually happens in practice, and its
+/// cause is mundane: the one-time nonce lives in memory and is consumed on
+/// first use, so a second click on an already-used `/link-agent` tab, or any
+/// click after the agent restarted mid-handshake, lands here. The recovery is
+/// always the same and the DJ has no way to guess it — start the handshake
+/// again from the agent so a fresh nonce is minted.
+fn link_rejection_message(error: &auth::LinkError) -> String {
+    match error {
+        auth::LinkError::NonceMismatch => {
+            "That link has already been used or has expired. Click Link Account to try again."
+                .into()
+        }
+        auth::LinkError::Url(_) => {
+            "That link was malformed. Click Link Account to try again.".into()
+        }
+        auth::LinkError::Token(_) => {
+            "Your sign-in could not be read. Sign in on curfew.vip, then click Link Account again."
+                .into()
+        }
+    }
 }
 
 /// Scans a second-instance launch's argv for a `curfew-agent://` URL (the
@@ -913,7 +991,7 @@ pub fn run() {
                         #[cfg(debug_assertions)]
                         eprintln!("curfew-agent: startup token refresh failed: {_e}");
                     }
-                    update_link_status_display(&app_handle);
+                    update_link_status_display(&app_handle, None);
                 });
             }
 

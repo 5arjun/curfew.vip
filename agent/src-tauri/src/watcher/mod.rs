@@ -1141,8 +1141,9 @@ fn start_fs_watch(
 /// startup before the backfill sweep runs (see `lib.rs`). The sweep can clear
 /// `synced_at` on historical rows, and [`crate::store::rows_pending_sync`]
 /// refuses to push serato4 rows at or below this baseline — so the baseline
-/// has to exist *before* the sweep, not merely soon after. Persisting is
-/// monotonic (`MAX()` in SQL), so the two call sites racing is harmless.
+/// has to exist *before* the sweep, not merely soon after. Both writes are
+/// idempotent in SQL (the floor `DO NOTHING`, the cursor `MAX()`), so the two
+/// call sites racing is harmless.
 pub(crate) fn ensure_serato4_baseline(
     store_conn: &Connection,
     serato4_conn: &Connection,
@@ -1151,8 +1152,17 @@ pub(crate) fn ensure_serato4_baseline(
         Ok(Some(stored)) => Some(stored),
         Ok(None) => {
             let baseline = crate::parser::max_session_id(serato4_conn).ok()?;
+            // Two keys from one reading. The permanent floor and the discovery
+            // cursor start life at the same value and diverge from the first
+            // tick onward — the cursor advances past each session it lists,
+            // the floor never moves again. Collapsing them into one key is the
+            // bug fixed on 2026-08-20; see `store::SERATO4_BASELINE_KEY`.
             log_store_err(
-                "set_serato4_watermark (first-run go-forward baseline)",
+                "set_serato4_baseline (first-run go-forward floor)",
+                crate::store::set_serato4_baseline(store_conn, baseline),
+            );
+            log_store_err(
+                "set_serato4_watermark (first-run discovery cursor)",
                 crate::store::set_serato4_watermark(store_conn, baseline),
             );
             Some(baseline)
