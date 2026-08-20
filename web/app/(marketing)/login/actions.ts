@@ -1,7 +1,8 @@
 "use server";
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { checkBotId } from "botid/server";
+import { SIGNUP_AGREEMENT_VERSION, SIGNUP_CONSENT_COOKIE } from "@/lib/marketing/consent";
 import { createClient } from "@/lib/supabase/server";
 import {
   AUTH_FAILURE_COPY,
@@ -81,6 +82,15 @@ export async function signUp(
   const rejected = await botRejection("sign-up");
   if (rejected) return rejected;
 
+  // Re-checked here, not only in the browser. The checkbox sits outside the
+  // form element (it gates the OAuth and passkey buttons too), so it is not a
+  // field the browser can validate, and a Server Action is an ordinary POST
+  // that need not have come from our component at all. Refusing here is what
+  // makes "required" true rather than merely rendered.
+  if (formData.get("signupAgreement") !== "yes") {
+    return { status: "error", fieldErrors: { form: AUTH_FAILURE_COPY.agreementRequired } };
+  }
+
   const { email, password } = readCredentials(formData);
   const supabase = await createClient();
   // Server Actions run as same-origin POSTs, so the browser-sent Origin header
@@ -104,6 +114,15 @@ export async function signUp(
   if (isAlreadyRegisteredSignUp(data.user)) {
     return { status: "error", fieldErrors: { email: AUTH_FAILURE_COPY.emailAlreadyRegistered } };
   }
+
+  // Set only after Supabase accepted the signup, so a rejected attempt leaves
+  // no consent marker behind for a later sign-in to pick up. /auth/confirm
+  // reads and clears it — the email path lands there, not on /auth/callback.
+  (await cookies()).set(SIGNUP_CONSENT_COOKIE, SIGNUP_AGREEMENT_VERSION, {
+    path: "/",
+    sameSite: "lax",
+    httpOnly: true,
+  });
 
   // Expected once Task 1.1's confirmation gate is on: no usable session until confirmed.
   if (data.session === null) {

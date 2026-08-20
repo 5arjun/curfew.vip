@@ -4,6 +4,7 @@ import { type NextRequest } from "next/server";
 import { billingEnabled } from "@/lib/billing/checkout";
 import { CHECKOUT_PENDING_COOKIE, nextSetupStep, readSetupState } from "@/lib/onboarding/corridor";
 import { captureSignupCompleted } from "@/lib/posthog/server";
+import { recordSignupConsent, takeSignupConsentMarker } from "@/lib/marketing/record-consent";
 import { recordSignupContact } from "@/lib/resend/contacts";
 import { createClient } from "@/lib/supabase/server";
 
@@ -44,9 +45,16 @@ export async function GET(request: NextRequest) {
         // than allSettled is safe only because NEITHER rejects — each swallows
         // its own failures by design, since analytics and the mailing list are
         // both worth less than the signup completing.
+        // Read once, before the fan-out: it clears the cookie, so calling it
+        // from two places would have the second read see nothing.
+        const consented = await takeSignupConsentMarker();
+        if (consented) {
+          await recordSignupConsent(supabase, data.user.id);
+        }
+
         await Promise.all([
           captureSignupCompleted(data.user),
-          recordSignupContact(data.user),
+          recordSignupContact(data.user, consented),
         ]);
         destination = nextSetupStep({
           sellsSubscriptions: billingEnabled(process.env),

@@ -8,6 +8,11 @@ export const AUTH_FAILURE_COPY = {
   emailAlreadyRegistered: "Account already archived. Log in instead.",
   emailNotConfirmed: "Check your email to confirm your account first.",
   generic: "Something went sideways. Try again.",
+  // Not from the Failure Register — no row covers it, since the gate it
+  // reports is new (2026-08-20). Same calm register as the lines above, and
+  // it points at the control rather than restating the rule, because the box
+  // is on screen and unticked.
+  agreementRequired: "Tick the box above to create an account.",
 } as const;
 
 type SignInErrorShape = { code?: string | null; message: string };

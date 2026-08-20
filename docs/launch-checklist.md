@@ -573,17 +573,28 @@ Three standing rules, not dated:
   is done as of 2026-08-20.** `/privacy` and `/terms` grant Curfew both
   rights, and the send is what arms them.
 
-  **Email — closed.** A marketing opt-in (unchecked by default, its own
-  sentence, never a condition of continuing) ships on
-  `(onboarding)/phone-required`; `djs.marketing_email_consent_at` and
-  `_text` record the timestamp and the exact wording shown, written from the
-  server's own constant rather than from the request; every signup enters
-  Resend opted OUT of the Product-updates topic and is flipped in only by that
-  control; Resend injects the unsubscribe link and `List-Unsubscribe` header
-  into broadcasts; and the postal address is published on `/privacy` from
-  `web/lib/marketing/consent.ts`. **One compose-time step remains: that
-  address must appear in the broadcast body itself — Resend does not add it
-  for you.**
+  **Email — closed.** A **required** checkbox on `/login`'s signup card,
+  unticked on arrival, gating all four signup methods (Google, Apple, passkey,
+  email) and re-checked server-side in `signUp()`. It covers Terms, Privacy and
+  marketing email in one sentence.
+  `djs.marketing_email_consent_at` / `_text` record the timestamp and the exact
+  wording shown, written from the server's own constant rather than from the
+  request; a cookie carries the tick across the OAuth round trip so no consent
+  is ever fabricated for an account that predates the gate. Resend injects the
+  unsubscribe link and `List-Unsubscribe` header into broadcasts, and the
+  postal address is published on `/privacy` from
+  `web/lib/marketing/consent.ts`.
+
+  ⚠️ **Required, not optional — Arjun's call of 2026-08-20, made against a
+  written tradeoff.** Fine under CAN-SPAM (which needs no prior consent at
+  all), **not valid consent under GDPR or CASL** (bundled into terms and
+  required for service is not "freely given"), and the consent column no longer
+  distinguishes anyone since every account holder ticked it. Reverting is
+  small: split into two boxes, make the marketing half optional, bump
+  `SIGNUP_AGREEMENT_VERSION`.
+
+  **One compose-time step remains: that address must appear in the broadcast
+  body itself — Resend does not add it for you.**
 
   **Text — still owed, and the email control deliberately does not cover it.**
   Its wording names email only and is unit-tested to never mention texts or

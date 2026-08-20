@@ -26,12 +26,11 @@ import { PhoneForm } from "./phone-form";
 // ⚠️ THIS SCREEN IS THE CONSENT RECORD. It now carries the EMAIL half of
 // what /terms claims, and still not the TEXT half.
 //
-// EMAIL (built 2026-08-20). PhoneForm renders a marketing opt-in built to the
-// shape the 2026-08-18 ruling asked for: its own control, unchecked by
-// default, its own sentence, never a condition of continuing. actions.ts
-// records `marketing_email_consent_at` and `_text` on `djs` — the wording
-// read from the server's own constant, never from the request, because a
-// record assembled from client values proves nothing about what we displayed.
+// EMAIL (built 2026-08-20, and it does NOT live here). The marketing opt-in
+// spent a few hours on this screen before moving to /login's signup card,
+// where it is now one REQUIRED box covering Terms, Privacy and marketing and
+// gating all four signup methods. Nothing on THIS screen collects consent any
+// more — see lib/marketing/consent.ts and the auth routes.
 //
 // TEXT (still open). The tagline below asks for a number so "a person can
 // reach you" — support contact, nothing more — while /terms §"Your account"

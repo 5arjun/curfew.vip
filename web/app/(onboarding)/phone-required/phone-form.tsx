@@ -3,7 +3,6 @@
 import { useActionState, useEffect, useRef } from "react";
 import { Button } from "@/app/components/auth/Button";
 import { GhostInput } from "@/app/components/auth/GhostInput";
-import { MARKETING_EMAIL_CONSENT_TEXT } from "@/lib/marketing/consent";
 import { setPhone } from "./actions";
 import { INITIAL_PHONE_STATE } from "./phone-state";
 
@@ -85,33 +84,13 @@ export function PhoneForm() {
         aria-hidden="true"
       />
 
-      {/* The marketing consent control (docs/legal-review-2026-08-18.md
-          finding A). Deliberately shaped:
-
-          - UNCHECKED by default, and there is no `defaultChecked`. A pre-ticked
-            box is not consent under GDPR and is not evidence under any regime.
-          - Not `required`, and nothing above depends on it. Consent that is a
-            condition of finishing signup is not freely given — the DJ can leave
-            it alone and Continue works exactly the same.
-          - EMAIL only. Marketing texts stay out of this until TCPA's prior
-            express written consent and A2P 10DLC registration exist; the page
-            comment above tracks that separately.
-
-          The label text is imported, not written here, because the server
-          stores that exact string as the consent record — if the two could
-          drift, the record would describe wording the DJ never saw. */}
-      <div className="auth-consent-field">
-        <input
-          id="marketing-email-consent"
-          name="marketingEmailConsent"
-          type="checkbox"
-          value="yes"
-          className="auth-consent-field-box"
-        />
-        <label className="text-body-md auth-consent-field-label" htmlFor="marketing-email-consent">
-          {MARKETING_EMAIL_CONSENT_TEXT}
-        </label>
-      </div>
+      {/* The marketing consent control was here from 2026-08-20 until later
+          the same day, when it moved to /login's signup card (Arjun: "move the
+          consent stuff to the actual signup page"). It is now one REQUIRED box
+          covering Terms, Privacy and marketing, gating all four signup
+          methods — see lib/marketing/consent.ts. Nothing on this screen
+          collects consent any more; it is back to being about the phone
+          number alone. */}
 
       {state.status === "error" && state.error && (
         <p className="lp-auth-error" role="alert">

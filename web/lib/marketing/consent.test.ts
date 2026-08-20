@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  MARKETING_EMAIL_CONSENT_TEXT,
   MARKETING_POSTAL_ADDRESS,
+  SIGNUP_AGREEMENT_SEGMENTS,
+  SIGNUP_AGREEMENT_TEXT,
   formatPostalAddress,
   isPostalAddressComplete,
 } from "./consent";
@@ -60,24 +61,56 @@ describe("isPostalAddressComplete", () => {
   });
 });
 
-describe("MARKETING_EMAIL_CONSENT_TEXT", () => {
-  // These are the properties the 2026-08-18 ruling asked for, asserted so an
-  // edit to the wording cannot quietly drop one. The consent is EMAIL-scoped
-  // on purpose: bundling marketing texts in would recreate the exact defect
-  // the review flagged, since TCPA needs its own written consent and no SMS
-  // provider exists in this repo.
-  it("names email and does not claim consent for texts", () => {
-    expect(MARKETING_EMAIL_CONSENT_TEXT.toLowerCase()).toContain("email");
-    expect(MARKETING_EMAIL_CONSENT_TEXT.toLowerCase()).not.toMatch(/\btext(s|ing)?\b/);
-    expect(MARKETING_EMAIL_CONSENT_TEXT.toLowerCase()).not.toContain("sms");
-    expect(MARKETING_EMAIL_CONSENT_TEXT.toLowerCase()).not.toContain("message rates");
+describe("SIGNUP_AGREEMENT_TEXT", () => {
+  // The box is REQUIRED to create an account (Arjun, 2026-08-20), which makes
+  // its exact scope load-bearing: everyone who has an account will have ticked
+  // it, so whatever it says is what every DJ is on record as agreeing to.
+  //
+  // The email/text split is the part that must not slip. Widening the box to
+  // cover marketing email was a decision made with its consequences written
+  // down; letting it silently cover TEXTS would be the exact defect the
+  // 2026-08-18 review flagged, and TCPA damages start at $500 a message.
+  it("never claims consent for texts", () => {
+    const text = SIGNUP_AGREEMENT_TEXT.toLowerCase();
+    expect(text).not.toMatch(/\btext(s|ing)?\b/);
+    expect(text).not.toContain("sms");
+    expect(text).not.toContain("message rates");
+    expect(text).not.toContain("phone");
+  });
+
+  it("names email marketing, since that is what it grants", () => {
+    expect(SIGNUP_AGREEMENT_TEXT.toLowerCase()).toContain("marketing email");
+  });
+
+  it("names the terms and the privacy policy it also accepts", () => {
+    expect(SIGNUP_AGREEMENT_TEXT).toContain("Terms");
+    expect(SIGNUP_AGREEMENT_TEXT).toContain("Privacy Policy");
   });
 
   it("names the way out, so the box is not ticked in ignorance of it", () => {
-    expect(MARKETING_EMAIL_CONSENT_TEXT.toLowerCase()).toContain("unsubscribe");
+    expect(SIGNUP_AGREEMENT_TEXT.toLowerCase()).toContain("unsubscribe");
+  });
+});
+
+describe("SIGNUP_AGREEMENT_SEGMENTS", () => {
+  // The segments exist so the rendered label and the stored record share one
+  // source. If these ever diverged, the consent column would describe wording
+  // no DJ was actually shown — which is the one thing the record exists to
+  // establish.
+  it("joins to exactly the stored text", () => {
+    expect(SIGNUP_AGREEMENT_SEGMENTS.map((s) => s.text).join("")).toBe(SIGNUP_AGREEMENT_TEXT);
   });
 
-  it("distinguishes itself from account mail", () => {
-    expect(MARKETING_EMAIL_CONSENT_TEXT.toLowerCase()).toContain("account mail");
+  it("links both documents the DJ is agreeing to", () => {
+    const linked = SIGNUP_AGREEMENT_SEGMENTS.filter((s) => s.href);
+    expect(linked.map((s) => s.href)).toEqual(["/terms", "/privacy"]);
+  });
+
+  it("keeps every link's visible text inside the sentence", () => {
+    // A link whose label is not part of the joined string would render text
+    // that the stored record does not contain.
+    for (const segment of SIGNUP_AGREEMENT_SEGMENTS) {
+      expect(SIGNUP_AGREEMENT_TEXT).toContain(segment.text);
+    }
   });
 });

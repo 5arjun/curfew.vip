@@ -51,13 +51,19 @@ import { pageMetadata } from "@/lib/seo";
 // ⚠️ HALF OF THAT GATE IS NOW BUILT; THE TEXT HALF IS NOT. "How it's used"
 // grants Curfew the right to email AND text you about the product.
 //
-// EMAIL (closed 2026-08-20). A separate opt-in, unchecked by default, is
-// collected on (onboarding)/phone-required; the consent timestamp and the
-// exact wording shown are stored on `djs`; every signup lands in Resend
-// opted OUT of the Product-updates topic and is only flipped in by that
-// control; Resend injects the unsubscribe link and List-Unsubscribe header
-// into broadcasts; and the postal address CAN-SPAM requires is published in
-// the body of this page, from lib/marketing/consent.ts.
+// EMAIL (closed 2026-08-20). A REQUIRED checkbox on /login's signup card,
+// unticked on arrival, gating all four signup methods; it covers Terms,
+// Privacy and marketing email in one sentence. The consent timestamp and the
+// exact wording shown are stored on `djs`; Resend injects the unsubscribe link
+// and List-Unsubscribe header into broadcasts; and the postal address CAN-SPAM
+// requires is published in the body of this page, from
+// lib/marketing/consent.ts.
+//
+// Required rather than optional is Arjun's call of 2026-08-20, made against a
+// written tradeoff: it is fine under CAN-SPAM, it is NOT valid consent under
+// GDPR or CASL, and the stored record no longer distinguishes one DJ from
+// another. The paragraph below says "agreeing to them is part of creating an
+// account" for that reason — it must not describe this as a free choice.
 //
 // TEXT (still open, still safe only while nothing sends). No SMS provider
 // exists anywhere in this repo, so "reply STOP" remains a promise with no
@@ -177,9 +183,9 @@ export default function PrivacyPage() {
                 Curfew may also use your email or your number to tell you about the product itself:
                 new features, offers, things worth knowing. That is Curfew writing to you about
                 Curfew, and nothing more: your details are never sold, rented, or handed to anyone
-                else to advertise with. Those messages only go to people who asked for them, by
-                ticking the box when they added their phone number. Stop them any time. Reply STOP
-                to a text, use the unsubscribe link in an email, or write to{" "}
+                else to advertise with. Agreeing to them is part of creating an account, and you
+                can stop them any time without affecting anything else. Reply STOP to a text, use
+                the unsubscribe link in an email, or write to{" "}
                 <a href="mailto:support@curfew.vip?subject=Unsubscribe">support@curfew.vip</a>.
                 Account mail keeps coming, because it is how the service reaches you.
               </LegalP>

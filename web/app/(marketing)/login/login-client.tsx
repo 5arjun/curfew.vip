@@ -9,6 +9,11 @@ import { Button } from "@/app/components/auth/Button";
 import { GhostInput } from "@/app/components/auth/GhostInput";
 import { GoogleSignInButton } from "@/app/components/auth/GoogleSignInButton";
 import { useInView } from "@/app/components/landing/Beats";
+import {
+  SIGNUP_AGREEMENT_SEGMENTS,
+  SIGNUP_AGREEMENT_VERSION,
+  SIGNUP_CONSENT_COOKIE,
+} from "@/lib/marketing/consent";
 import { AUTH_FAILURE_COPY } from "./auth-copy";
 import { INITIAL_AUTH_STATE, type AuthActionState } from "./auth-state";
 import { signIn, signUp } from "./actions";
@@ -75,6 +80,11 @@ export function LoginClient() {
   // URL only when it actually changes, so the in-page toggle (which moves
   // mode while the param stays put) is never clobbered. Render-phase
   // adjustment per React's "adjusting state when props change" pattern.
+  // Required to create an account (Arjun, 2026-08-20). Unticked on arrival:
+  // a pre-ticked box records a click nobody made, whatever the legal regime.
+  const [agreed, setAgreed] = useState(false);
+  const [consentError, setConsentError] = useState<string | null>(null);
+
   const [seenIntent, setSeenIntent] = useState(intentParam);
   if (intentParam !== seenIntent) {
     setSeenIntent(intentParam);
@@ -91,14 +101,41 @@ export function LoginClient() {
     setAuthStatus("idle");
     setOauthError(null);
     setPasskeyError(null);
+    setConsentError(null);
   }
 
   function clearCrossMethodErrors() {
     setOauthError(null);
     setPasskeyError(null);
+    setConsentError(null);
+  }
+
+  // The gate every signup method runs through. Returns false and surfaces a
+  // line when the box is unticked.
+  //
+  // The methods stay ENABLED while it is unticked rather than being disabled.
+  // A disabled button announces nothing about why it is disabled, and with
+  // four of them the reason would have to be inferred; a real error message
+  // naming the box is both accessible and faster to act on. Login mode always
+  // passes — there is no box to tick there.
+  function agreementSatisfied(): boolean {
+    if (mode !== "signup") return true;
+    if (agreed) return true;
+    setConsentError("Tick the box above to create an account.");
+    return false;
+  }
+
+  // Hands the tick to /auth/callback across the provider round trip. A session
+  // cookie (no Max-Age) scoped to the whole site, because the callback route is
+  // a different path; SameSite=Lax so it survives the provider's top-level
+  // redirect back, which a Strict cookie would not be sent on.
+  function markSignupConsent() {
+    if (mode !== "signup") return;
+    document.cookie = `${SIGNUP_CONSENT_COOKIE}=${SIGNUP_AGREEMENT_VERSION}; path=/; SameSite=Lax`;
   }
 
   async function handlePasskeySignIn() {
+    if (!agreementSatisfied()) return;
     clearCrossMethodErrors();
     setPasskeyPending(true);
     const supabase = createClient();
@@ -119,8 +156,12 @@ export function LoginClient() {
   // signInWithOAuth triggers a full-page browser redirect to the provider by
   // default — this only ever returns (without navigating away) on an error.
   async function handleOAuthSignIn(provider: "google" | "apple") {
+    if (!agreementSatisfied()) return;
     clearCrossMethodErrors();
     setOauthPending(provider);
+    // Written BEFORE the redirect is requested — signInWithOAuth navigates the
+    // whole page away, so anything after it may never run.
+    markSignupConsent();
     const supabase = createClient();
     try {
       const { error } = await supabase.auth.signInWithOAuth({
@@ -185,6 +226,49 @@ export function LoginClient() {
           {confirmationFailed && (
             <p className="lp-auth-error" role="alert">
               {AUTH_FAILURE_COPY.generic}
+            </p>
+          )}
+
+          {/* Signup only. Logging back in does not re-agree to anything, and a
+              required box on the login path would lock out every DJ who
+              already has an account.
+
+              Placed ABOVE the methods rather than beside a submit button,
+              because there are four ways off this card (Google, Apple,
+              passkey, email) and the gate gets checked by all of them. Below
+              the buttons it would read as applying only to the email form. */}
+          {mode === "signup" && (
+            <div className="lp-auth-agree">
+              <input
+                id="signup-agreement"
+                type="checkbox"
+                className="lp-auth-agree-box"
+                checked={agreed}
+                onChange={(event) => {
+                  setAgreed(event.target.checked);
+                  if (event.target.checked) setConsentError(null);
+                }}
+                aria-describedby={consentError ? "signup-agreement-error" : undefined}
+              />
+              <label className="lp-auth-agree-label" htmlFor="signup-agreement">
+                {/* Rendered from the same segments the consent record stores,
+                    so the anchors here cannot drift from the text on file. */}
+                {SIGNUP_AGREEMENT_SEGMENTS.map((segment, index) =>
+                  segment.href ? (
+                    <Link key={index} href={segment.href}>
+                      {segment.text}
+                    </Link>
+                  ) : (
+                    <span key={index}>{segment.text}</span>
+                  ),
+                )}
+              </label>
+            </div>
+          )}
+
+          {consentError && (
+            <p id="signup-agreement-error" className="lp-auth-error" role="alert">
+              {consentError}
             </p>
           )}
 
@@ -256,6 +340,8 @@ export function LoginClient() {
               <AuthForm
                 key={mode}
                 mode={mode}
+                agreed={agreed}
+                onGateFailed={() => setConsentError("Tick the box above to create an account.")}
                 onStatusChange={setAuthStatus}
                 onSubmitStart={clearCrossMethodErrors}
               />
@@ -288,9 +374,7 @@ export function LoginClient() {
 
           {mode === "signup" && (
             <p className="lp-auth-fineprint">
-              One plan. $6.99/month billed yearly, or $7.99 month to month. Cancel whenever. By
-              creating an account you agree to the <Link href="/terms">Terms</Link> and{" "}
-              <Link href="/privacy">Privacy Policy</Link>.
+              One plan. $6.99/month billed yearly, or $7.99 month to month. Cancel whenever.
             </p>
           )}
         </section>
@@ -344,10 +428,14 @@ function PasskeyIcon() {
 
 function AuthForm({
   mode,
+  agreed,
+  onGateFailed,
   onStatusChange,
   onSubmitStart,
 }: {
   mode: Mode;
+  agreed: boolean;
+  onGateFailed: () => void;
   onStatusChange: (status: AuthActionState["status"]) => void;
   onSubmitStart: () => void;
 }) {
@@ -361,7 +449,28 @@ function AuthForm({
   }, [state.status, onStatusChange]);
 
   return (
-    <form action={formAction} onSubmit={onSubmitStart}>
+    <form
+      action={formAction}
+      onSubmit={(event) => {
+        // The checkbox lives outside this form (it gates the OAuth and passkey
+        // buttons too), so it cannot be a `required` field the browser
+        // validates. This is the equivalent stop — and signUp() re-checks the
+        // mirrored hidden field server-side, because a form post does not have
+        // to come from this component at all.
+        if (mode === "signup" && !agreed) {
+          event.preventDefault();
+          onGateFailed();
+          return;
+        }
+        onSubmitStart();
+      }}
+    >
+      {/* Mirrors the out-of-form checkbox into the payload so the server can
+          refuse a signup that never agreed, rather than trusting the client
+          to have enforced its own gate. */}
+      {mode === "signup" && (
+        <input type="hidden" name="signupAgreement" value={agreed ? "yes" : ""} />
+      )}
       <GhostInput
         label="Email"
         name="email"

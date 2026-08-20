@@ -524,42 +524,55 @@ a {
   color: var(--color-error);
 }
 
-/* Marketing-consent checkbox (/phone-required). Sits apart from the ghost
-   fields on purpose: those are the required identity of the step, this is the
-   one optional thing on the page, and it should not read as another blank to
-   fill in. */
-.auth-consent-field {
+/* Required signup agreement (/login, signup mode). This is FINE PRINT and has
+   to read as fine print: the first pass put it at body-md, where four lines of
+   legal text outweighed the phone field it sat under and became the loudest
+   thing on the card (Arjun, 2026-08-20: "make the text way way smaller").
+   Sized to match .lp-auth-fineprint, which is the established register for
+   exactly this kind of line on this card. */
+.lp-auth-agree {
   align-items: flex-start;
   display: flex;
-  gap: var(--space-sm);
-  margin-bottom: var(--space-md);
+  gap: var(--space-xs);
+  margin-bottom: var(--space-sm);
 }
 
-/* accent-color tints the native control with the brand rather than replacing
-   it. A hand-built box would have to re-earn the focus ring, the indeterminate
-   state, forced-colors mode, and the platform's own touch target — all of
-   which the native input already has correct. */
-.auth-consent-field-box {
+/* accent-color tints the native control rather than replacing it. A hand-built
+   box would have to re-earn the focus ring, forced-colors mode, and the
+   platform's own touch target — all of which the native input already has. */
+.lp-auth-agree-box {
   accent-color: var(--color-primary);
-  block-size: var(--space-md);
+  block-size: 0.95rem;
   flex-shrink: 0;
-  inline-size: var(--space-md);
-  /* Optical alignment to the first line of label text, which is body-md and
-     therefore taller than the box. */
-  margin-block-start: 0.1em;
+  inline-size: 0.95rem;
+  /* Optically centred on the first line of 0.75rem text rather than aligned to
+     its box, which sits high against a control this size. */
+  margin-block-start: 0.08rem;
 }
 
-.auth-consent-field-box:focus-visible {
+.lp-auth-agree-box:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
 
-.auth-consent-field-label {
+.lp-auth-agree-label {
   color: var(--color-on-surface-variant);
   cursor: pointer;
-  /* Optional, and it should look it — this is the quietest text in the card,
-     one step down from the tagline above it. */
+  font-size: 0.75rem;
+  line-height: 1.45;
   text-wrap: pretty;
+}
+
+/* The two anchors stay distinguishable at this size without a weight change —
+   underline carries it where colour alone would not at 0.75rem. */
+.lp-auth-agree-label a {
+  color: var(--color-on-surface);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.lp-auth-agree-label a:hover {
+  color: var(--color-primary);
 }
 
 .auth-button {

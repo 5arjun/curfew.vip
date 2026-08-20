@@ -63,12 +63,18 @@ export function contactProperties(user: {
 // turbo.json. Anything that reads it during the build would be scrubbed by
 // Turborepo, and the build would stay green while this silently did nothing
 // (see turbo.json's comment on SENTRY_AUTH_TOKEN and the PostHog keys).
-export async function recordSignupContact(user: {
-  id: string;
-  email?: string;
-  created_at?: string;
-  app_metadata?: { provider?: string };
-}): Promise<void> {
+export async function recordSignupContact(
+  user: {
+    id: string;
+    email?: string;
+    created_at?: string;
+    app_metadata?: { provider?: string };
+  },
+  // Defaults to OUT. Every caller that means "in" has to say so, and the one
+  // that says so does it on the strength of a consent marker it actually saw —
+  // never on the assumption that a new account must have consented.
+  optedIn = false,
+): Promise<void> {
   if (!RESEND_API_KEY) return;
 
   // No address, nothing to record. Reachable in principle: Supabase can be
@@ -84,7 +90,9 @@ export async function recordSignupContact(user: {
     await new Resend(RESEND_API_KEY).contacts.create({
       email: user.email,
       properties: contactProperties(user),
-      topics: [{ id: PRODUCT_UPDATES_TOPIC_ID, subscription: "opt_out" }],
+      topics: [
+        { id: PRODUCT_UPDATES_TOPIC_ID, subscription: optedIn ? "opt_in" : "opt_out" },
+      ],
     });
   } catch (error) {
     // Swallowed on purpose: the alternative is a 500 on the last step of

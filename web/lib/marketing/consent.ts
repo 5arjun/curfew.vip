@@ -54,26 +54,68 @@ export function isPostalAddressComplete(
   );
 }
 
-// Bumped whenever MARKETING_EMAIL_CONSENT_TEXT changes. The stored consent
-// keeps the text itself (not this id) so an old record stays readable without
-// a lookup table, but the version makes "which cohort saw which wording"
-// answerable with a GROUP BY instead of string matching.
-export const MARKETING_EMAIL_CONSENT_VERSION = "2026-08-20";
+// Bumped whenever SIGNUP_AGREEMENT_TEXT changes. The stored consent keeps the
+// text itself (not this id) so an old record stays readable without a lookup
+// table, but the version makes "which cohort saw which wording" answerable
+// with a GROUP BY instead of string matching.
+//
+// v2 (2026-08-20, second): moved from an optional box on /phone-required to a
+// single REQUIRED box on /login's signup mode, and widened from marketing
+// alone to Terms + Privacy + marketing. Arjun's call, made against a written
+// tradeoff — see the note on SIGNUP_AGREEMENT_SEGMENTS.
+export const SIGNUP_AGREEMENT_VERSION = "2026-08-20.2";
 
-// The exact sentence rendered beside the checkbox. Requirements it is built to
-// satisfy, all from docs/legal-review-2026-08-18.md finding A:
+// ⚠️ THIS IS A REQUIRED CHECKBOX, AND THAT IS A DELIBERATE CHOICE WITH A KNOWN
+// COST. Ticking it is a condition of creating an account, so:
 //
-//   - Its own sentence, naming what is being consented to.
-//   - EMAIL ONLY. Marketing texts are deliberately NOT bundled in: TCPA wants
-//     prior express written consent for those, plus A2P 10DLC registration,
-//     and no SMS provider exists in this repo. Bundling them would recreate
-//     the exact defect the review flagged — a grant broader than what was
-//     actually asked for.
-//   - Names the way out, because CAN-SPAM requires one to exist and a DJ
-//     should know that before ticking rather than after.
+//   - Under CAN-SPAM (US) this is fine. Prior consent is not required there at
+//     all; the statute's demands are an unsubscribe mechanism, a valid postal
+//     address, and honest headers, all of which exist.
+//   - Under GDPR and CASL it is NOT valid consent. Consent bundled into
+//     acceptance of terms, and required to receive the service, is not
+//     "freely given". An EU or Canadian DJ mailed on the strength of this box
+//     has not actually consented in the way those regimes mean.
+//   - The `djs.marketing_email_consent_*` record no longer distinguishes
+//     anyone from anyone, because everyone with an account has ticked it. It
+//     documents what was shown, which is still worth having, but it is no
+//     longer evidence that a particular DJ chose anything.
 //
-// It is NOT a condition of subscribing, and the checkbox is unchecked by
-// default. A pre-ticked box is not consent under GDPR, and it is not evidence
-// of anything under any regime.
-export const MARKETING_EMAIL_CONSENT_TEXT =
-  "Email me about new Curfew features and offers. Not account mail — this is the optional kind, and you can unsubscribe from any of it.";
+// Chosen 2026-08-20 by Arjun with those three consequences stated. Reverting
+// is small: split this into two boxes, make the marketing half optional and
+// unticked, and bump the version.
+//
+// Marketing TEXTS stay out of this wording entirely — consent.test.ts asserts
+// it never mentions texts, SMS, or message rates. TCPA needs its own prior
+// express written consent plus A2P 10DLC registration, and no SMS provider
+// exists in this repo. Widening the box to cover email was a decision; letting
+// it silently cover texts would be the exact defect the 2026-08-18 review
+// flagged.
+//
+// Segments rather than one string so the rendered label (which needs anchors
+// on "Terms" and "Privacy Policy") and the stored record are the SAME source.
+// Two hand-maintained copies is a record describing wording nobody was shown.
+export type AgreementSegment = { readonly text: string; readonly href?: string };
+
+export const SIGNUP_AGREEMENT_SEGMENTS: readonly AgreementSegment[] = [
+  { text: "I agree to the " },
+  { text: "Terms", href: "/terms" },
+  { text: " and " },
+  { text: "Privacy Policy", href: "/privacy" },
+  { text: ", and to receive marketing email from Curfew. Unsubscribe any time." },
+];
+
+// What gets stored. Derived, never hand-written — see above.
+export const SIGNUP_AGREEMENT_TEXT = SIGNUP_AGREEMENT_SEGMENTS.map((s) => s.text).join("");
+
+// Carries the tick across the OAuth round trip. Google and Apple bounce the
+// browser to a provider and back to /auth/callback, so the checkbox state has
+// to survive a full navigation away from the page — the auth route is where
+// the account first exists to attach a consent record to.
+//
+// Not a security control and not treated as one: consent is mandatory to reach
+// signup at all, so this cookie only distinguishes "went through the new
+// signup form" from "signed in some other way". Its absence degrades to the
+// safe answer (no consent recorded, contact stays opted out) rather than to a
+// fabricated yes — which is the whole reason it exists instead of assuming
+// every fresh account consented.
+export const SIGNUP_CONSENT_COOKIE = "curfew_signup_consent";
