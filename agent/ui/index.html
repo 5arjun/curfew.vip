@@ -370,6 +370,10 @@
           return;
         }
 
+        renderLinkedAccount(account);
+      }
+
+      function renderLinkedAccount(account) {
         accountDot.dataset.linked = account.linked ? "true" : "false";
         if (account.linked && account.email) {
           accountText.textContent = account.email;
@@ -380,6 +384,35 @@
         }
         linkButton.textContent = account.linked ? "Re-link…" : "Link…";
       }
+
+      // This panel is a PERSISTENT webview: `main` is shown and hidden, never
+      // recreated, so `loadLinkedAccount()` above runs once per *process*, not
+      // once per open. Reopening the panel re-shows the same DOM. Without the
+      // push below, a link that landed while this window existed left the row
+      // reading "Not linked yet" until the whole agent was restarted — which
+      // is exactly what happened on 2026-08-20, for eight minutes, with a
+      // valid token already in the keychain the entire time.
+      //
+      // The `error` field is the other half: a rejected link used to be
+      // silent on both ends (see `handle_link_url`), so a DJ whose one-time
+      // nonce had already been consumed clicked a button that did nothing,
+      // forever, with no way to learn that the fix is to start again here.
+      window.__TAURI__.event.listen("link-status-changed", (event) => {
+        const payload = event.payload ?? {};
+        renderLinkedAccount(payload);
+        if (payload.error) {
+          status.textContent = payload.error;
+        } else if (payload.linked) {
+          status.textContent = "Linked — new sets will sync automatically.";
+        }
+      });
+
+      // Belt and braces for the same staleness: re-read on every focus, so
+      // reopening the panel resyncs it even if some future state change
+      // forgets to emit. Cheap — it reads in-memory state and the keychain.
+      window.addEventListener("focus", () => {
+        void loadLinkedAccount();
+      });
 
       linkButton.addEventListener("click", async () => {
         try {

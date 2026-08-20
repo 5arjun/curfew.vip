@@ -183,6 +183,53 @@ pub fn set_serato4_watermark(conn: &Connection, id: i64) -> Result<(), StoreErro
     Ok(())
 }
 
+/// The go-forward baseline: the highest `history_session.id` that existed
+/// *before this install linked*. Everything at or below it is pre-install
+/// history and must never sync (Decision A).
+///
+/// **Why this is a second key rather than reusing the watermark** (fixed
+/// 2026-08-20, found by an end-to-end run that captured a set and then
+/// silently refused to ever push it). The watermark above is a *discovery
+/// cursor*: `check_for_new_sessions` advances it to the max id it just listed,
+/// before capture, so a crash mid-capture doesn't re-list. The baseline is a
+/// *permanent floor*. Those are different quantities, and one key cannot hold
+/// both — the moment the cursor advanced past a newly played session,
+/// `rows_pending_sync`'s `id > baseline` test read that session's own id as
+/// the floor and disqualified it. Every serato4 session did this to itself
+/// the instant it was processed, so no serato4 set could EVER sync, for any
+/// DJ. The tray stayed honestly idle throughout: nothing was pending, because
+/// everything had been filtered out.
+const SERATO4_BASELINE_KEY: &str = "serato4_baseline";
+
+/// Reads the persisted go-forward baseline. `None` means this install has
+/// never resolved one, which is the signal to baseline at the library's
+/// current newest session rather than at 0.
+pub fn serato4_baseline(conn: &Connection) -> Result<Option<i64>, StoreError> {
+    let stored: Option<String> = conn
+        .query_row(
+            "SELECT value FROM agent_meta WHERE key = ?1",
+            [SERATO4_BASELINE_KEY],
+            |row| row.get(0),
+        )
+        .optional()?;
+    Ok(stored.and_then(|v| v.parse::<i64>().ok()))
+}
+
+/// Writes the go-forward baseline exactly once, on first resolution.
+///
+/// `DO NOTHING`, not `MAX()`: unlike the watermark this value must never move
+/// at all. A baseline that could advance is precisely the bug this key was
+/// split out to fix — see [`SERATO4_BASELINE_KEY`]. Later callers passing a
+/// newer library max (every subsequent launch does) are no-ops.
+pub fn set_serato4_baseline(conn: &Connection, id: i64) -> Result<(), StoreError> {
+    conn.execute(
+        "INSERT INTO agent_meta (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO NOTHING",
+        rusqlite::params![SERATO4_BASELINE_KEY, id.to_string()],
+    )?;
+    Ok(())
+}
+
 /// Story 4.11 AC-6: the no-identity exclusion count from the MOST RECENT scan,
 /// plus the catalogue row count it was measured against. Reuses `agent_meta`
 /// (the same tiny key-value store `IDENTITY_V2_MIGRATED_KEY` already
@@ -489,7 +536,57 @@ pub fn open_at(path: &Path) -> Result<Connection, StoreError> {
     }
     conn.execute_batch(SCHEMA_SQL)?;
     migrate_library_tracks_columns(&conn)?;
+    migrate_serato4_baseline(&conn)?;
     Ok(conn)
+}
+
+/// Splits the go-forward baseline out of the discovery watermark on stores
+/// written by 0.1.0–0.1.2, where one key held both meanings and every serato4
+/// session therefore filtered itself out of sync forever (see
+/// [`SERATO4_BASELINE_KEY`]).
+///
+/// The recovery is the point of this, not just the schema change. Those
+/// installs have real captured sets sitting unsynced in `captured_sessions`
+/// that the DJ played, watched the tray call itself idle over, and never saw
+/// in the app. Anything already captured is by definition post-install — the
+/// old baseline is what kept history out at capture time — so the honest new
+/// floor is just below the oldest stuck row, which releases exactly those
+/// sets and nothing older. With no stuck rows there is nothing to recover and
+/// the current watermark is already a correct floor.
+///
+/// Runs once: after this writes, `serato4_baseline` exists and
+/// [`set_serato4_baseline`]'s `DO NOTHING` makes every later call a no-op.
+fn migrate_serato4_baseline(conn: &Connection) -> Result<(), StoreError> {
+    if serato4_baseline(conn)?.is_some() {
+        return Ok(());
+    }
+    let Some(watermark) = serato4_watermark(conn)? else {
+        // Never baselined at all — a fresh store. `ensure_serato4_baseline`
+        // will resolve both keys against the live library on the first tick.
+        return Ok(());
+    };
+
+    // 'serato4:' is 8 characters, so the id starts at SQLite's 1-based index 9.
+    let oldest_stuck: Option<i64> = conn
+        .query_row(
+            "SELECT MIN(CAST(SUBSTR(session_identity, 9) AS INTEGER))
+             FROM captured_sessions
+             WHERE source = 'serato4'
+               AND status = 'captured'
+               AND synced_at IS NULL
+               AND session_identity LIKE 'serato4:%'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()?
+        .flatten();
+
+    let baseline = match oldest_stuck {
+        Some(oldest) => watermark.min(oldest.saturating_sub(1)),
+        None => watermark,
+    };
+    set_serato4_baseline(conn, baseline)?;
+    Ok(())
 }
 
 /// Adds Story 4.11's four new `library_tracks` columns (`title`, `artist`,
@@ -762,7 +859,11 @@ pub fn rows_pending_sync(conn: &Connection) -> Result<Vec<CapturedSessionRow>, S
         .collect::<rusqlite::Result<Vec<_>>>()
         .map_err(StoreError::from)?;
 
-    let Ok(Some(baseline)) = serato4_watermark(conn) else {
+    // The BASELINE, never the watermark. The watermark is a discovery cursor
+    // that advances past each session as it is listed, so reading it here
+    // filtered out every session the agent had just captured. See
+    // `SERATO4_BASELINE_KEY`.
+    let Ok(Some(baseline)) = serato4_baseline(conn) else {
         return Ok(rows);
     };
 
@@ -2181,6 +2282,105 @@ mod tests {
         assert_eq!(pending[0].session_identity, "serato4:31");
     }
 
+    /// The exact sequence that shipped broken in 0.1.0–0.1.2: baseline the
+    /// library, then let the discovery cursor advance past a newly played
+    /// session the way `check_for_new_sessions` does — *before* capture — and
+    /// confirm the captured set still reaches the sync queue.
+    ///
+    /// Both halves of this were already tested, separately, and both passed
+    /// for three releases: `serato4_watermark_persists_and_only_ever_advances`
+    /// asserted the cursor advances, and
+    /// `rows_pending_sync_filters_to_captured_and_unsynced_only` asserted the
+    /// filter filters — against a hand-set watermark that no advance had ever
+    /// touched. Nothing exercised the two together, which is where every
+    /// serato4 set any DJ ever played was being discarded.
+    #[test]
+    fn cursor_advancing_past_a_session_does_not_withhold_it_from_sync() {
+        let file = TempStoreFile::new("cursor-vs-baseline");
+        let conn = open_at(&file.0).expect("store opens");
+
+        // First run: floor and cursor both start at the library's newest id.
+        set_serato4_baseline(&conn, 492).unwrap();
+        set_serato4_watermark(&conn, 492).unwrap();
+
+        // The DJ plays a set. The watch loop lists 493, advances the cursor
+        // onto it, and only then captures it.
+        set_serato4_watermark(&conn, 493).unwrap();
+        upsert_captured(
+            &conn,
+            "serato4:493",
+            SessionSource::Serato4,
+            "/path/master.sqlite#493",
+            Some(4_000),
+            Some(4_500),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+
+        let pending = rows_pending_sync(&conn).unwrap();
+        assert_eq!(
+            pending.len(),
+            1,
+            "a set played after linking must be eligible to sync"
+        );
+        assert_eq!(pending[0].session_identity, "serato4:493");
+
+        // ...and the floor still keeps pre-install history out, which is the
+        // property the single key was there to provide in the first place.
+        upsert_captured(
+            &conn,
+            "serato4:400",
+            SessionSource::Serato4,
+            "/path/master.sqlite#400",
+            Some(1_000),
+            Some(1_500),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+        let pending = rows_pending_sync(&conn).unwrap();
+        assert_eq!(pending.len(), 1, "history must stay excluded");
+        assert_eq!(pending[0].session_identity, "serato4:493");
+    }
+
+    /// Upgrading a 0.1.x store recovers the sets it stranded, rather than
+    /// merely stopping the bleeding for future ones. A DJ who played through
+    /// the broken releases has those sets on disk, captured and unsynced.
+    #[test]
+    fn migration_releases_sets_stranded_by_the_conflated_key() {
+        let file = TempStoreFile::new("baseline-migration");
+        let conn = open_at(&file.0).expect("store opens");
+
+        // Reconstruct a 0.1.2 store: one key, already advanced onto the
+        // captured set, and no baseline key at all. (`open_at` above ran the
+        // migration on an empty store, where it correctly does nothing.)
+        set_serato4_watermark(&conn, 493).unwrap();
+        upsert_captured(
+            &conn,
+            "serato4:493",
+            SessionSource::Serato4,
+            "/path/master.sqlite#493",
+            Some(4_000),
+            Some(4_500),
+            &sample_plays(),
+            &sample_derived(),
+        )
+        .unwrap();
+        assert_eq!(serato4_baseline(&conn).unwrap(), None);
+
+        migrate_serato4_baseline(&conn).unwrap();
+
+        assert_eq!(serato4_baseline(&conn).unwrap(), Some(492));
+        let pending = rows_pending_sync(&conn).unwrap();
+        assert_eq!(pending.len(), 1, "the stranded set is recovered");
+        assert_eq!(pending[0].session_identity, "serato4:493");
+
+        // Idempotent: a second launch must not move the floor again.
+        migrate_serato4_baseline(&conn).unwrap();
+        assert_eq!(serato4_baseline(&conn).unwrap(), Some(492));
+    }
+
     /// Decision A, second line of defence: a serato4 session at or below the
     /// stored go-forward baseline is never handed to the sync path, however it
     /// got back into the queue. The scenario is the real one — a pre-signup set
@@ -2221,7 +2421,7 @@ mod tests {
         // No baseline yet: nothing is withheld.
         assert_eq!(rows_pending_sync(&conn).unwrap().len(), 4);
 
-        set_serato4_watermark(&conn, 41).unwrap();
+        set_serato4_baseline(&conn, 41).unwrap();
 
         let pending = rows_pending_sync(&conn).unwrap();
         let identities: Vec<&str> = pending
@@ -2262,7 +2462,7 @@ mod tests {
             &sample_derived(),
         )
         .unwrap();
-        set_serato4_watermark(&conn, 100).unwrap();
+        set_serato4_baseline(&conn, 100).unwrap();
         mark_synced(&conn, "serato4:50", 9_999).unwrap();
 
         // A newer build re-derives it and re-queues the correction.
