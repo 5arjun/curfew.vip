@@ -99,3 +99,45 @@ export async function recordSignupContact(user: {
     console.error("[resend] contact write failed for a new signup", error);
   }
 }
+
+// Flip a DJ's Product-updates subscription to match what they just chose.
+//
+// This is the other half of the opt_out default: the contact row already
+// exists from signup, so consent is an UPDATE, not a create. Resend's contact
+// write upserts on email, which means this is also self-healing — a DJ whose
+// signup-time write was lost to a Resend outage still lands on the list here,
+// with the correct subscription, the moment they consent.
+//
+// Same failure discipline as recordSignupContact: never throws. The
+// authoritative consent record is the `djs` row written in the same action —
+// that is what a regulator would be shown. This call only mirrors it into the
+// sending system, so it must not be able to fail the DJ's form.
+//
+// The mirror can therefore drift if Resend is down: `djs` says yes while
+// Resend still says opt_out. That direction is the safe one — it under-sends,
+// never over-sends — and is reconcilable later from the djs column, which is
+// why it is the direction the failure is allowed to take.
+export async function setMarketingEmailConsent(
+  email: string | undefined,
+  optedIn: boolean,
+): Promise<void> {
+  if (!RESEND_API_KEY || !email) return;
+
+  try {
+    // `contacts.topics.update`, not `contacts.update` — topics are a separate
+    // sub-resource in the SDK and UpdateContactOptions carries no `topics`
+    // field at all. Addressed by email rather than contact id so this needs no
+    // stored Resend id of its own; the djs row stays the only record.
+    await new Resend(RESEND_API_KEY).contacts.topics.update({
+      email,
+      topics: [
+        {
+          id: PRODUCT_UPDATES_TOPIC_ID,
+          subscription: optedIn ? "opt_in" : "opt_out",
+        },
+      ],
+    });
+  } catch (error) {
+    console.error("[resend] marketing consent mirror failed", error);
+  }
+}

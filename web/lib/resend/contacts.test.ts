@@ -3,16 +3,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Hoisted so the mock is in place before `contacts.ts` is imported below —
 // every test re-imports the module fresh, because RESEND_API_KEY is read once
 // at module scope (matching lib/posthog/config.ts's house style).
-const { createContact, ResendCtor } = vi.hoisted(() => {
+const { createContact, updateTopics, ResendCtor } = vi.hoisted(() => {
   const createContact = vi.fn();
+  const updateTopics = vi.fn();
   // A `function`, not an arrow: `contacts.ts` calls `new Resend(...)`, and an
   // arrow function is not constructible. As an arrow this throws a TypeError
   // that the module's own catch swallows, so every assertion here fails with
   // "0 calls" and nothing points at the mock.
   const ResendCtor = vi.fn(function ResendMock() {
-    return { contacts: { create: createContact } };
+    return {
+      contacts: { create: createContact, topics: { update: updateTopics } },
+    };
   });
-  return { createContact, ResendCtor };
+  return { createContact, updateTopics, ResendCtor };
 });
 
 vi.mock("resend", () => ({ Resend: ResendCtor }));
@@ -33,6 +36,7 @@ describe("recordSignupContact", () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     createContact.mockReset().mockResolvedValue({ data: { id: "c_1" }, error: null });
+    updateTopics.mockReset().mockResolvedValue({ data: { id: "c_1" }, error: null });
     ResendCtor.mockClear();
   });
 
@@ -135,6 +139,59 @@ describe("recordSignupContact", () => {
         app_metadata: { provider: "google" },
       }),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("setMarketingEmailConsent", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    updateTopics.mockReset().mockResolvedValue({ data: { id: "c_1" }, error: null });
+    ResendCtor.mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+  });
+
+  it("opts the contact IN on the product-updates topic", async () => {
+    const { setMarketingEmailConsent, PRODUCT_UPDATES_TOPIC_ID } = await loadWithKey("re_test");
+
+    await setMarketingEmailConsent("dj@example.com", true);
+
+    expect(updateTopics).toHaveBeenCalledWith({
+      email: "dj@example.com",
+      topics: [{ id: PRODUCT_UPDATES_TOPIC_ID, subscription: "opt_in" }],
+    });
+  });
+
+  it("opts back OUT when consent is withdrawn", async () => {
+    const { setMarketingEmailConsent, PRODUCT_UPDATES_TOPIC_ID } = await loadWithKey("re_test");
+
+    await setMarketingEmailConsent("dj@example.com", false);
+
+    expect(updateTopics).toHaveBeenCalledWith({
+      email: "dj@example.com",
+      topics: [{ id: PRODUCT_UPDATES_TOPIC_ID, subscription: "opt_out" }],
+    });
+  });
+
+  it("does nothing without a key or without an address", async () => {
+    const withoutKey = await loadWithKey(undefined);
+    await withoutKey.setMarketingEmailConsent("dj@example.com", true);
+    expect(updateTopics).not.toHaveBeenCalled();
+
+    const withKey = await loadWithKey("re_test");
+    await withKey.setMarketingEmailConsent(undefined, true);
+    expect(updateTopics).not.toHaveBeenCalled();
+  });
+
+  it("resolves when Resend rejects — the djs row is the real record", async () => {
+    const { setMarketingEmailConsent } = await loadWithKey("re_test");
+    updateTopics.mockRejectedValue(new Error("resend is down"));
+
+    await expect(setMarketingEmailConsent("dj@example.com", true)).resolves.toBeUndefined();
   });
 });
 

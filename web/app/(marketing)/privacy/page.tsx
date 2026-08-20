@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { LegalDoc, LegalList, LegalP } from "@/app/components/landing/LegalDoc";
+import { formatPostalAddress } from "@/lib/marketing/consent";
 import { pageMetadata } from "@/lib/seo";
 
 // /privacy — the policy the FAQ's "Your data" section was already promising:
@@ -47,16 +48,24 @@ import { pageMetadata } from "@/lib/seo";
 // config, and still sets the `ph_phc_…` cookie — which would make the words
 // "no analytics cookie set" on this page a lie. The two files move together.
 //
-// ⚠️ ONE GATE SURVIVES THAT REVIEW. "How it's used" grants Curfew the right
-// to email and text you about the product. Neither channel is built — there
-// is no SMS provider in this repo and Resend carries transactional mail only
-// — and the escape hatches named below ("reply STOP", "the unsubscribe link")
-// don't exist either. That is safe only while nothing sends. Before the first
-// marketing message of either kind: TCPA consent has to be collected on
-// (onboarding)/phone-required (separate opt-in, not bundled into these
-// terms), CAN-SPAM needs an unsubscribe link and a postal address, and SMS
-// needs A2P 10DLC registration. See finding A of the review, and
-// launch-checklist §5.
+// ⚠️ HALF OF THAT GATE IS NOW BUILT; THE TEXT HALF IS NOT. "How it's used"
+// grants Curfew the right to email AND text you about the product.
+//
+// EMAIL (closed 2026-08-20). A separate opt-in, unchecked by default, is
+// collected on (onboarding)/phone-required; the consent timestamp and the
+// exact wording shown are stored on `djs`; every signup lands in Resend
+// opted OUT of the Product-updates topic and is only flipped in by that
+// control; Resend injects the unsubscribe link and List-Unsubscribe header
+// into broadcasts; and the postal address CAN-SPAM requires is published in
+// the body of this page, from lib/marketing/consent.ts.
+//
+// TEXT (still open, still safe only while nothing sends). No SMS provider
+// exists anywhere in this repo, so "reply STOP" remains a promise with no
+// mechanism. Before the first marketing text: TCPA prior express written
+// consent has to be collected on that same screen — its own control, NOT
+// bundled into the email one above, which deliberately says nothing about
+// texts or message rates — plus A2P 10DLC registration. See finding A of the
+// review, and launch-checklist §5.
 
 export const metadata: Metadata = pageMetadata({
   title: "Curfew · privacy policy",
@@ -168,10 +177,15 @@ export default function PrivacyPage() {
                 Curfew may also use your email or your number to tell you about the product itself:
                 new features, offers, things worth knowing. That is Curfew writing to you about
                 Curfew, and nothing more: your details are never sold, rented, or handed to anyone
-                else to advertise with. Stop those messages any time. Reply STOP to a text, use
-                the unsubscribe link in an email, or write to{" "}
+                else to advertise with. Those messages only go to people who asked for them, by
+                ticking the box when they added their phone number. Stop them any time. Reply STOP
+                to a text, use the unsubscribe link in an email, or write to{" "}
                 <a href="mailto:support@curfew.vip?subject=Unsubscribe">support@curfew.vip</a>.
                 Account mail keeps coming, because it is how the service reaches you.
+              </LegalP>
+              <LegalP>
+                Curfew&rsquo;s postal address, for unsubscribe requests and anything else that
+                wants one: {formatPostalAddress()}.
               </LegalP>
             </>
           ),

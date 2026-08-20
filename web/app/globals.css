@@ -524,6 +524,44 @@ a {
   color: var(--color-error);
 }
 
+/* Marketing-consent checkbox (/phone-required). Sits apart from the ghost
+   fields on purpose: those are the required identity of the step, this is the
+   one optional thing on the page, and it should not read as another blank to
+   fill in. */
+.auth-consent-field {
+  align-items: flex-start;
+  display: flex;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+/* accent-color tints the native control with the brand rather than replacing
+   it. A hand-built box would have to re-earn the focus ring, the indeterminate
+   state, forced-colors mode, and the platform's own touch target — all of
+   which the native input already has correct. */
+.auth-consent-field-box {
+  accent-color: var(--color-primary);
+  block-size: var(--space-md);
+  flex-shrink: 0;
+  inline-size: var(--space-md);
+  /* Optical alignment to the first line of label text, which is body-md and
+     therefore taller than the box. */
+  margin-block-start: 0.1em;
+}
+
+.auth-consent-field-box:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.auth-consent-field-label {
+  color: var(--color-on-surface-variant);
+  cursor: pointer;
+  /* Optional, and it should look it — this is the quietest text in the card,
+     one step down from the tagline above it. */
+  text-wrap: pretty;
+}
+
 .auth-button {
   align-items: center;
   border-radius: var(--radius-lg);

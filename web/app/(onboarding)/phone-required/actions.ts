@@ -2,6 +2,8 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { MARKETING_EMAIL_CONSENT_TEXT } from "@/lib/marketing/consent";
+import { setMarketingEmailConsent } from "@/lib/resend/contacts";
 import { AUTH_FAILURE_COPY } from "@/app/(marketing)/login/auth-copy";
 import { isValidPhone, normalizePhone } from "./phone-validation";
 import { normalizeTimezone } from "./timezone-validation";
@@ -47,6 +49,17 @@ export async function setPhone(
   // surfaced as an error.
   const timezone = normalizeTimezone(String(formData.get("timezone") ?? ""));
 
+  // The checkbox contributes exactly one bit: present or absent. Everything
+  // else about the record — the timestamp and the wording — is taken from the
+  // SERVER's own constant, never from the request.
+  //
+  // That is the whole point. A consent record assembled from client-supplied
+  // values proves only that a client sent those values; it cannot establish
+  // what Curfew actually displayed. Reading the text server-side from the same
+  // module the form imports for rendering is what makes the stored string a
+  // claim about our own behaviour rather than about theirs.
+  const marketingConsent = formData.get("marketingEmailConsent") !== null;
+
   const supabase = await createClient();
 
   // Supabase calls are caught (not the redirect() below — redirect() works
@@ -74,13 +87,39 @@ export async function setPhone(
       // rather than written as null: this action also runs for a DJ correcting
       // a rejected number, and an omitted key leaves a zone we already have
       // alone, where an explicit null would erase it.
+      // The consent columns ride the SAME update as the phone and the zone —
+      // one write, one RLS check. They are only included when the box was
+      // ticked: an unticked box must leave a NULL record as NULL rather than
+      // writing a "no", because djs_marketing_consent_complete makes a
+      // timestamp-without-wording unrepresentable and because absent is
+      // already the correct encoding of "never opted in".
+      const consentFields = marketingConsent
+        ? {
+            marketing_email_consent_at: new Date().toISOString(),
+            marketing_email_consent_text: MARKETING_EMAIL_CONSENT_TEXT,
+          }
+        : {};
+
       const { data: updated, error } = await supabase
         .from("djs")
-        .update(timezone ? { phone: normalizedPhone, timezone } : { phone: normalizedPhone })
+        .update({
+          phone: normalizedPhone,
+          ...(timezone ? { timezone } : {}),
+          ...consentFields,
+        })
         .eq("id", data.user.id)
         .select("id");
       succeeded = !error && (updated?.length ?? 0) > 0;
       checkViolation = error?.code === "23514";
+
+      // Mirrored into Resend only after the djs write is known to have landed,
+      // and only for a yes. The djs row is the authoritative record — this
+      // call just tells the sending system about it, and it cannot throw (see
+      // setMarketingEmailConsent). Mirroring a consent whose own record failed
+      // to save would invert which system is the source of truth.
+      if (succeeded && marketingConsent) {
+        await setMarketingEmailConsent(data.user.email, true);
+      }
     }
   } catch {
     succeeded = false;

@@ -523,7 +523,7 @@ Recorded so nobody reopens them as discoveries.
 | **`SENTRY_AUTH_TOKEN`** | **Not owed.** Verified today: present on **Preview + Production**. Web stack traces de-minify. Still unproven by a real exception — the first genuine production error is the confirmation |
 | **Agent Sentry project slug** | Still the platform default `rust` rather than `agent`. Cosmetic |
 | **No legal entity behind "Curfew"** | **Accepted risk**, ruled 2026-08-18. Sole proprietor, launching anyway. The terms create an agreement with a name, not a party, and `/terms` §"What Curfew promises" caps liability for someone with no corporate shield — the cap still binds the customer, there is just nothing standing between a judgment and personal assets. Forming an LLC is the fix and it is a business decision, not a checklist item |
-| **No physical postal address published** | Follows from the row above, and only actually required once commercial email sends. Gated with the marketing-send rule in §5 |
+| **~~No physical postal address published~~** | **Closed 2026-08-20.** Published on `/privacy` from `MARKETING_POSTAL_ADDRESS` in `web/lib/marketing/consent.ts`, which `isPostalAddressComplete()` guards against shipping half-filled. Note it is a residential address and is public on every broadcast forever; a USPS-registered PO box satisfies CAN-SPAM equally if that is ever unwanted |
 | **Four `SECURITY DEFINER` advisor WARNs** | **By design, not owed.** `sync_set`, `sync_library_roster`, `sync_library_add_events`, `set_agent_status` — every one is the agent's write path, and `SECURITY DEFINER` executable by `authenticated` is the mechanism, not a leak. The grants were deliberately hardened twice (`20260807140000_harden_table_and_function_grants`, `20260807160000_harden_library_roster_grants`) and `record_deleted_set`'s EXECUTE was revoked outright (`20260807150000`), so this is a considered posture rather than a default. Reopen only if a function's body stops scoping writes to `auth.uid()` |
 
 ---
@@ -569,20 +569,32 @@ to catch it.
 
 Three standing rules, not dated:
 
-- **Before the first marketing message — text or email — build the consent
-  first.** `/privacy` and `/terms` already grant Curfew this right and already
-  name the ways out; none of it is built, and the send is what arms it. Owed
-  before anything goes out: a separate marketing opt-in on
-  `(onboarding)/phone-required` (unchecked by default, its own sentence naming
-  marketing texts and message rates, never a condition of subscribing), a
-  `djs` column recording the consent timestamp and the exact wording shown, an
-  unsubscribe link and a physical postal address in every marketing email, and
-  A2P 10DLC brand/campaign registration. TCPA damages are $500 a message and
-  $1,500 if willful, and unregistered US business SMS is carrier-filtered
-  before it arrives — so a blast sent without this would be both unlawful and
-  undelivered. `docs/legal-review-2026-08-18.md` finding A has the detail.
-  **This is the one rule here that fires on an action rather than a date,
-  which is exactly why it is easy to walk past.**
+- **Before the first marketing TEXT, build the consent first. The EMAIL half
+  is done as of 2026-08-20.** `/privacy` and `/terms` grant Curfew both
+  rights, and the send is what arms them.
+
+  **Email — closed.** A marketing opt-in (unchecked by default, its own
+  sentence, never a condition of continuing) ships on
+  `(onboarding)/phone-required`; `djs.marketing_email_consent_at` and
+  `_text` record the timestamp and the exact wording shown, written from the
+  server's own constant rather than from the request; every signup enters
+  Resend opted OUT of the Product-updates topic and is flipped in only by that
+  control; Resend injects the unsubscribe link and `List-Unsubscribe` header
+  into broadcasts; and the postal address is published on `/privacy` from
+  `web/lib/marketing/consent.ts`. **One compose-time step remains: that
+  address must appear in the broadcast body itself — Resend does not add it
+  for you.**
+
+  **Text — still owed, and the email control deliberately does not cover it.**
+  Its wording names email only and is unit-tested to never mention texts or
+  message rates, so it cannot be read as TCPA consent. Owed before any text
+  goes out: a SECOND opt-in control on that screen naming marketing texts and
+  message rates, plus A2P 10DLC brand/campaign registration. TCPA damages are
+  $500 a message and $1,500 if willful, and unregistered US business SMS is
+  carrier-filtered before it arrives — so a blast sent without this would be
+  both unlawful and undelivered. `docs/legal-review-2026-08-18.md` finding A
+  has the detail. **This is the one rule here that fires on an action rather
+  than a date, which is exactly why it is easy to walk past.**
 
 - **Before any release — agent or web — diff `supabase/migrations/` against
   prod's applied list and apply the difference first.** Verified in parity
