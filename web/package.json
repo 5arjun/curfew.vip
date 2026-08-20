@@ -33,6 +33,7 @@
     "posthog-node": "^5.49.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "resend": "^6.20.0",
     "stripe": "^22.5.0",
     "tailwind-merge": "^3.6.0",
     "three": "^0.180.0",

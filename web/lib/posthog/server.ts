@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 
 import { PostHog } from "posthog-node";
 
+import { isFreshSignup } from "@/lib/signup/window";
+
 import { POSTHOG_INGEST_HOST, POSTHOG_KEY } from "./config";
 
 // Server-side capture, for the events that must not be reported by a browser.
@@ -101,26 +103,18 @@ export async function captureServer(
 //      record indefinitely, and a returning DJ signing in months later must
 //      not be able to re-report their own signup if it ever ages out.
 //
-// The window is a DAY, not minutes: on the email path `created_at` is stamped
-// when the form is submitted, but this route doesn't run until the DJ opens
-// the confirmation mail, which can easily be an hour later and sometimes the
-// next morning. The known cost is that a confirmation opened more than 24h
-// after signing up goes unreported — rare, and much the better failure than
-// counting every login as a new account.
-const SIGNUP_REPORTABLE_FOR_MS = 24 * 60 * 60 * 1000;
-
+// Guard 2 lives in lib/signup/window.ts, shared with the Resend contact write
+// so the two cannot drift apart about what counts as a new account — see the
+// note there for why the window is a day rather than minutes.
 export async function captureSignupCompleted(user: {
   id: string;
   created_at?: string;
   app_metadata?: { provider?: string };
 }): Promise<void> {
-  if (!user.created_at) return;
-
-  const age = Date.now() - Date.parse(user.created_at);
   // Checked BEFORE the client is constructed, so a returning DJ's sign-in
   // costs nothing — no PostHog client, no network, no added latency on the
   // hot path every login walks. Only a genuinely new account pays for this.
-  if (!Number.isFinite(age) || age < 0 || age > SIGNUP_REPORTABLE_FOR_MS) return;
+  if (!isFreshSignup(user.created_at)) return;
 
   await captureServer(
     user.id,

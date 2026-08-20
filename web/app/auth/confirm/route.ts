@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { billingEnabled } from "@/lib/billing/checkout";
 import { CHECKOUT_PENDING_COOKIE, nextSetupStep, readSetupState } from "@/lib/onboarding/corridor";
 import { captureSignupCompleted } from "@/lib/posthog/server";
+import { recordSignupContact } from "@/lib/resend/contacts";
 import { createClient } from "@/lib/supabase/server";
 
 // Email-confirmation callback. Supabase's default local email template links
@@ -51,7 +52,8 @@ export async function GET(request: NextRequest) {
     if (confirmed && user) {
       // See callback/route.ts — both auth routes report this, because a
       // signup arrives through whichever one matches how the DJ signed up.
-      await captureSignupCompleted(user);
+      // Same concurrency reasoning as there: neither of these rejects.
+      await Promise.all([captureSignupCompleted(user), recordSignupContact(user)]);
       destination = nextSetupStep({
         sellsSubscriptions: billingEnabled(process.env),
         checkoutPending: (await cookies()).get(CHECKOUT_PENDING_COOKIE)?.value === user.id,
